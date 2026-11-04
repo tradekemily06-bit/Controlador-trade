@@ -129,7 +129,7 @@ def show_assistant() -> None:
         if not assistant_available:
             st.warning("Assistente indisponível: " + str(readiness.get("message") or "configuração do provedor ausente"))
         else:
-            st.caption("Provedor configurado · " + str(readiness.get("model") or "modelo configurado") + " · conexão ainda não testada")
+            st.caption(str(readiness.get("message") or "Credenciais configuradas; conexão com a API ainda não testada.") + " · " + str(readiness.get("model") or "modelo configurado"))
     except Exception as exc:
         st.warning(f"Não foi possível verificar a configuração do Assistente. {exc}")
     st.warning("Privacidade: sua pergunta e um resumo dos dados operacionais disponíveis são enviados pelo servidor à OpenAI para gerar a resposta. A chave permanece no servidor. Excluir uma conversa remove o histórico local, mas não solicita a exclusão de dados já transmitidos à OpenAI. Não envie senhas, códigos de acesso ou dados bancários sensíveis.")
