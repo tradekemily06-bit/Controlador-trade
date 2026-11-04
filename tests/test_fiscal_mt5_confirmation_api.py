@@ -8,8 +8,9 @@ from finance.fiscal_reserve import FiscalReserve
 
 
 class FakeFiscalAdapter:
-    def __init__(self, currency="BRL"):
+    def __init__(self, currency="BRL", result=250.0):
         self.currency = currency
+        self.result = result
         self.calls = []
 
     def read_closed_deal_candidate(self, ticket):
@@ -19,7 +20,7 @@ class FakeFiscalAdapter:
         return {
             "ticket": ticket,
             "symbol": "WINZ26",
-            "net_result_account_currency": 250.0,
+            "net_result_account_currency": self.result,
             "account_currency": self.currency,
             "occurred_at_utc": datetime(2026, 11, 3, 12, tzinfo=timezone.utc).isoformat(),
             "account_fingerprint": "a" * 32,
@@ -203,3 +204,17 @@ def test_mt5_foreign_pending_import_rejects_missing_account_fingerprint(monkeypa
     )
     assert status.startswith("503")
     assert body["registered"] is False
+
+
+def test_mt5_foreign_loss_keeps_negative_sign_in_original_currency(monkeypatch, tmp_path):
+    status, body, _ = call_pending_result(
+        monkeypatch, tmp_path,
+        {"confirmed": True, "ticket": "7654321"},
+        adapter=FakeFiscalAdapter(currency="EUR", result=-42.75),
+    )
+    assert status.startswith("201")
+    assert body["pending"]["original_result"] == -42.75
+    assert body["pending"]["original_amount"] == 42.75
+    assert body["pending"]["original_currency"] == "EUR"
+    assert body["pending"]["status"] == "PENDING_CLASSIFICATION"
+    assert body["reserve_calculated"] is False
