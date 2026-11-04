@@ -18,7 +18,8 @@ def sample(reference="BR-PENDING-001"):
     }
 
 
-def test_domestic_pending_is_separate_from_foreign_queue_and_reserve(tmp_path):
+def test_domestic_pending_is_separate_from_foreign_queue_and_reserve(tmp_path, monkeypatch):
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner-a")
     path = str(tmp_path / "fiscal.sqlite3")
     queue = FiscalDomesticPendingQueue(path)
     queue.add("owner-a", sample())
