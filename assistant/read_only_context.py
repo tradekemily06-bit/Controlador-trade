@@ -1,6 +1,6 @@
 """Read-only context assembly for the Controlador Trading assistant.
 
-Only explicit, low-sensitivity fields are sent to the external model provider.
+Only explicit, low-sensitivity fields are sent to the external model provider. Pending foreign items are represented by owner-scoped counts only.
 This module does not execute trades, change settings, move funds, or infer tax outcomes.
 """
 from __future__ import annotations
