@@ -61,7 +61,7 @@ def valid_payload():
 def test_manual_day_trade_entry_requires_explicit_user_declaration_and_is_only_a_planning_estimate(tmp_path, monkeypatch):
     database, reserve = _configure(tmp_path, monkeypatch)
 
-    status, body = _request(valid_payload())
+    payload = valid_payload()\n    payload["notes"] = "E" * 600\n    status, body = _request(payload)
 
     assert status.startswith("200")
     assert body["classification_status"] == "USER_DECLARED_PLANNING_ONLY"
@@ -75,7 +75,9 @@ def test_manual_day_trade_entry_requires_explicit_user_declaration_and_is_only_a
     evidence = json.loads(body["entry"]["notes"])
     assert evidence["tax_classification_status"] == "USER_DECLARED_PLANNING_ONLY"
     assert evidence["market_scope_source"] == "USER_DECLARATION_NOT_INDEPENDENTLY_VERIFIED"
+    assert evidence["market_scope"] == "BR_ELIGIBLE_MARKET"
     assert evidence["instrument"] == "PETR4"
+    assert evidence["user_notes"] == "E" * 160
     assert evidence["institution"] == "Intermediária declarada"
     assert evidence["market_label"] == "B3"
     assert evidence["same_asset_confirmed_by_user"] is True
