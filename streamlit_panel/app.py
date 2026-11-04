@@ -800,36 +800,64 @@ def show_replay() -> None:
 
 def show_simulator() -> None:
     st.subheader("Simulador histórico · MT5 DEMO")
-    st.caption("Testa um filtro de confiança sobre candles históricos fechados. O resultado mostra candidatos de sinal, sinais filtrados e períodos de espera — não representa operações preenchidas nem rentabilidade.")
-    with st.form("historical_signal_simulator_form"):
+    st.caption("Backtest determinístico com sinais no fechamento e entrada somente na abertura do candle seguinte. Configure os parâmetros reais do instrumento e da sua conta antes de executar.")
+    st.info("P&L é calculado na moeda cotada do instrumento, sem conversão para a moeda da conta. Quantidade em unidades do ativo — não em lotes MT5.")
+    with st.form("historical_trade_backtest_form"):
         symbol = st.text_input("Ativo no MT5", value="EURUSD", max_chars=32)
-        timeframe = st.selectbox("Timeframe", ["1m", "5m", "15m", "30m", "1h", "4h", "1d"], index=1, key="simulator_timeframe")
-        limit = st.number_input("Quantidade de candles fechados", min_value=20, max_value=500, value=100, step=10, key="simulator_limit")
+        timeframe = st.selectbox("Timeframe", ["1m", "5m", "15m", "30m", "1h", "4h", "1d"], index=1, key="backtest_timeframe")
+        limit = st.number_input("Candles históricos fechados", min_value=20, max_value=500, value=200, step=10, key="backtest_limit")
         minimum_directional_score = st.slider("Score direcional mínimo", min_value=70, max_value=95, value=80, step=1)
-        submitted = st.form_submit_button("Simular cenário histórico DEMO")
+        st.markdown("**Parâmetros da operação hipotética**")
+        stop_distance = st.number_input("Stop-loss · distância em unidades de preço", min_value=0.0, value=0.0, step=0.0001, format="%.6f")
+        take_profit_distance = st.number_input("Take-profit · distância em unidades de preço", min_value=0.0, value=0.0, step=0.0001, format="%.6f")
+        quantity_units = st.number_input("Quantidade em unidades do ativo", min_value=0.0, value=0.0, step=1.0, format="%.2f")
+        st.markdown("**Custos por operação completa**")
+        spread_price_units = st.number_input("Spread total em unidades de preço", min_value=0.0, value=0.0, step=0.00001, format="%.6f")
+        slippage_price_units_per_side = st.number_input("Slippage por lado em unidades de preço", min_value=0.0, value=0.0, step=0.00001, format="%.6f")
+        commission_quote_per_unit_round_turn = st.number_input("Comissão total por unidade · moeda cotada", min_value=0.0, value=0.0, step=0.0001, format="%.6f")
+        submitted = st.form_submit_button("Executar backtest histórico DEMO")
     if not submitted:
-        st.info("Ajuste o filtro de confiança e execute a leitura histórica para comparar os sinais.")
+        st.caption("Preencha stop, alvo, quantidade e custos conforme a especificação do instrumento e da corretora. Valores zero significam custo zero assumido, não custo verificado.")
+        return
+    if not symbol.strip() or stop_distance <= 0 or take_profit_distance <= 0 or quantity_units <= 0 or spread_price_units <= 0:
+        st.error("Informe ativo, stop-loss, take-profit, quantidade e spread maiores que zero. Não vou presumir esses parâmetros.")
         return
     try:
-        result = api("/api/simulator/mt5", "POST", {
+        result = api("/api/simulator/mt5/backtest", "POST", {
             "symbol": symbol.strip(),
             "timeframe": timeframe,
             "limit": int(limit),
             "minimum_directional_score": int(minimum_directional_score),
+            "stop_distance": float(stop_distance),
+            "take_profit_distance": float(take_profit_distance),
+            "quantity_units": float(quantity_units),
+            "spread_price_units": float(spread_price_units),
+            "slippage_price_units_per_side": float(slippage_price_units_per_side),
+            "commission_quote_per_unit_round_turn": float(commission_quote_per_unit_round_turn),
         })
         st.caption(f"Fonte: {result.get('source', '—')} · {result.get('symbol')} · {result.get('timeframe')}")
+        st.caption(result.get("quote_currency_note", ""))
         cols = st.columns(4)
-        cols[0].metric("Candles", int(result.get("candles_replayed", 0)))
-        cols[1].metric("Candidatos", int(result.get("candidates", 0)))
-        cols[2].metric("Filtrados", int(result.get("filtered", 0)))
-        cols[3].metric("Aguardar", int(result.get("waiting", 0)))
-        records = result.get("records", [])
-        if records:
-            st.dataframe(records, use_container_width=True, hide_index=True)
-        st.warning("Cenário hipotético de sinais: sem ordens, sem preenchimentos, sem P&L e sem aplicação das regras completas de risco.")
-        st.caption("Execução permitida: NÃO · Envio de ordens: NÃO · Antecipação de candles futuros: NÃO")
+        cols[0].metric("Operações", int(result.get("trade_count", 0)))
+        cols[1].metric("Taxa vencedora", f"{float(result.get('win_rate', 0)):.2f}%")
+        cols[2].metric("Fator de lucro", "—" if result.get("profit_factor") is None else f"{float(result['profit_factor']):.3f}")
+        cols[3].metric("Resultado líquido", f"{float(result.get('net_pnl_quote', 0)):.6f}")
+        totals = st.columns(3)
+        totals[0].metric("Resultado bruto", f"{float(result.get('gross_pnl_quote', 0)):.6f}")
+        totals[1].metric("Custos totais", f"{float(result.get('total_costs_quote', 0)):.6f}")
+        totals[2].metric("Candles analisados", int(result.get("candles_processed", 0)))
+        trades = result.get("trades", [])
+        if trades:
+            st.dataframe(trades, use_container_width=True, hide_index=True)
+        else:
+            st.info("Nenhuma operação hipotética foi aberta com estes parâmetros e sinais.")
+        assumptions = result.get("assumptions", {})
+        st.caption(f"Entradas: {assumptions.get('entry', '—')} · Posições simultâneas: {assumptions.get('position_limit', '—')}")
+        st.warning("Limitações: stop-loss é priorizado quando stop e alvo aparecem no mesmo candle; o backtest não integra o Risk Manager, margem, alavancagem, swap ou conversão cambial. O resultado não é previsão nem promessa de rentabilidade.")
+        st.caption("Execução permitida: NÃO · Ordens enviadas: NÃO · Antecipação de candles futuros: NÃO")
     except Exception as exc:
-        st.error(f"Simulador indisponível: {exc}")
+        st.error(f"Backtest histórico indisponível: {exc}")
+
 
 
 def show_readonly_module(module_name: str) -> None:
