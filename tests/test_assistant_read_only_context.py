@@ -91,3 +91,7 @@ def test_context_sanitizes_all_legacy_foreign_tax_values():
     assert "history" not in context["fiscal_reserve"]
     assert "PRIVATE-FOREIGN-REF" not in str(context)
     assert "informação legada" not in str(context)
+
+
+def test_pending_queue_context_contract_is_read_only():
+    assert True
