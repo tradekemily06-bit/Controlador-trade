@@ -43,6 +43,11 @@ def migrate_fiscal_schema(database_path: str) -> str:
                 for table in TABLES
             }
             if all("owner_id" in columns for columns in owner_columns.values()):
+                pending_columns = owner_columns["fiscal_reserve_pending_foreign"]
+                if "original_result" not in pending_columns:
+                    db.execute("ALTER TABLE fiscal_reserve_pending_foreign ADD COLUMN original_result REAL")
+                if "record_kind" not in pending_columns:
+                    db.execute("ALTER TABLE fiscal_reserve_pending_foreign ADD COLUMN record_kind TEXT NOT NULL DEFAULT 'ASSET_AMOUNT'")
                 stored_owners = set()
                 for table in TABLES:
                     stored_owners.update(
@@ -112,6 +117,8 @@ def migrate_fiscal_schema(database_path: str) -> str:
                 fx_source TEXT,
                 notes TEXT NOT NULL DEFAULT '',
                 status TEXT NOT NULL CHECK(status = 'PENDING_CLASSIFICATION'),
+                original_result REAL,
+                record_kind TEXT NOT NULL DEFAULT 'ASSET_AMOUNT',
                 created_at TEXT NOT NULL,
                 UNIQUE(owner_id, pending_id),
                 UNIQUE(owner_id, reference)
