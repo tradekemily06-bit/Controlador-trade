@@ -4,6 +4,7 @@ import json
 import app as app_module
 from assistant.conversation_store import AssistantConversationStore
 from finance.fiscal_pending_queue import FiscalPendingQueue
+from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
 from finance.fiscal_reserve import FiscalReserve
 from finance.fiscal_schema import migrate_fiscal_schema
 
@@ -239,3 +240,46 @@ def test_foreign_pending_api_intake_results_and_reviews_stay_owner_scoped_and_un
         "FOREIGN-API-RESULT-001",
     }
     assert all(item["status"] == "PENDING_CLASSIFICATION" for item in listing["items"])
+
+
+
+def test_domestic_pending_api_rejects_foreign_review_category(tmp_path, monkeypatch):
+    database = tmp_path / "domestic-review-api.sqlite3"
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "X-Auth-User")
+    monkeypatch.setattr(app_module.SECURITY, "allow", lambda environ: True)
+    monkeypatch.setattr(app_module.SECURITY, "headers", lambda request_id, **kwargs: [])
+    monkeypatch.setattr(app_module, "_audit", lambda *args, **kwargs: None)
+
+    owner_id = migrate_fiscal_schema(str(database))
+    queue = FiscalDomesticPendingQueue(str(database))
+    pending = queue.add(owner_id, {
+        "reference": "BR-API-REVIEW-001",
+        "category_candidate": "BR_COMMON_EXCHANGE",
+        "instrument": "ETF",
+        "market_scope": "B3",
+        "occurred_on": "2026-11-04",
+        "realized_result_brl": -25.0,
+    })
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", database)
+    monkeypatch.setattr(app_module, "FISCAL_DOMESTIC_PENDING_QUEUE", queue)
+
+    status, response = _request(
+        f"/api/fiscal-reserve/domestic-pending/{pending['pending_id']}/reviews",
+        method="POST",
+        payload={
+            "candidate_classification": "FOREIGN_CRYPTO",
+            "confirmed_jurisdiction": "Exterior",
+            "reviewer_name": "Profissional declarado",
+            "reviewer_role": "contador",
+            "professional_registration": "CRC-DECLARADO",
+            "evidence_reference": "DOC-BR-API-001",
+            "reviewed_on": "2026-11-04",
+        },
+    )
+
+    assert status.startswith("400")
+    assert response["error"] == "Entrada inválida"
+    assert queue.list_pending(owner_id)["items"][0]["status"] == "PENDING_CLASSIFICATION"
+    assert queue.list_reviews(owner_id, pending["pending_id"]) == []
