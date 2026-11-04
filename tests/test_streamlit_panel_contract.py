@@ -112,3 +112,16 @@ def test_streamlit_keeps_brazilian_pending_items_separate_from_foreign_queue():
     assert "Brasil · pendente de classificação" in source
     assert "Exterior · pendente de classificação" in source
     assert "Fila brasileira indisponível" in source
+
+
+def test_streamlit_domestic_pending_can_distinguish_zero_from_missing_result():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'domestic_has_result = st.checkbox("Informar resultado realizado em R$ (inclusive zero)"' in source
+    assert "if domestic_has_result:" in source
+    assert 'domestic_payload["realized_result_brl"] = domestic_result' in source
+
+
+def test_streamlit_does_not_claim_visual_fidelity_without_original_images():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert "não é a reprodução visual aprovada do Figma" in source
+    assert "não estão presentes neste branch" in source
