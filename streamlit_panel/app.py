@@ -490,7 +490,105 @@ def show_fiscal() -> None:
         except Exception as exc:
             st.error(str(exc))
 
+
     st.caption("Resultados estrangeiros com sinal original serão mantidos em pendência, fora dos totais até revisão.")
+
+    st.markdown("#### Revisão documental · Exterior")
+    st.caption("A revisão registra a classificação candidata e as evidências informadas pelo profissional. O sistema não verifica identidade ou registro, não muda o status pendente e não calcula imposto.")
+    try:
+        foreign_pending_data = api("/api/fiscal-reserve/pending?limit=100&offset=0")
+        foreign_items = foreign_pending_data.get("items", [])
+        if foreign_items:
+            st.dataframe([{
+                "Data": item.get("occurred_on"),
+                "Referência": item.get("reference"),
+                "Instrumento": item.get("instrument"),
+                "Valor": item.get("original_result") if item.get("record_kind") == "REALIZED_RESULT" else item.get("original_amount"),
+                "Moeda": item.get("original_currency"),
+                "Residência declarada": item.get("tax_residency_at_event"),
+                "Natureza": item.get("income_nature"),
+                "Evento": item.get("event_type"),
+                "Status": "PENDENTE DE CLASSIFICAÇÃO",
+            } for item in foreign_items], use_container_width=True, hide_index=True)
+            foreign_review_options = {
+                item["pending_id"]: f"{item.get('occurred_on')} · {item.get('instrument')} · {item.get('reference')}"
+                for item in foreign_items if item.get("pending_id")
+            }
+            if foreign_review_options:
+                selected_foreign_pending_id = st.selectbox(
+                    "Pendência estrangeira para revisão",
+                    options=list(foreign_review_options),
+                    format_func=lambda value: foreign_review_options[value],
+                    key="foreign_review_pending_id",
+                )
+                with st.form("foreign_review_form"):
+                    foreign_review_category = st.selectbox(
+                        "Classificação candidata revisada",
+                        ["FOREIGN_FINANCIAL_INVESTMENT", "FOREIGN_ENTITY_CONTROLLED", "FOREIGN_CRYPTO"],
+                    )
+                    foreign_review_jurisdiction = st.text_input(
+                        "Jurisdição confirmada pelo revisor", max_chars=120, key="foreign_review_jurisdiction"
+                    )
+                    foreign_reviewer_name = st.text_input("Nome do profissional", max_chars=160, key="foreign_reviewer_name")
+                    foreign_reviewer_role = st.selectbox(
+                        "Atuação profissional",
+                        ["contador", "consultor tributário", "profissional tributário"],
+                        key="foreign_reviewer_role",
+                    )
+                    foreign_professional_registration = st.text_input(
+                        "Registro profissional informado", max_chars=100, key="foreign_professional_registration"
+                    )
+                    foreign_evidence_reference = st.text_input(
+                        "Referência da evidência / parecer", max_chars=500, key="foreign_evidence_reference"
+                    )
+                    foreign_reviewed_on = st.date_input("Data da revisão", key="foreign_reviewed_on")
+                    foreign_review_notes = st.text_area(
+                        "Observações da revisão", max_chars=2000, key="foreign_review_notes"
+                    )
+                    foreign_review_submit = st.form_submit_button("Guardar evidência da revisão")
+                if foreign_review_submit:
+                    try:
+                        foreign_review_payload = {
+                            "candidate_classification": foreign_review_category,
+                            "confirmed_jurisdiction": foreign_review_jurisdiction,
+                            "reviewer_name": foreign_reviewer_name,
+                            "reviewer_role": foreign_reviewer_role,
+                            "professional_registration": foreign_professional_registration,
+                            "evidence_reference": foreign_evidence_reference,
+                            "reviewed_on": foreign_reviewed_on.isoformat(),
+                            "review_notes": foreign_review_notes,
+                        }
+                        api(
+                            "/api/fiscal-reserve/pending/" + urllib.parse.quote(selected_foreign_pending_id) + "/reviews",
+                            "POST", foreign_review_payload,
+                        )
+                        st.success("Evidência guardada. A operação continua pendente, sem cálculo ou inclusão nos totais.")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(str(exc))
+                try:
+                    foreign_review_data = api(
+                        "/api/fiscal-reserve/pending/" + urllib.parse.quote(selected_foreign_pending_id) + "/reviews"
+                    )
+                    if foreign_review_data.get("reviews"):
+                        st.dataframe([{
+                            "Classificação candidata": item.get("candidate_classification"),
+                            "Jurisdição": item.get("confirmed_jurisdiction"),
+                            "Revisor declarado": item.get("reviewer_name"),
+                            "Atuação": item.get("reviewer_role"),
+                            "Registro informado": item.get("professional_registration"),
+                            "Evidência": item.get("evidence_reference"),
+                            "Data": item.get("reviewed_on"),
+                            "Identidade": "NÃO VERIFICADA",
+                        } for item in foreign_review_data["reviews"]], use_container_width=True, hide_index=True)
+                    else:
+                        st.caption("Nenhuma evidência de revisão registrada para esta pendência.")
+                except Exception as exc:
+                    st.warning(f"Histórico de revisão estrangeira indisponível. {exc}")
+        else:
+            st.caption("Nenhuma pendência estrangeira cadastrada.")
+    except Exception as exc:
+        st.warning(f"Fila estrangeira indisponível; nenhum registro foi incluído nos totais. {exc}")
 
     with st.expander("Prévia de negócios encerrados · MT5 DEMO"):
         lookback = st.number_input("Período de consulta (dias)", min_value=1, max_value=365, value=30, step=1)
