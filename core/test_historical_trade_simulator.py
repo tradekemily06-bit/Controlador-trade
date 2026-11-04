@@ -162,3 +162,25 @@ def test_rejects_mismatched_signal_count_and_duplicate_timestamps():
 def test_rejects_invalid_configuration(field, value):
     with pytest.raises(ValueError):
         config(**{field: value})
+
+
+def test_contract_multiplier_scales_pnl_and_costs():
+    data = bars(
+        (100, 100.5, 99.5, 100),
+        (100, 101, 99.8, 100.5),
+        (100.5, 102, 100.2, 101.5),
+    )
+    base = HistoricalTradeSimulator().run(
+        candles=data,
+        signals=[signal(Signal.COMPRA, 85), signal(), signal()],
+        config=config(contract_multiplier=1),
+    )
+    scaled = HistoricalTradeSimulator().run(
+        candles=data,
+        signals=[signal(Signal.COMPRA, 85), signal(), signal()],
+        config=config(contract_multiplier=10),
+    )
+    assert scaled.net_pnl_quote == pytest.approx(base.net_pnl_quote * 10)
+    assert scaled.total_costs_quote == pytest.approx(base.total_costs_quote * 10)
+
+
