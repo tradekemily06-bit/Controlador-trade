@@ -420,7 +420,7 @@ def application(environ, start_response):
                 "source": "IC Markets MT5 DEMO",
                 "ticket": ticket,
                 "position_id": candidate.get("position_id"),
-                "opened_at_utc": opened_timestamp,
+                "opened_at_utc": candidate.get("opened_at_utc"),
                 "occurred_at_utc": timestamp,
                 "profit": candidate.get("profit"),
                 "commission": candidate.get("commission"),
