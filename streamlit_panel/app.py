@@ -166,7 +166,7 @@ def show_assistant() -> None:
         st.warning(f"Não foi possível verificar a configuração do Assistente. {exc}")
 
     st.caption(
-        "Privacidade: a pergunta e um resumo operacional filtrado são enviados pelo servidor à OpenAI. "
+        "Privacidade: a pergunta, as mensagens recentes desta conversa e um resumo operacional filtrado são enviados pelo servidor à OpenAI. "
         "As mensagens também ficam armazenadas no histórico local do Assistente no servidor do Ecossistema. "
         "A chave permanece no servidor. Não envie senhas, códigos de acesso ou dados bancários sensíveis."
     )
