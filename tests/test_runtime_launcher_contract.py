@@ -261,3 +261,17 @@ def test_container_healthcheck_uses_lightweight_liveness_endpoint():
     text = _read("Dockerfile")
     assert "/api/health/live" in text
     assert "'/api/health'" not in text
+ 
+
+def test_controller_runtime_requires_single_user_identity_before_startup():
+    text = _read("deployment/start_controlador_runtime.ps1")
+    required_identity = 'if ([string]::IsNullOrWhiteSpace([string]$env:CONTROLADOR_SINGLE_USER_IDENTITY)) {'
+    assert required_identity in text
+    identity_guard = text.index(required_identity)
+    supervisor_start = text.index("Write-StartupLog 'Supervisor do Controlador iniciado.'")
+    process_start = text.index("Start-Process", supervisor_start)
+    assert identity_guard < supervisor_start < process_start
+    assert "CONTROLADOR_SINGLE_USER_IDENTITY não configurado" in text
+    assert "OPENAI_API_KEY detectada no ambiente; conexão com o provedor permanece não testada" in text
+    assert "Write-StartupLog $env:OPENAI_API_KEY" not in text
+    assert "Write-StartupLog ([string]$env:OPENAI_API_KEY)" not in text
