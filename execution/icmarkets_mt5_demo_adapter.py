@@ -202,7 +202,6 @@ class ICMarketsMT5DemoAdapter:
                     cashflows = [deal_cashflow(deal) for deal in deals]
                     if all(value is not None for value in cashflows):
                         realized_pnl = float(sum(cashflows))
-                        realized_loss_today = max(0.0, -realized_pnl)
 
                     identifiers = []
                     entries_valid = True
@@ -227,6 +226,16 @@ class ICMarketsMT5DemoAdapter:
                         if identifier is None:
                             continue
                         grouped.setdefault(identifier, []).append((index, deal, cashflow))
+
+                    # P40 consumes the sum of losing position results, not the
+                    # net account P&L. Missing identity or netting reversal makes
+                    # this counter unknown so the execution budget fails closed.
+                    if all(value is not None for value in cashflows) and entries_valid and not has_netting_reversal:
+                        realized_loss_today = float(sum(
+                            -position_total
+                            for rows in grouped.values()
+                            if (position_total := sum(value for _, _, value in rows)) < 0
+                        ))
 
                     closed_ids = {
                         identifier
