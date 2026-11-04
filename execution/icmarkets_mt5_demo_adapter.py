@@ -266,15 +266,22 @@ class ICMarketsMT5DemoAdapter:
                 ):
                     withheld += 1
                     continue
+                opening = sorted(opening, key=lambda deal: (
+                    int(getattr(deal, "time_msc", 0) or 0),
+                    int(getattr(deal, "time", 0) or 0),
+                    int(getattr(deal, "ticket", 0) or 0),
+                ))
                 closing = sorted(closing, key=lambda deal: (
                     int(getattr(deal, "time_msc", 0) or 0),
                     int(getattr(deal, "time", 0) or 0),
                     int(getattr(deal, "ticket", 0) or 0),
                 ))
+                first_opening_deal = opening[0]
                 final_deal = closing[-1]
+                opening_timestamp = getattr(first_opening_deal, "time", None)
                 timestamp = getattr(final_deal, "time", None)
                 ticket = str(getattr(final_deal, "ticket", "") or "")
-                if not ticket.isdigit() or not timestamp:
+                if not ticket.isdigit() or not opening_timestamp or not timestamp:
                     withheld += 1
                     continue
                 candidates.append({
@@ -285,6 +292,7 @@ class ICMarketsMT5DemoAdapter:
                     **components,
                     "net_result_account_currency": round(sum(components.values()), 8),
                     "account_currency": str(getattr(account, "currency", "") or "UNKNOWN"),
+                    "opened_at_utc": datetime.fromtimestamp(int(opening_timestamp), timezone.utc).isoformat(),
                     "occurred_at_utc": datetime.fromtimestamp(int(timestamp), timezone.utc).isoformat(),
                     "deal_count": len(position_deals),
                     "closing_deal_count": len(closing),
