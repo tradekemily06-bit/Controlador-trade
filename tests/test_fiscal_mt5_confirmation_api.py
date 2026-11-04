@@ -88,7 +88,7 @@ def test_mt5_confirmation_revalidates_and_registers_once(monkeypatch, tmp_path):
 
 
 def test_mt5_confirmation_requires_account_fingerprint_for_safe_deduplication(monkeypatch, tmp_path):
-    class MissingFingerprintAdapter(FakeMT5Adapter):
+    class MissingFingerprintAdapter(FakeFiscalAdapter):
         def read_closed_deal_candidate(self, ticket):
             result = super().read_closed_deal_candidate(ticket)
             result["account_fingerprint"] = None
@@ -99,7 +99,7 @@ def test_mt5_confirmation_requires_account_fingerprint_for_safe_deduplication(mo
         {"confirmed": True, "ticket": "7654321", "category": "BR_DAY_TRADE"},
         adapter=MissingFingerprintAdapter(),
     )
-    assert status == HTTPStatus.SERVICE_UNAVAILABLE
+    assert status.startswith("503")
     assert body["registered"] is False
 
 
