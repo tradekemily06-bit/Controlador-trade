@@ -31,6 +31,7 @@ def config(**overrides):
         "stop_distance": 0.5,
         "take_profit_distance": 1.0,
         "quantity_units": 10,
+        "contract_multiplier": 1.0,
         "spread_price_units": 0.02,
         "slippage_price_units_per_side": 0.01,
         "commission_quote_per_unit_round_turn": 0.05,
