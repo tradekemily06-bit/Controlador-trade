@@ -227,6 +227,26 @@ class ICMarketsMT5DemoAdapter:
         finally:
             mt5.shutdown()
 
+    def read_closed_deal_candidate(self, ticket: str) -> dict[str, Any]:
+        """Re-read one exact closing deal from the current DEMO history."""
+        raw_ticket = str(ticket or "").strip()
+        if not raw_ticket.isdigit() or len(raw_ticket) > 20:
+            raise ValueError("ticket MT5 inválido")
+        preview = self.read_closed_deal_candidates(lookback_days=365)
+        matches = [
+            item for item in preview.get("candidates", [])
+            if str(item.get("ticket", "")) == raw_ticket
+        ]
+        if len(matches) != 1:
+            raise MT5AdapterError("ticket não encontrado como negócio de encerramento único no histórico DEMO.")
+        return {
+            **matches[0],
+            "source": preview.get("source"),
+            "account_currency": preview.get("account_currency"),
+            "auto_registered": False,
+            "notice": preview.get("notice"),
+        }
+
     def query_order(self, external_id: str) -> ExternalOrderObservation:
         """Read external DEMO order/deal status for P121; never resubmits."""
         if not isinstance(external_id, str) or not external_id.strip():
