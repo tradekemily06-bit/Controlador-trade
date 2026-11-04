@@ -339,14 +339,14 @@ def show_fiscal() -> None:
                         with st.form("mt5_confirm_" + ticket):
                             st.write(f"**{candidate.get('symbol', 'Ativo')} · ticket {ticket}**")
                             st.caption(f"Encerramento UTC: {candidate.get('occurred_at_utc', '—')} · Resultado líquido da posição: {candidate.get('net_result_account_currency', '—')} {account_currency} · Negócios somados: {candidate.get('deal_count', '—')}")
-                            classified = st.checkbox("Confirmo que este resultado pertence à categoria Brasil · day trade.", key="mt5_class_" + ticket)
+                            classified = st.checkbox("Confirmo que a operação ocorreu em mercado brasileiro elegível e atende ao conceito fiscal de day trade: mesmo ativo, mesma instituição e mesmo dia.", key="mt5_class_" + ticket)
                             confirmed = st.form_submit_button("Confirmar e registrar esta posição")
                         if confirmed:
                             if not classified:
                                 st.error("Marque a confirmação de classificação antes de registrar.")
                             else:
                                 try:
-                                    result = api("/api/fiscal-reserve/mt5-confirm", "POST", {"ticket": ticket, "category": "BR_DAY_TRADE", "confirmed": True})
+                                    result = api("/api/fiscal-reserve/mt5-confirm", "POST", {"ticket": ticket, "category": "BR_DAY_TRADE", "market_scope": "BR_ELIGIBLE_MARKET", "confirmed": True})
                                     st.success(f"Ticket {ticket} registrado. A referência impede duplicidade.")
                                     st.session_state.fiscal_mt5_confirmed_tickets = set(st.session_state.get("fiscal_mt5_confirmed_tickets", set())) | {ticket}
                                     st.rerun()
