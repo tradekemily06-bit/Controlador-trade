@@ -317,3 +317,74 @@ def test_mt5_signal_scenario_rejects_out_of_order_history():
         assert "ordem cronológica" in str(exc)
     else:
         raise AssertionError("simulator must reject out-of-order market data")
+
+
+
+def test_mt5_historical_backtest_is_side_effect_free_and_uses_demo_history():
+    from datetime import datetime, timedelta, timezone
+    from data.models import Candle
+
+    class FakeMarketAdapter:
+        def __init__(self, candles):
+            self.request = None
+            self.candles = candles
+
+        def fetch_market_data(self, request):
+            self.request = request
+            return self.candles
+
+    candles = tuple(
+        Candle(
+            datetime(2026, 11, 1, tzinfo=timezone.utc) + timedelta(minutes=index),
+            100 + index, 102 + index, 99 + index, 101 + index, 10,
+        )
+        for index in range(25)
+    )
+    service = ConfiguredEcosystemService(execution_provider="ic_markets_mt5_demo")
+    adapter = FakeMarketAdapter(candles)
+    service.mt5_market_adapter = adapter
+    before_memory = list(service.memory)
+
+    result = service.run_mt5_historical_backtest(
+        symbol="EURUSD",
+        timeframe="5m",
+        limit=25,
+        stop_distance=0.1,
+        take_profit_distance=0.2,
+        quantity_units=100,
+        spread_price_units=0.01,
+        slippage_price_units_per_side=0.001,
+        commission_quote_per_unit_round_turn=0.001,
+        minimum_directional_score=80,
+    )
+
+    assert adapter.request.symbol == "EURUSD"
+    assert adapter.request.timeframe == "5m"
+    assert adapter.request.limit == 25
+    assert result["candles_processed"] == 25
+    assert result["orders_sent"] is False
+    assert result["execution_allowed"] is False
+    assert result["lookahead"] is False
+    assert result["simulation_kind"] == "HISTORICAL_OHLC_FIXED_SL_TP"
+    assert result["assumptions"]["risk_manager_integrated"] is False
+    assert result["assumptions"]["margin_and_leverage_simulated"] is False
+    assert service.memory == before_memory
+
+
+def test_mt5_historical_backtest_rejects_non_demo_provider():
+    service = ConfiguredEcosystemService(execution_provider="paper")
+    try:
+        service.run_mt5_historical_backtest(
+            symbol="EURUSD",
+            stop_distance=0.1,
+            take_profit_distance=0.2,
+            quantity_units=100,
+            spread_price_units=0.01,
+            slippage_price_units_per_side=0,
+        )
+    except RuntimeError as exc:
+        assert "DEMO" in str(exc)
+    else:
+        raise AssertionError("historical backtest must require MT5 DEMO")
+
+
