@@ -29,6 +29,7 @@ def test_streamlit_panel_connects_assistant_and_fiscal_to_existing_api():
     assert "Abrir conversa" in source
     assert "Excluir conversa" in source
     assert "histórico local do Assistente no servidor do Ecossistema" in source
+    assert "a pergunta, as mensagens recentes desta conversa e um resumo operacional filtrado são enviados pelo servidor à OpenAI." in source
     assert "CONTROLADOR_TRUSTED_IDENTITY_HEADER" in source
     assert "REAL permanece bloqueado" in source or "REAL" in source
 
