@@ -162,7 +162,7 @@ def test_streamlit_assistant_displays_provider_readiness_without_exposing_creden
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert 'api("/api/assistant/status")' in source
     assert "Assistente indisponível:" in source
-    assert "Provedor configurado" in source
+    assert "Credenciais configuradas; conexão com a API ainda não testada." in source
 
 
 def test_streamlit_disables_assistant_chat_when_provider_is_unavailable():
