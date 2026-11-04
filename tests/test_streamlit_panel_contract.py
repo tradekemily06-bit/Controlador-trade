@@ -147,3 +147,12 @@ def test_streamlit_labels_user_declared_day_trade_planning_estimates():
     assert "PLANEJAMENTO · DECLARAÇÃO DO USUÁRIO" in source
     assert 'evidence.get("tax_classification_status") == "USER_DECLARED_PLANNING_ONLY"' in source
     assert "Confirmo que foi o mesmo ativo, pela mesma instituição, no mesmo dia e em mercado brasileiro elegível." in source
+
+
+def test_streamlit_brazilian_pending_queue_supports_auditable_professional_review():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert "/api/fiscal-reserve/domestic-pending/" in source
+    assert '"/reviews"' in source
+    assert "Revisão documental · Brasil" in source
+    assert "O sistema não verifica identidade ou registro profissional" in source
+    assert "A operação continua pendente, sem cálculo ou inclusão nos totais." in source
