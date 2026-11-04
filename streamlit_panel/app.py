@@ -180,6 +180,16 @@ def show_fiscal() -> None:
         c.metric("Total atualmente calculado", money(summary.get("total_reserved_brl")))
         st.caption(f"Referência: {summary.get('as_of', '—')} · Brasil day trade · percentual aplicado: {br.get('rate', '—')}%")
         st.info(f"Exterior: {foreign.get('entries', 0)} registro(s) legado(s) · classificação pendente · fora dos totais.")
+        foreign_pending = summary.get("foreign_pending", {})
+        pending_periods = foreign_pending.get("periods", {})
+        pending_cols = st.columns(4)
+        for col, period, label in zip(pending_cols, ("day", "week", "month", "year"), ("Dia", "Semana", "Mês", "Ano")):
+            pending_period = pending_periods.get(period, {})
+            col.metric(f"Exterior pendente · {label}", int(pending_period.get("total", 0)))
+            col.caption(
+                f"{int(pending_period.get('realized_results', 0))} resultado(s) · "
+                f"{int(pending_period.get('asset_amounts', 0))} ativo(s) · sem cálculo"
+            )
         fiscal_history = summary.get("history", [])
         st.markdown("#### Histórico da Reserva Fiscal")
         if fiscal_history:
