@@ -87,6 +87,8 @@ class HistoricalBacktestResult:
     net_pnl_quote: float
     win_rate: float
     profit_factor: float | None
+    max_drawdown_quote: float
+    max_consecutive_losses: int
     orders_sent: bool = False
     execution_allowed: bool = False
     lookahead: bool = False
@@ -229,6 +231,21 @@ class HistoricalTradeSimulator:
         wins = sum(trade.net_pnl_quote > 0 for trade in trades)
         losses = sum(trade.net_pnl_quote < 0 for trade in trades)
         breakeven = sum(trade.net_pnl_quote == 0 for trade in trades)
+        running_equity = 0.0
+        equity_peak = 0.0
+        max_drawdown = 0.0
+        current_loss_streak = 0
+        max_loss_streak = 0
+        for trade in trades:
+            running_equity += trade.net_pnl_quote
+            equity_peak = max(equity_peak, running_equity)
+            max_drawdown = max(max_drawdown, equity_peak - running_equity)
+            if trade.net_pnl_quote < 0:
+                current_loss_streak += 1
+                max_loss_streak = max(max_loss_streak, current_loss_streak)
+            else:
+                current_loss_streak = 0
+
         gross_profit = sum(trade.net_pnl_quote for trade in trades if trade.net_pnl_quote > 0)
         gross_loss = abs(sum(trade.net_pnl_quote for trade in trades if trade.net_pnl_quote < 0))
         profit_factor = gross_profit / gross_loss if gross_loss > 0 else None
@@ -247,4 +264,6 @@ class HistoricalTradeSimulator:
             net_pnl_quote=round(net_total, 8),
             win_rate=(wins / len(trades)) if trades else 0.0,
             profit_factor=round(profit_factor, 6) if profit_factor is not None else None,
+            max_drawdown_quote=round(max_drawdown, 8),
+            max_consecutive_losses=max_loss_streak,
         )
