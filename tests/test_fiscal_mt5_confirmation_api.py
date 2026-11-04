@@ -35,6 +35,8 @@ class FakeFiscalAdapter:
 
 
 def call_confirm(monkeypatch, tmp_path, payload, adapter=None):
+    from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
+
     database = tmp_path / "fiscal.sqlite3"
     monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "test-owner")
     monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "false")
@@ -42,6 +44,7 @@ def call_confirm(monkeypatch, tmp_path, payload, adapter=None):
     monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATION_HOSTS", "localhost")
     monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", database)
     monkeypatch.setattr(app_module, "FISCAL_RESERVE", FiscalReserve(str(database)))
+    monkeypatch.setattr(app_module, "FISCAL_DOMESTIC_PENDING_QUEUE", FiscalDomesticPendingQueue(str(database)))
     fake = adapter or FakeFiscalAdapter()
     monkeypatch.setattr(
         app_module,
@@ -78,15 +81,18 @@ def test_mt5_confirmation_revalidates_and_registers_once(monkeypatch, tmp_path):
     status, body, adapter = call_confirm(monkeypatch, tmp_path, payload)
     assert status.startswith("201")
     assert body["registered"] is True
-    assert body["entry"]["realized_result_brl"] == 250.0
-    assert body["entry"]["reference"] == "MT5-DEMO:" + ("a" * 32) + ":7654321"
-    assert body["entry"]["reserve_amount_brl"] == 50.0
-    assert body["classification_status"] == "USER_DECLARED_PENDING_REVIEW"
+    assert body["pending"]["realized_result_brl"] == 250.0
+    assert body["pending"]["reference"] == "MT5-DEMO:" + ("a" * 32) + ":7654321"
+    assert body["pending"]["category_candidate"] == "BR_DAY_TRADE"
+    assert body["pending"]["instrument"] == "WINZ26"
+    assert body["classification_status"] == "PENDING_CLASSIFICATION"
     assert body["classification_source"] == "USER_DECLARATION"
     assert body["independent_market_eligibility_verified"] is False
     assert body["tax_liability_confirmed"] is False
-    assert body["reserve_is_estimate"] is True
-    evidence = json.loads(body["entry"]["notes"])
+    assert body["reserve_is_estimate"] is False
+    assert body["reserve_calculated"] is False
+    assert body["included_in_totals"] is False
+    evidence = json.loads(body["pending"]["notes"])
     assert evidence["tax_classification_status"] == "USER_DECLARED_PENDING_REVIEW"
     assert evidence["market_scope_source"] == "USER_DECLARATION_NOT_INDEPENDENTLY_VERIFIED"
     assert evidence["independent_market_eligibility_verified"] is False
@@ -97,6 +103,7 @@ def test_mt5_confirmation_revalidates_and_registers_once(monkeypatch, tmp_path):
     status, body, adapter = call_confirm(monkeypatch, tmp_path, payload)
     assert status.startswith("409")
     assert body["registered"] is False
+    assert body["included_in_totals"] is False
 
 
 def test_mt5_confirmation_requires_account_fingerprint_for_safe_deduplication(monkeypatch, tmp_path):
