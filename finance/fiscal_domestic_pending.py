@@ -72,11 +72,19 @@ class FiscalDomesticPendingQueue:
                 ON fiscal_domestic_pending_reviews(owner_id, pending_id, created_at DESC)
             """)
 
+    @staticmethod
+    def _require_owner(owner_id: str) -> str:
+        owner = str(owner_id or "").strip()
+        if not owner or len(owner) > 160:
+            raise ValueError("identidade proprietária obrigatória e inválida")
+        return owner
+
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
         db = sqlite3.connect(self._uri or self.database_path, uri=bool(self._uri), timeout=10)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA busy_timeout = 10000")
+        db.execute("PRAGMA foreign_keys = ON")
         try:
             yield db
             db.commit()
@@ -98,7 +106,8 @@ class FiscalDomesticPendingQueue:
         return raw
 
     def add(self, owner_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        if not owner_id or not isinstance(payload, dict):
+        owner_id = self._require_owner(owner_id)
+        if not isinstance(payload, dict):
             raise ValueError("identidade proprietária e payload são obrigatórios")
         reference = str(payload.get("reference") or "").strip()
         instrument = str(payload.get("instrument") or "").strip()
@@ -142,6 +151,7 @@ class FiscalDomesticPendingQueue:
         return {key: value for key, value in item.items() if key != "owner_id"}
 
     def list_pending(self, owner_id: str, limit: int = 100, offset: int = 0) -> dict[str, Any]:
+        owner_id = self._require_owner(owner_id)
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
             raise ValueError("limit deve estar entre 1 e 500")
         if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
@@ -164,6 +174,7 @@ class FiscalDomesticPendingQueue:
 
     def record_review(self, owner_id: str, pending_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         """Append declared professional review evidence; never classifies or books the item."""
+        owner_id = self._require_owner(owner_id)
         if not isinstance(payload, dict):
             raise ValueError("payload deve ser um objeto")
         pending_id = str(pending_id or "").strip()
@@ -226,6 +237,7 @@ class FiscalDomesticPendingQueue:
                 "reserve_calculated": False, "tax_rate_available": False}
 
     def list_reviews(self, owner_id: str, pending_id: str) -> list[dict[str, Any]]:
+        owner_id = self._require_owner(owner_id)
         pending_id = str(pending_id or "").strip()
         with self._connect() as db:
             if not db.execute(
@@ -246,6 +258,7 @@ class FiscalDomesticPendingQueue:
         } for row in rows]
 
     def summary(self, owner_id: str, as_of: date | None = None) -> dict[str, Any]:
+        owner_id = self._require_owner(owner_id)
         today = as_of or datetime.now(ZoneInfo("America/Sao_Paulo")).date()
         week = date.fromordinal(today.toordinal() - today.weekday())
         bounds = {
