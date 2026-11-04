@@ -471,7 +471,7 @@ class ConfiguredEcosystemService(EcosystemService):
                 outcome = "CANDIDATO"
                 reason = (
                     f"Sinal {signal} atende ao filtro hipotético de "
-                    f"{minimum_confidence}% de confiança."
+                    f"score direcional {minimum_directional_score}."
                 )
             records.append({
                 "index": index + 1,
