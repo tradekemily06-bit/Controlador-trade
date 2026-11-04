@@ -214,7 +214,7 @@ class ICMarketsMT5DemoAdapter:
             if open_positions is None:
                 raise MT5AdapterError("MT5 não confirmou o estado das posições abertas.")
             open_position_ids = {
-                str(getattr(position, "ticket", ""))
+                str(getattr(position, "identifier", None) or getattr(position, "ticket", ""))
                 for position in open_positions
             }
             position_ids = {
