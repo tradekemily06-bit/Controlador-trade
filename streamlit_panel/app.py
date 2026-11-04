@@ -338,7 +338,26 @@ def show_fiscal() -> None:
                                 except Exception as exc:
                                     st.error(str(exc))
                 else:
-                    st.warning("A conta não está em BRL. O registro direto está bloqueado; mantenha os negócios fora dos totais até implementar e validar a entrada internacional com moeda original, classificação e conversão documentada.")
+                    st.warning("A conta não está em BRL. Os negócios podem ser guardados somente como pendências, com moeda e resultado original; nenhum imposto ou conversão será calculado.")
+                    for candidate in candidates:
+                        ticket = str(candidate.get("ticket", "")).strip()
+                        if not ticket:
+                            continue
+                        with st.form("mt5_foreign_pending_" + ticket):
+                            st.write(f"**{candidate.get('symbol', 'Ativo')} · ticket {ticket}**")
+                            st.caption(f"Data UTC: {candidate.get('occurred_at_utc', '—')} · Resultado do negócio de saída: {candidate.get('net_result_account_currency', '—')} {account_currency}")
+                            pending_confirm = st.checkbox("Confirmo que quero guardar este negócio como pendência fiscal, sem classificação ou cálculo.", key="mt5_foreign_pending_confirm_" + ticket)
+                            pending_submit = st.form_submit_button("Guardar como pendência")
+                        if pending_submit:
+                            if not pending_confirm:
+                                st.error("Confirme antes de guardar a pendência.")
+                            else:
+                                try:
+                                    result = api("/api/fiscal-reserve/mt5-pending-result", "POST", {"ticket": ticket, "confirmed": True})
+                                    st.success(f"Ticket {ticket} guardado como pendência. Resultado original preservado; sem cálculo fiscal.")
+                                    st.rerun()
+                                except Exception as exc:
+                                    st.error(str(exc))
             else:
                 st.caption("Nenhum negócio encerrado encontrado no período.")
 
