@@ -49,14 +49,37 @@ try {
         $fiscal.foreign_pending.included_in_totals -eq $false -and
         $fiscal.foreign_pending.reserve_calculated -eq $false
     )
-    Add-Check 'fiscal-reserve-owner-scope' ($null -ne $fiscal.periods -and $foreignSafe) 'Resumo fiscal e fronteira de pendências estrangeiras consultados; nenhum registro foi alterado.'
+    $periodNames = @($fiscal.periods.PSObject.Properties.Name)
+    $periodsComplete = @('day', 'week', 'month', 'year' | Where-Object { $periodNames -contains $_ }).Count -eq 4
+    $semanticsSafe = (
+        $fiscal.reserve_semantics.kind -eq 'PLANNING_ESTIMATE_ONLY' -and
+        $fiscal.reserve_semantics.tax_liability_confirmed -eq $false -and
+        $fiscal.reserve_semantics.monthly_tax_assessment -eq $false -and
+        $fiscal.reserve_semantics.monthly_loss_offsets_calculated -eq $false -and
+        $fiscal.reserve_semantics.irrf_credits_calculated -eq $false -and
+        $fiscal.reserve_semantics.positive_entry_only -eq $true
+    )
+    $fiscalSafe = (
+        $periodsComplete -and $semanticsSafe -and
+        $fiscal.currency -eq 'BRL' -and
+        $fiscal.total_reserved_brl -ge 0 -and $foreignSafe
+    )
+    Add-Check 'fiscal-reserve-owner-scope-and-estimate-boundary' $fiscalSafe 'Períodos, moeda, estimativa não tributária e exclusão de pendências estrangeiras verificados; nenhum registro foi alterado.'
 } catch {
     Add-Check 'fiscal-reserve-owner-scope' $false 'Resumo fiscal indisponível ou fronteira de pendências não segura.'
 }
 
 try {
     $domestic = Get-LocalJson '/api/fiscal-reserve/domestic-pending/summary'
-    Add-Check 'domestic-pending-read-only' ($null -ne $domestic) 'Resumo da fila brasileira consultado sem classificação ou lançamento.'
+    $domesticPeriods = @($domestic.periods.PSObject.Properties.Name)
+    $domesticSafe = (
+        $domestic.available -eq $true -and
+        $domestic.classification_status -eq 'PENDING_CLASSIFICATION' -and
+        $domestic.included_in_totals -eq $false -and
+        $domestic.reserve_calculated -eq $false -and
+        @('day', 'week', 'month', 'year' | Where-Object { $domesticPeriods -contains $_ }).Count -eq 4
+    )
+    Add-Check 'domestic-pending-read-only' $domesticSafe 'Fila brasileira owner-scoped, pendente, sem classificação automática ou lançamento; períodos conferidos.'
 } catch {
     Add-Check 'domestic-pending-read-only' $false 'Resumo de pendências brasileiras indisponível.'
 }
