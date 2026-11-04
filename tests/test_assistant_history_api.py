@@ -8,11 +8,11 @@ from assistant.conversation_store import AssistantConversationStore
 OWNER = "single:canonical-owner"
 
 
-def _request(path, *, method="GET", identity="owner@example.com"):
+def _request(path, *, method="GET", identity="owner@example.com", query_string=""):
     environ = {
         "REQUEST_METHOD": method,
         "PATH_INFO": path,
-        "QUERY_STRING": "",
+        "QUERY_STRING": query_string,
         "REMOTE_ADDR": "203.0.113.10",
         "HTTP_HOST": "control.example",
         "HTTP_X_AUTH_USER": identity,
@@ -66,25 +66,17 @@ def test_history_api_lists_and_loads_only_authenticated_owner_conversations(tmp_
     assert status.startswith("200")
     assert [item["conversation_id"] for item in listing["conversations"]] == [own_id]
 
-    status, history = _request(
-        "/api/assistant/history",
-        identity="owner@example.com",
-    )
-    # The endpoint requires a conversation_id; missing identifiers fail closed.
+    status, missing = _request("/api/assistant/history")
     assert status.startswith("400")
-    assert "conversation_id" in history["error"]
+    assert missing["error"] == "Entrada inválida"
 
-    environ_query = "conversation_id=" + own_id
-    original = app_module.parse_qs
-    monkeypatch.setattr(app_module, "parse_qs", lambda value, **kwargs: original(environ_query, **kwargs))
-    status, history = _request("/api/assistant/history")
+    status, history = _request("/api/assistant/history", query_string="conversation_id=" + own_id)
     assert status.startswith("200")
     assert [item["content"] for item in history["messages"]] == ["Minha conversa", "Resposta"]
 
-    monkeypatch.setattr(app_module, "parse_qs", lambda value, **kwargs: original("conversation_id=" + other_id, **kwargs))
-    status, history = _request("/api/assistant/history")
+    status, denied = _request("/api/assistant/history", query_string="conversation_id=" + other_id)
     assert status.startswith("404")
-    assert history["error"] == "conversa não encontrada"
+    assert denied["error"] == "conversa não encontrada"
 
 
 def test_history_api_delete_is_owner_scoped_and_removes_messages(tmp_path, monkeypatch):
@@ -93,16 +85,21 @@ def test_history_api_delete_is_owner_scoped_and_removes_messages(tmp_path, monke
     store.append(OWNER, own_id, "assistant", "Resposta")
     other_id = store.append("single:other-owner", None, "user", "Não apagar")
 
-    original = app_module.parse_qs
-    monkeypatch.setattr(app_module, "parse_qs", lambda value, **kwargs: original("conversation_id=" + other_id, **kwargs))
-    status, payload = _request("/api/assistant/conversations", method="DELETE")
+    status, denied = _request(
+        "/api/assistant/conversations",
+        method="DELETE",
+        query_string="conversation_id=" + other_id,
+    )
     assert status.startswith("404")
-    assert payload["error"] == "conversa não encontrada"
+    assert denied["error"] == "conversa não encontrada"
     assert store.history("single:other-owner", other_id)[0]["content"] == "Não apagar"
 
-    monkeypatch.setattr(app_module, "parse_qs", lambda value, **kwargs: original("conversation_id=" + own_id, **kwargs))
-    status, payload = _request("/api/assistant/conversations", method="DELETE")
+    status, deleted = _request(
+        "/api/assistant/conversations",
+        method="DELETE",
+        query_string="conversation_id=" + own_id,
+    )
     assert status.startswith("200")
-    assert payload["deleted"] is True
+    assert deleted["deleted"] is True
     assert store.list(OWNER) == []
     assert store.list("single:other-owner")[0]["conversation_id"] == other_id
