@@ -549,6 +549,7 @@ def application(environ, start_response):
             fiscal_summary = FISCAL_RESERVE.summary(
                 fiscal_owner_id, history_limit=history_limit, history_offset=history_offset
             )
+            fiscal_summary["foreign_pending"] = FISCAL_PENDING_QUEUE.summary(fiscal_owner_id)
             # Keep legacy foreign settings in storage for historical compatibility,
             # but never expose the generic percentage as a usable public tax rate.
             foreign = fiscal_summary.get("categories", {}).get("FOREIGN_FINANCIAL_ASSET")
