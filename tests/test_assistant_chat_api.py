@@ -114,4 +114,4 @@ def test_chat_api_rejects_missing_trusted_identity_before_assistant_call(tmp_pat
     )
 
     assert status.startswith("401")
-    assert "identidade autenticada" in payload["error"].lower()
+    assert payload["error"] == "trusted identity is required"
