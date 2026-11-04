@@ -365,3 +365,13 @@ def test_streamlit_replay_uses_historical_mt5_demo_data_without_orders():
     assert "Antecipação de candles futuros: NÃO" in source
     assert "Replay concluído sem envio de ordens." in source
     assert 'show_replay()' in source
+
+
+def test_streamlit_simulator_discloses_signal_only_scope_and_no_execution():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'api("/api/simulator/mt5", "POST"' in source
+    assert "Simular cenário histórico DEMO" in source
+    assert "Confiança mínima do cenário (%)" in source
+    assert "sem ordens, sem preenchimentos, sem P&L" in source
+    assert "Execução permitida: NÃO" in source
+    assert 'show_simulator()' in source
