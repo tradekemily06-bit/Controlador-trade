@@ -161,3 +161,37 @@ def test_rebuild_preserves_signed_results_in_partially_migrated_owner_schema(tmp
     ).fetchone() == (12.5, -12.5, "REALIZED_RESULT")
     assert db.execute("PRAGMA foreign_key_check").fetchall() == []
     db.close()
+
+
+def test_existing_owner_schema_repairs_missing_default_rate_without_overwriting_custom_rate(tmp_path, monkeypatch):
+    path = str(tmp_path / "owned-missing-rate.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    owner = migrate_fiscal_schema(path)
+    db = sqlite3.connect(path)
+    db.execute(
+        "DELETE FROM fiscal_reserve_settings WHERE owner_id=? AND category='BR_DAY_TRADE'",
+        (owner,),
+    )
+    db.commit()
+    db.close()
+
+    assert migrate_fiscal_schema(path) == owner
+    db = sqlite3.connect(path)
+    assert db.execute(
+        "SELECT rate FROM fiscal_reserve_settings WHERE owner_id=? AND category='BR_DAY_TRADE'",
+        (owner,),
+    ).fetchone() == (20.0,)
+    db.execute(
+        "UPDATE fiscal_reserve_settings SET rate=17.5 WHERE owner_id=? AND category='BR_DAY_TRADE'",
+        (owner,),
+    )
+    db.commit()
+    db.close()
+
+    migrate_fiscal_schema(path)
+    db = sqlite3.connect(path)
+    assert db.execute(
+        "SELECT rate FROM fiscal_reserve_settings WHERE owner_id=? AND category='BR_DAY_TRADE'",
+        (owner,),
+    ).fetchone() == (17.5,)
+    db.close()
