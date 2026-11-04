@@ -12,7 +12,6 @@ TABLES = (
     "fiscal_reserve_entries",
     "fiscal_reserve_pending_foreign",
     "fiscal_pending_reviews",
-    "fiscal_reserve_pending_domestic",
 )
 
 
@@ -50,7 +49,13 @@ def migrate_fiscal_schema(database_path: str) -> str:
                 if "record_kind" not in pending_columns:
                     db.execute("ALTER TABLE fiscal_reserve_pending_foreign ADD COLUMN record_kind TEXT NOT NULL DEFAULT 'ASSET_AMOUNT'")
                 stored_owners = set()
-                for table in TABLES:
+                scoped_tables = list(TABLES)
+                if "fiscal_reserve_pending_domestic" in existing:
+                    domestic_columns = {row["name"] for row in db.execute("PRAGMA table_info(fiscal_reserve_pending_domestic)")}
+                    if "owner_id" not in domestic_columns:
+                        raise RuntimeError("A fila brasileira pendente não possui identidade proprietária; acesso bloqueado.")
+                    scoped_tables.append("fiscal_reserve_pending_domestic")
+                for table in scoped_tables:
                     stored_owners.update(
                         row[0] for row in db.execute(
                             f'SELECT DISTINCT owner_id FROM "{table}" WHERE owner_id IS NOT NULL'
