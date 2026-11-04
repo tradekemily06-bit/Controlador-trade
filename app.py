@@ -26,6 +26,7 @@ from security_audit import AUDIT
 from finance.fiscal_reserve import FiscalReserve
 from finance.fiscal_taxonomy import fiscal_classification_catalog
 from finance.fiscal_pending_queue import CURRENCIES, FiscalPendingQueue
+from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
 from finance.fiscal_schema import migrate_fiscal_schema
 from finance.fiscal_identity import FiscalOwnerIdentityError
 from assistant.conversation_store import AssistantConversationStore
@@ -49,6 +50,7 @@ ONBOARDING = EcosystemOnboarding()
 FISCAL_RESERVE_DB = Path(os.environ.get("CONTROLADOR_FISCAL_RESERVE_DB", str(RUNTIME_DIR / "fiscal-reserve.sqlite3")))
 FISCAL_RESERVE = FiscalReserve(str(FISCAL_RESERVE_DB))
 FISCAL_PENDING_QUEUE = FiscalPendingQueue(str(FISCAL_RESERVE_DB))
+FISCAL_DOMESTIC_PENDING_QUEUE = FiscalDomesticPendingQueue(str(FISCAL_RESERVE_DB))
 ASSISTANT_DB = Path(os.environ.get('CONTROLADOR_ASSISTANT_DB', str(RUNTIME_DIR / 'assistant.sqlite3')))
 ASSISTANT_STORE = AssistantConversationStore(ASSISTANT_DB)
 ASSISTANT = EcosystemAssistant(ASSISTANT_STORE, SERVICE, FISCAL_RESERVE, fiscal_pending_queue=FISCAL_PENDING_QUEUE)
@@ -328,6 +330,31 @@ def application(environ, start_response):
                 return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE,
                                       {"error": "Reserva Fiscal indisponível até validar a identidade proprietária e a migração.",
                                        "detail": str(exc)}, request_id, environ)
+        if path == "/api/fiscal-reserve/domestic-pending" and method == "GET":
+            query = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
+            try:
+                limit = int(query.get("limit", ["100"])[-1] or "100")
+                offset = int(query.get("offset", ["0"])[-1] or "0")
+            except (TypeError, ValueError) as exc:
+                raise ValueError("limit e offset devem ser inteiros") from exc
+            return _json_response(start_response, HTTPStatus.OK,
+                                  FISCAL_DOMESTIC_PENDING_QUEUE.list_pending(fiscal_owner_id, limit, offset),
+                                  request_id, environ)
+        if path == "/api/fiscal-reserve/domestic-pending/summary" and method == "GET":
+            return _json_response(start_response, HTTPStatus.OK,
+                                  FISCAL_DOMESTIC_PENDING_QUEUE.summary(fiscal_owner_id),
+                                  request_id, environ)
+        if path == "/api/fiscal-reserve/domestic-pending" and method == "POST":
+            try:
+                item = FISCAL_DOMESTIC_PENDING_QUEUE.add(fiscal_owner_id, _read_json(environ))
+            except sqlite3.IntegrityError:
+                return _json_response(start_response, HTTPStatus.CONFLICT,
+                                      {"error": "Já existe uma pendência brasileira com essa referência."},
+                                      request_id, environ)
+            return _json_response(start_response, HTTPStatus.CREATED,
+                                  {"pending": item, "reserve_calculated": False,
+                                   "classification_status": "PENDING_CLASSIFICATION"},
+                                  request_id, environ)
         if path == "/api/fiscal-reserve/pending" and method == "GET":
             query = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
             try:
