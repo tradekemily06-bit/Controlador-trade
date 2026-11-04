@@ -35,3 +35,12 @@ def test_streamlit_fiscal_panel_records_losses_and_pages_the_ledger():
     assert "fiscal_history_next" in source
     assert "fiscal_history_previous" in source
     assert "compensação ou transporte de perdas não é calculado automaticamente" in source
+
+
+def test_streamlit_mt5_preview_requires_explicit_classification_and_confirmation():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert '"/api/fiscal-reserve/mt5-confirm"' in source
+    assert '"confirmed": True' in source
+    assert 'Confirmo que este resultado pertence à categoria Brasil · day trade.' in source
+    assert 'account_currency == "BRL"' in source
+    assert "moeda original, classificação e conversão documentada" in source
