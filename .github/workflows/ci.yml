@@ -92,6 +92,7 @@ jobs:
             'start_controlador_runtime.ps1',
             'start_mt5_runtime.ps1',
             'validate_windows_runtime.ps1',
+            'validate_fiscal_assistant_runtime.ps1',
             'install_windows_autostart.ps1',
             'bootstrap_windows_runtime.ps1'
           )
