@@ -111,4 +111,12 @@ class EcosystemAssistant:
         except AssistantUnavailableError: raise
         except Exception as exc: raise AssistantUnavailableError("Não foi possível obter resposta agora; sua mensagem ficou no histórico.") from exc
         self.store.append(identity,cid,"assistant",answer)
-        return {"conversation_id":cid,"answer":answer,"read_only":True,"execution_allowed":False}
+        return {
+            "conversation_id": cid,
+            "answer": answer,
+            "read_only": True,
+            "execution_allowed": False,
+            "may_execute_orders": False,
+            "may_enable_real": False,
+            "may_move_money": False,
+        }
