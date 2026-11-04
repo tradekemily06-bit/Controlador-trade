@@ -334,5 +334,11 @@ def test_streamlit_operational_screens_render_human_readable_summaries_without_r
     assert "Kill Switch" in source
     assert "Fontes externas exigem validação" in source
     assert "Guia de primeiro uso" in source
-    assert "alterações de preferências ainda não estão habilitadas" in source
+    assert "Salvar preferências" in source
+    assert "Salvar aparência" in source
+    assert "Salvar notificações" in source
+    assert '"/api/preferences"' in source
+    assert '"/api/preferences/candles"' in source
+    assert '"/api/preferences/notifications"' in source
+    assert "alertas críticos" in source.lower()
     assert "st.json(data)" not in source
