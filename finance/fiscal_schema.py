@@ -60,6 +60,13 @@ def migrate_fiscal_schema(database_path: str) -> str:
                         "A identidade fiscal configurada não corresponde ao proprietário já gravado; "
                         "migração automática entre proprietários foi bloqueada."
                     )
+                # Repair a missing default planning rate in already owner-scoped
+                # databases without overwriting a rate the owner has configured.
+                db.execute(
+                    """INSERT OR IGNORE INTO fiscal_reserve_settings(owner_id, category, rate)
+                       VALUES (?, 'BR_DAY_TRADE', 20.0)""",
+                    (owner_id,),
+                )
                 db.commit()
                 return owner_id
 
