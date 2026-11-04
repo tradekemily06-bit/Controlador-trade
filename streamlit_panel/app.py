@@ -410,7 +410,7 @@ def show_fiscal() -> None:
             col.metric(f"Brasil pendente · {label}", int(period_data.get("total", 0)))
             col.caption(f"{int(period_data.get('results', 0))} resultado(s) · sem cálculo")
         if domestic_items:
-            st.dataframe([{"Data": item.get("occurred_on"), "Ativo": item.get("instrument"), "Categoria candidata": item.get("category_candidate") or "Não informada", "Mercado": item.get("market_scope"), "Resultado (R$)": item.get("realized_result_brl") if item.get("realized_result_brl") is not None else "—", "Status": "PENDENTE DE CLASSIFICAÇÃO"} for item in domestic_items], use_container_width=True, hide_index=True)
+            st.dataframe([{"Data": item.get("occurred_on"), "Ativo": item.get("instrument"), "Categoria candidata": item.get("category_candidate") or "Não informada", "Mercado declarado · não verificado": item.get("market_scope"), "Resultado (R$)": item.get("realized_result_brl") if item.get("realized_result_brl") is not None else "—", "Status": "PENDENTE DE CLASSIFICAÇÃO"} for item in domestic_items], use_container_width=True, hide_index=True)
             domestic_page_cols = st.columns(2)
             with domestic_page_cols[0]:
                 if st.button("← Pendências brasileiras anteriores", key="domestic_pending_previous", disabled=domestic_offset <= 0):
