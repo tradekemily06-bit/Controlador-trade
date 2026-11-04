@@ -10,6 +10,8 @@ from typing import Any
 
 import streamlit as st
 
+from presentation import closed_panel_signal
+
 ROOT = Path(__file__).resolve().parent
 CONFIG = json.loads((ROOT / "controlador_trader_referencia_visual.json").read_text(encoding="utf-8"))
 BASE_URL = os.environ.get("CONTROLADOR_API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
@@ -50,30 +52,6 @@ section[data-testid="stSidebar"] { background:#10151B; border-right:1px solid #2
 .muted { color:#7F8B97; }
 </style>
 """, unsafe_allow_html=True)
-
-
-def closed_panel_signal(result: Any) -> tuple[str, str, str]:
-    """Return only a validated last-session signal, score label, and display color."""
-    if not isinstance(result, dict):
-        return "INDISPONÍVEL", "—", "#7F8B97"
-    raw_signal = str(result.get("signal") or "").strip().upper()
-    signals = {
-        "BUY": ("↑ COMPRAR", "#46D6AD"),
-        "COMPRAR": ("↑ COMPRAR", "#46D6AD"),
-        "SELL": ("↓ VENDER", "#FF667A"),
-        "VENDER": ("↓ VENDER", "#FF667A"),
-        "WAIT": ("AGUARDAR", "#E8C66A"),
-        "AGUARDAR": ("AGUARDAR", "#E8C66A"),
-    }
-    if raw_signal not in signals:
-        return "INDISPONÍVEL", "—", "#7F8B97"
-    analysis = result.get("analysis")
-    score = analysis.get("score") if isinstance(analysis, dict) else None
-    if isinstance(score, bool) or not isinstance(score, (int, float)) or not 1 <= score <= 100:
-        return "INDISPONÍVEL", "—", "#7F8B97"
-    strength = "FRACA" if score <= 69 else "MODERADA" if score <= 79 else "FORTE"
-    signal_label, color = signals[raw_signal]
-    return signal_label, f"{int(score)}% · {strength}", color
 
 
 def api(path: str, method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:
