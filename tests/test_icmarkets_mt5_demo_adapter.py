@@ -199,110 +199,169 @@ def test_close_position_blocks_when_position_is_not_owned_by_controlador():
     assert fake.sent == []
 
 
-def test_fiscal_preview_reads_only_closing_deals_and_never_books_results():
- from datetime import datetime, timezone
- class FiscalFakeMT5(FakeMT5):
-  DEAL_ENTRY_OUT = 1
-  DEAL_ENTRY_IN = 0
-  def account_info(self):
-   return SimpleNamespace(trade_mode=self.ACCOUNT_TRADE_MODE_DEMO, currency="USD")
-  def history_deals_get(self, start, end):
-   timestamp=int(datetime(2026,10,30,12,tzinfo=timezone.utc).timestamp())
-   return (
-    SimpleNamespace(entry=self.DEAL_ENTRY_IN,ticket=10,position_id=7,symbol="EURUSD",volume=0.01,profit=0,commission=-0.5,swap=0,fee=0,time=timestamp),
-    SimpleNamespace(entry=self.DEAL_ENTRY_OUT,ticket=11,position_id=7,symbol="EURUSD",volume=0.01,profit=12,commission=-0.2,swap=-0.1,fee=-0.05,time=timestamp),
-   )
- fake=FiscalFakeMT5()
- result=ICMarketsMT5DemoAdapter(mt5_module=fake).read_closed_deal_candidates(30)
- assert result["count"]==1
- assert result["account_currency"]=="USD"
- assert result["candidates"][0]["ticket"]=="11"
- assert result["candidates"][0]["net_result_account_currency"]==11.65
- assert result["auto_registered"] is False
- assert "negócios anteriores" in result["notice"]
- assert fake.shutdown_calls==1
-
-
-def test_fiscal_preview_blocks_non_demo_and_invalid_lookback():
- fake=FakeMT5(demo=False)
- adapter=ICMarketsMT5DemoAdapter(mt5_module=fake)
- try:
-  adapter.read_closed_deal_candidates(30)
- except Exception as exc:
-  assert "DEMO" in str(exc)
- else:
-  assert False
- assert fake.shutdown_calls==1
- try:
-  adapter.read_closed_deal_candidates(0)
- except ValueError as exc:
-  assert "1 e 365" in str(exc)
- else:
-  assert False
-
-
-def test_fiscal_preview_fails_closed_when_history_is_unavailable():
- class MissingHistoryFake(FakeMT5):
-  ACCOUNT_TRADE_MODE_DEMO=2
-  DEAL_ENTRY_OUT=1
-  def account_info(self):
-   return SimpleNamespace(trade_mode=self.ACCOUNT_TRADE_MODE_DEMO,currency="USD")
-  def history_deals_get(self,start,end): return None
- fake=MissingHistoryFake()
- try:
-  ICMarketsMT5DemoAdapter(mt5_module=fake).read_closed_deal_candidates(7)
- except Exception as exc:
-  assert "histórico" in str(exc)
- else:
-  assert False
- assert fake.shutdown_calls==1
-
-
-def test_fiscal_confirmation_rereads_only_the_requested_closed_demo_ticket():
+def test_fiscal_preview_aggregates_all_position_deals_and_never_books_results():
     from datetime import datetime, timezone
 
     class FiscalFakeMT5(FakeMT5):
-        DEAL_ENTRY_OUT = 1
         DEAL_ENTRY_IN = 0
+        DEAL_ENTRY_OUT = 1
+        DEAL_ENTRY_OUT_BY = 2
+        DEAL_ENTRY_INOUT = 3
+
+        def account_info(self):
+            return SimpleNamespace(trade_mode=self.ACCOUNT_TRADE_MODE_DEMO, currency="USD")
+
+        def history_deals_get(self, *args, **kwargs):
+            timestamp = int(datetime(2026, 10, 30, 12, tzinfo=timezone.utc).timestamp())
+            all_deals = (
+                SimpleNamespace(entry=0, ticket=10, position_id=7, symbol="EURUSD", volume=0.02, profit=0, commission=-0.5, swap=0, fee=0, time=timestamp-100),
+                SimpleNamespace(entry=1, ticket=11, position_id=7, symbol="EURUSD", volume=0.01, profit=6, commission=-0.1, swap=-0.1, fee=-0.02, time=timestamp-10),
+                SimpleNamespace(entry=1, ticket=12, position_id=7, symbol="EURUSD", volume=0.01, profit=6, commission=-0.1, swap=-0.1, fee=-0.03, time=timestamp),
+            )
+            if "position" in kwargs:
+                return tuple(d for d in all_deals if d.position_id == kwargs["position"])
+            return all_deals
+
+    fake = FiscalFakeMT5()
+    result = ICMarketsMT5DemoAdapter(mt5_module=fake).read_closed_deal_candidates(30)
+    assert result["count"] == 1
+    candidate = result["candidates"][0]
+    assert candidate["ticket"] == "12"
+    assert candidate["deal_count"] == 3
+    assert candidate["closing_deal_count"] == 2
+    assert candidate["net_result_account_currency"] == 11.05
+    assert candidate["result_scope"] == "FULL_CLOSED_POSITION"
+    assert result["auto_registered"] is False
+    assert "todos os negócios da posição" in result["notice"]
+    assert fake.shutdown_calls == 1
+
+
+def test_fiscal_preview_withholds_open_or_unbalanced_positions():
+    from datetime import datetime, timezone
+
+    class FiscalFakeMT5(FakeMT5):
+        DEAL_ENTRY_IN = 0
+        DEAL_ENTRY_OUT = 1
+        DEAL_ENTRY_OUT_BY = 2
+
+        def account_info(self):
+            return SimpleNamespace(trade_mode=self.ACCOUNT_TRADE_MODE_DEMO, currency="USD")
+
+        def history_deals_get(self, *args, **kwargs):
+            timestamp = int(datetime(2026, 10, 30, 12, tzinfo=timezone.utc).timestamp())
+            all_deals = (
+                SimpleNamespace(entry=0, ticket=10, position_id=7, symbol="EURUSD", volume=0.02, profit=0, commission=-0.5, swap=0, fee=0, time=timestamp-100),
+                SimpleNamespace(entry=1, ticket=11, position_id=7, symbol="EURUSD", volume=0.01, profit=6, commission=-0.1, swap=0, fee=0, time=timestamp),
+                SimpleNamespace(entry=0, ticket=20, position_id=8, symbol="EURUSD", volume=0.02, profit=0, commission=-0.5, swap=0, fee=0, time=timestamp-100),
+                SimpleNamespace(entry=1, ticket=21, position_id=8, symbol="EURUSD", volume=0.01, profit=6, commission=-0.1, swap=0, fee=0, time=timestamp),
+            )
+            if "position" in kwargs:
+                return tuple(d for d in all_deals if d.position_id == kwargs["position"])
+            return all_deals
+
+        def positions_get(self, symbol=None):
+            return (SimpleNamespace(ticket=7),)
+
+    result = ICMarketsMT5DemoAdapter(mt5_module=FiscalFakeMT5()).read_closed_deal_candidates(30)
+    assert result["count"] == 0
+    assert result["withheld_incomplete_positions"] == 2
+
+
+def test_fiscal_preview_blocks_non_demo_and_invalid_lookback():
+    fake = FakeMT5(demo=False)
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=fake)
+    try:
+        adapter.read_closed_deal_candidates(30)
+    except Exception as exc:
+        assert "DEMO" in str(exc)
+    else:
+        raise AssertionError("non-DEMO account must be blocked")
+    assert fake.shutdown_calls == 1
+    try:
+        adapter.read_closed_deal_candidates(0)
+    except ValueError as exc:
+        assert "1 e 365" in str(exc)
+    else:
+        raise AssertionError("invalid lookback must be rejected")
+
+
+def test_fiscal_preview_fails_closed_when_history_is_unavailable():
+    class MissingHistoryFake(FakeMT5):
+        DEAL_ENTRY_IN = 0
+        DEAL_ENTRY_OUT = 1
+
+        def account_info(self):
+            return SimpleNamespace(trade_mode=self.ACCOUNT_TRADE_MODE_DEMO, currency="USD")
+
+        def history_deals_get(self, *args, **kwargs):
+            return None
+
+        def positions_get(self, symbol=None):
+            return ()
+
+    fake = MissingHistoryFake()
+    try:
+        ICMarketsMT5DemoAdapter(mt5_module=fake).read_closed_deal_candidates(7)
+    except Exception as exc:
+        assert "histórico" in str(exc)
+    else:
+        raise AssertionError("missing history must be rejected")
+    assert fake.shutdown_calls == 1
+
+
+def test_fiscal_confirmation_rereads_complete_position_for_requested_final_ticket():
+    from datetime import datetime, timezone
+
+    class FiscalFakeMT5(FakeMT5):
+        DEAL_ENTRY_IN = 0
+        DEAL_ENTRY_OUT = 1
+        DEAL_ENTRY_OUT_BY = 2
+        DEAL_ENTRY_INOUT = 3
 
         def account_info(self):
             return SimpleNamespace(trade_mode=self.ACCOUNT_TRADE_MODE_DEMO, currency="BRL")
 
-        def history_deals_get(self, start, end):
+        def history_deals_get(self, *args, **kwargs):
             timestamp = int(datetime(2026, 10, 30, 12, tzinfo=timezone.utc).timestamp())
-            return (
-                SimpleNamespace(entry=self.DEAL_ENTRY_OUT, ticket=111, position_id=7,
-                                symbol="WINZ26", volume=1.0, profit=120.0,
-                                commission=-1.0, swap=0.0, fee=-0.5, time=timestamp),
-                SimpleNamespace(entry=self.DEAL_ENTRY_OUT, ticket=222, position_id=8,
-                                symbol="WINZ26", volume=1.0, profit=50.0,
-                                commission=-1.0, swap=0.0, fee=0.0, time=timestamp),
+            all_deals = (
+                SimpleNamespace(entry=0, ticket=101, position_id=7, symbol="WINZ26", volume=1.0, profit=0.0, commission=-1.0, swap=0.0, fee=0.0, time=timestamp-10),
+                SimpleNamespace(entry=1, ticket=111, position_id=7, symbol="WINZ26", volume=0.4, profit=50.0, commission=-0.2, swap=0.0, fee=-0.1, time=timestamp-1),
+                SimpleNamespace(entry=1, ticket=112, position_id=7, symbol="WINZ26", volume=0.6, profit=70.0, commission=-0.3, swap=0.0, fee=-0.2, time=timestamp),
             )
+            if "position" in kwargs:
+                return tuple(d for d in all_deals if d.position_id == kwargs["position"])
+            return all_deals
 
     fake = FiscalFakeMT5()
-    adapter = ICMarketsMT5DemoAdapter(mt5_module=fake)
-    candidate = adapter.read_closed_deal_candidate("222")
-    assert candidate["ticket"] == "222"
-    assert candidate["net_result_account_currency"] == 49.0
+    candidate = ICMarketsMT5DemoAdapter(mt5_module=fake).read_closed_deal_candidate("112")
+    assert candidate["ticket"] == "112"
+    assert candidate["net_result_account_currency"] == 118.0
     assert candidate["account_currency"] == "BRL"
+    assert candidate["result_scope"] == "FULL_CLOSED_POSITION"
     assert candidate["auto_registered"] is False
     assert fake.shutdown_calls == 1
 
 
-def test_fiscal_confirmation_rejects_unknown_ticket_and_non_numeric_ticket():
+def test_fiscal_confirmation_rejects_unknown_or_non_final_ticket():
     from datetime import datetime, timezone
 
     class FiscalFakeMT5(FakeMT5):
+        DEAL_ENTRY_IN = 0
         DEAL_ENTRY_OUT = 1
+        DEAL_ENTRY_OUT_BY = 2
 
         def account_info(self):
             return SimpleNamespace(trade_mode=self.ACCOUNT_TRADE_MODE_DEMO, currency="BRL")
 
-        def history_deals_get(self, start, end):
+        def history_deals_get(self, *args, **kwargs):
             timestamp = int(datetime(2026, 10, 30, 12, tzinfo=timezone.utc).timestamp())
-            return (SimpleNamespace(entry=self.DEAL_ENTRY_OUT, ticket=111, position_id=7,
-                                     symbol="WINZ26", volume=1.0, profit=10.0,
-                                     commission=0.0, swap=0.0, fee=0.0, time=timestamp),)
+            all_deals = (
+                SimpleNamespace(entry=0, ticket=10, position_id=7, symbol="WINZ26", volume=1.0, profit=0.0, commission=0.0, swap=0.0, fee=0.0, time=timestamp-1),
+                SimpleNamespace(entry=1, ticket=11, position_id=7, symbol="WINZ26", volume=1.0, profit=10.0, commission=0.0, swap=0.0, fee=0.0, time=timestamp),
+            )
+            if "position" in kwargs:
+                return tuple(d for d in all_deals if d.position_id == kwargs["position"])
+            return all_deals
 
     adapter = ICMarketsMT5DemoAdapter(mt5_module=FiscalFakeMT5())
     try:
@@ -312,7 +371,13 @@ def test_fiscal_confirmation_rejects_unknown_ticket_and_non_numeric_ticket():
     else:
         raise AssertionError("unknown ticket must not be confirmed")
     try:
-        adapter.read_closed_deal_candidate("111x")
+        adapter.read_closed_deal_candidate("10")
+    except Exception as exc:
+        assert "não encontrado" in str(exc)
+    else:
+        raise AssertionError("opening ticket must not be confirmed")
+    try:
+        adapter.read_closed_deal_candidate("11x")
     except ValueError as exc:
         assert "ticket MT5 inválido" in str(exc)
     else:
