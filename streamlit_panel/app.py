@@ -439,7 +439,7 @@ def show_fiscal() -> None:
                         "Classificação candidata revisada",
                         ["BR_DAY_TRADE", "BR_COMMON_EXCHANGE", "BR_FII_FIAGRO", "BR_FIXED_INCOME", "BR_CRYPTO", "BR_FUTURES_OPTIONS"],
                     )
-                    review_jurisdiction = st.text_input("Jurisdição confirmada pelo revisor", value="Brasil", max_chars=120)
+                    review_jurisdiction = st.text_input("Jurisdição declarada pelo revisor · não verificada", value="Brasil", max_chars=120)
                     reviewer_name = st.text_input("Nome do profissional", max_chars=160)
                     reviewer_role = st.selectbox("Atuação profissional", ["contador", "consultor tributário", "profissional tributário"])
                     professional_registration = st.text_input("Registro profissional informado", max_chars=100)
