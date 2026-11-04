@@ -123,3 +123,20 @@ def test_domestic_pending_review_is_owner_scoped_and_rejects_unqualified_role(tm
     invalid["reviewer_role"] = "proprietário"
     with pytest.raises(ValueError):
         queue.record_review("owner-a", item["pending_id"], invalid)
+
+
+def test_domestic_pending_rejects_missing_or_invalid_owner_for_every_operation(tmp_path):
+    queue = FiscalDomesticPendingQueue(str(tmp_path / "owner-required.sqlite3"))
+    item = queue.add("owner-a", sample("OWNER-VALID"))
+    invalid_owners = ("", "   ", "x" * 161)
+    for owner in invalid_owners:
+        operations = (
+            lambda owner=owner: queue.add(owner, sample("OWNER-INVALID-" + str(len(owner)))),
+            lambda owner=owner: queue.list_pending(owner),
+            lambda owner=owner: queue.summary(owner),
+            lambda owner=owner: queue.record_review(owner, item["pending_id"], review_payload()),
+            lambda owner=owner: queue.list_reviews(owner, item["pending_id"]),
+        )
+        for operation in operations:
+            with pytest.raises(ValueError, match="identidade proprietária"):
+                operation()
