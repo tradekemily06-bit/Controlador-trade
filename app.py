@@ -347,6 +347,17 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.CREATED,
                                   {"pending": item, "reserve_calculated": False},
                                   request_id, environ)
+        if path == "/api/fiscal-reserve/pending-result" and method == "POST":
+            try:
+                item = FISCAL_PENDING_QUEUE.add_realized_result(fiscal_owner_id, _read_json(environ))
+            except sqlite3.IntegrityError:
+                return _json_response(start_response, HTTPStatus.CONFLICT,
+                                      {"error": "Já existe uma pendência com essa referência."},
+                                      request_id, environ)
+            return _json_response(start_response, HTTPStatus.CREATED,
+                                  {"pending": item, "reserve_calculated": False,
+                                   "classification_status": "PENDING_CLASSIFICATION"},
+                                  request_id, environ)
         if path.startswith("/api/fiscal-reserve/pending/") and path.endswith("/reviews"):
             pending_id = path[len("/api/fiscal-reserve/pending/"):-len("/reviews")].strip("/")
             if not pending_id or "/" in pending_id:
