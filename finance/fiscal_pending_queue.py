@@ -64,6 +64,13 @@ class FiscalPendingQueue:
             """)
             db.execute("CREATE INDEX IF NOT EXISTS fiscal_pending_reviews_item ON fiscal_pending_reviews(pending_id, created_at DESC)")
 
+    @staticmethod
+    def _require_owner(owner_id: str) -> str:
+        owner = str(owner_id or "").strip()
+        if not owner or len(owner) > 160:
+            raise ValueError("identidade proprietária obrigatória e inválida")
+        return owner
+
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
         db = sqlite3.connect(self._uri if self._uri else self.database_path,
@@ -105,6 +112,7 @@ class FiscalPendingQueue:
         return round(number, 8)
 
     def add(self, owner_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        owner_id = self._require_owner(owner_id)
         if not isinstance(payload, dict):
             raise ValueError("payload deve ser um objeto")
         reference = str(payload.get("reference") or "").strip()
@@ -153,6 +161,7 @@ class FiscalPendingQueue:
 
     def add_realized_result(self, owner_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         """Store a signed foreign realized result; it remains pending and outside fiscal totals."""
+        owner_id = self._require_owner(owner_id)
         if not isinstance(payload, dict):
             raise ValueError("payload deve ser um objeto")
         reference = str(payload.get("reference") or "").strip()
@@ -213,6 +222,7 @@ class FiscalPendingQueue:
 
     def record_review(self, owner_id: str, pending_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         """Append professional review evidence; never changes pending status or calculates tax."""
+        owner_id = self._require_owner(owner_id)
         if not isinstance(payload, dict):
             raise ValueError("payload deve ser um objeto")
         pending_id = str(pending_id or "").strip()
@@ -275,6 +285,7 @@ class FiscalPendingQueue:
                 "reserve_calculated": False, "tax_rate_available": False}
 
     def list_reviews(self, owner_id: str, pending_id: str) -> list[dict[str, Any]]:
+        owner_id = self._require_owner(owner_id)
         pending_id = str(pending_id or "").strip()
         with self._connect() as db:
             if not db.execute(
@@ -292,6 +303,7 @@ class FiscalPendingQueue:
 
     def summary(self, owner_id: str, as_of: date | None = None) -> dict[str, Any]:
         """Return owner-scoped counts by period; never expose values or calculate tax."""
+        owner_id = self._require_owner(owner_id)
         reference_day = as_of or datetime.now(ZoneInfo("America/Sao_Paulo")).date()
         week_start = date.fromordinal(reference_day.toordinal() - reference_day.weekday())
         periods = {
@@ -351,6 +363,7 @@ class FiscalPendingQueue:
         }
 
     def list_pending(self, owner_id: str, limit: int = 100, offset: int = 0) -> dict[str, Any]:
+        owner_id = self._require_owner(owner_id)
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
             raise ValueError("limit deve estar entre 1 e 500")
         if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
