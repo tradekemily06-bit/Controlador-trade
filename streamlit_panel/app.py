@@ -24,7 +24,10 @@ st.markdown("""
 :root { color-scheme: dark; }
 .stApp { background: #080B0F; color: #E9EEF3; }
 [data-testid="stHeader"] { background: transparent; }
-.block-container { width: 100%; max-width: none; padding: 1rem clamp(.75rem, 2vw, 1.5rem) 2rem; }
+.block-container { width: 100%; max-width: none; padding: 1rem clamp(.75rem, 2vw, 1.5rem) 6rem; }
+.st-key-panel-toggle { position: fixed; left: 18px; bottom: 14px; z-index: 1000; width: 58px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.st-key-panel-toggle .stButton > button { width: 48px; min-width: 48px; height: 48px; min-height: 48px; padding: 0; border-radius: 50%; background: #080B0F; color: #46D6AD; border: 1px solid #46D6AD; box-shadow: 0 0 10px #46D6AD33; font-weight: 800; }
+.st-key-panel-toggle [data-testid="stCaptionContainer"] { width: 100%; white-space: nowrap; text-align: center; font-size: 9px; color: #7F8B97; }
 *, *::before, *::after { box-sizing: border-box; }
 [data-testid="stAppViewContainer"], [data-testid="stMain"], [data-testid="stMainBlockContainer"] { min-width: 0; }
 [data-testid="stDataFrame"], [data-testid="stTable"], .status-card { max-width: 100%; }
@@ -691,14 +694,14 @@ AREAS = CONFIG["open_state"]["tabs"]
 if "panel_open" not in st.session_state:
     st.session_state.panel_open = True
 if not st.session_state.panel_open:
-    if st.button("C", key="open_control_hub"):
-        st.session_state.panel_open = True
-        st.rerun()
-    st.caption("INDISPONÍVEL")
+    with st.container(key="panel-toggle"):
+        if st.button("C", key="open_control_hub"):
+            st.session_state.panel_open = True
+            st.rerun()
+        st.caption("INDISPONÍVEL")
     st.stop()
 
-st.markdown('<div class="status-card"><span style="font-size:1.35rem;font-weight:800">Controlador-Trader</span> <span class="demo-pill" style="float:right">DEMO</span><div class="muted">Área funcional de desenvolvimento · não é a reprodução visual aprovada do Figma</div></div>', unsafe_allow_html=True)
-st.warning("A referência JSON de navegação está carregada, mas as cinco imagens originais (8870.jpg, 8871.jpg, 8872.jpg, 8873.jpg e 8878.jpg) não estão presentes neste branch. Portanto, esta tela não deve ser tratada como validação visual nem como substituta do painel aprovado.")
+st.markdown('<div class="status-card"><span style="font-size:1.35rem;font-weight:800">Controlador-Trader</span> <span class="demo-pill" style="float:right">DEMO</span></div>', unsafe_allow_html=True)
 area = st.radio("Áreas principais", list(AREAS), horizontal=True, label_visibility="collapsed")
 st.divider()
 module = st.radio("Módulos", AREAS[area], horizontal=False, label_visibility="collapsed")
@@ -725,7 +728,8 @@ with left:
     st.markdown('<div class="status-card"><b>Estado do sistema:</b> INDISPONÍVEL<br><b>REAL:</b> DESABILITADO</div>', unsafe_allow_html=True)
 with right:
     st.checkbox("Alavancagem", value=False, disabled=True, help="Controle visual nesta prévia; não altera a conta MT5.")
-    if st.button("C · Fechar painel", key="close_control_hub"):
+with st.container(key="panel-toggle"):
+    if st.button("C", key="close_control_hub"):
         st.session_state.panel_open = False
         st.rerun()
 st.caption("Estado do sistema: consulte /api/health para validação operacional. Esta interface não declara o runtime online sem resposta real.")
