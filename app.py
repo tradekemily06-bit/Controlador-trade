@@ -24,7 +24,7 @@ from integration.execution_provider import build_demo_execution_port
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
 from finance.fiscal_reserve import FiscalReserve
-from finance.fiscal_pending_queue import FiscalPendingQueue
+from finance.fiscal_pending_queue import CURRENCIES, FiscalPendingQueue
 from finance.fiscal_schema import migrate_fiscal_schema
 from finance.fiscal_identity import FiscalOwnerIdentityError
 from assistant.conversation_store import AssistantConversationStore
@@ -390,6 +390,11 @@ def application(environ, start_response):
             if currency == "BRL":
                 return _json_response(start_response, HTTPStatus.UNPROCESSABLE_ENTITY,
                                       {"error": "Conta em BRL: use a confirmação Brasil · day trade; este fluxo é para resultados ainda não classificados.",
+                                       "registered": False, "reserve_calculated": False,
+                                       "execution_allowed": False}, request_id, environ)
+            if currency not in CURRENCIES:
+                return _json_response(start_response, HTTPStatus.UNPROCESSABLE_ENTITY,
+                                      {"error": "Moeda da conta MT5 não suportada pela fila fiscal; resultado não foi salvo.",
                                        "registered": False, "reserve_calculated": False,
                                        "execution_allowed": False}, request_id, environ)
             if not currency or currency == "UNKNOWN":
