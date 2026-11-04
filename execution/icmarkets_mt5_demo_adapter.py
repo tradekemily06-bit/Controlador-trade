@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, time, timezone, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import math
+import hashlib
 from typing import Any
 
 from core.models import Signal
@@ -76,6 +77,16 @@ class ICMarketsMT5DemoAdapter:
                     mt5.shutdown()
                 except Exception:
                     pass
+
+    @staticmethod
+    def _account_fingerprint(account: Any) -> str | None:
+        """Return a stable, non-reversible account key without exposing login/server."""
+        login = getattr(account, "login", None)
+        server = str(getattr(account, "server", "") or "").strip()
+        if login is None or not str(login).strip() or not server:
+            return None
+        raw = f"{server.casefold()}|{str(login).strip()}".encode("utf-8")
+        return hashlib.sha256(raw).hexdigest()[:32]
 
     @staticmethod
     def _is_demo_account(account: Any, mt5: Any) -> bool:
@@ -218,6 +229,7 @@ class ICMarketsMT5DemoAdapter:
             return {
                 "source": "IC Markets MT5 DEMO",
                 "account_currency": str(getattr(account, "currency", "") or "UNKNOWN"),
+                "account_fingerprint": self._account_fingerprint(account),
                 "lookback_days": lookback_days,
                 "count": len(candidates),
                 "candidates": candidates,
@@ -243,6 +255,7 @@ class ICMarketsMT5DemoAdapter:
             **matches[0],
             "source": preview.get("source"),
             "account_currency": preview.get("account_currency"),
+            "account_fingerprint": preview.get("account_fingerprint"),
             "auto_registered": False,
             "notice": preview.get("notice"),
         }
