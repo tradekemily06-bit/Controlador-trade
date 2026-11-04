@@ -261,6 +261,13 @@ class FiscalPendingQueue:
                 raise ValueError(f"{name} é obrigatório e deve ter até {maximum} caracteres")
             return value
 
+        with self._connect() as db:
+            if not db.execute(
+                "SELECT 1 FROM fiscal_reserve_pending_foreign WHERE owner_id = ? AND pending_id = ?",
+                (owner_id, pending_id),
+            ).fetchone():
+                raise ValueError("pendência não encontrada")
+
         candidate = required("candidate_classification", 120)
         if candidate not in FOREIGN_REVIEW_CANDIDATES:
             raise ValueError("candidate_classification não pertence ao catálogo estrangeiro permitido")
