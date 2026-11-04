@@ -162,6 +162,8 @@ class FiscalPendingQueue:
         elif fx_date or fx_source:
             raise ValueError("fx_rate é obrigatório quando forem informados dados cambiais")
         declared = {field: self._declared_field(payload, field) for field in FIELD_OPTIONS}
+        if fx_rate is not None and declared["fx_conversion_method"] == "NOT_CONVERTED":
+            raise ValueError("fx_conversion_method não pode ser NOT_CONVERTED quando houver cotação")
         notes = str(payload.get("notes") or "").strip()[:1000]
         item = {
             "pending_id": str(uuid.uuid4()), "owner_id": owner_id, "reference": reference,
@@ -223,6 +225,8 @@ class FiscalPendingQueue:
         elif fx_date or fx_source:
             raise ValueError("fx_rate é obrigatório quando forem informados dados cambiais")
         declared = {field: self._declared_field(payload, field) for field in FIELD_OPTIONS}
+        if fx_rate is not None and declared["fx_conversion_method"] == "NOT_CONVERTED":
+            raise ValueError("fx_conversion_method não pode ser NOT_CONVERTED quando houver cotação")
         item = {
             "pending_id": str(uuid.uuid4()), "owner_id": owner_id, "reference": reference,
             "original_amount": abs(result), "original_result": result, "record_kind": "REALIZED_RESULT",
