@@ -302,6 +302,8 @@ def application(environ, start_response):
             # A identidade canônica mantém o mesmo espaço de conversas no acesso
             # local e remoto autorizado, sem confiar no valor enviado pelo navegador.
             identity = fiscal_owner_id
+            if path == "/api/assistant/status" and method == "GET":
+                return _json_response(start_response, HTTPStatus.OK, ASSISTANT.readiness(), request_id, environ)
             if path == "/api/assistant/conversations" and method == "GET":
                 return _json_response(start_response, HTTPStatus.OK, {"conversations": ASSISTANT.conversations(identity)}, request_id, environ)
             if path == "/api/assistant/conversations" and method == "DELETE":
