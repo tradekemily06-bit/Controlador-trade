@@ -374,7 +374,9 @@ def test_streamlit_simulator_discloses_backtest_assumptions_and_no_execution():
     assert "Executar backtest histórico DEMO" in source
     assert "Stop-loss · distância em unidades de preço" in source
     assert "Take-profit · distância em unidades de preço" in source
-    assert "Quantidade em unidades do ativo" in source
+    assert "Quantidade em unidades/contratos" in source
+
+    assert "Multiplicador do contrato" in source
     assert "Spread total em unidades de preço" in source
     assert "Execução permitida: NÃO" in source
     assert "O backtest não integra o Risk Manager" in source
