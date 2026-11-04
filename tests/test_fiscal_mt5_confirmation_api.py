@@ -22,6 +22,7 @@ class FakeFiscalAdapter:
             "symbol": "WINZ26",
             "net_result_account_currency": self.result,
             "account_currency": self.currency,
+            "opened_at_utc": datetime(2026, 11, 3, 11, tzinfo=timezone.utc).isoformat(),
             "occurred_at_utc": datetime(2026, 11, 3, 12, tzinfo=timezone.utc).isoformat(),
             "account_fingerprint": "a" * 32,
             "profit": self.result,
@@ -239,3 +240,25 @@ def test_mt5_foreign_loss_keeps_negative_sign_in_original_currency(monkeypatch, 
     assert body["pending"]["original_currency"] == "EUR"
     assert body["pending"]["status"] == "PENDING_CLASSIFICATION"
     assert body["reserve_calculated"] is False
+
+
+
+def test_mt5_confirmation_rejects_position_opened_on_a_different_local_day(monkeypatch, tmp_path):
+    class OvernightPositionAdapter(FakeFiscalAdapter):
+        def read_closed_deal_candidate(self, ticket):
+            result = super().read_closed_deal_candidate(ticket)
+            result["opened_at_utc"] = datetime(2026, 11, 2, 12, tzinfo=timezone.utc).isoformat()
+            return result
+
+    status, body, adapter = call_confirm(
+        monkeypatch,
+        tmp_path,
+        {"confirmed": True, "ticket": "7654321", "category": "BR_DAY_TRADE"},
+        adapter=OvernightPositionAdapter(),
+    )
+    assert status.startswith("422")
+    assert body["registered"] is False
+    assert body["classification_status"] == "PENDING_CLASSIFICATION"
+    assert body["opened_on"] == "2026-11-02"
+    assert body["closed_on"] == "2026-11-03"
+    assert adapter.calls == ["7654321"]
