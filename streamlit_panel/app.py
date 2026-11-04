@@ -269,6 +269,33 @@ def show_fiscal() -> None:
         except Exception as exc:
             st.error(str(exc))
 
+    st.markdown("#### Resultado realizado no exterior")
+    st.caption("Informe lucro positivo ou prejuízo negativo. O valor original fica pendente e não entra na reserva.")
+    with st.form("foreign_signed_result"):
+        ref_signed = st.text_input("Referência do extrato", max_chars=160)
+        amount_signed = st.number_input("Resultado original (+ lucro / - prejuízo)", min_value=-1000000000000.0, max_value=1000000000000.0, value=0.0, format="%.8f")
+        currency_signed = st.selectbox("Moeda original", ["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "BRL"])
+        instrument_signed = st.text_input("Instrumento")
+        jurisdiction_signed = st.text_input("Jurisdição")
+        date_signed = st.date_input("Data do resultado", key="signed_foreign_date")
+        fx_signed = st.number_input("Cotação documentada (opcional)", min_value=0.0, format="%.8f")
+        fx_date_signed = st.date_input("Data da cotação", key="signed_foreign_fx_date")
+        fx_source_signed = st.text_input("Fonte da cotação")
+        notes_signed = st.text_area("Observações")
+        submit_signed = st.form_submit_button("Guardar como pendente")
+    if submit_signed:
+        try:
+            signed_payload = {"reference": ref_signed, "original_result": amount_signed, "original_currency": currency_signed, "instrument": instrument_signed, "jurisdiction": jurisdiction_signed, "occurred_on": date_signed.isoformat(), "notes": notes_signed}
+            if fx_signed or fx_source_signed:
+                if not fx_signed or not fx_source_signed:
+                    raise ValueError("Informe cotação e fonte juntas.")
+                signed_payload.update({"fx_rate": fx_signed, "fx_date": fx_date_signed.isoformat(), "fx_source": fx_source_signed})
+            api("/api/fiscal-reserve/pending-result", "POST", signed_payload)
+            st.success("Resultado guardado com o sinal original; continua fora dos totais.")
+            st.rerun()
+        except Exception as exc:
+            st.error(str(exc))
+
     st.caption("Resultados estrangeiros com sinal original serão mantidos em pendência, fora dos totais até revisão.")
 
     with st.expander("Prévia de negócios encerrados · MT5 DEMO"):
