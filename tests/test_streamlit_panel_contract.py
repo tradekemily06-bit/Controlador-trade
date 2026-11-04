@@ -419,3 +419,6 @@ def test_streamlit_foreign_pending_table_displays_fx_evidence_as_not_applied():
     assert '"Data da cotação": item.get("fx_date")' in source
     assert '"Fonte da cotação": item.get("fx_source")' in source
     assert '"Método declarado": item.get("fx_conversion_method")' in source
+    assert 'if fx_conversion_method == "NOT_CONVERTED":' in source
+    assert 'if fx_method_signed == "NOT_CONVERTED":' in source
+    assert "há uma cotação informada, mas o método está marcado como ainda não convertido." in source
