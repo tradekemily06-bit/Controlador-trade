@@ -1055,6 +1055,15 @@ def application(environ, start_response):
         if path == "/api/analyze" and method == "POST":
             record = SERVICE.analyze(_read_json(environ))
             return _json_response(start_response, HTTPStatus.OK, {**record.to_dict(), **serialize_decision_record(record), "execution_allowed": False}, request_id, environ)
+        if path == "/api/simulator/mt5" and method == "POST":
+            data = _read_json(environ)
+            result = SERVICE.simulate_mt5_signal_scenario(
+                symbol=str(data.get("symbol", "")),
+                timeframe=str(data.get("timeframe", "5m")),
+                limit=data.get("limit", 100),
+                minimum_confidence=data.get("minimum_confidence", 70),
+            )
+            return _json_response(start_response, HTTPStatus.OK, result, request_id, environ)
         if path == "/api/replay/mt5" and method == "POST":
             data = _read_json(environ)
             result = SERVICE.replay_mt5_history(
