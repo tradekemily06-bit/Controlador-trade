@@ -434,3 +434,11 @@ def test_streamlit_documents_remote_single_link_and_persistent_mt5_requirements(
     assert "máquina Windows/VPS continuamente ligada e validada" in readme
     assert "não mantém o MT5 conectado" in readme
     assert "Não foi feita implantação" in readme
+
+
+def test_streamlit_setup_documents_runtime_openai_and_windows_mt5_dependencies():
+    readme = (PANEL_DIR / "README.md").read_text(encoding="utf-8")
+    assert "py -3.12 -m pip install -r requirements.txt" in readme
+    assert "cliente OpenAI usado pelo Assistente" in readme
+    assert "py -3.12 -m pip install MetaTrader5" in readme
+    assert "terminal MT5 está instalado e em execução" in readme
