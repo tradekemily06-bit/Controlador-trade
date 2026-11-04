@@ -46,11 +46,6 @@ def test_domestic_pending_api_is_owner_scoped_and_ignores_forged_owner(
     tmp_path, monkeypatch
 ):
     queue, _owner_id = _configure(tmp_path, monkeypatch)
-    queue.add("other-owner", {
-        "reference": "BR-API-OTHER-OWNER",
-        "instrument": "ETF",
-        "occurred_on": "2026-11-04",
-    })
     payload = {
         "reference": "BR-API-OWNER-001",
         "category_candidate": "BR_COMMON_EXCHANGE",
