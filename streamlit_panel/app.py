@@ -608,7 +608,7 @@ def show_fiscal() -> None:
                         ["FOREIGN_FINANCIAL_INVESTMENT", "FOREIGN_ENTITY_CONTROLLED", "FOREIGN_CRYPTO"],
                     )
                     foreign_review_jurisdiction = st.text_input(
-                        "Jurisdição confirmada pelo revisor", max_chars=120, key="foreign_review_jurisdiction"
+                        "Jurisdição declarada pelo revisor · não verificada", max_chars=120, key="foreign_review_jurisdiction"
                     )
                     foreign_reviewer_name = st.text_input("Nome do profissional", max_chars=160, key="foreign_reviewer_name")
                     foreign_reviewer_role = st.selectbox(
