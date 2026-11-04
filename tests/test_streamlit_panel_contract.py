@@ -422,3 +422,15 @@ def test_streamlit_foreign_pending_table_displays_fx_evidence_as_not_applied():
     assert 'if fx_conversion_method == "NOT_CONVERTED":' in source
     assert 'if fx_method_signed == "NOT_CONVERTED":' in source
     assert "há uma cotação informada, mas o método está marcado como ainda não convertido." in source
+
+
+def test_streamlit_documents_remote_single_link_and_persistent_mt5_requirements():
+    readme = (PANEL_DIR / "README.md").read_text(encoding="utf-8")
+    assert "Este acesso remoto ainda não está implantado nem validado." in readme
+    assert "dois processos no computador" in readme
+    assert "CONTROLADOR_BIND_HOST" in readme
+    assert "Nunca publicar a porta 8000 diretamente na internet." in readme
+    assert "armazenamento persistente e backups protegidos" in readme
+    assert "máquina Windows/VPS continuamente ligada e validada" in readme
+    assert "não mantém o MT5 conectado" in readme
+    assert "Não foi feita implantação" in readme
