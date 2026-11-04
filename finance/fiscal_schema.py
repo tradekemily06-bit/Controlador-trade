@@ -37,6 +37,15 @@ def migrate_fiscal_schema(database_path: str) -> str:
                 "SELECT name FROM sqlite_master WHERE type='table'"
             ).fetchall()
         }
+        if "fiscal_reserve_pending_domestic" in existing:
+            domestic_columns = {row["name"] for row in db.execute("PRAGMA table_info(fiscal_reserve_pending_domestic)")}
+            if "owner_id" not in domestic_columns:
+                raise RuntimeError("A fila brasileira pendente não possui identidade proprietária; acesso bloqueado.")
+            domestic_owners = {row[0] for row in db.execute(
+                "SELECT DISTINCT owner_id FROM fiscal_reserve_pending_domestic WHERE owner_id IS NOT NULL"
+            ).fetchall()}
+            if domestic_owners and domestic_owners != {owner_id}:
+                raise RuntimeError("A identidade fiscal configurada não corresponde ao proprietário da fila brasileira; migração automática bloqueada.")
         if all(table in existing for table in TABLES):
             owner_columns = {
                 table: {row["name"] for row in db.execute(f'PRAGMA table_info("{table}")')}
