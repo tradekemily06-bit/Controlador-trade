@@ -308,3 +308,28 @@ def test_assistant_does_not_treat_declared_professional_review_as_verified_or_cl
  assert "não verifica identidade ou registro profissional" in SYSTEM_PROMPT
  assert "não muda o status pendente" in SYSTEM_PROMPT
  assert "não autoriza cálculo fiscal" in SYSTEM_PROMPT
+
+
+def test_assistant_readiness_reports_missing_server_key_without_exposing_secrets(tmp_path, monkeypatch):
+ from assistant.chat_service import EcosystemAssistant
+ monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+ assistant = EcosystemAssistant(AssistantConversationStore(tmp_path/"assistant-readiness.sqlite"), S(), F())
+ status = assistant.readiness()
+ assert status["available"] is False
+ assert "chave OpenAI ausente" in status["message"]
+ assert "OPENAI_API_KEY" not in status["message"]
+ assert status["read_only"] is True
+ assert status["may_execute_orders"] is False
+ assert status["may_enable_real"] is False
+ assert status["may_move_money"] is False
+
+
+def test_assistant_readiness_reports_configured_provider_without_returning_key(tmp_path, monkeypatch):
+ monkeypatch.setenv("OPENAI_API_KEY", "secret-test-key")
+ assistant = EcosystemAssistant(AssistantConversationStore(tmp_path/"assistant-readiness-ok.sqlite"), S(), F(), client_factory=C)
+ status = assistant.readiness()
+ assert status["available"] is True
+ assert status["provider"] == "OpenAI API"
+ assert status["model"] == assistant.model
+ assert "secret-test-key" not in str(status)
+ assert status["read_only"] is True
