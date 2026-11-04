@@ -200,3 +200,28 @@ def test_mt5_historical_replay_requires_demo_provider():
         assert "DEMO" in str(exc)
     else:
         raise AssertionError("historical replay must require the MT5 DEMO provider")
+
+def test_mt5_historical_replay_rejects_out_of_order_candles():
+    from datetime import datetime, timedelta, timezone
+    from data.models import Candle
+
+    class FakeMarketAdapter:
+        def fetch_market_data(self, request):
+            return tuple(
+                Candle(
+                    datetime(2026, 11, 1, tzinfo=timezone.utc) + timedelta(minutes=index),
+                    100 + index, 102 + index, 99 + index, 101 + index, 10,
+                )
+                for index in reversed(range(25))
+            )
+
+    service = ConfiguredEcosystemService(execution_provider="ic_markets_mt5_demo")
+    service.mt5_market_adapter = FakeMarketAdapter()
+    try:
+        service.replay_mt5_history(symbol="EURUSD", timeframe="5m", limit=25)
+    except RuntimeError as exc:
+        assert "ordem cronológica" in str(exc)
+    else:
+        raise AssertionError("replay must reject out-of-order market data")
+
+
