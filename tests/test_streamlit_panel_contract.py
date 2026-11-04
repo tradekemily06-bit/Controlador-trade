@@ -170,3 +170,21 @@ def test_streamlit_disables_assistant_chat_when_provider_is_unavailable():
     assert "assistant_available = False" in source
     assert "assistant_available = readiness.get(\"available\") is True" in source
     assert "disabled=not assistant_available" in source
+
+
+def test_streamlit_foreign_pending_forms_capture_structured_evidence_and_display_it():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    for field in (
+        "tax_residency_at_event",
+        "income_nature",
+        "event_type",
+        "fx_conversion_method",
+    ):
+        assert field in source
+    assert "Residência fiscal declarada na data" in source
+    assert "Natureza do rendimento / valor" in source
+    assert "Tipo de evento" in source
+    assert "Método de conversão cambial" in source
+    assert "Residência declarada" in source
+    assert "Método cambial" in source
+    assert "NOT_INFORMED" in source
