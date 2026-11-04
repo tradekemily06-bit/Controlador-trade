@@ -329,7 +329,7 @@ def test_streamlit_market_analysis_requires_demo_confirmation_and_never_enables_
 def test_streamlit_preferences_never_submit_execution_authority_fields():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     start = source.index('if module_name == "Configurações":')
-    end = source.index('if module_name == "Notificações":', start)
+    end = source.index('if module_name in {"Motor de Decisão", "Estatísticas", "Relatórios"}:', start)
     preferences_screen = source[start:end]
     assert '"real_execution_enabled"' not in preferences_screen
     assert '"autonomous_operation_enabled"' not in preferences_screen
