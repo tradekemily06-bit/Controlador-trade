@@ -253,7 +253,7 @@ def test_mt5_signal_scenario_is_hypothetical_and_side_effect_free():
     before_memory = list(service.memory)
 
     result = service.simulate_mt5_signal_scenario(
-        symbol="EURUSD", timeframe="5m", limit=25, minimum_confidence=80
+        symbol="EURUSD", timeframe="5m", limit=25, minimum_directional_score=80
     )
 
     assert adapter.request.symbol == "EURUSD"
@@ -261,7 +261,7 @@ def test_mt5_signal_scenario_is_hypothetical_and_side_effect_free():
     assert adapter.request.limit == 25
     assert result["candles_replayed"] == 25
     assert len(result["records"]) == 24
-    assert result["minimum_confidence"] == 80
+    assert result["minimum_directional_score"] == 80
     assert result["orders_sent"] is False
     assert result["execution_allowed"] is False
     assert result["pnl_calculated"] is False
@@ -275,7 +275,7 @@ def test_mt5_signal_scenario_rejects_invalid_confidence_and_non_demo_provider():
     service = ConfiguredEcosystemService(execution_provider="paper")
     try:
         service.simulate_mt5_signal_scenario(
-            symbol="EURUSD", timeframe="5m", limit=25, minimum_confidence=69
+            symbol="EURUSD", timeframe="5m", limit=25, minimum_directional_score=69
         )
     except RuntimeError as exc:
         assert "DEMO" in str(exc)
