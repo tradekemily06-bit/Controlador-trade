@@ -1,6 +1,6 @@
 # Control Hub · painel Streamlit
 
-Esta é a interface Streamlit do Controlador-Trader destinada a reunir o painel operacional e os módulos Reserva Fiscal e Assistente do Ecossistema. O Figma é somente referência visual; o Streamlit é o painel de uso pretendido; o Figma é somente referência visual e não é alterado por esta implementação. A aplicação Streamlit conecta-se ao runtime do Ecossistema, que por sua vez integra as funções de MT5. A interface é uma aplicação web, não um overlay nativo desenhado dentro do gráfico MT5.
+Esta é a interface Streamlit do Controlador-Trader destinada a reunir o painel operacional e os módulos Reserva Fiscal e Assistente do Ecossistema. O Figma é somente referência visual e não é alterado por esta implementação; o Streamlit é o painel de uso pretendido. A aplicação Streamlit conecta-se ao runtime do Ecossistema, que por sua vez integra as funções de MT5. A interface é uma aplicação web, não um overlay nativo desenhado dentro do gráfico MT5.
 
 ## Instalação local (Windows / Python 3.12)
 
