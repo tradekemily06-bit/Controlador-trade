@@ -70,3 +70,8 @@ def test_domestic_pending_summary_has_day_week_month_year_counts_only(tmp_path):
     assert summary["periods"]["day"]["results"] == 1
     assert summary["included_in_totals"] is False
     assert summary["reserve_calculated"] is False
+
+def test_domestic_pending_supports_shared_in_memory_database():
+    queue = FiscalDomesticPendingQueue()
+    queue.add("owner-a", sample())
+    assert queue.list_pending("owner-a")["total"] == 1
