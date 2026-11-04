@@ -8,7 +8,8 @@ from finance.fiscal_reserve import FiscalReserve
 from finance.fiscal_schema import migrate_fiscal_schema
 
 
-def _request(path, *, query="", method="GET"):
+def _request(path, *, query="", method="GET", payload=None):
+    raw = json.dumps(payload or {}).encode("utf-8")
     environ = {
         "REQUEST_METHOD": method,
         "PATH_INFO": path,
@@ -16,8 +17,8 @@ def _request(path, *, query="", method="GET"):
         "REMOTE_ADDR": "203.0.113.10",
         "HTTP_HOST": "control.example",
         "HTTP_X_AUTH_USER": "owner@example.com",
-        "CONTENT_LENGTH": "0",
-        "wsgi.input": io.BytesIO(b""),
+        "CONTENT_LENGTH": str(len(raw)),
+        "wsgi.input": io.BytesIO(raw),
     }
     response = {}
 
@@ -130,3 +131,102 @@ def test_assistant_readiness_api_requires_trusted_identity_and_returns_no_secret
     assert body["may_enable_real"] is False
     assert body["may_move_money"] is False
     assert "OPENAI_API_KEY" not in json.dumps(body)
+
+
+
+def test_foreign_pending_api_intake_results_and_reviews_stay_owner_scoped_and_unbooked(
+    tmp_path, monkeypatch
+):
+    database = tmp_path / "foreign-pending-api.sqlite3"
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "X-Auth-User")
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", database)
+    monkeypatch.setattr(app_module.SECURITY, "allow", lambda environ: True)
+    monkeypatch.setattr(app_module.SECURITY, "headers", lambda request_id, **kwargs: [])
+    monkeypatch.setattr(app_module, "_audit", lambda *args, **kwargs: None)
+
+    owner_id = migrate_fiscal_schema(str(database))
+    queue = FiscalPendingQueue(str(database))
+    monkeypatch.setattr(app_module, "FISCAL_PENDING_QUEUE", queue)
+
+    status, created = _request(
+        "/api/fiscal-reserve/pending",
+        method="POST",
+        payload={
+            "reference": "FOREIGN-API-ASSET-001",
+            "original_amount": 125.5,
+            "original_currency": "USD",
+            "instrument": "ETF",
+            "jurisdiction": "PENDING_REVIEW",
+            "occurred_on": "2026-11-04",
+            "tax_residency_at_event": "NOT_INFORMED",
+            "income_nature": "INVESTMENT_INCOME",
+            "event_type": "ACQUISITION",
+            "fx_conversion_method": "NOT_CONVERTED",
+        },
+    )
+    assert status.startswith("201")
+    pending_id = created["pending"]["pending_id"]
+    assert created["pending"]["status"] == "PENDING_CLASSIFICATION"
+    assert created["reserve_calculated"] is False
+
+    status, realized = _request(
+        "/api/fiscal-reserve/pending-result",
+        method="POST",
+        payload={
+            "reference": "FOREIGN-API-RESULT-001",
+            "original_result": -37.25,
+            "original_currency": "EUR",
+            "instrument": "ETF",
+            "jurisdiction": "PENDING_REVIEW",
+            "occurred_on": "2026-11-04",
+            "tax_residency_at_event": "NOT_INFORMED",
+            "income_nature": "TRADING_RESULT",
+            "event_type": "DISPOSAL",
+            "fx_conversion_method": "NOT_CONVERTED",
+        },
+    )
+    assert status.startswith("201")
+    assert realized["pending"]["original_result"] == -37.25
+    assert realized["pending"]["status"] == "PENDING_CLASSIFICATION"
+    assert realized["classification_status"] == "PENDING_CLASSIFICATION"
+    assert realized["reserve_calculated"] is False
+
+    review_payload = {
+        "candidate_classification": "FOREIGN_FINANCIAL_INVESTMENT",
+        "confirmed_jurisdiction": "PENDING_REVIEW",
+        "reviewer_name": "Profissional declarado",
+        "reviewer_role": "contador",
+        "professional_registration": "REGISTRO-DECLARADO",
+        "evidence_reference": "DOC-FOREIGN-API-001",
+        "reviewed_on": "2026-11-04",
+        "review_notes": "Identidade e registro não verificados pelo sistema.",
+    }
+    status, reviewed = _request(
+        f"/api/fiscal-reserve/pending/{pending_id}/reviews",
+        method="POST",
+        payload=review_payload,
+    )
+    assert status.startswith("201")
+    assert reviewed["review"]["reviewer_identity_status"] == "DECLARED_NOT_VERIFIED"
+    assert reviewed["review"]["professional_registration_verified"] is False
+    assert reviewed["reserve_calculated"] is False
+
+    status, reviews = _request(
+        f"/api/fiscal-reserve/pending/{pending_id}/reviews",
+        query="owner_id=forged-owner",
+    )
+    assert status.startswith("200")
+    assert len(reviews["reviews"]) == 1
+    assert reviews["reviews"][0]["evidence_reference"] == "DOC-FOREIGN-API-001"
+    assert reviews["status_unchanged"] == "PENDING_CLASSIFICATION"
+    assert reviews["reserve_calculated"] is False
+
+    listing = queue.list_pending(owner_id)
+    assert listing["total"] == 2
+    assert {item["reference"] for item in listing["items"]} == {
+        "FOREIGN-API-ASSET-001",
+        "FOREIGN-API-RESULT-001",
+    }
+    assert all(item["status"] == "PENDING_CLASSIFICATION" for item in listing["items"])
