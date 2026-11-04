@@ -211,7 +211,8 @@ def test_conversation_list_and_append_are_owner_scoped_and_identity_normalized(t
 
 def test_assistant_receives_live_fiscal_reserve_period_totals_without_history(tmp_path, monkeypatch):
  import json
- from datetime import date
+ from datetime import datetime
+ from zoneinfo import ZoneInfo
  from finance.fiscal_reserve import FiscalReserve
  from finance.fiscal_schema import migrate_fiscal_schema
 
@@ -219,7 +220,7 @@ def test_assistant_receives_live_fiscal_reserve_period_totals_without_history(tm
  fiscal_path = tmp_path / "fiscal.sqlite3"
  fiscal = FiscalReserve(str(fiscal_path))
  fiscal_owner_id = migrate_fiscal_schema(str(fiscal_path))
- today = date.today().isoformat()
+ today = datetime.now(ZoneInfo("America/Sao_Paulo")).date().isoformat()
  fiscal.record_realized_result(fiscal_owner_id, {
   "category": "BR_DAY_TRADE",
   "realized_result_brl": 1000,
