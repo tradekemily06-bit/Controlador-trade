@@ -281,8 +281,8 @@ class FiscalReserve:
                     COALESCE(SUM(reserve_amount_brl), 0) AS reserve_amount_brl
                     FROM fiscal_reserve_entries
                     WHERE owner_id = ? AND category = 'BR_DAY_TRADE'
-                    AND occurred_on >= ? AND occurred_on < ?""",
-                    (owner_id, start_day.isoformat(), date.fromordinal(end_day.toordinal() + 1).isoformat()),
+                    AND notes NOT LIKE ? AND occurred_on >= ? AND occurred_on < ?""",
+                    (owner_id, "%USER_DECLARED_PENDING_REVIEW%", start_day.isoformat(), date.fromordinal(end_day.toordinal() + 1).isoformat()),
                 ).fetchone()
                 period_totals[period_name] = {
                     "start": start_day.isoformat(),
@@ -296,8 +296,9 @@ class FiscalReserve:
                     """SELECT COUNT(*) AS count,
                     COALESCE(SUM(realized_result_brl), 0) AS realized_result_brl,
                     COALESCE(SUM(reserve_amount_brl), 0) AS reserve_amount_brl
-                    FROM fiscal_reserve_entries WHERE owner_id = ? AND category = ?""",
-                    (owner_id, category),
+                    FROM fiscal_reserve_entries WHERE owner_id = ? AND category = ?
+                    AND (? = 'FOREIGN_FINANCIAL_ASSET' OR notes NOT LIKE ?)""",
+                    (owner_id, category, category, "%USER_DECLARED_PENDING_REVIEW%"),
                 ).fetchone()
                 if category == "FOREIGN_FINANCIAL_ASSET":
                     # Legacy foreign rows remain in history for audit only.
@@ -317,8 +318,10 @@ class FiscalReserve:
                         "reserve_amount_brl": round(float(row["reserve_amount_brl"]), 2),
                     }
             total = db.execute(
-                "SELECT COALESCE(SUM(reserve_amount_brl), 0) AS total FROM fiscal_reserve_entries WHERE owner_id = ? AND category = 'BR_DAY_TRADE'",
-                (owner_id,),
+                """SELECT COALESCE(SUM(reserve_amount_brl), 0) AS total
+                FROM fiscal_reserve_entries WHERE owner_id = ? AND category = 'BR_DAY_TRADE'
+                AND notes NOT LIKE ?""",
+                (owner_id, "%USER_DECLARED_PENDING_REVIEW%"),
             ).fetchone()
             history_total = int(db.execute(
                 "SELECT COUNT(*) AS total FROM fiscal_reserve_entries WHERE owner_id = ?",
@@ -348,6 +351,7 @@ class FiscalReserve:
             "limitations": [
                 "Estimativa de planejamento; não representa imposto apurado ou devido.",
                 "Resultados negativos são registrados, mas compensações fiscais não são calculadas.",
+                "Registros MT5 com classificação declarada pelo usuário e ainda não verificada permanecem fora dos totais, mesmo se existirem no histórico legado.",
                 "Resultados estrangeiros, inclusive registros legados, ficam fora dos totais até classificação tributária validada e conversão para BRL.",
                 "Nenhum valor é transferido ou movimentado pela Reserva Fiscal.",
             ],
