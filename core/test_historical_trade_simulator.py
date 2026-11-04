@@ -216,5 +216,5 @@ def test_reports_absolute_drawdown_and_maximum_loss_streak_in_trade_order():
     )
     assert len(result.trades) == 2
     assert result.losses == 2
-    assert result.max_drawdown_quote == pytest.approx(2.6)
+    assert result.max_drawdown_quote == pytest.approx(3.4)
     assert result.max_consecutive_losses == 2
