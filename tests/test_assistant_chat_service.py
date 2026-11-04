@@ -98,7 +98,7 @@ def test_readiness_never_claims_provider_connection_was_tested():
     assert status["may_move_money"] is False
 
 
-def test_ask_uses_read_only_system_rules_bounded_history_and_no_execution():
+def test_ask_uses_read_only_system_rules_bounded_history_and_no_execution(monkeypatch):
     store = FakeStore(
         history=[
             {"role": "user", "content": "pergunta anterior"},
@@ -106,7 +106,7 @@ def test_ask_uses_read_only_system_rules_bounded_history_and_no_execution():
         ]
     )
     completion = FakeCompletion()
-    assistant = _assistant(store, completion, monkeypatch=None)
+    assistant = _assistant(store, completion, monkeypatch)
 
     result = assistant.ask(
         identity="single:owner",
