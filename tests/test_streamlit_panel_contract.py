@@ -84,3 +84,10 @@ def test_streamlit_does_not_show_unavailable_foreign_pending_counts_as_zero():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert 'foreign_pending.get("available") is False' in source
     assert "A contagem das pendências do exterior está indisponível" in source
+
+
+
+def test_streamlit_mt5_day_trade_requires_brazilian_market_scope_confirmation():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert "mercado brasileiro elegível" in source
+    assert '"market_scope": "BR_ELIGIBLE_MARKET"' in source
