@@ -419,6 +419,8 @@ def application(environ, start_response):
             components = {
                 "source": "IC Markets MT5 DEMO",
                 "ticket": ticket,
+                "market_scope": "BR_ELIGIBLE_MARKET",
+                "tax_classification_confirmed_by_user": True,
                 "position_id": candidate.get("position_id"),
                 "opened_at_utc": candidate.get("opened_at_utc"),
                 "occurred_at_utc": timestamp,
@@ -462,6 +464,8 @@ def application(environ, start_response):
             category = str(data.get("category") or "").strip().upper()
             if category != "BR_DAY_TRADE":
                 raise ValueError("categoria precisa ser confirmada explicitamente como BR_DAY_TRADE")
+            if data.get("market_scope") != "BR_ELIGIBLE_MARKET":
+                raise ValueError("mercado brasileiro elegível não foi confirmado; mantenha o negócio pendente até classificação")
             try:
                 candidate = SERVICE.mt5_operational_adapter.read_closed_deal_candidate(ticket)
             except RuntimeError as exc:
