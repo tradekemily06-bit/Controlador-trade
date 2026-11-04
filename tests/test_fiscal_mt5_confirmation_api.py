@@ -78,12 +78,28 @@ def test_mt5_confirmation_revalidates_and_registers_once(monkeypatch, tmp_path):
     assert status.startswith("201")
     assert body["registered"] is True
     assert body["entry"]["realized_result_brl"] == 250.0
-    assert body["entry"]["reference"] == "MT5-DEMO-DEAL:7654321"
+    assert body["entry"]["reference"] == "MT5-DEMO:" + ("a" * 32) + ":7654321"
     assert body["entry"]["reserve_amount_brl"] == 50.0
     assert adapter.calls == ["7654321"]
 
     status, body, adapter = call_confirm(monkeypatch, tmp_path, payload)
     assert status.startswith("409")
+    assert body["registered"] is False
+
+
+def test_mt5_confirmation_requires_account_fingerprint_for_safe_deduplication(monkeypatch, tmp_path):
+    class MissingFingerprintAdapter(FakeMT5Adapter):
+        def read_closed_deal_candidate(self, ticket):
+            result = super().read_closed_deal_candidate(ticket)
+            result["account_fingerprint"] = None
+            return result
+
+    status, body, _ = call_confirm(
+        monkeypatch, tmp_path,
+        {"confirmed": True, "ticket": "7654321", "category": "BR_DAY_TRADE"},
+        adapter=MissingFingerprintAdapter(),
+    )
+    assert status == HTTPStatus.SERVICE_UNAVAILABLE
     assert body["registered"] is False
 
 
