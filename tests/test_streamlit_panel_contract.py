@@ -196,3 +196,10 @@ def test_streamlit_fiscal_summary_labels_accumulated_amount_as_planning_estimate
     assert "percentual de planejamento configurado" in source
     assert "ESTIMATIVA DE PLANEJAMENTO — não é imposto apurado ou devido." in source
     assert 'summary.get("reserve_semantics", {})' in source
+
+
+def test_streamlit_assistant_distinguishes_configured_credentials_from_tested_connection():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'readiness.get("message")' in source
+    assert "Credenciais configuradas; conexão com a API ainda não testada." in source
+    assert "disabled=not assistant_available" in source
