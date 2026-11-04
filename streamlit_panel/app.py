@@ -93,15 +93,18 @@ def fiscal_history_display_row(item: dict[str, Any]) -> dict[str, Any]:
                 evidence = {}
         except (TypeError, ValueError):
             evidence = {}
-        user_declared = evidence.get("tax_classification_status") == "USER_DECLARED_PENDING_REVIEW"
+        user_declared_pending = evidence.get("tax_classification_status") == "USER_DECLARED_PENDING_REVIEW"
+        user_declared_planning = evidence.get("tax_classification_status") == "USER_DECLARED_PLANNING_ONLY"
         row.update({
             "Resultado (R$)": item.get("realized_result_brl"),
             "Status": (
                 "DECLARAÇÃO DO USUÁRIO · REVISÃO PENDENTE"
-                if user_declared else "PLANEJAMENTO · BRASIL DAY TRADE"
+                if user_declared_pending else
+                "PLANEJAMENTO · DECLARAÇÃO DO USUÁRIO"
+                if user_declared_planning else "PLANEJAMENTO · BRASIL DAY TRADE"
             ),
         })
-        if not user_declared:
+        if not user_declared_pending:
             row.update({
                 "Percentual de planejamento (%)": item.get("reserve_rate"),
                 "Reserva estimada (R$)": item.get("reserve_amount_brl"),
