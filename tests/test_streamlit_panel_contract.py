@@ -91,3 +91,11 @@ def test_streamlit_mt5_day_trade_requires_brazilian_market_scope_confirmation():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert "mercado brasileiro elegível" in source
     assert '"market_scope": "BR_ELIGIBLE_MARKET"' in source
+
+
+def test_streamlit_panel_explains_fiscal_catalog_automation_boundaries():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert "Categorias fiscais e estado da automação" in source
+    assert "Pendente · sem cálculo automático" in source
+    assert "Lançamento parcial habilitado" in source
+    assert "Nenhuma categoria adicional foi habilitada" in source
