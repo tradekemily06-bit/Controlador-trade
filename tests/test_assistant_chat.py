@@ -286,3 +286,10 @@ def test_assistant_prompt_explains_foreign_pending_items_without_tax_inference()
  assert "Pendências estrangeiras são apenas contagens por tipo, moeda e período" in SYSTEM_PROMPT
  assert "não as trate como lucro tributável, patrimônio ou reserva calculada" in SYSTEM_PROMPT
  assert "permanecem fora dos totais até classificação e revisão" in SYSTEM_PROMPT
+
+
+def test_assistant_explicitly_keeps_unverified_brazilian_mt5_deals_pending():
+ from assistant.chat_service import SYSTEM_PROMPT
+ assert "elegibilidade de mercado não foi verificada" in SYSTEM_PROMPT
+ assert "fila doméstica pendente, sem cálculo e fora dos totais" in SYSTEM_PROMPT
+ assert "nunca os descreva como reserva lançada" in SYSTEM_PROMPT
