@@ -465,3 +465,13 @@ def test_mt5_native_panel_restores_last_user_selected_visibility_state():
     assert "GlobalVariableGet(key)>0.5" in loader
     assert "GlobalVariableSet(key,0.0)" in loader
     assert "panel_visible=false;" not in loader.split("else{", 1)[0]
+
+
+
+def test_mt5_native_panel_never_offers_or_persists_real_mode():
+    repo_root = PANEL_DIR.parent
+    ea = (repo_root / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    assert 'SetButton(Obj("MODE_TOGGLE")' not in ea
+    assert 'sparam==Obj("MODE_TOGGLE")' not in ea
+    assert '\\"selected_mode\\":\\"DEMO\\"' in ea
+    assert 'selected_mode="DEMO";' in ea
