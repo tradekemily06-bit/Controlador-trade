@@ -264,3 +264,42 @@ def test_mt5_historical_signal_simulator_api_is_read_only(monkeypatch):
     assert data["orders_sent"] is False
     assert data["execution_allowed"] is False
     assert data["pnl_calculated"] is False
+
+
+
+def test_mt5_historical_backtest_api_is_read_only(monkeypatch):
+    import app
+
+    expected = {
+        "symbol": "EURUSD",
+        "timeframe": "5m",
+        "candles_processed": 25,
+        "trades": [],
+        "orders_sent": False,
+        "execution_allowed": False,
+        "lookahead": False,
+    }
+    monkeypatch.setattr(app.SERVICE, "run_mt5_historical_backtest", lambda **kwargs: expected)
+    status, data = call_app(
+        "/api/simulator/mt5/backtest",
+        "POST",
+        {
+            "symbol": "EURUSD",
+            "timeframe": "5m",
+            "limit": 25,
+            "stop_distance": 0.1,
+            "take_profit_distance": 0.2,
+            "quantity_units": 100,
+            "spread_price_units": 0.01,
+            "slippage_price_units_per_side": 0.001,
+            "commission_quote_per_unit_round_turn": 0.001,
+            "minimum_directional_score": 80,
+        },
+    )
+    assert status.startswith("200")
+    assert data == expected
+    assert data["orders_sent"] is False
+    assert data["execution_allowed"] is False
+    assert data["lookahead"] is False
+
+
