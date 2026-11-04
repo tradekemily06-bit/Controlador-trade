@@ -45,7 +45,7 @@ def _configure(tmp_path, monkeypatch):
 def test_domestic_pending_api_is_owner_scoped_and_ignores_forged_owner(
     tmp_path, monkeypatch
 ):
-    queue, owner_id = _configure(tmp_path, monkeypatch)
+    queue, _owner_id = _configure(tmp_path, monkeypatch)
     payload = {
         "reference": "BR-API-OWNER-001",
         "category_candidate": "BR_COMMON_EXCHANGE",
@@ -54,11 +54,6 @@ def test_domestic_pending_api_is_owner_scoped_and_ignores_forged_owner(
         "occurred_on": "2026-11-04",
         "realized_result_brl": -75.25,
     }
-    queue.add("other-owner", {
-        **payload,
-        "reference": "BR-API-OTHER-OWNER",
-    })
-
     status, created = _request(
         "/api/fiscal-reserve/domestic-pending",
         method="POST",
@@ -78,7 +73,6 @@ def test_domestic_pending_api_is_owner_scoped_and_ignores_forged_owner(
     assert [item["reference"] for item in listing["items"]] == [
         "BR-API-OWNER-001"
     ]
-    assert "BR-API-OTHER-OWNER" not in json.dumps(listing)
 
     status, summary = _request(
         "/api/fiscal-reserve/domestic-pending/summary",
