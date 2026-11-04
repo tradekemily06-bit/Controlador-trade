@@ -273,3 +273,21 @@ def test_streamlit_leverage_control_is_an_enabled_toggle_without_status_copy():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert 'st.checkbox("Alavancagem", value=False, key="leverage_enabled")' in source
     assert "Desativada" not in source
+
+
+
+def test_assistant_is_a_standalone_module_inside_streamlit_without_changing_figma_tabs():
+    config = json.loads((PANEL_DIR / "controlador_trader_referencia_visual.json").read_text(encoding="utf-8"))
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert list(config["open_state"]["tabs"]) == ["COCKPIT", "ANÁLISE", "ESTUDO", "MAIS / ADMIN"]
+    assert 'AREAS["MAIS / ADMIN"].append("Assistente do Ecossistema")' in source
+    assert 'if module == "Assistente do Ecossistema":' in source
+    assert 'financial = st.radio("Financeiro", ["Reserva Fiscal", "Assistente do Ecossistema"]' not in source
+    assert "show_assistant()" in source
+
+
+def test_streamlit_readme_identifies_the_streamlit_panel_as_user_facing_and_figma_as_reference():
+    readme = (PANEL_DIR / "README.md").read_text(encoding="utf-8")
+    assert "O Figma é somente referência visual" in readme
+    assert "painel de uso pretendido" in readme
+    assert "Assistente do Ecossistema é acrescentado como módulo funcional próprio em MAIS / ADMIN" in readme
