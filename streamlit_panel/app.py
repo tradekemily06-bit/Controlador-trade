@@ -173,6 +173,49 @@ def show_assistant() -> None:
     if "assistant_history" not in st.session_state:
         st.session_state.assistant_history = []
 
+    try:
+        saved_conversations = api("/api/assistant/conversations").get("conversations", [])
+        if saved_conversations:
+            conversation_labels = {
+                item["conversation_id"]: (
+                    str(item.get("title") or "Conversa")
+                    + " · "
+                    + str(item.get("updated_at") or "")
+                )
+                for item in saved_conversations
+                if item.get("conversation_id")
+            }
+            selected_saved_id = st.selectbox(
+                "Conversas anteriores",
+                options=list(conversation_labels),
+                format_func=lambda conversation_id: conversation_labels[conversation_id],
+                key="saved_assistant_conversation",
+            )
+            history_col, delete_col = st.columns([3, 1])
+            if history_col.button("Abrir conversa", key="load_assistant_conversation"):
+                saved = api(
+                    "/api/assistant/history?conversation_id="
+                    + urllib.parse.quote(selected_saved_id, safe="")
+                ).get("messages", [])
+                st.session_state.assistant_conversation_id = selected_saved_id
+                st.session_state.assistant_history = [
+                    {"role": item["role"], "content": item["content"]}
+                    for item in saved
+                    if item.get("role") in ("user", "assistant")
+                ]
+                st.rerun()
+            if delete_col.button("Excluir conversa", key="delete_assistant_conversation"):
+                api(
+                    "/api/assistant/conversations?conversation_id="
+                    + urllib.parse.quote(selected_saved_id, safe=""),
+                    "DELETE",
+                )
+                if st.session_state.get("assistant_conversation_id") == selected_saved_id:
+                    _reset_assistant_conversation()
+                st.rerun()
+    except Exception as exc:
+        st.warning(f"Não foi possível carregar o histórico de conversas. {exc}")
+
     if st.button("Nova consulta", key="new_assistant_session"):
         _reset_assistant_conversation()
         st.rerun()
