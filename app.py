@@ -426,7 +426,7 @@ def application(environ, start_response):
                 "swap": candidate.get("swap"),
                 "fee": candidate.get("fee"),
                 "account_currency": currency,
-                "partial_deal_warning": "Custos lançados em outros negócios da posição podem não estar incluídos.",
+                "result_scope": "FULL_CLOSED_POSITION",\n                "deal_count": candidate.get("deal_count"),\n                "closing_deal_count": candidate.get("closing_deal_count"),\n                "reconciliation_notice": "Resultado agregado do histórico completo da posição; conferir extrato da corretora antes de qualquer uso fiscal.",
             }
             payload = {
                 "reference": reference,
