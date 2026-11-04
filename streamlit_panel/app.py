@@ -810,7 +810,8 @@ def show_simulator() -> None:
         st.markdown("**Parâmetros da operação hipotética**")
         stop_distance = st.number_input("Stop-loss · distância em unidades de preço", min_value=0.0, value=0.0, step=0.0001, format="%.6f")
         take_profit_distance = st.number_input("Take-profit · distância em unidades de preço", min_value=0.0, value=0.0, step=0.0001, format="%.6f")
-        quantity_units = st.number_input("Quantidade em unidades do ativo", min_value=0.0, value=0.0, step=1.0, format="%.2f")
+        quantity_units = st.number_input("Quantidade em unidades/contratos", min_value=0.0, value=0.0, step=1.0, format="%.2f")
+        contract_multiplier = st.number_input("Multiplicador do contrato", min_value=0.0, value=1.0, step=1.0, format="%.4f")
         st.markdown("**Custos por operação completa**")
         spread_price_units = st.number_input("Spread total em unidades de preço", min_value=0.0, value=0.0, step=0.00001, format="%.6f")
         slippage_price_units_per_side = st.number_input("Slippage por lado em unidades de preço", min_value=0.0, value=0.0, step=0.00001, format="%.6f")
@@ -831,6 +832,7 @@ def show_simulator() -> None:
             "stop_distance": float(stop_distance),
             "take_profit_distance": float(take_profit_distance),
             "quantity_units": float(quantity_units),
+            "contract_multiplier": float(contract_multiplier),
             "spread_price_units": float(spread_price_units),
             "slippage_price_units_per_side": float(slippage_price_units_per_side),
             "commission_quote_per_unit_round_turn": float(commission_quote_per_unit_round_turn),
