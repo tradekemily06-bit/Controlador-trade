@@ -462,3 +462,34 @@ def test_foreign_structured_declarations_do_not_change_pending_summary_or_reserv
     assert "income_nature" not in summary
     assert "event_type" not in summary
     assert "fx_conversion_method" not in summary
+
+
+def test_not_converted_method_rejects_fx_quote_for_assets_and_realized_results(tmp_path):
+    queue = make_queue(tmp_path / "fiscal.sqlite3")
+    asset = sample("FOREIGN-NOT-CONVERTED-ASSET")
+    asset["fx_conversion_method"] = "NOT_CONVERTED"
+    realized = {
+        "reference": "FOREIGN-NOT-CONVERTED-RESULT",
+        "original_result": 25.75,
+        "original_currency": "USD",
+        "instrument": "ETF",
+        "jurisdiction": "US",
+        "occurred_on": "2026-11-03",
+        "fx_rate": 5.42,
+        "fx_date": "2026-11-03",
+        "fx_source": "Fonte documental de teste",
+        "fx_conversion_method": "NOT_CONVERTED",
+    }
+
+    for payload, add_item in (
+        (asset, lambda value: queue.add(OWNER, value)),
+        (realized, lambda value: queue.add_realized_result(OWNER, value)),
+    ):
+        try:
+            add_item(payload)
+        except ValueError as exc:
+            assert "NOT_CONVERTED" in str(exc)
+        else:
+            raise AssertionError("NOT_CONVERTED must reject a supplied FX quote")
+
+    assert queue.list_pending(OWNER)["total"] == 0
