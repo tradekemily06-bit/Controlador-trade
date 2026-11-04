@@ -24,6 +24,18 @@ function Get-LocalJson([string]$Path) {
     return ($response.Content | ConvertFrom-Json)
 }
 
+function Test-RejectedIdentity([string]$Path) {
+    $invalidHeaders = @{ 'Cf-Access-Authenticated-User-Email' = 'unauthorized-smoke-identity@example.invalid' }
+    try {
+        Invoke-WebRequest -UseBasicParsing -Method Get -Uri ($BaseUrl + $Path) -Headers $invalidHeaders -TimeoutSec 8 -ErrorAction Stop | Out-Null
+        return $false
+    } catch {
+        $response = $_.Exception.Response
+        if ($null -eq $response) { return $false }
+        return ([int]$response.StatusCode -eq 403)
+    }
+}
+
 try {
     $health = Get-LocalJson '/api/health'
     $safe = (
@@ -106,6 +118,14 @@ try {
     Add-Check 'assistant-read-only-status' $safeAssistant "Status consultado sem chamar o provedor; $providerState."
 } catch {
     Add-Check 'assistant-read-only-status' $false 'Status do Assistente indisponível ou contrato de segurança inválido.'
+}
+
+try {
+    $assistantDenied = Test-RejectedIdentity '/api/assistant/status'
+    $fiscalDenied = Test-RejectedIdentity '/api/fiscal-reserve/pending?limit=1'
+    Add-Check 'unauthorized-identity-denied' ($assistantDenied -and $fiscalDenied) 'Identidade sintética não autorizada recebeu HTTP 403 nos dois módulos.'
+} catch {
+    Add-Check 'unauthorized-identity-denied' $false 'Não foi possível confirmar a rejeição da identidade sintética.'
 }
 
 $failed = @($checks | Where-Object { -not $_.ok })
