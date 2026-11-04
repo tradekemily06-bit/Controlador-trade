@@ -1064,6 +1064,7 @@ def application(environ, start_response):
                 stop_distance=data.get("stop_distance"),
                 take_profit_distance=data.get("take_profit_distance"),
                 quantity_units=data.get("quantity_units"),
+                contract_multiplier=data.get("contract_multiplier", 1.0),
                 spread_price_units=data.get("spread_price_units"),
                 slippage_price_units_per_side=data.get("slippage_price_units_per_side"),
                 commission_quote_per_unit_round_turn=data.get("commission_quote_per_unit_round_turn", 0.0),
