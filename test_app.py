@@ -256,7 +256,7 @@ def test_mt5_historical_signal_simulator_api_is_read_only(monkeypatch):
             "symbol": "EURUSD",
             "timeframe": "5m",
             "limit": 25,
-            "minimum_confidence": 80,
+            "minimum_directional_score": 80,
         },
     )
     assert status.startswith("200")
