@@ -35,7 +35,7 @@ A autorização local acima é somente para desenvolvimento no próprio computad
 ## Módulos no painel
 
 - A Reserva Fiscal permanece em Financeiro. Categorias sem cálculo validado ficam pendentes e fora dos totais; a estimativa brasileira identificada na interface é planejamento, não apuração de imposto devido.
-- O Assistente do Ecossistema fica em MAIS / ADMIN. A interface lista até 30 conversas salvas, permite abrir o histórico recente e excluir uma conversa somente após ação explícita do usuário.
+- O Assistente do Ecossistema é acrescentado como módulo funcional próprio em MAIS / ADMIN. A interface lista até 30 conversas salvas, permite abrir o histórico recente e excluir uma conversa somente após ação explícita do usuário.
 - A pergunta, as mensagens recentes da conversa e um resumo operacional filtrado são enviados à OpenAI quando o usuário envia uma consulta. As mensagens também ficam armazenadas no histórico local do Assistente no servidor do Ecossistema. A chave OpenAI permanece no servidor; não envie senhas, códigos de acesso ou dados bancários sensíveis.
 - A consulta de status do Assistente verifica a configuração local do cliente, mas não testa conectividade nem validade da chave. A conexão real não é considerada validada até um teste autorizado.
 - Replay e Simulador têm limitações descritas na própria interface. O backtest atual não integra Risk Manager, margem, alavancagem, swap ou conversão para a moeda da conta. Não o trate como previsão nem como backtest financeiro completo.
