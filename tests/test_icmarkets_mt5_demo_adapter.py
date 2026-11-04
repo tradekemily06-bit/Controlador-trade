@@ -335,7 +335,7 @@ def test_fiscal_confirmation_rereads_complete_position_for_requested_final_ticke
     fake = FiscalFakeMT5()
     candidate = ICMarketsMT5DemoAdapter(mt5_module=fake).read_closed_deal_candidate("112")
     assert candidate["ticket"] == "112"
-    assert candidate["net_result_account_currency"] == 118.0
+    assert candidate["net_result_account_currency"] == 118.2
     assert candidate["account_currency"] == "BRL"
     assert candidate["result_scope"] == "FULL_CLOSED_POSITION"
     assert candidate["auto_registered"] is False
