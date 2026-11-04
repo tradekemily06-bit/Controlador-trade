@@ -742,7 +742,7 @@ def show_market_analysis() -> None:
                 st.error("Confirme o uso somente em DEMO/SIMULAÇÃO para solicitar a análise.")
             else:
                 try:
-                    result = api("/api/runtime/analysis", "POST", {"symbol": symbol, "timeframe": timeframe, "limit": candle_limit, "confirmed": True, "filters_ok": True})
+                    result = api("/api/runtime/analysis", "POST", {"symbol": symbol, "timeframe": timeframe, "limit": candle_limit})
                     st.session_state.market_analysis_result = result
                 except Exception as exc:
                     st.error(f"Análise indisponível: {exc}")
@@ -757,6 +757,7 @@ def show_market_analysis() -> None:
             cols[3].metric("Período", analysis.get("timeframe", "—"))
             st.write(result.get("reason") or "Sem justificativa fornecida pelo motor.")
             st.caption("Decisão: " + str(result.get("decision", "AGUARDAR")) + " · Execução permitida: NÃO")
+            st.caption("A confirmação de uso em DEMO não substitui o fechamento do candle nem os filtros internos. As preferências de segurança do runtime são respeitadas.")
             candles = result.get("market_data", {}).get("ohlcv", [])
             if candles:
                 st.markdown("#### Candles recebidos")
