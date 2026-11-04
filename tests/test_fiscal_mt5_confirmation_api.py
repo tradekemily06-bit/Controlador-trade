@@ -92,6 +92,14 @@ def test_mt5_confirmation_revalidates_and_registers_once(monkeypatch, tmp_path):
     assert body["reserve_is_estimate"] is False
     assert body["reserve_calculated"] is False
     assert body["included_in_totals"] is False
+    from finance.fiscal_schema import migrate_fiscal_schema
+    owner_id = migrate_fiscal_schema(str(tmp_path / "fiscal.sqlite3"))
+    assert app_module.FISCAL_RESERVE.summary(owner_id)["total_reserved_brl"] == 0.0
+    queued = app_module.FISCAL_DOMESTIC_PENDING_QUEUE.list_pending(owner_id)
+    assert queued["total"] == 1
+    assert queued["items"][0]["reference"] == body["pending"]["reference"]
+    assert queued["included_in_totals"] is False
+    assert queued["reserve_calculated"] is False
     evidence = json.loads(body["pending"]["notes"])
     assert evidence["tax_classification_status"] == "USER_DECLARED_PENDING_REVIEW"
     assert evidence["market_scope_source"] == "USER_DECLARATION_NOT_INDEPENDENTLY_VERIFIED"
