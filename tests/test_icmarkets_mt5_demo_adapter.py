@@ -256,3 +256,64 @@ def test_fiscal_preview_fails_closed_when_history_is_unavailable():
  else:
   assert False
  assert fake.shutdown_calls==1
+
+
+def test_fiscal_confirmation_rereads_only_the_requested_closed_demo_ticket():
+    from datetime import datetime, timezone
+
+    class FiscalFakeMT5(FakeMT5):
+        DEAL_ENTRY_OUT = 1
+        DEAL_ENTRY_IN = 0
+
+        def account_info(self):
+            return SimpleNamespace(trade_mode=self.ACCOUNT_TRADE_MODE_DEMO, currency="BRL")
+
+        def history_deals_get(self, start, end):
+            timestamp = int(datetime(2026, 10, 30, 12, tzinfo=timezone.utc).timestamp())
+            return (
+                SimpleNamespace(entry=self.DEAL_ENTRY_OUT, ticket=111, position_id=7,
+                                symbol="WINZ26", volume=1.0, profit=120.0,
+                                commission=-1.0, swap=0.0, fee=-0.5, time=timestamp),
+                SimpleNamespace(entry=self.DEAL_ENTRY_OUT, ticket=222, position_id=8,
+                                symbol="WINZ26", volume=1.0, profit=50.0,
+                                commission=-1.0, swap=0.0, fee=0.0, time=timestamp),
+            )
+
+    fake = FiscalFakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=fake)
+    candidate = adapter.read_closed_deal_candidate("222")
+    assert candidate["ticket"] == "222"
+    assert candidate["net_result_account_currency"] == 49.0
+    assert candidate["account_currency"] == "BRL"
+    assert candidate["auto_registered"] is False
+    assert fake.shutdown_calls == 1
+
+
+def test_fiscal_confirmation_rejects_unknown_ticket_and_non_numeric_ticket():
+    from datetime import datetime, timezone
+
+    class FiscalFakeMT5(FakeMT5):
+        DEAL_ENTRY_OUT = 1
+
+        def account_info(self):
+            return SimpleNamespace(trade_mode=self.ACCOUNT_TRADE_MODE_DEMO, currency="BRL")
+
+        def history_deals_get(self, start, end):
+            timestamp = int(datetime(2026, 10, 30, 12, tzinfo=timezone.utc).timestamp())
+            return (SimpleNamespace(entry=self.DEAL_ENTRY_OUT, ticket=111, position_id=7,
+                                     symbol="WINZ26", volume=1.0, profit=10.0,
+                                     commission=0.0, swap=0.0, fee=0.0, time=timestamp),)
+
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=FiscalFakeMT5())
+    try:
+        adapter.read_closed_deal_candidate("999")
+    except Exception as exc:
+        assert "não encontrado" in str(exc)
+    else:
+        raise AssertionError("unknown ticket must not be confirmed")
+    try:
+        adapter.read_closed_deal_candidate("111x")
+    except ValueError as exc:
+        assert "ticket MT5 inválido" in str(exc)
+    else:
+        raise AssertionError("non-numeric ticket must be rejected")
