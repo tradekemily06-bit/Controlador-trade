@@ -279,13 +279,14 @@ def show_fiscal() -> None:
         domestic_category = st.selectbox("Categoria candidata · não confirmada", ["", "BR_COMMON_EXCHANGE", "BR_FII_FIAGRO", "BR_FIXED_INCOME", "BR_CRYPTO", "BR_FUTURES_OPTIONS", "BR_DAY_TRADE"])
         domestic_market = st.text_input("Mercado / ambiente", placeholder="B3, balcão, corretora etc.", max_chars=80)
         domestic_date = st.date_input("Data da operação · Brasil", key="domestic_pending_date")
-        domestic_result = st.number_input("Resultado realizado em R$ (opcional; lucro + / prejuízo -)", min_value=-1000000000000.0, max_value=1000000000000.0, value=0.0, format="%.2f", help="O valor fica pendente e não entra nos totais nem gera reserva.")
+        domestic_has_result = st.checkbox("Informar resultado realizado em R$ (inclusive zero)", value=False, key="domestic_has_result")
+        domestic_result = st.number_input("Resultado realizado em R$ (lucro + / prejuízo -)", min_value=-1000000000000.0, max_value=1000000000000.0, value=0.0, format="%.2f", disabled=not domestic_has_result, help="O valor fica pendente e não entra nos totais nem gera reserva.")
         domestic_notes = st.text_area("Observações / evidências", key="domestic_pending_notes", max_chars=1000)
         domestic_submit = st.form_submit_button("Guardar pendência brasileira")
     if domestic_submit:
         try:
             domestic_payload = {"reference": domestic_ref, "instrument": domestic_instrument, "category_candidate": domestic_category, "market_scope": domestic_market, "occurred_on": domestic_date.isoformat(), "notes": domestic_notes}
-            if domestic_result != 0:
+            if domestic_has_result:
                 domestic_payload["realized_result_brl"] = domestic_result
             api("/api/fiscal-reserve/domestic-pending", "POST", domestic_payload)
             st.success("Pendência brasileira guardada separadamente. Nenhum cálculo foi realizado.")
@@ -487,7 +488,8 @@ if not st.session_state.panel_open:
     st.caption("INDISPONÍVEL")
     st.stop()
 
-st.markdown('<div class="status-card"><span style="font-size:1.35rem;font-weight:800">Controlador-Trader</span> <span class="demo-pill" style="float:right">DEMO</span><div class="muted">Prévia Streamlit independente · Figma original preservado</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="status-card"><span style="font-size:1.35rem;font-weight:800">Controlador-Trader</span> <span class="demo-pill" style="float:right">DEMO</span><div class="muted">Área funcional de desenvolvimento · não é a reprodução visual aprovada do Figma</div></div>', unsafe_allow_html=True)
+st.warning("A referência JSON de navegação está carregada, mas as cinco imagens originais (8870.jpg, 8871.jpg, 8872.jpg, 8873.jpg e 8878.jpg) não estão presentes neste branch. Portanto, esta tela não deve ser tratada como validação visual nem como substituta do painel aprovado.")
 area = st.radio("Áreas principais", list(AREAS), horizontal=True, label_visibility="collapsed")
 st.divider()
 module = st.radio("Módulos", AREAS[area], horizontal=False, label_visibility="collapsed")
