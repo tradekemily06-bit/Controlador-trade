@@ -229,10 +229,12 @@ class ICMarketsMT5DemoAdapter:
                         for identifier, rows in grouped.items()
                         if any(getattr(deal, "entry", None) in closing_entries for _, deal, _ in rows)
                     }
+                    entry_data_valid = all(getattr(deal, "entry", None) is not None for deal in deals)
                     if not closed_ids:
-                        consecutive_losses = 0 if entries_valid else None
+                        consecutive_losses = 0 if entries_valid and entry_data_valid else None
                     elif (
                         not entries_valid
+                        or not entry_data_valid
                         or not positions_known
                         or entry_in is None
                         or entry_inout is not None and any(
@@ -262,19 +264,19 @@ class ICMarketsMT5DemoAdapter:
                             ]
                             if not close_rows:
                                 continue
-                            last_index, last_close = max(
-                                close_rows,
-                                key=lambda pair: (
-                                    getattr(pair[1], "time_msc", None)
-                                    if isinstance(getattr(pair[1], "time_msc", None), (int, float))
-                                    else getattr(pair[1], "time", pair[0])
-                                ),
-                            )
-                            last_order = getattr(last_close, "time_msc", None)
-                            if not isinstance(last_order, (int, float)):
-                                last_order = getattr(last_close, "time", last_index)
+                            def close_order(pair):
+                                index, deal = pair
+                                milliseconds = getattr(deal, "time_msc", None)
+                                if isinstance(milliseconds, (int, float)) and milliseconds > 0:
+                                    return float(milliseconds)
+                                seconds = getattr(deal, "time", None)
+                                if isinstance(seconds, (int, float)) and seconds > 0:
+                                    return float(seconds) * 1000.0
+                                return float(index)
+
+                            last_index, last_close = max(close_rows, key=close_order)
                             net_result = sum(value for _, _, value in rows)
-                            completed.append((last_order, net_result))
+                            completed.append((close_order((last_index, last_close)), net_result))
                         if incomplete:
                             consecutive_losses = None
                         else:
