@@ -720,9 +720,31 @@ else:
     st.empty()
 
 st.divider()
+st.subheader("Estado do Ecossistema")
+try:
+    runtime_status = api("/api/health")
+    components = runtime_status.get("components", {})
+    health_state = str(runtime_status.get("health") or "UNKNOWN").upper()
+    mt5_state = str(components.get("mt5_demo") or runtime_status.get("mt5_demo") or "UNKNOWN").upper()
+    mode_state = str(runtime_status.get("mode") or "UNKNOWN").upper()
+    real_state = str(runtime_status.get("real") or "DESABILITADO").upper()
+    health_label = {"OK": "SISTEMA ONLINE", "WARNING": "ATENÇÃO", "CRITICAL": "INDISPONÍVEL"}.get(health_state, "ESTADO NÃO CONFIRMADO")
+    status_cols = st.columns(4)
+    status_cols[0].metric("Saúde do sistema", health_label)
+    status_cols[1].metric("Modo", mode_state)
+    status_cols[2].metric("MT5 DEMO", mt5_state)
+    status_cols[3].metric("REAL", real_state)
+    if runtime_status.get("execution_allowed") is not False or real_state not in {"DESABILITADO", "DISABLED"}:
+        st.error("Estado de segurança inesperado. Operações bloqueadas na interface; verifique o runtime antes de continuar.")
+    if runtime_status.get("alerts"):
+        with st.expander("Alertas do sistema", expanded=health_state == "CRITICAL"):
+            for alert in runtime_status["alerts"]:
+                st.write(f"- **{alert.get('severity', 'INFO')} · {alert.get('component', 'Sistema')}** — {alert.get('message', 'Verificar componente')}")
+except Exception:
+    st.warning("Runtime indisponível. Estado do MT5 e do sistema não confirmado.")
 left, right = st.columns([2, 1])
 with left:
-    st.markdown('<div class="status-card"><b>Estado do sistema:</b> INDISPONÍVEL<br><b>REAL:</b> DESABILITADO</div>', unsafe_allow_html=True)
+    st.caption("Execução REAL permanece bloqueada. Confirme o estado DEMO no runtime antes de operar.")
 with right:
     st.checkbox("Alavancagem", value=False, key="leverage_enabled")
 with st.container(key="panel-toggle"):
