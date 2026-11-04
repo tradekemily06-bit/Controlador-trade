@@ -270,8 +270,11 @@ class ICMarketsMT5DemoAdapter:
                                     else getattr(pair[1], "time", pair[0])
                                 ),
                             )
+                            last_order = getattr(last_close, "time_msc", None)
+                            if not isinstance(last_order, (int, float)):
+                                last_order = getattr(last_close, "time", last_index)
                             net_result = sum(value for _, _, value in rows)
-                            completed.append((last_index, net_result))
+                            completed.append((last_order, net_result))
                         if incomplete:
                             consecutive_losses = None
                         else:
