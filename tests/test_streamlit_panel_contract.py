@@ -52,3 +52,11 @@ def test_streamlit_panel_preserves_signed_foreign_results_as_pending():
     assert '"original_result": amount_signed' in source
     assert "PENDENTE DE CLASSIFICAÇÃO" in source
     assert "Resultado original (+ lucro / - prejuízo)" in source
+
+
+def test_streamlit_mt5_foreign_result_can_only_be_saved_as_pending():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert '"/api/fiscal-reserve/mt5-pending-result"' in source
+    assert '"confirmed": True' in source
+    assert "Guardar como pendência" in source
+    assert "sem classificação ou cálculo" in source
