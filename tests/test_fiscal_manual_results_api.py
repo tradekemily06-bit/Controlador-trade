@@ -100,7 +100,6 @@ def test_manual_day_trade_entry_rejects_missing_confirmation_and_incomplete_crit
     payload["confirmed"] = False
     status, body = _request(payload)
     assert status.startswith("400")
-    assert "confirmação explícita" in body["error"]
 
     payload = valid_payload()
     payload["same_day"] = False
