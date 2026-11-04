@@ -275,3 +275,27 @@ def test_controller_runtime_requires_single_user_identity_before_startup():
     assert "OPENAI_API_KEY detectada no ambiente; conexão com o provedor permanece não testada" in text
     assert "Write-StartupLog $env:OPENAI_API_KEY" not in text
     assert "Write-StartupLog ([string]$env:OPENAI_API_KEY)" not in text
+
+def test_fiscal_assistant_runtime_validator_is_read_only_and_checks_safe_contracts():
+    text = _read("deployment/validate_fiscal_assistant_runtime.ps1")
+    for required in (
+        "CONTROLADOR_SINGLE_USER_IDENTITY",
+        "Cf-Access-Authenticated-User-Email",
+        "/api/health",
+        "/api/fiscal-reserve?limit=1",
+        "/api/fiscal-reserve/domestic-pending/summary",
+        "/api/fiscal-reserve/pending?limit=1",
+        "/api/assistant/status",
+        "$health.execution_allowed -eq $false",
+        "$health.real -eq 'DESABILITADO'",
+        "$assistant.may_execute_orders -eq $false",
+        "$assistant.may_enable_real -eq $false",
+        "$assistant.may_move_money -eq $false",
+        "nenhuma chamada foi feita",
+        "exit 2",
+    ):
+        assert required in text
+    assert "Invoke-WebRequest -UseBasicParsing -Method Get" in text
+    assert "Invoke-WebRequest -UseBasicParsing -Method Post" not in text
+    assert "/api/assistant/chat" not in text
+    assert "Start-Process" not in text
