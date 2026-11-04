@@ -165,6 +165,45 @@ def test_read_operational_state_uses_mt5_observations():
     assert "positions_get" in mt5.calls
 
 
+def test_netting_reversal_keeps_trade_and_loss_streak_counts_unknown():
+    class NettingReversalMT5(FakeMT5):
+        DEAL_ENTRY_INOUT = 3
+
+        def history_deals_get(self, *args, **kwargs):
+            if kwargs.get("ticket") is not None:
+                return ()
+            return (
+                SimpleNamespace(
+                    entry=self.DEAL_ENTRY_IN,
+                    position_id=300,
+                    profit=0.0,
+                    commission=-0.5,
+                    swap=0.0,
+                    fee=0.0,
+                    time=100,
+                ),
+                SimpleNamespace(
+                    entry=self.DEAL_ENTRY_INOUT,
+                    position_id=300,
+                    profit=-4.0,
+                    commission=-0.1,
+                    swap=0.0,
+                    fee=0.0,
+                    time=200,
+                ),
+            )
+
+        def positions_get(self):
+            return ()
+
+    state = ICMarketsMT5DemoAdapter(
+        mt5_module=NettingReversalMT5()
+    ).read_operational_state()
+
+    assert state.trades_today is None
+    assert state.consecutive_losses is None
+
+
 def test_missing_position_identity_keeps_risk_counters_unknown():
     class MissingPositionIdentityMT5(FakeMT5):
         def history_deals_get(self, *args, **kwargs):
