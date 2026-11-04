@@ -232,3 +232,35 @@ def test_mt5_historical_replay_api_is_read_only_and_returns_service_result(monke
     assert data == expected
     assert data["orders_sent"] is False
     assert data["execution_allowed"] is False
+
+
+def test_mt5_historical_signal_simulator_api_is_read_only(monkeypatch):
+    import app
+
+    expected = {
+        "symbol": "EURUSD",
+        "timeframe": "5m",
+        "candles_replayed": 24,
+        "records": [],
+        "orders_sent": False,
+        "execution_allowed": False,
+        "pnl_calculated": False,
+        "risk_rules_applied": False,
+        "lookahead": False,
+    }
+    monkeypatch.setattr(app.SERVICE, "simulate_mt5_signal_scenario", lambda **kwargs: expected)
+    status, data = call_app(
+        "/api/simulator/mt5",
+        "POST",
+        {
+            "symbol": "EURUSD",
+            "timeframe": "5m",
+            "limit": 25,
+            "minimum_confidence": 80,
+        },
+    )
+    assert status.startswith("200")
+    assert data == expected
+    assert data["orders_sent"] is False
+    assert data["execution_allowed"] is False
+    assert data["pnl_calculated"] is False
