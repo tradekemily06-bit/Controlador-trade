@@ -1,12 +1,14 @@
 """Read-only context assembly for the Controlador Trading assistant.
 
-Only explicit, low-sensitivity fields are sent to the external model provider.
+Only explicit, low-sensitivity fields are sent to the external model provider. Pending foreign items are represented by owner-scoped counts only.
 This module does not execute trades, change settings, move funds, or infer tax outcomes.
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
+
+from finance.fiscal_taxonomy import fiscal_classification_catalog
 
 
 def _count(value: Any) -> int:
@@ -114,7 +116,7 @@ def _statistics_summary(value: Any) -> dict[str, Any]:
     return safe
 
 
-def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id: str) -> dict[str, Any]:
+def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id: str, fiscal_pending_queue: Any = None, fiscal_domestic_pending_queue: Any = None) -> dict[str, Any]:
     """Build a compact, privacy-filtered snapshot for an assistant response."""
     if service is None or fiscal_reserve is None:
         raise ValueError("serviço do ecossistema e Reserva Fiscal são obrigatórios")
@@ -145,6 +147,64 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
             categories = dict(categories)
             categories["FOREIGN_FINANCIAL_ASSET"] = safe_foreign
             fiscal_context["categories"] = categories
+    pending_context = {"available": False, "included_in_totals": False}
+    if fiscal_pending_queue is not None:
+        try:
+            pending_summary = fiscal_pending_queue.summary(fiscal_owner_id)
+            pending_context = {
+                "available": True,
+                "total": _count(pending_summary.get("total")),
+                "realized_results": _count(pending_summary.get("realized_results")),
+                "asset_amounts": _count(pending_summary.get("asset_amounts")),
+                "currencies": sorted({
+                    str(currency).upper()
+                    for currency in pending_summary.get("currencies", [])
+                    if currency
+                }),
+                "periods": {
+                    str(period): {
+                        "start": str(values.get("start", ""))[:10],
+                        "end": str(values.get("end", ""))[:10],
+                        "total": _count(values.get("total")),
+                        "realized_results": _count(values.get("realized_results")),
+                        "asset_amounts": _count(values.get("asset_amounts")),
+                    }
+                    for period, values in pending_summary.get("periods", {}).items()
+                    if period in {"day", "week", "month", "year"} and isinstance(values, dict)
+                },
+                "as_of": str(pending_summary.get("as_of", ""))[:10],
+                "classification_status": "PENDING_CLASSIFICATION",
+                "included_in_totals": False,
+                "reserve_calculated": False,
+            }
+        except Exception:
+            pending_context = {"available": False, "included_in_totals": False}
+    fiscal_context["foreign_pending"] = pending_context
+    domestic_pending_context = {"available": False, "included_in_totals": False}
+    if fiscal_domestic_pending_queue is not None:
+        try:
+            domestic_summary = fiscal_domestic_pending_queue.summary(fiscal_owner_id)
+            domestic_pending_context = {
+                "available": True,
+                "total": _count(domestic_summary.get("total")),
+                "periods": {
+                    str(period): {
+                        "start": str(values.get("start", ""))[:10],
+                        "end": str(values.get("end", ""))[:10],
+                        "total": _count(values.get("total")),
+                        "results": _count(values.get("results")),
+                    }
+                    for period, values in domestic_summary.get("periods", {}).items()
+                    if period in {"day", "week", "month", "year"} and isinstance(values, dict)
+                },
+                "as_of": str(domestic_summary.get("as_of", ""))[:10],
+                "classification_status": "PENDING_CLASSIFICATION",
+                "included_in_totals": False,
+                "reserve_calculated": False,
+            }
+        except Exception:
+            domestic_pending_context = {"available": False, "included_in_totals": False}
+    fiscal_context["domestic_pending"] = domestic_pending_context
     recent_decisions = service.memory_view(limit=5)
 
     components = status.get("components", {})
@@ -156,7 +216,7 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
 
     return {
         "as_of": datetime.now(timezone.utc).isoformat(),
-        "sources": ["system_status", "risk_status", "operational_observability", "statistics", "fiscal_reserve", "recent_decisions"],
+        "sources": ["system_status", "risk_status", "operational_observability", "statistics", "fiscal_reserve", "fiscal_pending_queue_summary", "fiscal_domestic_pending_queue_summary", "recent_decisions"],
         "system": {
             "mode": str(status.get("mode", "UNKNOWN"))[:24],
             "execution_allowed": False,
@@ -168,6 +228,7 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
         "operations": _operations_summary(observability),
         "statistics": _statistics_summary(statistics),
         "fiscal_reserve": fiscal_context,
+        "fiscal_classification_catalog": fiscal_classification_catalog(),
         "recent_decisions": [_decision_summary(item) for item in recent_decisions if isinstance(item, dict)][-5:],
         "assistant_safety": {
             "read_only": True,

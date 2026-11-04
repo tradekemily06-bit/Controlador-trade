@@ -28,12 +28,24 @@ A autorização local acima é somente para desenvolvimento no próprio computad
 - Em implantação remota, configure `CONTROLADOR_REMOTE_ACCESS_REQUIRED=true` e `CONTROLADOR_TRUSTED_IDENTITY_HEADER` no runtime e no Streamlit.
 - O proxy de identidade deve remover qualquer cabeçalho de identidade enviado pelo visitante e inserir o valor autenticado. O Streamlit encaminha apenas esse cabeçalho para a API.
 - Configure a identidade individual autorizada em `CONTROLADOR_SINGLE_USER_IDENTITY`. Não exponha diretamente a porta 8501 nem a porta 8000; publique somente pelo proxy/Tunnel com Cloudflare Access.
-- Até existir isolamento fiscal por proprietário, mantenha somente uma identidade individual autorizada para acessar o runtime remoto.
+- O banco e as conversas têm escopo por proprietário, mas este runtime permanece configurado para uma única identidade autorizada (`CONTROLADOR_SINGLE_USER_IDENTITY`). Isso não significa que o deployment esteja liberado para múltiplos usuários.
 - Não coloque tokens ou chaves em arquivos do repositório.
 - A tela REAL permanece desabilitada. A prévia não envia ordens.
 
-## Limites conhecidos
+## Limites conhecidos — fidelidade visual
 
-- As imagens originais são referências imutáveis; o JSON reproduz a especificação de navegação e tokens visuais. As imagens contêm barras do Android/visualizador e não são usadas como tela final.
+- O JSON contém a estrutura de navegação e tokens visuais extraídos das referências.
+- **As cinco imagens originais listadas no JSON (8870.jpg, 8871.jpg, 8872.jpg, 8873.jpg e 8878.jpg não estão presentes neste branch do repositório.** A árvore do GitHub foi verificada; por isso, a aplicação não consegue exibir nem comparar as capturas originais.
+- A interface atual é somente uma área funcional de desenvolvimento dos módulos. Ela **não é a reprodução visual aprovada do Figma**, não deve ser usada como validação de fidelidade e não substitui o painel do MT5.
+- Não modificar nem recriar as imagens ou o arquivo original do Figma. A validação visual só poderá avançar quando as cinco imagens de referência forem disponibilizadas no projeto, mantendo os arquivos originais intactos.
 - A prévia Streamlit não é o overlay nativo do gráfico MT5. A integração visual nativa no MT5 é uma etapa distinta.
 - Outros módulos aparecem como seleção, mas só Assistente e Reserva Fiscal têm chamadas funcionais conectadas nesta prévia.
+
+
+## Assistente · configuração do provedor
+
+- O Assistente precisa de `OPENAI_API_KEY` configurada no ambiente protegido do processo do runtime. Não coloque a chave no navegador, no código, no repositório ou em mensagens.
+- `OPENAI_MODEL` é opcional; o padrão atual é `gpt-4o-mini`.
+- A rota autenticada `/api/assistant/status` verifica se o provedor e a biblioteca estão configurados, sem devolver a chave; não testa conectividade ou validade da credencial.
+- Sem a chave ou sem a biblioteca, o Assistente falha de forma controlada e a interface informa que está indisponível.
+- As perguntas e o resumo operacional filtrado são enviados à API da OpenAI para gerar respostas; a interface exibe esse aviso antes do chat.

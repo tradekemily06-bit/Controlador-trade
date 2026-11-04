@@ -5,9 +5,11 @@ import json
 import os
 import sqlite3
 from dataclasses import asdict
+from datetime import datetime
 from http import HTTPStatus
 from pathlib import Path
 from urllib.parse import parse_qs
+from zoneinfo import ZoneInfo
 from socketserver import ThreadingMixIn
 from wsgiref.simple_server import WSGIServer, make_server
 
@@ -22,7 +24,9 @@ from integration.execution_provider import build_demo_execution_port
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
 from finance.fiscal_reserve import FiscalReserve
-from finance.fiscal_pending_queue import FiscalPendingQueue
+from finance.fiscal_taxonomy import fiscal_classification_catalog
+from finance.fiscal_pending_queue import CURRENCIES, FiscalPendingQueue
+from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
 from finance.fiscal_schema import migrate_fiscal_schema
 from finance.fiscal_identity import FiscalOwnerIdentityError
 from assistant.conversation_store import AssistantConversationStore
@@ -46,9 +50,10 @@ ONBOARDING = EcosystemOnboarding()
 FISCAL_RESERVE_DB = Path(os.environ.get("CONTROLADOR_FISCAL_RESERVE_DB", str(RUNTIME_DIR / "fiscal-reserve.sqlite3")))
 FISCAL_RESERVE = FiscalReserve(str(FISCAL_RESERVE_DB))
 FISCAL_PENDING_QUEUE = FiscalPendingQueue(str(FISCAL_RESERVE_DB))
+FISCAL_DOMESTIC_PENDING_QUEUE = FiscalDomesticPendingQueue(str(FISCAL_RESERVE_DB))
 ASSISTANT_DB = Path(os.environ.get('CONTROLADOR_ASSISTANT_DB', str(RUNTIME_DIR / 'assistant.sqlite3')))
 ASSISTANT_STORE = AssistantConversationStore(ASSISTANT_DB)
-ASSISTANT = EcosystemAssistant(ASSISTANT_STORE, SERVICE, FISCAL_RESERVE)
+ASSISTANT = EcosystemAssistant(ASSISTANT_STORE, SERVICE, FISCAL_RESERVE, fiscal_pending_queue=FISCAL_PENDING_QUEUE, fiscal_domestic_pending_queue=FISCAL_DOMESTIC_PENDING_QUEUE)
 
 
 def _audit(environ, request_id: str, status: int) -> None:
@@ -297,6 +302,8 @@ def application(environ, start_response):
             # A identidade canônica mantém o mesmo espaço de conversas no acesso
             # local e remoto autorizado, sem confiar no valor enviado pelo navegador.
             identity = fiscal_owner_id
+            if path == "/api/assistant/status" and method == "GET":
+                return _json_response(start_response, HTTPStatus.OK, ASSISTANT.readiness(), request_id, environ)
             if path == "/api/assistant/conversations" and method == "GET":
                 return _json_response(start_response, HTTPStatus.OK, {"conversations": ASSISTANT.conversations(identity)}, request_id, environ)
             if path == "/api/assistant/conversations" and method == "DELETE":
@@ -325,6 +332,48 @@ def application(environ, start_response):
                 return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE,
                                       {"error": "Reserva Fiscal indisponível até validar a identidade proprietária e a migração.",
                                        "detail": str(exc)}, request_id, environ)
+        if path == "/api/fiscal-reserve/domestic-pending" and method == "GET":
+            query = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
+            try:
+                limit = int(query.get("limit", ["100"])[-1] or "100")
+                offset = int(query.get("offset", ["0"])[-1] or "0")
+            except (TypeError, ValueError) as exc:
+                raise ValueError("limit e offset devem ser inteiros") from exc
+            return _json_response(start_response, HTTPStatus.OK,
+                                  FISCAL_DOMESTIC_PENDING_QUEUE.list_pending(fiscal_owner_id, limit, offset),
+                                  request_id, environ)
+        if path == "/api/fiscal-reserve/domestic-pending/summary" and method == "GET":
+            return _json_response(start_response, HTTPStatus.OK,
+                                  FISCAL_DOMESTIC_PENDING_QUEUE.summary(fiscal_owner_id),
+                                  request_id, environ)
+        if path == "/api/fiscal-reserve/domestic-pending" and method == "POST":
+            try:
+                item = FISCAL_DOMESTIC_PENDING_QUEUE.add(fiscal_owner_id, _read_json(environ))
+            except sqlite3.IntegrityError:
+                return _json_response(start_response, HTTPStatus.CONFLICT,
+                                      {"error": "Já existe uma pendência brasileira com essa referência."},
+                                      request_id, environ)
+            return _json_response(start_response, HTTPStatus.CREATED,
+                                  {"pending": item, "reserve_calculated": False,
+                                   "classification_status": "PENDING_CLASSIFICATION"},
+                                  request_id, environ)
+        if path.startswith("/api/fiscal-reserve/domestic-pending/") and path.endswith("/reviews"):
+            pending_id = path[len("/api/fiscal-reserve/domestic-pending/"):-len("/reviews")].strip("/")
+            if not pending_id or "/" in pending_id:
+                raise ValueError("pending_id inválido")
+            if method == "GET":
+                return _json_response(start_response, HTTPStatus.OK,
+                                      {"reviews": FISCAL_DOMESTIC_PENDING_QUEUE.list_reviews(fiscal_owner_id, pending_id),
+                                       "status_unchanged": "PENDING_CLASSIFICATION",
+                                       "reserve_calculated": False},
+                                      request_id, environ)
+            if method == "POST":
+                review = FISCAL_DOMESTIC_PENDING_QUEUE.record_review(
+                    fiscal_owner_id, pending_id, _read_json(environ)
+                )
+                return _json_response(start_response, HTTPStatus.CREATED,
+                                      {"review": review, "reserve_calculated": False},
+                                      request_id, environ)
         if path == "/api/fiscal-reserve/pending" and method == "GET":
             query = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
             try:
@@ -345,6 +394,17 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.CREATED,
                                   {"pending": item, "reserve_calculated": False},
                                   request_id, environ)
+        if path == "/api/fiscal-reserve/pending-result" and method == "POST":
+            try:
+                item = FISCAL_PENDING_QUEUE.add_realized_result(fiscal_owner_id, _read_json(environ))
+            except sqlite3.IntegrityError:
+                return _json_response(start_response, HTTPStatus.CONFLICT,
+                                      {"error": "Já existe uma pendência com essa referência."},
+                                      request_id, environ)
+            return _json_response(start_response, HTTPStatus.CREATED,
+                                  {"pending": item, "reserve_calculated": False,
+                                   "classification_status": "PENDING_CLASSIFICATION"},
+                                  request_id, environ)
         if path.startswith("/api/fiscal-reserve/pending/") and path.endswith("/reviews"):
             pending_id = path[len("/api/fiscal-reserve/pending/"):-len("/reviews")].strip("/")
             if not pending_id or "/" in pending_id:
@@ -360,6 +420,201 @@ def application(environ, start_response):
                 return _json_response(start_response, HTTPStatus.CREATED,
                                       {"review": review, "reserve_calculated": False},
                                       request_id, environ)
+        if path == "/api/fiscal-reserve/mt5-pending-result" and method == "POST":
+            data = _read_json(environ)
+            if data.get("confirmed") is not True:
+                raise ValueError("confirmação explícita obrigatória para guardar como pendente")
+            ticket = str(data.get("ticket") or "").strip()
+            try:
+                candidate = SERVICE.mt5_operational_adapter.read_closed_deal_candidate(ticket)
+            except RuntimeError as exc:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                                      {"error": "Negócio não pôde ser revalidado no MT5 DEMO.",
+                                       "detail": str(exc), "registered": False,
+                                       "reserve_calculated": False, "execution_allowed": False},
+                                      request_id, environ)
+            currency = str(candidate.get("account_currency") or "").strip().upper()
+            if currency == "BRL":
+                return _json_response(start_response, HTTPStatus.UNPROCESSABLE_ENTITY,
+                                      {"error": "Conta em BRL: use a confirmação Brasil · day trade; este fluxo é para resultados ainda não classificados.",
+                                       "registered": False, "reserve_calculated": False,
+                                       "execution_allowed": False}, request_id, environ)
+            if currency not in CURRENCIES:
+                return _json_response(start_response, HTTPStatus.UNPROCESSABLE_ENTITY,
+                                      {"error": "Moeda da conta MT5 não suportada pela fila fiscal; resultado não foi salvo.",
+                                       "registered": False, "reserve_calculated": False,
+                                       "execution_allowed": False}, request_id, environ)
+            if not currency or currency == "UNKNOWN":
+                return _json_response(start_response, HTTPStatus.UNPROCESSABLE_ENTITY,
+                                      {"error": "Moeda da conta não identificada; resultado não foi salvo.",
+                                       "registered": False, "reserve_calculated": False,
+                                       "execution_allowed": False}, request_id, environ)
+            fingerprint = str(candidate.get("account_fingerprint") or "")
+            if len(fingerprint) != 32:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                                      {"error": "Identidade da conta MT5 insuficiente para deduplicação segura; informe login e servidor configurados no terminal.",
+                                       "registered": False, "reserve_calculated": False,
+                                       "execution_allowed": False}, request_id, environ)
+            timestamp = candidate.get("occurred_at_utc")
+            if not timestamp:
+                raise ValueError("data do negócio ausente no histórico MT5")
+            occurred_at = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
+            if occurred_at.tzinfo is None:
+                raise ValueError("data do negócio sem fuso horário")
+            occurred_on = occurred_at.astimezone(ZoneInfo("America/Sao_Paulo")).date().isoformat()
+            reference = f"MT5-DEMO:{fingerprint}:{ticket}"
+            components = {
+                "source": "IC Markets MT5 DEMO",
+                "ticket": ticket,
+                "market_scope": "BR_ELIGIBLE_MARKET",
+                "tax_classification_confirmed_by_user": True,
+                "position_id": candidate.get("position_id"),
+                "opened_at_utc": candidate.get("opened_at_utc"),
+                "occurred_at_utc": timestamp,
+                "profit": candidate.get("profit"),
+                "commission": candidate.get("commission"),
+                "swap": candidate.get("swap"),
+                "fee": candidate.get("fee"),
+                "account_currency": currency,
+                "result_scope": "FULL_CLOSED_POSITION",
+                "deal_count": candidate.get("deal_count"),
+                "closing_deal_count": candidate.get("closing_deal_count"),
+                "reconciliation_notice": "Resultado agregado do histórico completo da posição; conferir extrato da corretora antes de qualquer uso fiscal.",
+            }
+            payload = {
+                "reference": reference,
+                "original_result": candidate.get("net_result_account_currency"),
+                "original_currency": currency,
+                "instrument": str(candidate.get("symbol") or "MT5_INSTRUMENT_UNKNOWN")[:80],
+                "jurisdiction": "PENDING_REVIEW",
+                "occurred_on": occurred_on,
+                "notes": json.dumps(components, ensure_ascii=False, separators=(",", ":"))[:1000],
+            }
+            try:
+                item = FISCAL_PENDING_QUEUE.add_realized_result(fiscal_owner_id, payload)
+            except sqlite3.IntegrityError:
+                return _json_response(start_response, HTTPStatus.CONFLICT,
+                                      {"error": "Este ticket MT5 DEMO já está na fila fiscal desta conta.",
+                                       "registered": False, "reserve_calculated": False,
+                                       "execution_allowed": False}, request_id, environ)
+            return _json_response(start_response, HTTPStatus.CREATED,
+                                  {"pending": item, "source": "IC Markets MT5 DEMO",
+                                   "source_ticket": ticket, "registered": True,
+                                   "classification_status": "PENDING_CLASSIFICATION",
+                                   "reserve_calculated": False, "execution_allowed": False},
+                                  request_id, environ)
+        if path == "/api/fiscal-reserve/mt5-confirm" and method == "POST":
+            data = _read_json(environ)
+            if data.get("confirmed") is not True:
+                raise ValueError("confirmação explícita obrigatória")
+            ticket = str(data.get("ticket") or "").strip()
+            category = str(data.get("category") or "").strip().upper()
+            if category != "BR_DAY_TRADE":
+                raise ValueError("categoria precisa ser confirmada explicitamente como BR_DAY_TRADE")
+            if data.get("market_scope") != "BR_ELIGIBLE_MARKET":
+                raise ValueError("mercado brasileiro elegível não foi confirmado; mantenha o negócio pendente até classificação")
+            declared_market_scope = str(data.get("market_scope") or "").strip()[:80]
+            try:
+                candidate = SERVICE.mt5_operational_adapter.read_closed_deal_candidate(ticket)
+            except RuntimeError as exc:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                                       {"error": "Negócio não pôde ser revalidado no MT5 DEMO.", "detail": str(exc),
+                                        "registered": False, "execution_allowed": False}, request_id, environ)
+            if str(candidate.get("account_currency", "")).upper() != "BRL":
+                return _json_response(start_response, HTTPStatus.UNPROCESSABLE_ENTITY,
+                                      {"error": "Conta MT5 não está em BRL. O negócio deve permanecer pendente até classificação e conversão documentadas.",
+                                       "registered": False, "classification_status": "PENDING_CLASSIFICATION",
+                                       "reserve_calculated": False, "execution_allowed": False},
+                                      request_id, environ)
+            timestamp = candidate.get("occurred_at_utc")
+            if not timestamp:
+                raise ValueError("data do negócio ausente no histórico MT5")
+            occurred_at = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
+            if occurred_at.tzinfo is None:
+                raise ValueError("data do negócio sem fuso horário")
+            occurred_on = occurred_at.astimezone(ZoneInfo("America/Sao_Paulo")).date().isoformat()
+            opened_timestamp = candidate.get("opened_at_utc")
+            if not opened_timestamp:
+                return _json_response(start_response, HTTPStatus.UNPROCESSABLE_ENTITY,
+                                      {"error": "Data de abertura da posição ausente; classificação day trade não foi validada.",
+                                       "registered": False, "classification_status": "PENDING_CLASSIFICATION",
+                                       "reserve_calculated": False, "execution_allowed": False},
+                                      request_id, environ)
+            try:
+                opened_at = datetime.fromisoformat(str(opened_timestamp).replace("Z", "+00:00"))
+            except ValueError:
+                opened_at = None
+            if opened_at is None or opened_at.tzinfo is None:
+                return _json_response(start_response, HTTPStatus.UNPROCESSABLE_ENTITY,
+                                      {"error": "Data de abertura da posição sem fuso horário; classificação day trade não foi validada.",
+                                       "registered": False, "classification_status": "PENDING_CLASSIFICATION",
+                                       "reserve_calculated": False, "execution_allowed": False},
+                                      request_id, environ)
+            opened_on = opened_at.astimezone(ZoneInfo("America/Sao_Paulo")).date().isoformat()
+            if opened_on != occurred_on:
+                return _json_response(start_response, HTTPStatus.UNPROCESSABLE_ENTITY,
+                                      {"error": "A posição foi aberta e encerrada em dias diferentes; não pode ser registrada como day trade. Mantenha-a pendente para classificação.",
+                                       "opened_on": opened_on, "closed_on": occurred_on,
+                                       "registered": False, "classification_status": "PENDING_CLASSIFICATION",
+                                       "reserve_calculated": False, "execution_allowed": False},
+                                      request_id, environ)
+            fingerprint = str(candidate.get("account_fingerprint") or "")
+            if len(fingerprint) != 32:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                                      {"error": "Identidade da conta MT5 insuficiente para deduplicação segura; informe login e servidor configurados no terminal.",
+                                       "registered": False, "execution_allowed": False},
+                                      request_id, environ)
+            reference = f"MT5-DEMO:{fingerprint}:{ticket}"
+            evidence = {
+                "source": "IC Markets MT5 DEMO",
+                "ticket": ticket,
+                "position_id": candidate.get("position_id"),
+                "opened_at_utc": candidate.get("opened_at_utc"),
+                "occurred_at_utc": timestamp,
+                "profit": candidate.get("profit"),
+                "commission": candidate.get("commission"),
+                "swap": candidate.get("swap"),
+                "fee": candidate.get("fee"),
+                "account_currency": "BRL",
+                "result_scope": "FULL_CLOSED_POSITION",
+                "deal_count": candidate.get("deal_count"),
+                "closing_deal_count": candidate.get("closing_deal_count"),
+                "tax_classification_status": "USER_DECLARED_PENDING_REVIEW",
+                "market_scope_source": "USER_DECLARATION_NOT_INDEPENDENTLY_VERIFIED",
+                "declared_market_scope": declared_market_scope,
+                "independent_market_eligibility_verified": False,
+                "tax_liability_confirmed": False,
+                "reserve_semantics": "PLANNING_ESTIMATE_ONLY",
+                "reconciliation_notice": "Resultado agregado do histórico completo da posição; conferir extrato da corretora antes de qualquer uso fiscal. Categoria e elegibilidade de mercado foram declaradas pelo usuário e ainda exigem revisão independente.",
+            }
+            payload = {
+                "category_candidate": "BR_DAY_TRADE",
+                "instrument": str(candidate.get("symbol") or "INSTRUMENT_NOT_PROVIDED"),
+                "market_scope": declared_market_scope,
+                "realized_result_brl": candidate["net_result_account_currency"],
+                "reference": reference,
+                "occurred_on": occurred_on,
+                "notes": json.dumps(evidence, ensure_ascii=False, separators=(",", ":"))[:1000],
+            }
+            try:
+                pending = FISCAL_DOMESTIC_PENDING_QUEUE.add(fiscal_owner_id, payload)
+            except sqlite3.IntegrityError:
+                return _json_response(start_response, HTTPStatus.CONFLICT,
+                                      {"error": "Este ticket MT5 DEMO já está na fila de revisão fiscal brasileira.",
+                                       "reference": reference, "registered": False,
+                                       "classification_status": "PENDING_CLASSIFICATION",
+                                       "reserve_calculated": False, "included_in_totals": False,
+                                       "execution_allowed": False}, request_id, environ)
+            return _json_response(start_response, HTTPStatus.CREATED,
+                                  {"pending": pending, "source": "IC Markets MT5 DEMO",
+                                   "source_ticket": ticket, "registered": True,
+                                   "classification_status": "PENDING_CLASSIFICATION",
+                                   "classification_source": "USER_DECLARATION",
+                                   "independent_market_eligibility_verified": False,
+                                   "tax_liability_confirmed": False,
+                                   "reserve_is_estimate": False,
+                                   "reserve_calculated": False, "included_in_totals": False,
+                                   "execution_allowed": False}, request_id, environ)
         if path == "/api/fiscal-reserve/mt5-preview" and method == "GET":
             query = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
             try:
@@ -387,6 +642,19 @@ def application(environ, start_response):
             fiscal_summary = FISCAL_RESERVE.summary(
                 fiscal_owner_id, history_limit=history_limit, history_offset=history_offset
             )
+            fiscal_summary["classification_catalog"] = fiscal_classification_catalog()
+            try:
+                fiscal_summary["foreign_pending"] = FISCAL_PENDING_QUEUE.summary(fiscal_owner_id)
+            except (sqlite3.Error, RuntimeError, ValueError):
+                # The main Brazilian ledger remains readable if an older or
+                # independently configured pending-queue database is not migrated.
+                # Never substitute guessed counts or include pending items in totals.
+                fiscal_summary["foreign_pending"] = {
+                    "available": False,
+                    "classification_status": "PENDING_CLASSIFICATION",
+                    "included_in_totals": False,
+                    "reserve_calculated": False,
+                }
             # Keep legacy foreign settings in storage for historical compatibility,
             # but never expose the generic percentage as a usable public tax rate.
             foreign = fiscal_summary.get("categories", {}).get("FOREIGN_FINANCIAL_ASSET")
@@ -417,8 +685,56 @@ def application(environ, start_response):
             settings.pop("FOREIGN_FINANCIAL_ASSET", None)
             return _json_response(start_response, HTTPStatus.OK, {"settings": settings}, request_id, environ)
         if path == "/api/fiscal-reserve/results" and method == "POST":
-            entry = FISCAL_RESERVE.record_realized_result(fiscal_owner_id, _read_json(environ))
-            return _json_response(start_response, HTTPStatus.OK, {"entry": entry, "execution_allowed": False}, request_id, environ)
+            data = _read_json(environ)
+            if data.get("confirmed") is not True:
+                raise ValueError("confirmação explícita dos critérios de day trade é obrigatória")
+            instrument = str(data.get("instrument") or "").strip()
+            institution = str(data.get("institution") or "").strip()
+            market_label = str(data.get("market_label") or "").strip()
+            if not instrument or len(instrument) > 80:
+                raise ValueError("instrumento é obrigatório e deve ter até 80 caracteres")
+            if not institution or len(institution) > 120:
+                raise ValueError("instituição é obrigatória e deve ter até 120 caracteres")
+            if not market_label or len(market_label) > 120:
+                raise ValueError("mercado de negociação é obrigatório e deve ter até 120 caracteres")
+            if data.get("market_scope") != "BR_ELIGIBLE_MARKET":
+                raise ValueError("mercado brasileiro elegível não foi confirmado")
+            if any(data.get(flag) is not True for flag in ("same_asset", "same_institution", "same_day")):
+                raise ValueError("mesmo ativo, mesma instituição e mesmo dia precisam ser confirmados")
+            notes = {
+                "tax_classification_status": "USER_DECLARED_PLANNING_ONLY",
+                "classification_source": "USER_DECLARATION",
+                "market_scope_source": "USER_DECLARATION_NOT_INDEPENDENTLY_VERIFIED",
+                "market_scope": "BR_ELIGIBLE_MARKET",
+                "instrument": instrument,
+                "institution": institution,
+                "market_label": market_label,
+                "same_asset_confirmed_by_user": True,
+                "same_institution_confirmed_by_user": True,
+                "same_day_confirmed_by_user": True,
+                "independent_market_eligibility_verified": False,
+                "tax_liability_confirmed": False,
+                "reserve_semantics": "PLANNING_ESTIMATE_ONLY",
+                "user_notes": str(data.get("notes") or "").strip()[:160],
+            }
+            evidence_notes = json.dumps(notes, ensure_ascii=False, separators=(",", ":"))
+            if len(evidence_notes) > 1000:
+                raise ValueError("evidências excedem o limite de armazenamento")
+            payload = {
+                "category": "BR_DAY_TRADE",
+                "realized_result_brl": data.get("realized_result_brl"),
+                "reference": data.get("reference"),
+                "occurred_on": data.get("occurred_on"),
+                "notes": evidence_notes,
+            }
+            entry = FISCAL_RESERVE.record_realized_result(fiscal_owner_id, payload)
+            return _json_response(
+                start_response, HTTPStatus.OK,
+                {"entry": entry, "classification_status": "USER_DECLARED_PLANNING_ONLY",
+                 "classification_source": "USER_DECLARATION",
+                 "independent_market_eligibility_verified": False,
+                 "tax_liability_confirmed": False, "reserve_is_estimate": True,
+                 "execution_allowed": False}, request_id, environ)
         if path == "/api/onboarding" and method == "GET":
             guide = ONBOARDING.build_first_use_guide()
             return _json_response(start_response, HTTPStatus.OK, {"guide": {"guide_id": guide.guide_id, "title": guide.title, "steps": [{"step_id": step.step_id, "title": step.title, "purpose": step.purpose, "location": step.location.value, "action_hint": step.action_hint, "technical_details_hidden": step.technical_details_hidden} for step in guide.steps], "completion_message": guide.completion_message, "execution_authorized": guide.execution_authorized}}, request_id, environ)

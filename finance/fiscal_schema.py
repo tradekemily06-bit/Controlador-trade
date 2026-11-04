@@ -37,14 +37,48 @@ def migrate_fiscal_schema(database_path: str) -> str:
                 "SELECT name FROM sqlite_master WHERE type='table'"
             ).fetchall()
         }
+        if "fiscal_reserve_pending_domestic" in existing:
+            domestic_columns = {row["name"] for row in db.execute("PRAGMA table_info(fiscal_reserve_pending_domestic)")}
+            if "owner_id" not in domestic_columns:
+                raise RuntimeError("A fila brasileira pendente não possui identidade proprietária; acesso bloqueado.")
+            domestic_owners = {row[0] for row in db.execute(
+                "SELECT DISTINCT owner_id FROM fiscal_reserve_pending_domestic WHERE owner_id IS NOT NULL"
+            ).fetchall()}
+            if domestic_owners and domestic_owners != {owner_id}:
+                raise RuntimeError("A identidade fiscal configurada não corresponde ao proprietário da fila brasileira; migração automática bloqueada.")
+        if "fiscal_domestic_pending_reviews" in existing:
+            review_columns = {row["name"] for row in db.execute("PRAGMA table_info(fiscal_domestic_pending_reviews)")}
+            if "owner_id" not in review_columns:
+                raise RuntimeError("A revisão brasileira pendente não possui identidade proprietária; acesso bloqueado.")
+            review_owners = {row[0] for row in db.execute(
+                "SELECT DISTINCT owner_id FROM fiscal_domestic_pending_reviews WHERE owner_id IS NOT NULL"
+            ).fetchall()}
+            if review_owners and review_owners != {owner_id}:
+                raise RuntimeError("A identidade fiscal configurada não corresponde às revisões brasileiras; migração automática bloqueada.")
         if all(table in existing for table in TABLES):
             owner_columns = {
                 table: {row["name"] for row in db.execute(f'PRAGMA table_info("{table}")')}
                 for table in TABLES
             }
             if all("owner_id" in columns for columns in owner_columns.values()):
+                pending_columns = owner_columns["fiscal_reserve_pending_foreign"]
+                if "original_result" not in pending_columns:
+                    db.execute("ALTER TABLE fiscal_reserve_pending_foreign ADD COLUMN original_result REAL")
+                if "record_kind" not in pending_columns:
+                    db.execute("ALTER TABLE fiscal_reserve_pending_foreign ADD COLUMN record_kind TEXT NOT NULL DEFAULT 'ASSET_AMOUNT'")
                 stored_owners = set()
-                for table in TABLES:
+                scoped_tables = list(TABLES)
+                if "fiscal_reserve_pending_domestic" in existing:
+                    domestic_columns = {row["name"] for row in db.execute("PRAGMA table_info(fiscal_reserve_pending_domestic)")}
+                    if "owner_id" not in domestic_columns:
+                        raise RuntimeError("A fila brasileira pendente não possui identidade proprietária; acesso bloqueado.")
+                    scoped_tables.append("fiscal_reserve_pending_domestic")
+                if "fiscal_domestic_pending_reviews" in existing:
+                    review_columns = {row["name"] for row in db.execute("PRAGMA table_info(fiscal_domestic_pending_reviews)")}
+                    if "owner_id" not in review_columns:
+                        raise RuntimeError("A revisão brasileira pendente não possui identidade proprietária; acesso bloqueado.")
+                    scoped_tables.append("fiscal_domestic_pending_reviews")
+                for table in scoped_tables:
                     stored_owners.update(
                         row[0] for row in db.execute(
                             f'SELECT DISTINCT owner_id FROM "{table}" WHERE owner_id IS NOT NULL'
@@ -55,6 +89,13 @@ def migrate_fiscal_schema(database_path: str) -> str:
                         "A identidade fiscal configurada não corresponde ao proprietário já gravado; "
                         "migração automática entre proprietários foi bloqueada."
                     )
+                # Repair a missing default planning rate in already owner-scoped
+                # databases without overwriting a rate the owner has configured.
+                db.execute(
+                    """INSERT OR IGNORE INTO fiscal_reserve_settings(owner_id, category, rate)
+                       VALUES (?, 'BR_DAY_TRADE', 20.0)""",
+                    (owner_id,),
+                )
                 db.commit()
                 return owner_id
 
@@ -112,6 +153,8 @@ def migrate_fiscal_schema(database_path: str) -> str:
                 fx_source TEXT,
                 notes TEXT NOT NULL DEFAULT '',
                 status TEXT NOT NULL CHECK(status = 'PENDING_CLASSIFICATION'),
+                original_result REAL,
+                record_kind TEXT NOT NULL DEFAULT 'ASSET_AMOUNT',
                 created_at TEXT NOT NULL,
                 UNIQUE(owner_id, pending_id),
                 UNIQUE(owner_id, reference)
@@ -153,15 +196,21 @@ def migrate_fiscal_schema(database_path: str) -> str:
                   row["realized_result_brl"], row["reserve_rate"], row["reserve_amount_brl"],
                   row["reference"], row["occurred_on"], row["created_at"], row["notes"]))
         for row in pending:
+            # Preserve signed realized results and record kind when recovering a
+            # partially migrated owner schema. Older rows receive safe defaults.
+            pending_columns = set(row.keys())
+            original_result = row["original_result"] if "original_result" in pending_columns else None
+            record_kind = row["record_kind"] if "record_kind" in pending_columns else "ASSET_AMOUNT"
             db.execute("""
                 INSERT INTO fiscal_reserve_pending_foreign_new
                 (pending_id,owner_id,reference,original_amount,original_currency,instrument,
-                 jurisdiction,occurred_on,fx_rate,fx_date,fx_source,notes,status,created_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                 jurisdiction,occurred_on,fx_rate,fx_date,fx_source,notes,status,
+                 original_result,record_kind,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (row["pending_id"], owner_id, row["reference"], row["original_amount"],
                   row["original_currency"], row["instrument"], row["jurisdiction"],
                   row["occurred_on"], row["fx_rate"], row["fx_date"], row["fx_source"],
-                  row["notes"], row["status"], row["created_at"]))
+                  row["notes"], row["status"], original_result, record_kind, row["created_at"]))
         for row in reviews:
             db.execute("""
                 INSERT INTO fiscal_pending_reviews_new

@@ -304,3 +304,36 @@ def test_money_rejects_boolean_values(tmp_path):
             pass
         else:
             raise AssertionError("boolean must not be accepted as a percentage")
+
+
+def test_unverified_mt5_declarations_in_legacy_ledger_are_preserved_but_excluded_from_all_totals(tmp_path):
+    from datetime import date
+    import json
+
+    reserve = make_reserve(tmp_path / "unverified-mt5.sqlite3")
+    evidence = {
+        "tax_classification_status": "USER_DECLARED_PENDING_REVIEW",
+        "market_scope_source": "USER_DECLARATION_NOT_INDEPENDENTLY_VERIFIED",
+        "independent_market_eligibility_verified": False,
+        "tax_liability_confirmed": False,
+        "reserve_semantics": "PLANNING_ESTIMATE_ONLY",
+    }
+    reserve.record_realized_result(OWNER, {
+        "category": "BR_DAY_TRADE",
+        "realized_result_brl": 250.0,
+        "reference": "MT5-DEMO:UNVERIFIED-LEGACY-001",
+        "occurred_on": "2026-11-04",
+        "notes": json.dumps(evidence, separators=(",", ":")),
+    })
+
+    summary = reserve.summary(OWNER, as_of=date(2026, 11, 4))
+    assert summary["total_reserved_brl"] == 0.0
+    assert summary["categories"]["BR_DAY_TRADE"]["entries"] == 0
+    assert summary["categories"]["BR_DAY_TRADE"]["realized_result_brl"] == 0.0
+    assert summary["categories"]["BR_DAY_TRADE"]["reserve_amount_brl"] == 0.0
+    for period in ("day", "week", "month", "year"):
+        assert summary["periods"][period]["entries"] == 0
+        assert summary["periods"][period]["realized_result_brl"] == 0.0
+        assert summary["periods"][period]["reserve_amount_brl"] == 0.0
+    assert summary["history_page"]["total"] == 1
+    assert summary["history"][0]["reference"] == "MT5-DEMO:UNVERIFIED-LEGACY-001"

@@ -5,6 +5,7 @@ import sqlite3
 import uuid
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -40,7 +41,9 @@ class FiscalPendingQueue:
                     fx_source TEXT,
                     notes TEXT NOT NULL DEFAULT '',
                     status TEXT NOT NULL CHECK(status = 'PENDING_CLASSIFICATION'),
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    original_result REAL,
+                    record_kind TEXT NOT NULL DEFAULT 'ASSET_AMOUNT'
                 )
             """)
             db.execute("""
@@ -148,6 +151,66 @@ class FiscalPendingQueue:
                        ":jurisdiction, :occurred_on, :fx_rate, :fx_date, :fx_source, :notes, :status, :created_at)", item)
         return {key: value for key, value in item.items() if key != "owner_id"}
 
+    def add_realized_result(self, owner_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Store a signed foreign realized result; it remains pending and outside fiscal totals."""
+        if not isinstance(payload, dict):
+            raise ValueError("payload deve ser um objeto")
+        reference = str(payload.get("reference") or "").strip()
+        instrument = str(payload.get("instrument") or "").strip()
+        jurisdiction = str(payload.get("jurisdiction") or "").strip()
+        currency = str(payload.get("original_currency") or "").strip().upper()
+        if not reference or len(reference) > 160:
+            raise ValueError("reference é obrigatório e deve ter até 160 caracteres")
+        if not instrument or len(instrument) > 80:
+            raise ValueError("instrument é obrigatório e deve ter até 80 caracteres")
+        if not jurisdiction or len(jurisdiction) > 80:
+            raise ValueError("jurisdiction é obrigatório e deve ter até 80 caracteres")
+        if currency not in CURRENCIES:
+            raise ValueError("moeda não suportada")
+        raw_result = payload.get("original_result")
+        if isinstance(raw_result, bool):
+            raise ValueError("original_result deve ser numérico")
+        try:
+            result = float(raw_result)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("original_result deve ser numérico") from exc
+        if result != result or result in (float("inf"), float("-inf")) or abs(result) > 1e12:
+            raise ValueError("original_result deve ser finito e estar dentro do limite")
+        result = round(result, 8)
+        occurred_on = self._date(payload.get("occurred_on"), "occurred_on")
+        fx_rate = payload.get("fx_rate")
+        fx_date = payload.get("fx_date")
+        fx_source = str(payload.get("fx_source") or "").strip()
+        if fx_rate is not None:
+            fx_rate = self._positive(fx_rate, "fx_rate")
+            if not fx_date or not fx_source:
+                raise ValueError("fx_date e fx_source são obrigatórios quando houver fx_rate")
+            fx_date = self._date(fx_date, "fx_date")
+            if len(fx_source) > 200:
+                raise ValueError("fx_source deve ter até 200 caracteres")
+        elif fx_date or fx_source:
+            raise ValueError("fx_rate é obrigatório quando forem informados dados cambiais")
+        item = {
+            "pending_id": str(uuid.uuid4()), "owner_id": owner_id, "reference": reference,
+            "original_amount": abs(result), "original_result": result, "record_kind": "REALIZED_RESULT",
+            "original_currency": currency, "instrument": instrument, "jurisdiction": jurisdiction,
+            "occurred_on": occurred_on, "fx_rate": fx_rate, "fx_date": fx_date,
+            "fx_source": fx_source or None, "notes": str(payload.get("notes") or "").strip()[:1000],
+            "status": "PENDING_CLASSIFICATION", "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        with self._connect() as db:
+            db.execute(
+                """INSERT INTO fiscal_reserve_pending_foreign
+                (pending_id, owner_id, reference, original_amount, original_currency, instrument,
+                 jurisdiction, occurred_on, fx_rate, fx_date, fx_source, notes, status, created_at,
+                 original_result, record_kind)
+                VALUES (:pending_id, :owner_id, :reference, :original_amount, :original_currency,
+                 :instrument, :jurisdiction, :occurred_on, :fx_rate, :fx_date, :fx_source,
+                 :notes, :status, :created_at, :original_result, :record_kind)""",
+                item,
+            )
+        return {key: value for key, value in item.items() if key != "owner_id"}
+
     def record_review(self, owner_id: str, pending_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         """Append professional review evidence; never changes pending status or calculates tax."""
         if not isinstance(payload, dict):
@@ -206,7 +269,9 @@ class FiscalPendingQueue:
                 review,
             )
         public_review = {key: value for key, value in review.items() if key != "owner_id"}
-        return {**public_review, "status_unchanged": "PENDING_CLASSIFICATION",
+        return {**public_review, "reviewer_identity_status": "DECLARED_NOT_VERIFIED",
+                "professional_registration_verified": False,
+                "status_unchanged": "PENDING_CLASSIFICATION",
                 "reserve_calculated": False, "tax_rate_available": False}
 
     def list_reviews(self, owner_id: str, pending_id: str) -> list[dict[str, Any]]:
@@ -221,7 +286,69 @@ class FiscalPendingQueue:
                 "SELECT * FROM fiscal_pending_reviews WHERE owner_id = ? AND pending_id = ? ORDER BY created_at DESC, review_id DESC",
                 (owner_id, pending_id),
             ).fetchall()
-        return [{key: value for key, value in dict(row).items() if key != "owner_id"} for row in rows]
+        return [{**{key: value for key, value in dict(row).items() if key != "owner_id"},
+                 "reviewer_identity_status": "DECLARED_NOT_VERIFIED",
+                 "professional_registration_verified": False} for row in rows]
+
+    def summary(self, owner_id: str, as_of: date | None = None) -> dict[str, Any]:
+        """Return owner-scoped counts by period; never expose values or calculate tax."""
+        reference_day = as_of or datetime.now(ZoneInfo("America/Sao_Paulo")).date()
+        week_start = date.fromordinal(reference_day.toordinal() - reference_day.weekday())
+        periods = {
+            "day": (reference_day, reference_day),
+            "week": (week_start, reference_day),
+            "month": (reference_day.replace(day=1), reference_day),
+            "year": (reference_day.replace(month=1, day=1), reference_day),
+        }
+        with self._connect() as db:
+            total = int(db.execute(
+                "SELECT COUNT(*) FROM fiscal_reserve_pending_foreign WHERE owner_id = ?",
+                (owner_id,),
+            ).fetchone()[0])
+            kinds = db.execute(
+                """SELECT record_kind, COUNT(*) AS item_count
+                   FROM fiscal_reserve_pending_foreign
+                   WHERE owner_id = ?
+                   GROUP BY record_kind""",
+                (owner_id,),
+            ).fetchall()
+            currencies = db.execute(
+                """SELECT DISTINCT original_currency
+                   FROM fiscal_reserve_pending_foreign
+                   WHERE owner_id = ?
+                   ORDER BY original_currency""",
+                (owner_id,),
+            ).fetchall()
+            period_counts = {}
+            for period_name, (start_day, end_day) in periods.items():
+                row = db.execute(
+                    """SELECT COUNT(*) AS total,
+                              SUM(CASE WHEN record_kind='REALIZED_RESULT' THEN 1 ELSE 0 END) AS realized_results,
+                              SUM(CASE WHEN record_kind='ASSET_AMOUNT' THEN 1 ELSE 0 END) AS asset_amounts
+                       FROM fiscal_reserve_pending_foreign
+                       WHERE owner_id = ? AND occurred_on >= ? AND occurred_on < ?""",
+                    (owner_id, start_day.isoformat(), date.fromordinal(end_day.toordinal() + 1).isoformat()),
+                ).fetchone()
+                period_counts[period_name] = {
+                    "start": start_day.isoformat(),
+                    "end": end_day.isoformat(),
+                    "total": int(row["total"] or 0),
+                    "realized_results": int(row["realized_results"] or 0),
+                    "asset_amounts": int(row["asset_amounts"] or 0),
+                }
+        counts = {str(row["record_kind"]): int(row["item_count"]) for row in kinds}
+        return {
+            "available": True,
+            "as_of": reference_day.isoformat(),
+            "total": total,
+            "realized_results": counts.get("REALIZED_RESULT", 0),
+            "asset_amounts": counts.get("ASSET_AMOUNT", 0),
+            "currencies": [str(row["original_currency"]) for row in currencies],
+            "periods": period_counts,
+            "classification_status": "PENDING_CLASSIFICATION",
+            "included_in_totals": False,
+            "reserve_calculated": False,
+        }
 
     def list_pending(self, owner_id: str, limit: int = 100, offset: int = 0) -> dict[str, Any]:
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:

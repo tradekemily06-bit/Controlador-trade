@@ -100,3 +100,118 @@ def test_migration_refuses_to_reassign_an_existing_owner(tmp_path, monkeypatch):
     db = sqlite3.connect(path)
     assert db.execute("SELECT DISTINCT owner_id FROM fiscal_reserve_entries").fetchall() == [(first_owner,)]
     db.close()
+
+
+def test_migration_adds_signed_result_fields_to_existing_owner_schema(tmp_path, monkeypatch):
+    path = str(tmp_path / "owned.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    owner = migrate_fiscal_schema(path)
+    db = sqlite3.connect(path)
+    db.execute(
+        "INSERT INTO fiscal_reserve_pending_foreign "
+        "(pending_id,owner_id,reference,original_amount,original_currency,instrument,jurisdiction,"
+        "occurred_on,notes,status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        ("p1", owner, "legacy", 10, "USD", "ETF", "US",
+         "2026-11-03", "", "PENDING_CLASSIFICATION", "now"),
+    )
+    db.commit()
+    db.execute("ALTER TABLE fiscal_reserve_pending_foreign DROP COLUMN record_kind")
+    db.execute("ALTER TABLE fiscal_reserve_pending_foreign DROP COLUMN original_result")
+    db.commit()
+    db.close()
+
+    migrate_fiscal_schema(path)
+    db = sqlite3.connect(path)
+    columns = {row[1] for row in db.execute("PRAGMA table_info(fiscal_reserve_pending_foreign)")}
+    assert {"original_result", "record_kind"} <= columns
+    assert db.execute(
+        "SELECT original_result,record_kind FROM fiscal_reserve_pending_foreign WHERE pending_id='p1'"
+    ).fetchone() == (None, "ASSET_AMOUNT")
+    db.close()
+
+def test_rebuild_preserves_signed_results_in_partially_migrated_owner_schema(tmp_path, monkeypatch):
+    path = str(tmp_path / "partially-owned.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    owner = migrate_fiscal_schema(path)
+    db = sqlite3.connect(path)
+    db.execute(
+        "INSERT INTO fiscal_reserve_pending_foreign "
+        "(pending_id,owner_id,reference,original_amount,original_result,record_kind,"
+        "original_currency,instrument,jurisdiction,occurred_on,notes,status,created_at) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("p1", owner, "signed-result", 12.5, -12.5, "REALIZED_RESULT",
+         "EUR", "FUTURES", "PENDING_REVIEW", "2026-11-03", "",
+         "PENDING_CLASSIFICATION", "now"),
+    )
+    # Simulate a partially migrated database: one fiscal table still has its
+    # legacy shape, forcing the atomic rebuild path for all four tables.
+    db.execute("DROP TABLE fiscal_reserve_settings")
+    db.execute(
+        "CREATE TABLE fiscal_reserve_settings(category TEXT PRIMARY KEY, rate REAL NOT NULL)"
+    )
+    db.execute("INSERT INTO fiscal_reserve_settings VALUES('BR_DAY_TRADE',20)")
+    db.commit()
+    db.close()
+
+    assert migrate_fiscal_schema(path) == owner
+    db = sqlite3.connect(path)
+    assert db.execute(
+        "SELECT original_amount,original_result,record_kind FROM "
+        "fiscal_reserve_pending_foreign WHERE pending_id='p1'"
+    ).fetchone() == (12.5, -12.5, "REALIZED_RESULT")
+    assert db.execute("PRAGMA foreign_key_check").fetchall() == []
+    db.close()
+
+
+def test_existing_owner_schema_repairs_missing_default_rate_without_overwriting_custom_rate(tmp_path, monkeypatch):
+    path = str(tmp_path / "owned-missing-rate.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    owner = migrate_fiscal_schema(path)
+    db = sqlite3.connect(path)
+    db.execute(
+        "DELETE FROM fiscal_reserve_settings WHERE owner_id=? AND category='BR_DAY_TRADE'",
+        (owner,),
+    )
+    db.commit()
+    db.close()
+
+    assert migrate_fiscal_schema(path) == owner
+    db = sqlite3.connect(path)
+    assert db.execute(
+        "SELECT rate FROM fiscal_reserve_settings WHERE owner_id=? AND category='BR_DAY_TRADE'",
+        (owner,),
+    ).fetchone() == (20.0,)
+    db.execute(
+        "UPDATE fiscal_reserve_settings SET rate=17.5 WHERE owner_id=? AND category='BR_DAY_TRADE'",
+        (owner,),
+    )
+    db.commit()
+    db.close()
+
+    migrate_fiscal_schema(path)
+    db = sqlite3.connect(path)
+    assert db.execute(
+        "SELECT rate FROM fiscal_reserve_settings WHERE owner_id=? AND category='BR_DAY_TRADE'",
+        (owner,),
+    ).fetchone() == (17.5,)
+    db.close()
+
+def test_migration_refuses_a_different_owner_for_domestic_pending_queue(tmp_path, monkeypatch):
+    from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
+    from finance.fiscal_identity import configured_fiscal_owner_id
+
+    path = str(tmp_path / "domestic-owned.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner-a")
+    owner = configured_fiscal_owner_id()
+    queue = FiscalDomesticPendingQueue(path)
+    queue.add(owner, {
+        "reference": "BR-OWNER-A",
+        "instrument": "ETF",
+        "occurred_on": "2026-11-03",
+    })
+    migrate_fiscal_schema(path)
+
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner-b")
+    with pytest.raises(RuntimeError, match="proprietário da fila brasileira"):
+        migrate_fiscal_schema(path)
+    assert queue.list_pending(owner)["total"] == 1

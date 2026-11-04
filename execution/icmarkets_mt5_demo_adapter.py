@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, time, timezone, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import math
+import hashlib
 from typing import Any
 
 from core.models import Signal
@@ -76,6 +77,16 @@ class ICMarketsMT5DemoAdapter:
                     mt5.shutdown()
                 except Exception:
                     pass
+
+    @staticmethod
+    def _account_fingerprint(account: Any) -> str | None:
+        """Return a stable pseudonymous key; never return the raw login or server."""
+        login = getattr(account, "login", None)
+        server = str(getattr(account, "server", "") or "").strip()
+        if login is None or not str(login).strip() or not server:
+            return None
+        raw = f"{server.casefold()}|{str(login).strip()}".encode("utf-8")
+        return hashlib.sha256(raw).hexdigest()[:32]
 
     @staticmethod
     def _is_demo_account(account: Any, mt5: Any) -> bool:
@@ -167,8 +178,8 @@ class ICMarketsMT5DemoAdapter:
         finally:
             mt5.shutdown()
 
-    def read_closed_deal_candidates(self, lookback_days: int = 30) -> dict[str, Any]:
-        """Return raw DEMO closing deals for human fiscal classification; never books them."""
+    def read_closed_deal_candidates(self, lookback_days: int = 30, *, include_private: bool = False) -> dict[str, Any]:
+        """Return complete, fully closed DEMO position results for human fiscal review."""
         if not isinstance(lookback_days, int) or isinstance(lookback_days, bool) or not 1 <= lookback_days <= 365:
             raise ValueError("lookback_days deve estar entre 1 e 365")
         mt5 = self._module()
@@ -178,54 +189,149 @@ class ICMarketsMT5DemoAdapter:
             account = mt5.account_info()
             if account is None or not self._is_demo_account(account, mt5):
                 raise MT5AdapterError("conta MT5 não confirmada como DEMO; consulta fiscal bloqueada.")
-            end = datetime.now(timezone.utc)
-            start = end - timedelta(days=lookback_days)
             history_fn = getattr(mt5, "history_deals_get", None)
             if not callable(history_fn):
                 raise MT5AdapterError("histórico de negócios MT5 indisponível.")
-            deals = history_fn(start, end)
-            if deals is None:
+            end = datetime.now(timezone.utc)
+            start = end - timedelta(days=lookback_days)
+            recent_deals = history_fn(start, end)
+            if recent_deals is None:
                 raise MT5AdapterError("MT5 não retornou histórico de negócios.")
-            out = getattr(mt5, "DEAL_ENTRY_OUT", None)
-            out_by = getattr(mt5, "DEAL_ENTRY_OUT_BY", None)
-            if out is None:
-                raise MT5AdapterError("MT5 não informou o tipo de negócio de encerramento; consulta bloqueada.")
-            closing_entries = {out}
-            if out_by is not None:
-                closing_entries.add(out_by)
+            entry_in = getattr(mt5, "DEAL_ENTRY_IN", None)
+            entry_out = getattr(mt5, "DEAL_ENTRY_OUT", None)
+            entry_out_by = getattr(mt5, "DEAL_ENTRY_OUT_BY", None)
+            entry_inout = getattr(mt5, "DEAL_ENTRY_INOUT", None)
+            if entry_in is None or entry_out is None:
+                raise MT5AdapterError("MT5 não informou os tipos de entrada/saída; consulta fiscal bloqueada.")
+            closing_entries = {entry_out}
+            if entry_out_by is not None:
+                closing_entries.add(entry_out_by)
+            supported_entries = {entry_in, *closing_entries}
+            open_positions_fn = getattr(mt5, "positions_get", None)
+            if not callable(open_positions_fn):
+                raise MT5AdapterError("MT5 não permite verificar posições ainda abertas.")
+            open_positions = open_positions_fn()
+            if open_positions is None:
+                raise MT5AdapterError("MT5 não confirmou o estado das posições abertas.")
+            open_position_ids = {
+                str(getattr(position, "identifier", None) or getattr(position, "ticket", ""))
+                for position in open_positions
+            }
+            position_ids = {
+                str(getattr(deal, "position_id", ""))
+                for deal in recent_deals
+                if getattr(deal, "entry", None) in closing_entries
+                and str(getattr(deal, "position_id", "")).isdigit()
+                and int(getattr(deal, "position_id", 0) or 0) > 0
+            }
             candidates = []
-            for deal in deals:
-                if getattr(deal, "entry", None) not in closing_entries:
+            withheld = 0
+            for position_id in sorted(position_ids):
+                if position_id in open_position_ids:
+                    withheld += 1
                     continue
-                profit = float(getattr(deal, "profit", 0.0) or 0.0)
-                commission = float(getattr(deal, "commission", 0.0) or 0.0)
-                swap = float(getattr(deal, "swap", 0.0) or 0.0)
-                fee = float(getattr(deal, "fee", 0.0) or 0.0)
-                timestamp = getattr(deal, "time", None)
+                position_deals = history_fn(position=int(position_id))
+                if position_deals is None or not position_deals:
+                    withheld += 1
+                    continue
+                position_deals = tuple(position_deals)
+                if any(getattr(deal, "entry", None) == entry_inout for deal in position_deals):
+                    withheld += 1
+                    continue
+                if any(getattr(deal, "entry", None) not in supported_entries for deal in position_deals):
+                    withheld += 1
+                    continue
+                opening = [deal for deal in position_deals if getattr(deal, "entry", None) == entry_in]
+                closing = [deal for deal in position_deals if getattr(deal, "entry", None) in closing_entries]
+                if not opening or not closing:
+                    withheld += 1
+                    continue
+                try:
+                    opened_volume = sum(float(getattr(deal, "volume", 0.0) or 0.0) for deal in opening)
+                    closed_volume = sum(float(getattr(deal, "volume", 0.0) or 0.0) for deal in closing)
+                    components = {
+                        key: sum(float(getattr(deal, key, 0.0) or 0.0) for deal in position_deals)
+                        for key in ("profit", "commission", "swap", "fee")
+                    }
+                except (TypeError, ValueError, OverflowError):
+                    withheld += 1
+                    continue
+                if (
+                    not math.isfinite(opened_volume)
+                    or not math.isfinite(closed_volume)
+                    or opened_volume <= 0
+                    or closed_volume <= 0
+                    or not math.isclose(opened_volume, closed_volume, rel_tol=0.0, abs_tol=max(1e-8, opened_volume * 1e-6))
+                    or not all(math.isfinite(value) for value in components.values())
+                ):
+                    withheld += 1
+                    continue
+                opening = sorted(opening, key=lambda deal: (
+                    int(getattr(deal, "time_msc", 0) or 0),
+                    int(getattr(deal, "time", 0) or 0),
+                    int(getattr(deal, "ticket", 0) or 0),
+                ))
+                closing = sorted(closing, key=lambda deal: (
+                    int(getattr(deal, "time_msc", 0) or 0),
+                    int(getattr(deal, "time", 0) or 0),
+                    int(getattr(deal, "ticket", 0) or 0),
+                ))
+                first_opening_deal = opening[0]
+                final_deal = closing[-1]
+                opening_timestamp = getattr(first_opening_deal, "time", None)
+                timestamp = getattr(final_deal, "time", None)
+                ticket = str(getattr(final_deal, "ticket", "") or "")
+                if not ticket.isdigit() or not opening_timestamp or not timestamp:
+                    withheld += 1
+                    continue
                 candidates.append({
-                    "ticket": str(getattr(deal, "ticket", "")),
-                    "position_id": str(getattr(deal, "position_id", "")),
-                    "symbol": str(getattr(deal, "symbol", "")),
-                    "volume": float(getattr(deal, "volume", 0.0) or 0.0),
-                    "profit": profit,
-                    "commission": commission,
-                    "swap": swap,
-                    "fee": fee,
-                    "net_result_account_currency": round(profit + commission + swap + fee, 8),
+                    "ticket": ticket,
+                    "position_id": position_id,
+                    "symbol": str(getattr(final_deal, "symbol", "") or ""),
+                    "volume": opened_volume,
+                    **components,
+                    "net_result_account_currency": round(sum(components.values()), 8),
                     "account_currency": str(getattr(account, "currency", "") or "UNKNOWN"),
-                    "occurred_at_utc": datetime.fromtimestamp(timestamp, timezone.utc).isoformat() if timestamp else None,
+                    "opened_at_utc": datetime.fromtimestamp(int(opening_timestamp), timezone.utc).isoformat(),
+                    "occurred_at_utc": datetime.fromtimestamp(int(timestamp), timezone.utc).isoformat(),
+                    "deal_count": len(position_deals),
+                    "closing_deal_count": len(closing),
+                    "result_scope": "FULL_CLOSED_POSITION",
                 })
             return {
                 "source": "IC Markets MT5 DEMO",
                 "account_currency": str(getattr(account, "currency", "") or "UNKNOWN"),
+                **({"account_fingerprint": self._account_fingerprint(account)} if include_private else {}),
                 "lookback_days": lookback_days,
                 "count": len(candidates),
+                "withheld_incomplete_positions": withheld,
                 "candidates": candidates,
                 "auto_registered": False,
-                "notice": "Valores na moeda da conta por negócio de saída: lucro + comissão + swap + taxa desse negócio. Custos registrados em negócios anteriores da mesma posição podem não estar incluídos. Exigem conferência do histórico completo, classificação e conversão documentada para BRL; nenhum lançamento foi criado.",
+                "notice": "Resultado agregado de todos os negócios da posição totalmente encerrada (entrada, saídas parciais, lucro, comissão, swap e taxas). Posições abertas, histórico incompleto, volume não conciliado ou reversões foram retidos para conferência; nenhum lançamento foi criado.",
             }
         finally:
             mt5.shutdown()
+
+    def read_closed_deal_candidate(self, ticket: str) -> dict[str, Any]:
+        """Re-read one exact final closing ticket and its complete DEMO position history."""
+        raw_ticket = str(ticket or "").strip()
+        if not raw_ticket.isdigit() or len(raw_ticket) > 20:
+            raise ValueError("ticket MT5 inválido")
+        preview = self.read_closed_deal_candidates(lookback_days=365, include_private=True)
+        matches = [
+            item for item in preview.get("candidates", [])
+            if str(item.get("ticket", "")) == raw_ticket
+        ]
+        if len(matches) != 1:
+            raise MT5AdapterError("ticket não encontrado como encerramento integral e conciliado de posição no histórico DEMO.")
+        return {
+            **matches[0],
+            "source": preview.get("source"),
+            "account_currency": preview.get("account_currency"),
+            "account_fingerprint": preview.get("account_fingerprint"),
+            "auto_registered": False,
+            "notice": preview.get("notice"),
+        }
 
     def query_order(self, external_id: str) -> ExternalOrderObservation:
         """Read external DEMO order/deal status for P121; never resubmits."""
