@@ -338,6 +338,69 @@ def show_fiscal() -> None:
             col.caption(f"{int(period_data.get('results', 0))} resultado(s) · sem cálculo")
         if domestic_items:
             st.dataframe([{"Data": item.get("occurred_on"), "Ativo": item.get("instrument"), "Categoria candidata": item.get("category_candidate") or "Não informada", "Mercado": item.get("market_scope"), "Resultado (R$)": item.get("realized_result_brl") if item.get("realized_result_brl") is not None else "—", "Status": "PENDENTE DE CLASSIFICAÇÃO"} for item in domestic_items], use_container_width=True, hide_index=True)
+            st.markdown("##### Revisão documental · Brasil")
+            st.caption("A revisão registra evidências declaradas. O sistema não verifica identidade ou registro profissional, não muda a classificação e não calcula reserva.")
+            review_options = {
+                item["pending_id"]: f"{item.get('occurred_on')} · {item.get('instrument')} · {item.get('reference')}"
+                for item in domestic_items if item.get("pending_id")
+            }
+            if review_options:
+                selected_pending_id = st.selectbox(
+                    "Pendência para revisão",
+                    options=list(review_options),
+                    format_func=lambda value: review_options[value],
+                    key="domestic_review_pending_id",
+                )
+                with st.form("domestic_review_form"):
+                    review_category = st.selectbox(
+                        "Classificação candidata revisada",
+                        ["BR_DAY_TRADE", "BR_COMMON_EXCHANGE", "BR_FII_FIAGRO", "BR_FIXED_INCOME", "BR_CRYPTO", "BR_FUTURES_OPTIONS"],
+                    )
+                    review_jurisdiction = st.text_input("Jurisdição confirmada pelo revisor", value="Brasil", max_chars=120)
+                    reviewer_name = st.text_input("Nome do profissional", max_chars=160)
+                    reviewer_role = st.selectbox("Atuação profissional", ["contador", "consultor tributário", "profissional tributário"])
+                    professional_registration = st.text_input("Registro profissional informado", max_chars=100)
+                    evidence_reference = st.text_input("Referência da evidência / parecer", max_chars=500)
+                    reviewed_on = st.date_input("Data da revisão", key="domestic_review_date")
+                    review_notes = st.text_area("Observações da revisão", max_chars=2000)
+                    review_submit = st.form_submit_button("Guardar evidência da revisão")
+                if review_submit:
+                    try:
+                        review_payload = {
+                            "candidate_classification": review_category,
+                            "confirmed_jurisdiction": review_jurisdiction,
+                            "reviewer_name": reviewer_name,
+                            "reviewer_role": reviewer_role,
+                            "professional_registration": professional_registration,
+                            "evidence_reference": evidence_reference,
+                            "reviewed_on": reviewed_on.isoformat(),
+                            "review_notes": review_notes,
+                        }
+                        api(
+                            "/api/fiscal-reserve/domestic-pending/" + urllib.parse.quote(selected_pending_id) + "/reviews",
+                            "POST", review_payload,
+                        )
+                        st.success("Evidência guardada. A operação continua pendente, sem cálculo ou inclusão nos totais.")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(str(exc))
+                try:
+                    review_data = api(
+                        "/api/fiscal-reserve/domestic-pending/" + urllib.parse.quote(selected_pending_id) + "/reviews"
+                    )
+                    if review_data.get("reviews"):
+                        st.dataframe([{
+                            "Revisor declarado": item.get("reviewer_name"),
+                            "Atuação": item.get("reviewer_role"),
+                            "Registro informado": item.get("professional_registration"),
+                            "Evidência": item.get("evidence_reference"),
+                            "Data": item.get("reviewed_on"),
+                            "Identidade": item.get("reviewer_identity_status"),
+                        } for item in review_data["reviews"]], use_container_width=True, hide_index=True)
+                    else:
+                        st.caption("Nenhuma evidência de revisão registrada para esta pendência.")
+                except Exception as exc:
+                    st.warning(f"Histórico de revisão indisponível. {exc}")
         else:
             st.caption("Nenhuma pendência brasileira cadastrada.")
     except Exception as exc:
