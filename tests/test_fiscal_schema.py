@@ -140,10 +140,12 @@ def test_rebuild_preserves_signed_results_in_partially_migrated_owner_schema(tmp
     db.execute(
         "INSERT INTO fiscal_reserve_pending_foreign "
         "(pending_id,owner_id,reference,original_amount,original_result,record_kind,"
-        "original_currency,instrument,jurisdiction,occurred_on,notes,status,created_at) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "original_currency,instrument,jurisdiction,occurred_on,tax_residency_at_event,"
+        "income_nature,event_type,fx_conversion_method,notes,status,created_at) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         ("p1", owner, "signed-result", 12.5, -12.5, "REALIZED_RESULT",
-         "EUR", "FUTURES", "PENDING_REVIEW", "2026-11-03", "",
+         "EUR", "FUTURES", "PENDING_REVIEW", "2026-11-03", "BRAZIL",
+         "CAPITAL_GAIN", "DISPOSAL", "PTAX_SELL", "",
          "PENDING_CLASSIFICATION", "now"),
     )
     # Simulate a partially migrated database: one fiscal table still has its
@@ -161,7 +163,7 @@ def test_rebuild_preserves_signed_results_in_partially_migrated_owner_schema(tmp
     assert db.execute(
         "SELECT original_amount,original_result,record_kind,tax_residency_at_event,income_nature,event_type,fx_conversion_method FROM "
         "fiscal_reserve_pending_foreign WHERE pending_id='p1'"
-    ).fetchone() == (12.5, -12.5, "REALIZED_RESULT", "NOT_INFORMED", "NOT_INFORMED", "NOT_INFORMED", "NOT_INFORMED")
+    ).fetchone() == (12.5, -12.5, "REALIZED_RESULT", "BRAZIL", "CAPITAL_GAIN", "DISPOSAL", "PTAX_SELL")
     assert db.execute("PRAGMA foreign_key_check").fetchall() == []
     db.close()
 
