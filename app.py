@@ -50,7 +50,7 @@ FISCAL_RESERVE = FiscalReserve(str(FISCAL_RESERVE_DB))
 FISCAL_PENDING_QUEUE = FiscalPendingQueue(str(FISCAL_RESERVE_DB))
 ASSISTANT_DB = Path(os.environ.get('CONTROLADOR_ASSISTANT_DB', str(RUNTIME_DIR / 'assistant.sqlite3')))
 ASSISTANT_STORE = AssistantConversationStore(ASSISTANT_DB)
-ASSISTANT = EcosystemAssistant(ASSISTANT_STORE, SERVICE, FISCAL_RESERVE)
+ASSISTANT = EcosystemAssistant(ASSISTANT_STORE, SERVICE, FISCAL_RESERVE, fiscal_pending_queue=FISCAL_PENDING_QUEUE)
 
 
 def _audit(environ, request_id: str, status: int) -> None:
