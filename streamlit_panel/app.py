@@ -170,6 +170,21 @@ def show_fiscal() -> None:
         st.session_state.fiscal_history_offset = 0
     st.subheader("Reserva Fiscal")
     st.caption("Planejamento e separação estimada. Registros estrangeiros não classificados ficam fora dos totais; nenhuma alíquota genérica é aplicada.")
+    with st.expander("Categorias fiscais e estado da automação", expanded=False):
+        try:
+            catalog = api("/api/fiscal-reserve").get("classification_catalog", {})
+            st.caption("Catálogo de organização, não é cálculo tributário. Categorias sem automação permanecem pendentes e fora dos totais.")
+            for scope, title in (("brazil", "Brasil"), ("foreign", "Exterior")):
+                st.markdown("**" + title + "**")
+                for category, details in catalog.get(scope, {}).items():
+                    status = details.get("calculation_status", "NOT_AUTOMATED")
+                    enabled = bool(details.get("booking_enabled", False))
+                    state_label = "Lançamento parcial habilitado" if enabled else "Pendente · sem cálculo automático"
+                    st.write(f"- **{details.get('label', category)}** — {state_label}")
+                    for limitation in details.get("limitations", []):
+                        st.caption(limitation)
+        except Exception:
+            st.warning("Catálogo de categorias indisponível no momento. Nenhuma categoria adicional foi habilitada.")
     try:
         summary = api("/api/fiscal-reserve?limit=50&offset=" + str(int(st.session_state.fiscal_history_offset)))
         br = summary.get("categories", {}).get("BR_DAY_TRADE", {})
