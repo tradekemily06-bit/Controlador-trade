@@ -66,6 +66,9 @@ def migrate_fiscal_schema(database_path: str) -> str:
                     db.execute("ALTER TABLE fiscal_reserve_pending_foreign ADD COLUMN original_result REAL")
                 if "record_kind" not in pending_columns:
                     db.execute("ALTER TABLE fiscal_reserve_pending_foreign ADD COLUMN record_kind TEXT NOT NULL DEFAULT 'ASSET_AMOUNT'")
+                for column in ("tax_residency_at_event", "income_nature", "event_type", "fx_conversion_method"):
+                    if column not in pending_columns:
+                        db.execute(f"ALTER TABLE fiscal_reserve_pending_foreign ADD COLUMN {column} TEXT NOT NULL DEFAULT 'NOT_INFORMED'")
                 stored_owners = set()
                 scoped_tables = list(TABLES)
                 if "fiscal_reserve_pending_domestic" in existing:
@@ -155,6 +158,10 @@ def migrate_fiscal_schema(database_path: str) -> str:
                 status TEXT NOT NULL CHECK(status = 'PENDING_CLASSIFICATION'),
                 original_result REAL,
                 record_kind TEXT NOT NULL DEFAULT 'ASSET_AMOUNT',
+                tax_residency_at_event TEXT NOT NULL DEFAULT 'NOT_INFORMED',
+                income_nature TEXT NOT NULL DEFAULT 'NOT_INFORMED',
+                event_type TEXT NOT NULL DEFAULT 'NOT_INFORMED',
+                fx_conversion_method TEXT NOT NULL DEFAULT 'NOT_INFORMED',
                 created_at TEXT NOT NULL,
                 UNIQUE(owner_id, pending_id),
                 UNIQUE(owner_id, reference)
@@ -201,16 +208,18 @@ def migrate_fiscal_schema(database_path: str) -> str:
             pending_columns = set(row.keys())
             original_result = row["original_result"] if "original_result" in pending_columns else None
             record_kind = row["record_kind"] if "record_kind" in pending_columns else "ASSET_AMOUNT"
+            declared = {name: row[name] if name in pending_columns and row[name] else "NOT_INFORMED" for name in ("tax_residency_at_event", "income_nature", "event_type", "fx_conversion_method")}
             db.execute("""
                 INSERT INTO fiscal_reserve_pending_foreign_new
                 (pending_id,owner_id,reference,original_amount,original_currency,instrument,
                  jurisdiction,occurred_on,fx_rate,fx_date,fx_source,notes,status,
-                 original_result,record_kind,created_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                 original_result,record_kind,tax_residency_at_event,income_nature,event_type,fx_conversion_method,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (row["pending_id"], owner_id, row["reference"], row["original_amount"],
                   row["original_currency"], row["instrument"], row["jurisdiction"],
                   row["occurred_on"], row["fx_rate"], row["fx_date"], row["fx_source"],
-                  row["notes"], row["status"], original_result, record_kind, row["created_at"]))
+                  row["notes"], row["status"], original_result, record_kind, declared["tax_residency_at_event"],
+                  declared["income_nature"], declared["event_type"], declared["fx_conversion_method"], row["created_at"]))
         for row in reviews:
             db.execute("""
                 INSERT INTO fiscal_pending_reviews_new

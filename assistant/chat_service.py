@@ -69,6 +69,10 @@ class EcosystemAssistant:
         except AssistantUnavailableError as exc:
             return {
                 "available": False,
+                "credentials_configured": False,
+                "client_initialized": False,
+                "connection_tested": False,
+                "status": "NOT_CONFIGURED",
                 "message": str(exc),
                 "read_only": True,
                 "may_execute_orders": False,
@@ -78,6 +82,10 @@ class EcosystemAssistant:
         except Exception:
             return {
                 "available": False,
+                "credentials_configured": bool(os.getenv("OPENAI_API_KEY", "").strip()),
+                "client_initialized": False,
+                "connection_tested": False,
+                "status": "CLIENT_INITIALIZATION_FAILED",
                 "message": "Provedor do Assistente indisponível.",
                 "read_only": True,
                 "may_execute_orders": False,
@@ -86,9 +94,13 @@ class EcosystemAssistant:
             }
         return {
             "available": True,
+            "credentials_configured": True,
+            "client_initialized": True,
+            "connection_tested": False,
+            "status": "CONFIGURED_NOT_TESTED",
+            "message": "Credenciais configuradas; conexão com a API ainda não testada.",
             "provider": "OpenAI API",
             "model": self.model,
-            "connection_tested": False,
             "read_only": True,
             "may_execute_orders": False,
             "may_enable_real": False,

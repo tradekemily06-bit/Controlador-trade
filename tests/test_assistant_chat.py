@@ -347,6 +347,10 @@ def test_assistant_readiness_reports_missing_server_key_without_exposing_secrets
  assistant = EcosystemAssistant(AssistantConversationStore(tmp_path/"assistant-readiness.sqlite"), S(), F())
  status = assistant.readiness()
  assert status["available"] is False
+ assert status["credentials_configured"] is False
+ assert status["client_initialized"] is False
+ assert status["connection_tested"] is False
+ assert status["status"] == "NOT_CONFIGURED"
  assert "chave OpenAI ausente" in status["message"]
  assert "OPENAI_API_KEY" not in status["message"]
  assert status["read_only"] is True
@@ -362,6 +366,10 @@ def test_assistant_readiness_reports_configured_provider_without_returning_key(t
  assert status["available"] is True
  assert status["provider"] == "OpenAI API"
  assert status["model"] == assistant.model
+ assert status["credentials_configured"] is True
+ assert status["client_initialized"] is True
  assert status["connection_tested"] is False
+ assert status["status"] == "CONFIGURED_NOT_TESTED"
+ assert "ainda não testada" in status["message"]
  assert "secret-test-key" not in str(status)
  assert status["read_only"] is True

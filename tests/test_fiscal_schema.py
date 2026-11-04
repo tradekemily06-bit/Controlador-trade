@@ -117,16 +117,19 @@ def test_migration_adds_signed_result_fields_to_existing_owner_schema(tmp_path, 
     db.commit()
     db.execute("ALTER TABLE fiscal_reserve_pending_foreign DROP COLUMN record_kind")
     db.execute("ALTER TABLE fiscal_reserve_pending_foreign DROP COLUMN original_result")
+    for column in ("tax_residency_at_event", "income_nature", "event_type", "fx_conversion_method"):
+        db.execute(f"ALTER TABLE fiscal_reserve_pending_foreign DROP COLUMN {column}")
     db.commit()
     db.close()
 
     migrate_fiscal_schema(path)
     db = sqlite3.connect(path)
     columns = {row[1] for row in db.execute("PRAGMA table_info(fiscal_reserve_pending_foreign)")}
-    assert {"original_result", "record_kind"} <= columns
+    assert {"original_result", "record_kind", "tax_residency_at_event", "income_nature", "event_type", "fx_conversion_method"} <= columns
     assert db.execute(
-        "SELECT original_result,record_kind FROM fiscal_reserve_pending_foreign WHERE pending_id='p1'"
-    ).fetchone() == (None, "ASSET_AMOUNT")
+        "SELECT original_result,record_kind,tax_residency_at_event,income_nature,event_type,fx_conversion_method "
+        "FROM fiscal_reserve_pending_foreign WHERE pending_id='p1'"
+    ).fetchone() == (None, "ASSET_AMOUNT", "NOT_INFORMED", "NOT_INFORMED", "NOT_INFORMED", "NOT_INFORMED")
     db.close()
 
 def test_rebuild_preserves_signed_results_in_partially_migrated_owner_schema(tmp_path, monkeypatch):
@@ -137,10 +140,12 @@ def test_rebuild_preserves_signed_results_in_partially_migrated_owner_schema(tmp
     db.execute(
         "INSERT INTO fiscal_reserve_pending_foreign "
         "(pending_id,owner_id,reference,original_amount,original_result,record_kind,"
-        "original_currency,instrument,jurisdiction,occurred_on,notes,status,created_at) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "original_currency,instrument,jurisdiction,occurred_on,tax_residency_at_event,"
+        "income_nature,event_type,fx_conversion_method,notes,status,created_at) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         ("p1", owner, "signed-result", 12.5, -12.5, "REALIZED_RESULT",
-         "EUR", "FUTURES", "PENDING_REVIEW", "2026-11-03", "",
+         "EUR", "FUTURES", "PENDING_REVIEW", "2026-11-03", "BRAZIL",
+         "CAPITAL_GAIN", "DISPOSAL", "PTAX_SELL", "",
          "PENDING_CLASSIFICATION", "now"),
     )
     # Simulate a partially migrated database: one fiscal table still has its
@@ -156,9 +161,9 @@ def test_rebuild_preserves_signed_results_in_partially_migrated_owner_schema(tmp
     assert migrate_fiscal_schema(path) == owner
     db = sqlite3.connect(path)
     assert db.execute(
-        "SELECT original_amount,original_result,record_kind FROM "
+        "SELECT original_amount,original_result,record_kind,tax_residency_at_event,income_nature,event_type,fx_conversion_method FROM "
         "fiscal_reserve_pending_foreign WHERE pending_id='p1'"
-    ).fetchone() == (12.5, -12.5, "REALIZED_RESULT")
+    ).fetchone() == (12.5, -12.5, "REALIZED_RESULT", "BRAZIL", "CAPITAL_GAIN", "DISPOSAL", "PTAX_SELL")
     assert db.execute("PRAGMA foreign_key_check").fetchall() == []
     db.close()
 

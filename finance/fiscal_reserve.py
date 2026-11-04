@@ -149,7 +149,15 @@ class FiscalReserve:
             raise ValueError(f"{field} excede o limite permitido")
         return round(amount, 2)
 
+    @staticmethod
+    def _require_owner(owner_id: str) -> str:
+        owner = str(owner_id or "").strip()
+        if not owner or len(owner) > 160:
+            raise ValueError("identidade proprietária obrigatória e inválida")
+        return owner
+
     def settings(self, owner_id: str) -> dict[str, float]:
+        owner_id = self._require_owner(owner_id)
         with self._connect() as db:
             rows = db.execute(
                 "SELECT category, rate FROM fiscal_reserve_settings WHERE owner_id = ? ORDER BY category",
@@ -158,6 +166,7 @@ class FiscalReserve:
         return {row["category"]: float(row["rate"]) for row in rows}
 
     def update_rate(self, owner_id: str, category: str, rate: Any) -> dict[str, float]:
+        owner_id = self._require_owner(owner_id)
         category = self._category(category)
         if category == "FOREIGN_FINANCIAL_ASSET":
             raise ValueError("percentual internacional genérico não pode ser alterado sem classificação validada")
@@ -173,6 +182,7 @@ class FiscalReserve:
         return self.settings(owner_id)
 
     def update_rates(self, owner_id: str, rates: dict[str, Any]) -> dict[str, float]:
+        owner_id = self._require_owner(owner_id)
         if not isinstance(rates, dict) or set(rates) != {"BR_DAY_TRADE"}:
             raise ValueError("somente o percentual brasileiro pode ser alterado nesta etapa")
         parsed = {}
@@ -189,6 +199,7 @@ class FiscalReserve:
         return self.settings(owner_id)
 
     def record_realized_result(self, owner_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        owner_id = self._require_owner(owner_id)
         if not isinstance(payload, dict):
             raise ValueError("payload deve ser um objeto")
         category = self._category(payload.get("category"))
@@ -258,6 +269,7 @@ class FiscalReserve:
         history_limit: int = 100,
         history_offset: int = 0,
     ) -> dict[str, Any]:
+        owner_id = self._require_owner(owner_id)
         if isinstance(history_limit, bool) or not isinstance(history_limit, int) or not 1 <= history_limit <= 500:
             raise ValueError("history_limit deve estar entre 1 e 500")
         if isinstance(history_offset, bool) or not isinstance(history_offset, int) or history_offset < 0:
@@ -347,6 +359,15 @@ class FiscalReserve:
                 "returned": len(history),
                 "total": history_total,
                 "has_more": history_offset + len(history) < history_total,
+            },
+            "reserve_semantics": {
+                "kind": "PLANNING_ESTIMATE_ONLY",
+                "tax_liability_confirmed": False,
+                "monthly_tax_assessment": False,
+                "monthly_loss_offsets_calculated": False,
+                "irrf_credits_calculated": False,
+                "positive_entry_only": True,
+                "description": "Estimativa de separação financeira por lançamento positivo; não é apuração mensal nem imposto devido.",
             },
             "limitations": [
                 "Estimativa de planejamento; não representa imposto apurado ou devido.",

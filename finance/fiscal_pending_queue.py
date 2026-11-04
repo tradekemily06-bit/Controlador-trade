@@ -11,6 +11,12 @@ from typing import Any, Iterator
 
 
 CURRENCIES = frozenset({"USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "BRL"})
+FIELD_OPTIONS = {
+    "tax_residency_at_event": frozenset({"NOT_INFORMED", "BRAZIL", "FOREIGN", "DUAL_OR_UNCERTAIN"}),
+    "income_nature": frozenset({"NOT_INFORMED", "CAPITAL_GAIN", "INVESTMENT_INCOME", "TRADING_RESULT", "DIVIDEND", "INTEREST", "RENTAL_INCOME", "OTHER"}),
+    "event_type": frozenset({"NOT_INFORMED", "ACQUISITION", "DISPOSAL", "DIVIDEND_RECEIPT", "INTEREST_RECEIPT", "REDEMPTION", "EXCHANGE", "TRANSFER", "OTHER"}),
+    "fx_conversion_method": frozenset({"NOT_INFORMED", "NOT_CONVERTED", "PTAX_SELL", "PTAX_BUY", "BROKER_STATEMENT", "BANK_RECEIPT", "OTHER_DOCUMENTED"}),
+}
 
 
 class FiscalPendingQueue:
@@ -111,6 +117,13 @@ class FiscalPendingQueue:
             raise ValueError(f"{field} deve ser positivo e finito")
         return round(number, 8)
 
+    @staticmethod
+    def _declared_field(payload: dict[str, Any], field: str) -> str:
+        value = str(payload.get(field) or "NOT_INFORMED").strip().upper()
+        if value not in FIELD_OPTIONS[field]:
+            raise ValueError(f"{field} possui opção inválida")
+        return value
+
     def add(self, owner_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         owner_id = self._require_owner(owner_id)
         if not isinstance(payload, dict):
@@ -141,22 +154,25 @@ class FiscalPendingQueue:
                 raise ValueError("fx_source deve ter até 200 caracteres")
         elif fx_date or fx_source:
             raise ValueError("fx_rate é obrigatório quando forem informados dados cambiais")
+        declared = {field: self._declared_field(payload, field) for field in FIELD_OPTIONS}
         notes = str(payload.get("notes") or "").strip()[:1000]
         item = {
             "pending_id": str(uuid.uuid4()), "owner_id": owner_id, "reference": reference,
             "original_amount": amount, "original_currency": currency,
             "instrument": instrument, "jurisdiction": jurisdiction,
             "occurred_on": occurred_on, "fx_rate": fx_rate, "fx_date": fx_date,
-            "fx_source": fx_source or None, "notes": notes,
+            "fx_source": fx_source or None, **declared, "notes": notes,
             "status": "PENDING_CLASSIFICATION",
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         with self._connect() as db:
             db.execute("INSERT INTO fiscal_reserve_pending_foreign "
                        "(pending_id, owner_id, reference, original_amount, original_currency, instrument, "
-                       "jurisdiction, occurred_on, fx_rate, fx_date, fx_source, notes, status, created_at) "
+                       "jurisdiction, occurred_on, fx_rate, fx_date, fx_source, tax_residency_at_event, income_nature, "
+                       "event_type, fx_conversion_method, notes, status, created_at) "
                        "VALUES (:pending_id, :owner_id, :reference, :original_amount, :original_currency, :instrument, "
-                       ":jurisdiction, :occurred_on, :fx_rate, :fx_date, :fx_source, :notes, :status, :created_at)", item)
+                       ":jurisdiction, :occurred_on, :fx_rate, :fx_date, :fx_source, :tax_residency_at_event, "
+                       ":income_nature, :event_type, :fx_conversion_method, :notes, :status, :created_at)", item)
         return {key: value for key, value in item.items() if key != "owner_id"}
 
     def add_realized_result(self, owner_id: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -199,22 +215,25 @@ class FiscalPendingQueue:
                 raise ValueError("fx_source deve ter até 200 caracteres")
         elif fx_date or fx_source:
             raise ValueError("fx_rate é obrigatório quando forem informados dados cambiais")
+        declared = {field: self._declared_field(payload, field) for field in FIELD_OPTIONS}
         item = {
             "pending_id": str(uuid.uuid4()), "owner_id": owner_id, "reference": reference,
             "original_amount": abs(result), "original_result": result, "record_kind": "REALIZED_RESULT",
             "original_currency": currency, "instrument": instrument, "jurisdiction": jurisdiction,
             "occurred_on": occurred_on, "fx_rate": fx_rate, "fx_date": fx_date,
-            "fx_source": fx_source or None, "notes": str(payload.get("notes") or "").strip()[:1000],
+            "fx_source": fx_source or None, **declared, "notes": str(payload.get("notes") or "").strip()[:1000],
             "status": "PENDING_CLASSIFICATION", "created_at": datetime.now(timezone.utc).isoformat(),
         }
         with self._connect() as db:
             db.execute(
                 """INSERT INTO fiscal_reserve_pending_foreign
                 (pending_id, owner_id, reference, original_amount, original_currency, instrument,
-                 jurisdiction, occurred_on, fx_rate, fx_date, fx_source, notes, status, created_at,
+                 jurisdiction, occurred_on, fx_rate, fx_date, fx_source, tax_residency_at_event,
+                 income_nature, event_type, fx_conversion_method, notes, status, created_at,
                  original_result, record_kind)
                 VALUES (:pending_id, :owner_id, :reference, :original_amount, :original_currency,
                  :instrument, :jurisdiction, :occurred_on, :fx_rate, :fx_date, :fx_source,
+                 :tax_residency_at_event, :income_nature, :event_type, :fx_conversion_method,
                  :notes, :status, :created_at, :original_result, :record_kind)""",
                 item,
             )

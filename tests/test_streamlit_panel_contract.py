@@ -162,11 +162,44 @@ def test_streamlit_assistant_displays_provider_readiness_without_exposing_creden
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert 'api("/api/assistant/status")' in source
     assert "Assistente indisponível:" in source
-    assert "Provedor configurado" in source
+    assert "Credenciais configuradas; conexão com a API ainda não testada." in source
 
 
 def test_streamlit_disables_assistant_chat_when_provider_is_unavailable():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert "assistant_available = False" in source
     assert "assistant_available = readiness.get(\"available\") is True" in source
+    assert "disabled=not assistant_available" in source
+
+
+def test_streamlit_foreign_pending_forms_capture_structured_evidence_and_display_it():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    for field in (
+        "tax_residency_at_event",
+        "income_nature",
+        "event_type",
+        "fx_conversion_method",
+    ):
+        assert field in source
+    assert "Residência fiscal declarada na data" in source
+    assert "Natureza do rendimento / valor" in source
+    assert "Tipo de evento" in source
+    assert "Método de conversão cambial" in source
+    assert "Residência declarada" in source
+    assert "Método cambial" in source
+    assert "NOT_INFORMED" in source
+
+
+def test_streamlit_fiscal_summary_labels_accumulated_amount_as_planning_estimate():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'c.metric("Estimativa acumulada · Brasil"' in source
+    assert "percentual de planejamento configurado" in source
+    assert "ESTIMATIVA DE PLANEJAMENTO — não é imposto apurado ou devido." in source
+    assert 'summary.get("reserve_semantics", {})' in source
+
+
+def test_streamlit_assistant_distinguishes_configured_credentials_from_tested_connection():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'readiness.get("message")' in source
+    assert "Credenciais configuradas; conexão com a API ainda não testada." in source
     assert "disabled=not assistant_available" in source

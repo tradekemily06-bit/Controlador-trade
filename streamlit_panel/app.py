@@ -129,7 +129,7 @@ def show_assistant() -> None:
         if not assistant_available:
             st.warning("Assistente indisponível: " + str(readiness.get("message") or "configuração do provedor ausente"))
         else:
-            st.caption("Provedor configurado · " + str(readiness.get("model") or "modelo configurado") + " · conexão ainda não testada")
+            st.caption(str(readiness.get("message") or "Credenciais configuradas; conexão com a API ainda não testada.") + " · " + str(readiness.get("model") or "modelo configurado"))
     except Exception as exc:
         st.warning(f"Não foi possível verificar a configuração do Assistente. {exc}")
     st.warning("Privacidade: sua pergunta e um resumo dos dados operacionais disponíveis são enviados pelo servidor à OpenAI para gerar a resposta. A chave permanece no servidor. Excluir uma conversa remove o histórico local, mas não solicita a exclusão de dados já transmitidos à OpenAI. Não envie senhas, códigos de acesso ou dados bancários sensíveis.")
@@ -226,8 +226,10 @@ def show_fiscal() -> None:
         a, b, c = st.columns(3)
         a.metric("Reserva estimada · Brasil", money(br.get("reserve_amount_brl")))
         b.metric("Resultado realizado · Brasil", money(br.get("realized_result_brl")))
-        c.metric("Total atualmente calculado", money(summary.get("total_reserved_brl")))
-        st.caption(f"Referência: {summary.get('as_of', '—')} · Brasil day trade · percentual aplicado: {br.get('rate', '—')}%")
+        c.metric("Estimativa acumulada · Brasil", money(summary.get("total_reserved_brl")))
+        st.caption(f"Referência: {summary.get('as_of', '—')} · Brasil day trade · percentual de planejamento configurado: {br.get('rate', '—')}%")
+        semantics = summary.get("reserve_semantics", {})
+        st.warning("ESTIMATIVA DE PLANEJAMENTO — não é imposto apurado ou devido. " + str(semantics.get("description") or "Não calcula compensação mensal de prejuízos nem créditos de IRRF."))
         st.info(f"Exterior: {foreign.get('entries', 0)} registro(s) legado(s) · classificação pendente · fora dos totais.")
         foreign_pending = summary.get("foreign_pending", {})
         if foreign_pending.get("available") is False:
@@ -421,6 +423,10 @@ def show_fiscal() -> None:
 
     st.markdown("#### Exterior · pendente de classificação")
     st.caption("O registro abaixo guarda evidências; não calcula imposto nem entra na reserva.")
+    residency_options = {"NOT_INFORMED": "Não informado", "BRAZIL": "Brasil", "FOREIGN": "Exterior", "DUAL_OR_UNCERTAIN": "Dupla ou incerta"}
+    income_options = {"NOT_INFORMED": "Não informado", "CAPITAL_GAIN": "Ganho de capital", "INVESTMENT_INCOME": "Rendimento de investimento", "TRADING_RESULT": "Resultado de negociação", "DIVIDEND": "Dividendo", "INTEREST": "Juros", "RENTAL_INCOME": "Aluguel", "OTHER": "Outro"}
+    event_options = {"NOT_INFORMED": "Não informado", "ACQUISITION": "Aquisição", "DISPOSAL": "Alienação / venda", "DIVIDEND_RECEIPT": "Recebimento de dividendo", "INTEREST_RECEIPT": "Recebimento de juros", "REDEMPTION": "Resgate", "EXCHANGE": "Troca / permuta", "TRANSFER": "Transferência", "OTHER": "Outro"}
+    fx_method_options = {"NOT_INFORMED": "Não informado", "NOT_CONVERTED": "Ainda não convertido", "PTAX_SELL": "PTAX venda", "PTAX_BUY": "PTAX compra", "BROKER_STATEMENT": "Extrato da corretora", "BANK_RECEIPT": "Comprovante bancário", "OTHER_DOCUMENTED": "Outro método documentado"}
     with st.form("foreign_pending_form"):
         col1, col2 = st.columns(2)
         reference = col1.text_input("Referência / comprovante", max_chars=160)
@@ -431,14 +437,18 @@ def show_fiscal() -> None:
         col5, col6 = st.columns(2)
         jurisdiction = col5.text_input("Jurisdição", placeholder="EUA, Brasil, outro")
         occurred_on = col6.date_input("Data da operação", key="foreign_date")
+        tax_residency = st.selectbox("Residência fiscal declarada na data", list(residency_options), format_func=lambda value: residency_options[value], key="foreign_tax_residency")
+        income_nature = st.selectbox("Natureza do rendimento / valor", list(income_options), format_func=lambda value: income_options[value], key="foreign_income_nature")
+        event_type = st.selectbox("Tipo de evento", list(event_options), format_func=lambda value: event_options[value], key="foreign_event_type")
         fx_rate = st.number_input("Cotação cambial (opcional)", min_value=0.0, step=0.0001, format="%.8f")
         fx_date = st.date_input("Data da cotação", key="foreign_fx_date")
         fx_source = st.text_input("Fonte da cotação (opcional)", max_chars=200)
+        fx_conversion_method = st.selectbox("Método de conversão cambial", list(fx_method_options), format_func=lambda value: fx_method_options[value], key="foreign_fx_method")
         notes = st.text_area("Observações", max_chars=1000, key="foreign_notes")
         submitted = st.form_submit_button("Guardar como pendente")
     if submitted:
         try:
-            pending_payload = {"reference": reference, "original_amount": amount, "original_currency": currency, "instrument": instrument, "jurisdiction": jurisdiction, "occurred_on": occurred_on.isoformat(), "notes": notes}
+            pending_payload = {"reference": reference, "original_amount": amount, "original_currency": currency, "instrument": instrument, "jurisdiction": jurisdiction, "occurred_on": occurred_on.isoformat(), "tax_residency_at_event": tax_residency, "income_nature": income_nature, "event_type": event_type, "fx_conversion_method": fx_conversion_method, "notes": notes}
             if fx_rate or fx_source:
                 if not fx_rate or not fx_source:
                     raise ValueError("Para guardar a cotação, informe valor e fonte.")
@@ -458,14 +468,18 @@ def show_fiscal() -> None:
         instrument_signed = st.text_input("Instrumento")
         jurisdiction_signed = st.text_input("Jurisdição")
         date_signed = st.date_input("Data do resultado", key="signed_foreign_date")
+        residency_signed = st.selectbox("Residência fiscal declarada na data", list(residency_options), format_func=lambda value: residency_options[value], key="signed_tax_residency")
+        income_signed = st.selectbox("Natureza do resultado", list(income_options), format_func=lambda value: income_options[value], key="signed_income_nature")
+        event_signed = st.selectbox("Tipo de evento", list(event_options), format_func=lambda value: event_options[value], key="signed_event_type")
         fx_signed = st.number_input("Cotação documentada (opcional)", min_value=0.0, format="%.8f")
         fx_date_signed = st.date_input("Data da cotação", key="signed_foreign_fx_date")
         fx_source_signed = st.text_input("Fonte da cotação")
+        fx_method_signed = st.selectbox("Método de conversão cambial", list(fx_method_options), format_func=lambda value: fx_method_options[value], key="signed_fx_method")
         notes_signed = st.text_area("Observações")
         submit_signed = st.form_submit_button("Guardar como pendente")
     if submit_signed:
         try:
-            signed_payload = {"reference": ref_signed, "original_result": amount_signed, "original_currency": currency_signed, "instrument": instrument_signed, "jurisdiction": jurisdiction_signed, "occurred_on": date_signed.isoformat(), "notes": notes_signed}
+            signed_payload = {"reference": ref_signed, "original_result": amount_signed, "original_currency": currency_signed, "instrument": instrument_signed, "jurisdiction": jurisdiction_signed, "occurred_on": date_signed.isoformat(), "tax_residency_at_event": residency_signed, "income_nature": income_signed, "event_type": event_signed, "fx_conversion_method": fx_method_signed, "notes": notes_signed}
             if fx_signed or fx_source_signed:
                 if not fx_signed or not fx_source_signed:
                     raise ValueError("Informe cotação e fonte juntas.")
@@ -548,7 +562,7 @@ def show_fiscal() -> None:
         items = pending_data.get("items", [])
         st.markdown("#### Pendências registradas")
         if items:
-            st.dataframe([{"Data": item.get("occurred_on"), "Instrumento": item.get("instrument"), "Jurisdição": item.get("jurisdiction"), "Valor original": item.get("original_result") if item.get("record_kind") == "REALIZED_RESULT" else item.get("original_amount"), "Tipo": item.get("record_kind", "ASSET_AMOUNT"), "Moeda": item.get("original_currency"), "Status": "PENDENTE DE CLASSIFICAÇÃO"} for item in items], use_container_width=True, hide_index=True)
+            st.dataframe([{"Data": item.get("occurred_on"), "Instrumento": item.get("instrument"), "Jurisdição": item.get("jurisdiction"), "Residência declarada": residency_options.get(item.get("tax_residency_at_event", "NOT_INFORMED"), "Não informado"), "Natureza": income_options.get(item.get("income_nature", "NOT_INFORMED"), "Não informado"), "Evento": event_options.get(item.get("event_type", "NOT_INFORMED"), "Não informado"), "Método cambial": fx_method_options.get(item.get("fx_conversion_method", "NOT_INFORMED"), "Não informado"), "Valor original": item.get("original_result") if item.get("record_kind") == "REALIZED_RESULT" else item.get("original_amount"), "Tipo": item.get("record_kind", "ASSET_AMOUNT"), "Moeda": item.get("original_currency"), "Status": "PENDENTE DE CLASSIFICAÇÃO"} for item in items], use_container_width=True, hide_index=True)
             pending_ids = [item.get("pending_id") for item in items]
             selected_id = st.selectbox("Selecionar pendência para revisão", pending_ids, format_func=lambda value: next((f"{x.get('instrument')} · {x.get('jurisdiction')} · {x.get('original_result') if x.get('record_kind') == 'REALIZED_RESULT' else x.get('original_amount')} {x.get('original_currency')}" for x in items if x.get("pending_id") == value), value))
             with st.expander("Registrar evidência de revisão profissional"):
