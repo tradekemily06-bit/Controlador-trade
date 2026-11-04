@@ -216,3 +216,12 @@ def test_streamlit_foreign_pending_queue_exposes_auditable_professional_review()
     assert "Identidade" in source
     assert "NÃO VERIFICADA" in source
     assert "A operação continua pendente, sem cálculo ou inclusão nos totais." in source
+
+
+
+def test_legacy_foreign_review_uses_catalog_backed_selector():
+    from pathlib import Path
+
+    source = Path("streamlit_panel/app.py").read_text(encoding="utf-8")
+    assert 'classification = st.selectbox("Classificação candidata", ["FOREIGN_FINANCIAL_INVESTMENT", "FOREIGN_ENTITY_CONTROLLED", "FOREIGN_CRYPTO"])' in source
+    assert 'classification = st.text_input("Classificação sugerida")' not in source
