@@ -6,15 +6,25 @@ Esta é a interface Streamlit do Controlador-Trader destinada a reunir o painel 
 
 No diretório raiz do repositório:
 
-1. Instale as dependências do painel:
+1. Instale as dependências do runtime (inclui o cliente OpenAI usado pelo Assistente):
+
+   `py -3.12 -m pip install -r requirements.txt`
+
+2. Instale as dependências do painel Streamlit:
 
    `py -3.12 -m pip install -r streamlit_panel/requirements.txt`
 
-2. Inicie o runtime do Ecossistema em um primeiro PowerShell:
+3. Se este computador Windows também for hospedar a conexão MT5 DEMO, instale o pacote Python do MetaTrader 5 e confirme que o terminal MT5 está instalado e em execução:
+
+   `py -3.12 -m pip install MetaTrader5`
+
+   Esta dependência é específica do ambiente Windows com terminal MT5; instalar o Streamlit, por si só, não instala nem conecta o terminal.
+
+4. Inicie o runtime do Ecossistema em um primeiro PowerShell:
 
    `$env:CONTROLADOR_REMOTE_ACCESS_REQUIRED="false"; $env:CONTROLADOR_LOCAL_MUTATIONS_ALLOWED="true"; py -3.12 app.py`
 
-3. Em um segundo PowerShell, na mesma pasta do projeto, inicie o painel:
+5. Em um segundo PowerShell, na mesma pasta do projeto, inicie o painel:
 
    `py -3.12 -m streamlit run streamlit_panel/app.py --server.address 127.0.0.1 --server.port 8501`
 
