@@ -48,6 +48,7 @@ def test_fiscal_and_assistant_read_routes_ignore_forged_owner_parameters(
         "reference": "OWNER-A-ONLY",
         "occurred_on": "2026-11-03",
     })
+    reserve.update_rate("single:other-owner", "BR_DAY_TRADE", 20)
     reserve.record_realized_result("single:other-owner", {
         "category": "BR_DAY_TRADE",
         "realized_result_brl": 900,
