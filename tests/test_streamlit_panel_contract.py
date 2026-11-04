@@ -124,7 +124,7 @@ def test_streamlit_domestic_pending_can_distinguish_zero_from_missing_result():
 
 def test_streamlit_documents_missing_reference_images_outside_the_panel():
     readme = (PANEL_DIR / "README.md").read_text(encoding="utf-8")
-    assert "não é a reprodução visual aprovada do Figma" in readme
+    assert "O Figma é somente referência visual" in readme
     assert "não estão presentes neste branch" in readme
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert "não é a reprodução visual aprovada do Figma" not in source
