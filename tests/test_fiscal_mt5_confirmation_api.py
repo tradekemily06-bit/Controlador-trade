@@ -81,6 +81,17 @@ def test_mt5_confirmation_revalidates_and_registers_once(monkeypatch, tmp_path):
     assert body["entry"]["realized_result_brl"] == 250.0
     assert body["entry"]["reference"] == "MT5-DEMO:" + ("a" * 32) + ":7654321"
     assert body["entry"]["reserve_amount_brl"] == 50.0
+    assert body["classification_status"] == "USER_DECLARED_PENDING_REVIEW"
+    assert body["classification_source"] == "USER_DECLARATION"
+    assert body["independent_market_eligibility_verified"] is False
+    assert body["tax_liability_confirmed"] is False
+    assert body["reserve_is_estimate"] is True
+    evidence = json.loads(body["entry"]["notes"])
+    assert evidence["tax_classification_status"] == "USER_DECLARED_PENDING_REVIEW"
+    assert evidence["market_scope_source"] == "USER_DECLARATION_NOT_INDEPENDENTLY_VERIFIED"
+    assert evidence["independent_market_eligibility_verified"] is False
+    assert evidence["tax_liability_confirmed"] is False
+    assert evidence["reserve_semantics"] == "PLANNING_ESTIMATE_ONLY"
     assert adapter.calls == ["7654321"]
 
     status, body, adapter = call_confirm(monkeypatch, tmp_path, payload)
