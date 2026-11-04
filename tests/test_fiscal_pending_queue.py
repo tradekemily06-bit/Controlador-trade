@@ -208,3 +208,48 @@ def test_pending_amount_and_fx_rate_reject_boolean_values(tmp_path):
             pass
         else:
             raise AssertionError(f"boolean must not be accepted for {key}")
+
+
+def test_foreign_realized_profit_and_loss_keep_their_original_sign_and_stay_pending(tmp_path):
+    queue = make_queue(tmp_path / "fiscal.sqlite3")
+    profit = queue.add_realized_result(OWNER, {
+        "reference": "FOREIGN-RESULT-PROFIT",
+        "original_result": 125.75,
+        "original_currency": "USD",
+        "instrument": "ETF",
+        "jurisdiction": "US",
+        "occurred_on": "2026-11-03",
+    })
+    loss = queue.add_realized_result(OWNER, {
+        "reference": "FOREIGN-RESULT-LOSS",
+        "original_result": -42.25,
+        "original_currency": "EUR",
+        "instrument": "Forex",
+        "jurisdiction": "EU",
+        "occurred_on": "2026-11-03",
+    })
+    assert profit["original_result"] == 125.75
+    assert profit["record_kind"] == "REALIZED_RESULT"
+    assert loss["original_result"] == -42.25
+    assert loss["original_amount"] == 42.25
+    assert loss["record_kind"] == "REALIZED_RESULT"
+    assert profit["status"] == loss["status"] == "PENDING_CLASSIFICATION"
+    assert queue.list_pending(OWNER)["total"] == 2
+
+
+def test_foreign_realized_result_rejects_boolean_and_non_finite_values(tmp_path):
+    queue = make_queue(tmp_path / "fiscal.sqlite3")
+    for value in (True, float("inf"), float("-inf"), float("nan")):
+        try:
+            queue.add_realized_result(OWNER, {
+                "reference": f"BAD-{value}",
+                "original_result": value,
+                "original_currency": "USD",
+                "instrument": "ETF",
+                "jurisdiction": "US",
+                "occurred_on": "2026-11-03",
+            })
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("invalid signed result must be rejected")
