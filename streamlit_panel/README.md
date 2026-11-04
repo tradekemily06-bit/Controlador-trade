@@ -32,8 +32,11 @@ A autorização local acima é somente para desenvolvimento no próprio computad
 - Não coloque tokens ou chaves em arquivos do repositório.
 - A tela REAL permanece desabilitada. A prévia não envia ordens.
 
-## Limites conhecidos
+## Limites conhecidos — fidelidade visual
 
-- As imagens originais são referências imutáveis; o JSON reproduz a especificação de navegação e tokens visuais. As imagens contêm barras do Android/visualizador e não são usadas como tela final.
+- O JSON contém a estrutura de navegação e tokens visuais extraídos das referências.
+- **As cinco imagens originais listadas no JSON (8870.jpg, 8871.jpg, 8872.jpg, 8873.jpg e 8878.jpg não estão presentes neste branch do repositório.** A árvore do GitHub foi verificada; por isso, a aplicação não consegue exibir nem comparar as capturas originais.
+- A interface atual é somente uma área funcional de desenvolvimento dos módulos. Ela **não é a reprodução visual aprovada do Figma**, não deve ser usada como validação de fidelidade e não substitui o painel do MT5.
+- Não modificar nem recriar as imagens ou o arquivo original do Figma. A validação visual só poderá avançar quando as cinco imagens de referência forem disponibilizadas no projeto, mantendo os arquivos originais intactos.
 - A prévia Streamlit não é o overlay nativo do gráfico MT5. A integração visual nativa no MT5 é uma etapa distinta.
 - Outros módulos aparecem como seleção, mas só Assistente e Reserva Fiscal têm chamadas funcionais conectadas nesta prévia.
