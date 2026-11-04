@@ -265,11 +265,11 @@ class FiscalReserve:
     def summary(
         self,
         owner_id: str,
-        owner_id = self._require_owner(owner_id)
         as_of: date | None = None,
         history_limit: int = 100,
         history_offset: int = 0,
     ) -> dict[str, Any]:
+        owner_id = self._require_owner(owner_id)
         if isinstance(history_limit, bool) or not isinstance(history_limit, int) or not 1 <= history_limit <= 500:
             raise ValueError("history_limit deve estar entre 1 e 500")
         if isinstance(history_offset, bool) or not isinstance(history_offset, int) or history_offset < 0:
