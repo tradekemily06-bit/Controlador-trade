@@ -253,3 +253,38 @@ def test_foreign_realized_result_rejects_boolean_and_non_finite_values(tmp_path)
             pass
         else:
             raise AssertionError("invalid signed result must be rejected")
+
+
+def test_summary_counts_entire_queue_and_is_scoped_to_owner(tmp_path):
+    queue = make_queue(tmp_path / "fiscal.sqlite3")
+    for number in range(501):
+        queue.add_realized_result(OWNER, {
+            "reference": f"SUMMARY-OWNER-A-{number}",
+            "original_result": -1.0 if number % 2 else 2.0,
+            "original_currency": "USD" if number % 2 else "EUR",
+            "instrument": "Forex",
+            "jurisdiction": "PENDING_REVIEW",
+            "occurred_on": "2026-11-03",
+        })
+    queue.add("another-owner", {
+        **sample("SUMMARY-OWNER-B-ONLY"),
+        "fx_rate": None,
+        "fx_date": None,
+        "fx_source": None,
+    })
+
+    summary = queue.summary(OWNER)
+    assert summary == {
+        "total": 501,
+        "realized_results": 501,
+        "asset_amounts": 0,
+        "currencies": ["EUR", "USD"],
+        "classification_status": "PENDING_CLASSIFICATION",
+        "included_in_totals": False,
+        "reserve_calculated": False,
+    }
+    other = queue.summary("another-owner")
+    assert other["total"] == 1
+    assert other["asset_amounts"] == 1
+    assert other["realized_results"] == 0
+    assert other["currencies"] == ["USD"]
