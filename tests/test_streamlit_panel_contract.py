@@ -211,7 +211,9 @@ def test_streamlit_assistant_distinguishes_configured_credentials_from_tested_co
 
 def test_streamlit_foreign_pending_queue_exposes_auditable_professional_review():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
-    assert 'api("/api/fiscal-reserve/pending?limit=100&offset=0")' in source
+    assert 'foreign_pending_data = api(f"/api/fiscal-reserve/pending?limit=50&offset={foreign_offset}")' in source
+    assert "foreign_pending_next" in source
+    assert "foreign_pending_previous" in source
     assert '"/api/fiscal-reserve/pending/"' in source
     assert "Revisão documental · Exterior" in source
     assert "FOREIGN_FINANCIAL_INVESTMENT" in source
@@ -291,3 +293,31 @@ def test_streamlit_readme_identifies_the_streamlit_panel_as_user_facing_and_figm
     assert "O Figma é somente referência visual" in readme
     assert "painel de uso pretendido" in readme
     assert "Assistente do Ecossistema é acrescentado como módulo funcional próprio em MAIS / ADMIN" in readme
+
+
+
+def test_streamlit_operational_modules_use_live_read_only_runtime_endpoints():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    for route in (
+        "/api/health",
+        "/api/statistics",
+        "/api/risk",
+        "/api/notifications",
+        "/api/connections",
+        "/api/memory?limit=50",
+        "/api/learning",
+        "/api/onboarding",
+        "/api/preferences",
+    ):
+        assert route in source
+    assert "show_readonly_module(module)" in source
+    assert "st.empty()" not in source
+
+
+def test_streamlit_market_analysis_requires_demo_confirmation_and_never_enables_execution():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'api("/api/runtime/analysis", "POST"' in source
+    assert 'confirmed = st.checkbox("Confirmo que esta análise é somente para estudo em DEMO/SIMULAÇÃO.")' in source
+    assert '"confirmed": True' in source
+    assert '"filters_ok": True' in source
+    assert 'Execução permitida: NÃO' in source
