@@ -321,3 +321,16 @@ def test_streamlit_market_analysis_requires_demo_confirmation_and_never_enables_
     assert '"confirmed": True' in source
     assert '"filters_ok": True' in source
     assert 'Execução permitida: NÃO' in source
+
+
+
+def test_streamlit_operational_screens_render_human_readable_summaries_without_raw_json_dump():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert "Central de Notificações" in source
+    assert 'data.get("critical_count", 0)' in source
+    assert "Limite de perda diária" in source
+    assert "Kill Switch" in source
+    assert "Fontes externas exigem validação" in source
+    assert "Guia de primeiro uso" in source
+    assert "alterações de preferências ainda não estão habilitadas" in source
+    assert "st.json(data)" not in source
