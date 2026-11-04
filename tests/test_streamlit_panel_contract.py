@@ -104,3 +104,11 @@ def test_streamlit_fiscal_catalog_reuses_the_single_summary_request():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert source.count('api("/api/fiscal-reserve?limit=50&offset="') == 1
     assert 'api("/api/fiscal-reserve")' not in source
+
+def test_streamlit_keeps_brazilian_pending_items_separate_from_foreign_queue():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert "/api/fiscal-reserve/domestic-pending" in source
+    assert "/api/fiscal-reserve/domestic-pending/summary" in source
+    assert "Brasil · pendente de classificação" in source
+    assert "Exterior · pendente de classificação" in source
+    assert "fila brasileira indisponível" in source
