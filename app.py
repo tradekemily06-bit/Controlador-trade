@@ -318,7 +318,11 @@ def application(environ, start_response):
             if path == "/api/assistant/history" and method == "GET":
                 query = parse_qs(environ.get("QUERY_STRING") or "").get("conversation_id", [""])[-1]
                 if not query: raise ValueError("conversation_id obrigatório")
-                return _json_response(start_response, HTTPStatus.OK, {"messages": ASSISTANT.history(identity, query)}, request_id, environ)
+                try:
+                    messages = ASSISTANT.history(identity, query)
+                except PermissionError:
+                    return _json_response(start_response, HTTPStatus.NOT_FOUND, {"error": "conversa não encontrada"}, request_id, environ)
+                return _json_response(start_response, HTTPStatus.OK, {"messages": messages}, request_id, environ)
             if path == "/api/assistant/chat" and method == "POST":
                 data = _read_json(environ)
                 return _json_response(start_response, HTTPStatus.OK, ASSISTANT.ask(identity, data.get("message"), fiscal_owner_id, data.get("conversation_id")), request_id, environ)
