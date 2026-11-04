@@ -22,8 +22,12 @@ def test_streamlit_panel_connects_assistant_and_fiscal_to_existing_api():
         "/api/fiscal-reserve/results",
     ):
         assert route in source
-    assert "/api/assistant/conversations" not in source
-    assert "/api/assistant/history" not in source
+    assert "/api/assistant/conversations" in source
+    assert "/api/assistant/history?conversation_id=" in source
+    assert '"DELETE"' in source
+    assert "Conversas anteriores" in source
+    assert "Abrir conversa" in source
+    assert "Excluir conversa" in source
     assert "histórico local do Assistente no servidor do Ecossistema" in source
     assert "CONTROLADOR_TRUSTED_IDENTITY_HEADER" in source
     assert "REAL permanece bloqueado" in source or "REAL" in source
