@@ -318,9 +318,11 @@ def test_streamlit_market_analysis_requires_demo_confirmation_and_never_enables_
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert 'api("/api/runtime/analysis", "POST"' in source
     assert 'confirmed = st.checkbox("Confirmo que esta análise é somente para estudo em DEMO/SIMULAÇÃO.")' in source
-    assert '"confirmed": True' in source
-    assert '"filters_ok": True' in source
-    assert 'Execução permitida: NÃO' in source
+    analysis_screen = source[source.index("def show_market_analysis"):source.index("def show_readonly_module")]
+    assert '"confirmed": True' not in analysis_screen
+    assert '"filters_ok": True' not in analysis_screen
+    assert "preferências de segurança do runtime são respeitadas" in analysis_screen
+    assert 'Execução permitida: NÃO' in analysis_screen
 
 
 
