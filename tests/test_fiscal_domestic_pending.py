@@ -34,7 +34,6 @@ def test_domestic_pending_keeps_signed_result_but_never_calculates_reserve(tmp_p
 
     assert item["realized_result_brl"] == -125.75
     assert item["status"] == "PENDING_CLASSIFICATION"
-    assert item["reserve_calculated"] if "reserve_calculated" in item else True
     listing = queue.list_pending("owner-a")
     assert listing["items"][0]["realized_result_brl"] == -125.75
     assert listing["included_in_totals"] is False
