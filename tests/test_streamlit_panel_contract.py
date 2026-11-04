@@ -131,7 +131,7 @@ def test_streamlit_marks_mt5_tax_classification_as_user_declared_pending_review(
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert "DECLARAÇÃO DO USUÁRIO · REVISÃO PENDENTE" in source
     assert 'evidence.get("tax_classification_status") == "USER_DECLARED_PENDING_REVIEW"' in source
-    assert "a estimativa não confirma obrigação tributária" in source
+    assert "fila brasileira separada, sem cálculo e fora dos totais" in source
 
 
 def test_streamlit_unverified_mt5_history_never_displays_reserve_rate_or_amount():
