@@ -85,6 +85,7 @@ def test_mt5_confirmation_revalidates_and_registers_once(monkeypatch, tmp_path):
     assert body["pending"]["reference"] == "MT5-DEMO:" + ("a" * 32) + ":7654321"
     assert body["pending"]["category_candidate"] == "BR_DAY_TRADE"
     assert body["pending"]["instrument"] == "WINZ26"
+    assert body["pending"]["market_scope"] == "BR_ELIGIBLE_MARKET"
     assert body["classification_status"] == "PENDING_CLASSIFICATION"
     assert body["classification_source"] == "USER_DECLARATION"
     assert body["independent_market_eligibility_verified"] is False
@@ -103,6 +104,7 @@ def test_mt5_confirmation_revalidates_and_registers_once(monkeypatch, tmp_path):
     evidence = json.loads(body["pending"]["notes"])
     assert evidence["tax_classification_status"] == "USER_DECLARED_PENDING_REVIEW"
     assert evidence["market_scope_source"] == "USER_DECLARATION_NOT_INDEPENDENTLY_VERIFIED"
+    assert evidence["declared_market_scope"] == "BR_ELIGIBLE_MARKET"
     assert evidence["independent_market_eligibility_verified"] is False
     assert evidence["tax_liability_confirmed"] is False
     assert evidence["reserve_semantics"] == "PLANNING_ESTIMATE_ONLY"
