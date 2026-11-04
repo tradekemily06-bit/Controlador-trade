@@ -80,7 +80,7 @@ class ICMarketsMT5DemoAdapter:
 
     @staticmethod
     def _account_fingerprint(account: Any) -> str | None:
-        """Return a stable, non-reversible account key without exposing login/server."""
+        """Return a stable pseudonymous key; never return the raw login or server."""
         login = getattr(account, "login", None)
         server = str(getattr(account, "server", "") or "").strip()
         if login is None or not str(login).strip() or not server:
@@ -178,7 +178,7 @@ class ICMarketsMT5DemoAdapter:
         finally:
             mt5.shutdown()
 
-    def read_closed_deal_candidates(self, lookback_days: int = 30) -> dict[str, Any]:
+    def read_closed_deal_candidates(self, lookback_days: int = 30, *, include_private: bool = False) -> dict[str, Any]:
         """Return raw DEMO closing deals for human fiscal classification; never books them."""
         if not isinstance(lookback_days, int) or isinstance(lookback_days, bool) or not 1 <= lookback_days <= 365:
             raise ValueError("lookback_days deve estar entre 1 e 365")
@@ -229,7 +229,7 @@ class ICMarketsMT5DemoAdapter:
             return {
                 "source": "IC Markets MT5 DEMO",
                 "account_currency": str(getattr(account, "currency", "") or "UNKNOWN"),
-                "account_fingerprint": self._account_fingerprint(account),
+                **({"account_fingerprint": self._account_fingerprint(account)} if include_private else {}),
                 "lookback_days": lookback_days,
                 "count": len(candidates),
                 "candidates": candidates,
@@ -244,7 +244,7 @@ class ICMarketsMT5DemoAdapter:
         raw_ticket = str(ticket or "").strip()
         if not raw_ticket.isdigit() or len(raw_ticket) > 20:
             raise ValueError("ticket MT5 inválido")
-        preview = self.read_closed_deal_candidates(lookback_days=365)
+        preview = self.read_closed_deal_candidates(lookback_days=365, include_private=True)
         matches = [
             item for item in preview.get("candidates", [])
             if str(item.get("ticket", "")) == raw_ticket
