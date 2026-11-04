@@ -116,7 +116,14 @@ class ICMarketsMT5DemoAdapter:
         return math.isclose(steps, round(steps), rel_tol=0.0, abs_tol=1e-9)
 
     def read_operational_state(self) -> OperationalState:
-        """Read a fail-closed DEMO operational snapshot from MT5."""
+        """Read a fail-closed DEMO operational snapshot from MT5.
+
+        Daily P&L includes deal profit, commission, swap and fee. Operation
+        counts are deduplicated by position identifier; a partial close is
+        not counted as a second trade. If MT5 omits identifiers or the
+        position history is insufficient to establish a completed trade,
+        the consecutive-loss field remains unknown and risk gates fail closed.
+        """
         mt5 = self._module()
         if not mt5.initialize():
             raise MT5AdapterError(f"MT5 indisponível: {self._last_error(mt5)}")
@@ -124,40 +131,160 @@ class ICMarketsMT5DemoAdapter:
             account = mt5.account_info()
             if account is None or not self._is_demo_account(account, mt5):
                 raise MT5AdapterError("conta MT5 não confirmada como DEMO; leitura bloqueada.")
+
             now = datetime.now(timezone.utc)
             risk_day_now = now.astimezone(self._risk_day_zone)
             risk_day_start = datetime.combine(
                 risk_day_now.date(), time.min, tzinfo=self._risk_day_zone
             )
             start = risk_day_start.astimezone(timezone.utc)
+
+            open_positions = net_position = gross_position_volume = exposure = None
+            open_position_ids: set[str] = set()
+            positions_known = False
+            positions_fn = getattr(mt5, "positions_get", None)
+            positions = positions_fn() if callable(positions_fn) else None
+            if positions is not None:
+                positions = tuple(positions)
+                positions_known = True
+                open_positions = len(positions)
+                buy_type = getattr(mt5, "POSITION_TYPE_BUY", 0)
+                net_position = float(sum(
+                    (1.0 if getattr(position, "type", 0) == buy_type else -1.0)
+                    * float(getattr(position, "volume", 0.0))
+                    for position in positions
+                ))
+                gross_position_volume = float(sum(
+                    abs(float(getattr(position, "volume", 0.0)))
+                    for position in positions
+                ))
+                exposure = float(sum(
+                    abs(
+                        float(getattr(position, "volume", 0.0))
+                        * float(getattr(position, "price_current", 0.0))
+                    )
+                    for position in positions
+                ))
+                for position in positions:
+                    identifier = getattr(position, "identifier", None)
+                    if identifier is None:
+                        identifier = getattr(position, "ticket", None)
+                    if identifier is None or not str(identifier).strip():
+                        positions_known = False
+                    else:
+                        open_position_ids.add(str(identifier))
+
             realized_pnl = realized_loss_today = trades_today = consecutive_losses = None
             history_fn = getattr(mt5, "history_deals_get", None)
             if callable(history_fn):
                 deals = history_fn(start, now)
                 if deals is not None:
-                    out = getattr(mt5, "DEAL_ENTRY_OUT", None)
-                    out_by = getattr(mt5, "DEAL_ENTRY_OUT_BY", None)
-                    closed = [d for d in deals if out is None or getattr(d, "entry", None) in (out, out_by)]
-                    profits = [float(getattr(d, "profit", 0.0)) for d in closed]
-                    realized_pnl = float(sum(profits))
-                    realized_loss_today = float(sum(-profit for profit in profits if profit < 0))
-                    trades_today = len(closed)
-                    losses = 0
-                    for deal in reversed(closed):
-                        profit = float(getattr(deal, "profit", 0.0))
-                        if profit < 0: losses += 1
-                        elif profit > 0: break
-                    consecutive_losses = losses
-            positions_fn = getattr(mt5, "positions_get", None)
-            positions = positions_fn() if callable(positions_fn) else None
-            open_positions = net_position = gross_position_volume = exposure = None
-            if positions is not None:
-                positions = tuple(positions)
-                open_positions = len(positions)
-                buy_type = getattr(mt5, "POSITION_TYPE_BUY", 0)
-                net_position = float(sum((1.0 if getattr(p, "type", 0) == buy_type else -1.0) * float(getattr(p, "volume", 0.0)) for p in positions))
-                gross_position_volume = float(sum(abs(float(getattr(p, "volume", 0.0))) for p in positions))
-                exposure = float(sum(abs(float(getattr(p, "volume", 0.0)) * float(getattr(p, "price_current", 0.0))) for p in positions))
+                    deals = tuple(deals)
+                    entry_in = getattr(mt5, "DEAL_ENTRY_IN", None)
+                    entry_out = getattr(mt5, "DEAL_ENTRY_OUT", None)
+                    entry_out_by = getattr(mt5, "DEAL_ENTRY_OUT_BY", None)
+                    entry_inout = getattr(mt5, "DEAL_ENTRY_INOUT", None)
+                    closing_entries = {value for value in (entry_out, entry_out_by) if value is not None}
+
+                    def deal_cashflow(deal):
+                        total = 0.0
+                        for field in ("profit", "commission", "swap", "fee"):
+                            value = getattr(deal, field, 0.0)
+                            if (
+                                isinstance(value, bool)
+                                or not isinstance(value, (int, float))
+                                or not math.isfinite(float(value))
+                            ):
+                                return None
+                            total += float(value)
+                        return total
+
+                    cashflows = [deal_cashflow(deal) for deal in deals]
+                    if all(value is not None for value in cashflows):
+                        realized_pnl = float(sum(cashflows))
+                        realized_loss_today = max(0.0, -realized_pnl)
+
+                    identifiers = []
+                    entries_valid = True
+                    for deal in deals:
+                        identifier = getattr(deal, "position_id", None)
+                        if identifier is None:
+                            identifier = getattr(deal, "position", None)
+                        if identifier is None or not str(identifier).strip():
+                            entries_valid = False
+                            identifiers.append(None)
+                        else:
+                            identifiers.append(str(identifier))
+
+                    if entries_valid:
+                        trades_today = len(set(identifiers))
+                    grouped = {}
+                    for index, (deal, identifier, cashflow) in enumerate(zip(deals, identifiers, cashflows)):
+                        if identifier is None:
+                            continue
+                        grouped.setdefault(identifier, []).append((index, deal, cashflow))
+
+                    closed_ids = {
+                        identifier
+                        for identifier, rows in grouped.items()
+                        if any(getattr(deal, "entry", None) in closing_entries for _, deal, _ in rows)
+                    }
+                    if not closed_ids:
+                        consecutive_losses = 0 if entries_valid else None
+                    elif (
+                        not entries_valid
+                        or not positions_known
+                        or entry_in is None
+                        or entry_inout is not None and any(
+                            getattr(deal, "entry", None) == entry_inout for deal in deals
+                        )
+                    ):
+                        consecutive_losses = None
+                    else:
+                        completed = []
+                        incomplete = False
+                        for identifier in closed_ids:
+                            if identifier in open_position_ids:
+                                continue
+                            rows = grouped[identifier]
+                            if not any(getattr(deal, "entry", None) == entry_in for _, deal, _ in rows):
+                                # The opening leg may predate today's history window;
+                                # its fees are unknown, so the final trade result is unknown.
+                                incomplete = True
+                                continue
+                            if any(value is None for _, _, value in rows):
+                                incomplete = True
+                                continue
+                            close_rows = [
+                                (index, deal)
+                                for index, deal, _ in rows
+                                if getattr(deal, "entry", None) in closing_entries
+                            ]
+                            if not close_rows:
+                                continue
+                            last_index, last_close = max(
+                                close_rows,
+                                key=lambda pair: (
+                                    getattr(pair[1], "time_msc", None)
+                                    if isinstance(getattr(pair[1], "time_msc", None), (int, float))
+                                    else getattr(pair[1], "time", pair[0])
+                                ),
+                            )
+                            net_result = sum(value for _, _, value in rows)
+                            completed.append((last_index, net_result))
+                        if incomplete:
+                            consecutive_losses = None
+                        else:
+                            streak = 0
+                            for _, net_result in sorted(completed, key=lambda item: item[0], reverse=True):
+                                if net_result < 0:
+                                    streak += 1
+                                elif net_result > 0:
+                                    break
+                                else:
+                                    break
+                            consecutive_losses = streak
+
             balance = getattr(account, "balance", None)
             equity = getattr(account, "equity", None)
             unrealized = getattr(account, "profit", None)
