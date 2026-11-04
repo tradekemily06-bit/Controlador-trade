@@ -45,9 +45,12 @@ class FakeMT5:
         if kwargs.get("ticket") == 456:
             return ()
         return (
-            SimpleNamespace(entry=self.DEAL_ENTRY_OUT, profit=8.0),
-            SimpleNamespace(entry=self.DEAL_ENTRY_OUT, profit=-3.0),
-            SimpleNamespace(entry=self.DEAL_ENTRY_OUT, profit=-5.0),
+            SimpleNamespace(entry=self.DEAL_ENTRY_IN, position_id=100, profit=0.0, commission=-0.5, swap=0.0, fee=0.0, time=100),
+            SimpleNamespace(entry=self.DEAL_ENTRY_OUT, position_id=100, profit=4.0, commission=-0.1, swap=0.0, fee=0.0, time=200),
+            # Two partial exits from one position must count as one operation.
+            SimpleNamespace(entry=self.DEAL_ENTRY_OUT, position_id=100, profit=-5.0, commission=-0.1, swap=0.0, fee=0.0, time=300),
+            SimpleNamespace(entry=self.DEAL_ENTRY_IN, position_id=200, profit=0.0, commission=-0.5, swap=0.0, fee=0.0, time=400),
+            SimpleNamespace(entry=self.DEAL_ENTRY_OUT, position_id=200, profit=-5.0, commission=-0.1, swap=0.0, fee=0.0, time=500),
         )
 
     def history_orders_get(self, *args, **kwargs):
@@ -58,7 +61,7 @@ class FakeMT5:
 
     def positions_get(self):
         self.calls.append("positions_get")
-        return (SimpleNamespace(type=self.POSITION_TYPE_BUY, volume=0.10, price_current=100.0),)
+        return (SimpleNamespace(type=self.POSITION_TYPE_BUY, volume=0.10, price_current=100.0, identifier=999),)
 
     def symbol_select(self, symbol, enabled):
         self.calls.append(("symbol_select", symbol, enabled))
@@ -151,9 +154,9 @@ def test_read_operational_state_uses_mt5_observations():
 
     assert state.balance == 1000.0
     assert state.equity == 1015.0
-    assert state.realized_pnl == 0.0
-    assert state.realized_loss_today == 8.0
-    assert state.trades_today == 3
+    assert state.realized_pnl == -7.3
+    assert state.realized_loss_today == 7.3
+    assert state.trades_today == 2
     assert state.consecutive_losses == 2
     assert state.open_positions == 1
     assert state.net_position == 0.10
