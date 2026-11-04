@@ -271,9 +271,20 @@ def test_streamlit_does_not_fill_unimplemented_modules_with_placeholder_copy():
     assert "A integração funcional deste módulo ainda não foi habilitada nesta prévia." not in source
 
 
-def test_streamlit_leverage_control_is_an_enabled_toggle_without_status_copy():
+def test_streamlit_leverage_control_persists_only_the_preference_without_execution_authority():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
-    assert 'st.checkbox("Alavancagem", value=False, key="leverage_enabled")' in source
+    assert 'st.checkbox(' in source
+    assert '"Alavancagem",' in source
+    assert 'key="leverage_enabled",' in source
+    assert 'on_change=save_leverage_preference,' in source
+    assert '"/api/preferences",' in source
+    assert '"POST",' in source
+    assert '{"leverage_enabled": bool(st.session_state.get("leverage_enabled", False))}' in source
+    callback = source[source.index("def save_leverage_preference"):source.index("def fiscal_history_display_row")]
+    assert '"real_execution_enabled"' not in callback
+    assert '"autonomous_operation_enabled"' not in callback
+    assert '"execution_allowed"' not in callback
+    assert "Não ativa ordens, não altera margem e não concede autorização de execução." in source
     assert "Desativada" not in source
 
 
