@@ -160,15 +160,21 @@ def migrate_fiscal_schema(database_path: str) -> str:
                   row["realized_result_brl"], row["reserve_rate"], row["reserve_amount_brl"],
                   row["reference"], row["occurred_on"], row["created_at"], row["notes"]))
         for row in pending:
+            # Preserve signed realized results and record kind when recovering a
+            # partially migrated owner schema. Older rows receive safe defaults.
+            pending_columns = set(row.keys())
+            original_result = row["original_result"] if "original_result" in pending_columns else None
+            record_kind = row["record_kind"] if "record_kind" in pending_columns else "ASSET_AMOUNT"
             db.execute("""
                 INSERT INTO fiscal_reserve_pending_foreign_new
                 (pending_id,owner_id,reference,original_amount,original_currency,instrument,
-                 jurisdiction,occurred_on,fx_rate,fx_date,fx_source,notes,status,created_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                 jurisdiction,occurred_on,fx_rate,fx_date,fx_source,notes,status,
+                 original_result,record_kind,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (row["pending_id"], owner_id, row["reference"], row["original_amount"],
                   row["original_currency"], row["instrument"], row["jurisdiction"],
                   row["occurred_on"], row["fx_rate"], row["fx_date"], row["fx_source"],
-                  row["notes"], row["status"], row["created_at"]))
+                  row["notes"], row["status"], original_result, record_kind, row["created_at"]))
         for row in reviews:
             db.execute("""
                 INSERT INTO fiscal_pending_reviews_new
