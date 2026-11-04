@@ -683,10 +683,10 @@ def application(environ, start_response):
             if any(data.get(flag) is not True for flag in ("same_asset", "same_institution", "same_day")):
                 raise ValueError("mesmo ativo, mesma instituição e mesmo dia precisam ser confirmados")
             notes = {
-                "user_notes": str(data.get("notes") or "").strip()[:600],
                 "tax_classification_status": "USER_DECLARED_PLANNING_ONLY",
                 "classification_source": "USER_DECLARATION",
                 "market_scope_source": "USER_DECLARATION_NOT_INDEPENDENTLY_VERIFIED",
+                "market_scope": "BR_ELIGIBLE_MARKET",
                 "instrument": instrument,
                 "institution": institution,
                 "market_label": market_label,
@@ -696,13 +696,17 @@ def application(environ, start_response):
                 "independent_market_eligibility_verified": False,
                 "tax_liability_confirmed": False,
                 "reserve_semantics": "PLANNING_ESTIMATE_ONLY",
+                "user_notes": str(data.get("notes") or "").strip()[:160],
             }
+            evidence_notes = json.dumps(notes, ensure_ascii=False, separators=(",", ":"))
+            if len(evidence_notes) > 1000:
+                raise ValueError("evidências excedem o limite de armazenamento")
             payload = {
                 "category": "BR_DAY_TRADE",
                 "realized_result_brl": data.get("realized_result_brl"),
                 "reference": data.get("reference"),
                 "occurred_on": data.get("occurred_on"),
-                "notes": json.dumps(notes, ensure_ascii=False, separators=(",", ":"))[:1000],
+                "notes": evidence_notes,
             }
             entry = FISCAL_RESERVE.record_realized_result(fiscal_owner_id, payload)
             return _json_response(
