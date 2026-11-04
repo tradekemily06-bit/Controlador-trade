@@ -38,6 +38,7 @@ SYSTEM_PROMPT=(
     "Nunca apresente nem recomende percentual genérico para resultados estrangeiros; se a classificação estiver pendente, informe que a taxa não está disponível e que o item não integra os totais. "
     "Quando a situação individual exigir interpretação tributária, recomende validação com contador qualificado na jurisdição aplicável, sem antecipar uma conclusão. "
     "Pendências estrangeiras são apenas contagens por tipo, moeda e período; não as trate como lucro tributável, patrimônio ou reserva calculada. "
+    "Pendências brasileiras também são apenas contagens por período, ficam em fila separada do exterior e não integram os totais nem geram reserva até classificação válida. "
     "Se perguntarem sobre pendências, informe que permanecem fora dos totais até classificação e revisão; não invente valores individuais. "
     "A prévia MT5 contém negócios candidatos e não significa que foram lançados na Reserva Fiscal. "
     "Somente leitura: não envia ordens, não ativa REAL, não altera configurações nem movimenta dinheiro. "
@@ -47,9 +48,10 @@ SYSTEM_PROMPT=(
     "Não afirme que executou ações, consultou fontes externas ou alterou dados quando isso não ocorreu."
 )
 class EcosystemAssistant:
-    def __init__(self,store,service,fiscal,client_factory=None,model=None,fiscal_pending_queue=None):
+    def __init__(self,store,service,fiscal,client_factory=None,model=None,fiscal_pending_queue=None,fiscal_domestic_pending_queue=None):
         self.store,self.service,self.fiscal=store,service,fiscal
         self.fiscal_pending_queue=fiscal_pending_queue
+        self.fiscal_domestic_pending_queue=fiscal_domestic_pending_queue
         self.client_factory=client_factory; self.model=model or os.getenv("OPENAI_MODEL","gpt-4o-mini")
     def _client(self):
         if self.client_factory: return self.client_factory()
@@ -63,7 +65,7 @@ class EcosystemAssistant:
     def delete_conversation(self,identity,cid): return self.store.delete(identity,cid)
     def ask(self,identity,message,fiscal_owner_id,cid=None):
         if not isinstance(message,str) or not message.strip() or len(message)>4000: raise ValueError("Mensagem deve ter de 1 a 4.000 caracteres.")
-        context=collect_read_only_context(self.service,self.fiscal,fiscal_owner_id,self.fiscal_pending_queue)
+        context=collect_read_only_context(self.service,self.fiscal,fiscal_owner_id,self.fiscal_pending_queue,self.fiscal_domestic_pending_queue)
         cid=self.store.append(identity,cid,"user",message)
         history=self.store.history(identity,cid,12)
         messages=[{"role":"system","content":SYSTEM_PROMPT+"\nCONTEXTO JSON:\n"+json.dumps(context,ensure_ascii=False,default=str)[:MAX_CONTEXT_CHARS]}]
