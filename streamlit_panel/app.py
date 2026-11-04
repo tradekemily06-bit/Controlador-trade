@@ -717,19 +717,15 @@ elif module == "Assistente do Ecossistema":
 elif module == "Reserva Fiscal":
     show_fiscal()
 else:
-    st.info(f"Módulo {module} selecionado. A integração funcional deste módulo ainda não foi habilitada nesta prévia.")
-    if module in {"MT5 DEMO / Simulação", "Operação"}:
-        st.warning("Execução real permanece bloqueada. Esta prévia não envia ordens.")
-    st.markdown('<div class="status-card"><b>Estado do sistema:</b> INDISPONÍVEL · <b>REAL:</b> DESABILITADO</div>', unsafe_allow_html=True)
+    st.empty()
 
 st.divider()
 left, right = st.columns([2, 1])
 with left:
     st.markdown('<div class="status-card"><b>Estado do sistema:</b> INDISPONÍVEL<br><b>REAL:</b> DESABILITADO</div>', unsafe_allow_html=True)
 with right:
-    st.checkbox("Alavancagem", value=False, disabled=True, help="Controle visual nesta prévia; não altera a conta MT5.")
+    st.checkbox("Alavancagem", value=False, key="leverage_enabled")
 with st.container(key="panel-toggle"):
     if st.button("C", key="close_control_hub"):
         st.session_state.panel_open = False
         st.rerun()
-st.caption("Estado do sistema: consulte /api/health para validação operacional. Esta interface não declara o runtime online sem resposta real.")
