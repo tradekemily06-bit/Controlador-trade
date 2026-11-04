@@ -805,7 +805,7 @@ def show_simulator() -> None:
         symbol = st.text_input("Ativo no MT5", value="EURUSD", max_chars=32)
         timeframe = st.selectbox("Timeframe", ["1m", "5m", "15m", "30m", "1h", "4h", "1d"], index=1, key="simulator_timeframe")
         limit = st.number_input("Quantidade de candles fechados", min_value=20, max_value=500, value=100, step=10, key="simulator_limit")
-        minimum_confidence = st.slider("Confiança mínima do cenário (%)", min_value=70, max_value=95, value=80, step=1)
+        minimum_directional_score = st.slider("Score direcional mínimo", min_value=70, max_value=95, value=80, step=1)
         submitted = st.form_submit_button("Simular cenário histórico DEMO")
     if not submitted:
         st.info("Ajuste o filtro de confiança e execute a leitura histórica para comparar os sinais.")
@@ -815,7 +815,7 @@ def show_simulator() -> None:
             "symbol": symbol.strip(),
             "timeframe": timeframe,
             "limit": int(limit),
-            "minimum_confidence": int(minimum_confidence),
+            "minimum_directional_score": int(minimum_directional_score),
         })
         st.caption(f"Fonte: {result.get('source', '—')} · {result.get('symbol')} · {result.get('timeframe')}")
         cols = st.columns(4)
