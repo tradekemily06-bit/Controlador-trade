@@ -455,3 +455,13 @@ def test_mt5_native_panel_is_real_mql5_client_of_shared_runtime():
     assert '"/api/runtime/analysis"' in ea
     assert "não é executado dentro do gráfico MT5" in readme
     assert "não é uma imagem estática" in readme
+
+
+def test_mt5_native_panel_restores_last_user_selected_visibility_state():
+    repo_root = PANEL_DIR.parent
+    ea = (repo_root / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    loader = ea.split("void LoadPanelVisibility(){", 1)[1].split("\n}", 1)[0]
+    assert "GlobalVariableCheck(key)" in loader
+    assert "GlobalVariableGet(key)>0.5" in loader
+    assert "GlobalVariableSet(key,0.0)" in loader
+    assert "panel_visible=false;" not in loader.split("else{", 1)[0]
