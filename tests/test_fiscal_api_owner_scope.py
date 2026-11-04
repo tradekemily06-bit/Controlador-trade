@@ -230,7 +230,7 @@ def test_foreign_pending_api_intake_results_and_reviews_stay_owner_scoped_and_un
         payload=invalid_review_payload,
     )
     assert status.startswith("400")
-    assert "catálogo estrangeiro permitido" in invalid_review["error"]
+    assert invalid_review["error"] == "Entrada inválida"
 
     listing = queue.list_pending(owner_id)
     assert listing["total"] == 2
