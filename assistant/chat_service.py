@@ -41,8 +41,9 @@ SYSTEM_PROMPT=(
     "Não afirme que executou ações, consultou fontes externas ou alterou dados quando isso não ocorreu."
 )
 class EcosystemAssistant:
-    def __init__(self,store,service,fiscal,client_factory=None,model=None):
+    def __init__(self,store,service,fiscal,client_factory=None,model=None,fiscal_pending_queue=None):
         self.store,self.service,self.fiscal=store,service,fiscal
+        self.fiscal_pending_queue=fiscal_pending_queue
         self.client_factory=client_factory; self.model=model or os.getenv("OPENAI_MODEL","gpt-4o-mini")
     def _client(self):
         if self.client_factory: return self.client_factory()
