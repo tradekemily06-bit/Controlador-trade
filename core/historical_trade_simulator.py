@@ -14,6 +14,7 @@ class HistoricalBacktestConfig:
     stop_distance: float
     take_profit_distance: float
     quantity_units: float
+    contract_multiplier: float
     spread_price_units: float
     slippage_price_units_per_side: float
     commission_quote_per_unit_round_turn: float = 0.0
@@ -24,6 +25,7 @@ class HistoricalBacktestConfig:
             "stop_distance": self.stop_distance,
             "take_profit_distance": self.take_profit_distance,
             "quantity_units": self.quantity_units,
+            "contract_multiplier": self.contract_multiplier,
         }
         non_negative = {
             "spread_price_units": self.spread_price_units,
@@ -136,6 +138,7 @@ class HistoricalTradeSimulator:
         position = None
         pending = None
         friction_per_side = config.spread_price_units / 2 + config.slippage_price_units_per_side
+        exposure_units = config.quantity_units * config.contract_multiplier
 
         for index, bar in enumerate(bars):
             # A signal from the previous completed candle enters at this bar's open.
@@ -180,9 +183,9 @@ class HistoricalTradeSimulator:
 
                 if exit_reason is not None:
                     exit_price = raw_exit - side * friction_per_side
-                    gross = (exit_price - position["entry_price"]) * side * config.quantity_units
-                    spread_cost = config.spread_price_units * config.quantity_units
-                    slippage_cost = 2 * config.slippage_price_units_per_side * config.quantity_units
+                    gross = (exit_price - position["entry_price"]) * side * exposure_units
+                    spread_cost = config.spread_price_units * exposure_units
+                    slippage_cost = 2 * config.slippage_price_units_per_side * exposure_units
                     commission = config.commission_quote_per_unit_round_turn * config.quantity_units
                     net = gross - commission
                     # Gross already includes spread/slippage through adjusted fills.
