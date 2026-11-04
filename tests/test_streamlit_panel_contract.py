@@ -260,3 +260,16 @@ def test_streamlit_closed_panel_contains_only_c_and_unavailable_status():
     assert 'st.caption("INDISPONÍVEL")' in closed_state
     assert "Controlador-Trader" not in closed_state
     assert "Histórico" not in closed_state
+
+
+
+def test_streamlit_does_not_fill_unimplemented_modules_with_placeholder_copy():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'st.info(f"Módulo {module} selecionado.' not in source
+    assert "A integração funcional deste módulo ainda não foi habilitada nesta prévia." not in source
+
+
+def test_streamlit_leverage_control_is_an_enabled_toggle_without_status_copy():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'st.checkbox("Alavancagem", value=False, key="leverage_enabled")' in source
+    assert "Desativada" not in source
