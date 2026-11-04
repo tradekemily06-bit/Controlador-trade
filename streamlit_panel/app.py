@@ -950,7 +950,7 @@ def show_readonly_module(module_name: str) -> None:
                 }
                 for key, label in labels.items():
                     if key in notification_prefs:
-                        st.write(f"{'Ativadas' if notification_prefs[key] else 'Desativadas'} · {label}")
+                        st.write(f"{'Ativas' if notification_prefs[key] else 'Inativas'} · {label}")
             st.caption("Esta tela está em modo de consulta; alterações de preferências ainda não estão habilitadas aqui.")
             return
 
