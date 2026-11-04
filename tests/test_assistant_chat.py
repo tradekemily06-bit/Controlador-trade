@@ -24,6 +24,9 @@ def test_chat_is_persistent_read_only_and_owner_scoped(tmp_path):
  a=EcosystemAssistant(store,S(),F(),client_factory=C)
  result=a.ask("one@example.com","Como está o sistema?","test-fiscal-owner")
  assert result["read_only"] and result["execution_allowed"] is False
+ assert result["may_execute_orders"] is False
+ assert result["may_enable_real"] is False
+ assert result["may_move_money"] is False
  assert [m["role"] for m in store.history("one@example.com",result["conversation_id"])]==["user","assistant"]
  system_message=C.calls[-1]["messages"][0]["content"]
  assert "dia, semana, mês e ano" in system_message
