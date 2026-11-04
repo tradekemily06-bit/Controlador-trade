@@ -367,11 +367,14 @@ def test_streamlit_replay_uses_historical_mt5_demo_data_without_orders():
     assert 'show_replay()' in source
 
 
-def test_streamlit_simulator_discloses_signal_only_scope_and_no_execution():
+
+def test_streamlit_simulator_discloses_backtest_assumptions_and_no_execution():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
-    assert 'api("/api/simulator/mt5", "POST"' in source
-    assert "Simular cenário histórico DEMO" in source
-    assert "Score direcional mínimo" in source
-    assert "sem ordens, sem preenchimentos, sem P&L" in source
+    assert 'api("/api/simulator/mt5/backtest", "POST"' in source
+    assert "Executar backtest histórico DEMO" in source
+    assert "Stop-loss · distância em unidades de preço" in source
+    assert "Take-profit · distância em unidades de preço" in source
+    assert "Quantidade em unidades do ativo" in source
+    assert "Spread total em unidades de preço" in source
     assert "Execução permitida: NÃO" in source
-    assert 'show_simulator()' in source
+    assert "O backtest não integra o Risk Manager" in source
