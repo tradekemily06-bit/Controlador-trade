@@ -86,11 +86,22 @@ def fiscal_history_display_row(item: dict[str, Any]) -> dict[str, Any]:
         "Status": "PENDENTE DE CLASSIFICAÇÃO",
     }
     if category == "BR_DAY_TRADE":
+        evidence = {}
+        try:
+            evidence = json.loads(str(item.get("notes") or "{}"))
+            if not isinstance(evidence, dict):
+                evidence = {}
+        except (TypeError, ValueError):
+            evidence = {}
+        user_declared = evidence.get("tax_classification_status") == "USER_DECLARED_PENDING_REVIEW"
         row.update({
             "Resultado (R$)": item.get("realized_result_brl"),
             "Percentual de planejamento (%)": item.get("reserve_rate"),
             "Reserva estimada (R$)": item.get("reserve_amount_brl"),
-            "Status": "PLANEJAMENTO · BRASIL DAY TRADE",
+            "Status": (
+                "DECLARAÇÃO DO USUÁRIO · REVISÃO PENDENTE"
+                if user_declared else "PLANEJAMENTO · BRASIL DAY TRADE"
+            ),
         })
     return row
 
@@ -174,7 +185,7 @@ def show_fiscal() -> None:
         summary = {}
         st.error(str(exc))
     st.subheader("Reserva Fiscal")
-    st.caption("Planejamento e separação estimada. Registros estrangeiros não classificados ficam fora dos totais; nenhuma alíquota genérica é aplicada.")
+    st.caption("Planejamento e separação estimada. Registros MT5 com categoria declarada pelo usuário ficam identificados como revisão pendente; a estimativa não confirma obrigação tributária. Registros estrangeiros não classificados ficam fora dos totais; nenhuma alíquota genérica é aplicada.")
     with st.expander("Categorias fiscais e estado da automação", expanded=False):
         try:
             catalog = summary.get("classification_catalog", {})
