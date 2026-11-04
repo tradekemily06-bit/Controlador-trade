@@ -208,3 +208,27 @@ def test_fiscal_pending_api_returns_conflict_for_duplicate_reference(tmp_path, m
     assert created["reserve_calculated"] is False
     assert duplicate_status.startswith("409")
     assert duplicate["error"] == "Já existe uma pendência com essa referência."
+
+
+def test_mt5_historical_replay_api_is_read_only_and_returns_service_result(monkeypatch):
+    import app
+
+    expected = {
+        "symbol": "EURUSD",
+        "timeframe": "5m",
+        "candles_replayed": 24,
+        "records": [],
+        "orders_sent": False,
+        "execution_allowed": False,
+        "lookahead": False,
+    }
+    monkeypatch.setattr(app.SERVICE, "replay_mt5_history", lambda **kwargs: expected)
+    status, data = call_app(
+        "/api/replay/mt5",
+        "POST",
+        {"symbol": "EURUSD", "timeframe": "5m", "limit": 25},
+    )
+    assert status.startswith("200")
+    assert data == expected
+    assert data["orders_sent"] is False
+    assert data["execution_allowed"] is False
