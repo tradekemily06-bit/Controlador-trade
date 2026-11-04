@@ -148,14 +148,17 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
     pending_context = {"available": False, "included_in_totals": False}
     if fiscal_pending_queue is not None:
         try:
-            pending_page = fiscal_pending_queue.list_pending(fiscal_owner_id, limit=500, offset=0)
-            pending_items = pending_page.get("items", [])
+            pending_summary = fiscal_pending_queue.summary(fiscal_owner_id)
             pending_context = {
                 "available": True,
-                "total": _count(pending_page.get("total")),
-                "realized_results": sum(1 for item in pending_items if item.get("record_kind") == "REALIZED_RESULT"),
-                "asset_amounts": sum(1 for item in pending_items if item.get("record_kind", "ASSET_AMOUNT") == "ASSET_AMOUNT"),
-                "currencies": sorted({str(item.get("original_currency", "")).upper() for item in pending_items if item.get("original_currency")}),
+                "total": _count(pending_summary.get("total")),
+                "realized_results": _count(pending_summary.get("realized_results")),
+                "asset_amounts": _count(pending_summary.get("asset_amounts")),
+                "currencies": sorted({
+                    str(currency).upper()
+                    for currency in pending_summary.get("currencies", [])
+                    if currency
+                }),
                 "classification_status": "PENDING_CLASSIFICATION",
                 "included_in_totals": False,
                 "reserve_calculated": False,
