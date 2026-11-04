@@ -225,7 +225,7 @@ def test_missing_position_identity_keeps_risk_counters_unknown():
     ).read_operational_state()
 
     assert state.realized_pnl == -11.0
-    assert state.realized_loss_today == 11.0
+    assert state.realized_loss_today is None
     assert state.trades_today is None
     assert state.consecutive_losses is None
 
@@ -355,3 +355,25 @@ def test_closed_deal_preview_excludes_missing_or_non_closing_entry_types():
     assert preview["count"] == 0
     assert preview["candidates"] == []
     assert preview["auto_registered"] is False
+
+
+
+def test_daily_loss_budget_sums_losing_positions_without_offsetting_winners():
+    class MixedResultsMT5(FakeMT5):
+        def history_deals_get(self, *args, **kwargs):
+            if kwargs.get("ticket") is not None:
+                return ()
+            return (
+                SimpleNamespace(entry=self.DEAL_ENTRY_IN, position_id=100, profit=0.0, commission=0.0, swap=0.0, fee=0.0, time=100),
+                SimpleNamespace(entry=self.DEAL_ENTRY_OUT, position_id=100, profit=8.0, commission=0.0, swap=0.0, fee=0.0, time=200),
+                SimpleNamespace(entry=self.DEAL_ENTRY_IN, position_id=200, profit=0.0, commission=0.0, swap=0.0, fee=0.0, time=300),
+                SimpleNamespace(entry=self.DEAL_ENTRY_OUT, position_id=200, profit=-7.0, commission=0.0, swap=0.0, fee=0.0, time=400),
+            )
+
+        def positions_get(self):
+            return ()
+
+    state = ICMarketsMT5DemoAdapter(mt5_module=MixedResultsMT5()).read_operational_state()
+
+    assert state.realized_pnl == 1.0
+    assert state.realized_loss_today == 7.0
