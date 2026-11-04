@@ -115,6 +115,9 @@ def test_migration_adds_signed_result_fields_to_existing_owner_schema(tmp_path, 
          "2026-11-03", "", "PENDING_CLASSIFICATION", "now"),
     )
     db.commit()
+    db.execute("ALTER TABLE fiscal_reserve_pending_foreign DROP COLUMN record_kind")
+    db.execute("ALTER TABLE fiscal_reserve_pending_foreign DROP COLUMN original_result")
+    db.commit()
     db.close()
 
     migrate_fiscal_schema(path)
