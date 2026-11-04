@@ -766,6 +766,38 @@ def show_market_analysis() -> None:
         st.warning(f"Não foi possível carregar ativos do MT5 DEMO: {exc}")
 
 
+def show_replay() -> None:
+    st.subheader("Replay histórico · MT5 DEMO")
+    st.caption("Reproduz candles históricos já fechados, em ordem cronológica. Cada decisão usa somente os candles disponíveis até aquele instante. Não envia ordens, não altera a memória operacional e não libera execução.")
+    with st.form("historical_replay_form"):
+        symbol = st.text_input("Ativo no MT5", value="EURUSD", max_chars=32)
+        timeframe = st.selectbox("Timeframe", ["1m", "5m", "15m", "30m", "1h", "4h", "1d"], index=1)
+        limit = st.number_input("Quantidade de candles fechados", min_value=20, max_value=500, value=100, step=10)
+        submitted = st.form_submit_button("Reproduzir histórico DEMO")
+    if not submitted:
+        st.info("Selecione o ativo e o período para iniciar uma reprodução histórica somente de leitura.")
+        return
+    try:
+        result = api("/api/replay/mt5", "POST", {
+            "symbol": symbol.strip(),
+            "timeframe": timeframe,
+            "limit": int(limit),
+        })
+        st.caption(f"Fonte: {result.get('source', '—')} · {result.get('symbol')} · {result.get('timeframe')}")
+        cols = st.columns(4)
+        cols[0].metric("Candles", int(result.get("candles_replayed", 0)))
+        cols[1].metric("Sinais de compra", int(result.get("buy_signals", 0)))
+        cols[2].metric("Sinais de venda", int(result.get("sell_signals", 0)))
+        cols[3].metric("Aguardar", int(result.get("waiting", 0)))
+        records = result.get("records", [])
+        if records:
+            st.dataframe(records, use_container_width=True, hide_index=True)
+        st.success("Replay concluído sem envio de ordens.") if result.get("orders_sent") is False else st.error("Estado de execução inesperado.")
+        st.caption("Execução permitida: NÃO · Antecipação de candles futuros: NÃO")
+    except Exception as exc:
+        st.error(f"Replay indisponível: {exc}")
+
+
 def show_readonly_module(module_name: str) -> None:
     """Render existing runtime capabilities as clear, read-only Streamlit screens."""
     views = {
@@ -792,9 +824,8 @@ def show_readonly_module(module_name: str) -> None:
         show_market_analysis()
         return
     if module_name == "Replay":
-        st.subheader("Replay")
-        st.caption("Consulta do histórico de decisões. A reprodução interativa de cenários ainda não está habilitada nesta tela.")
-        endpoint = "/api/memory?limit=50"
+        show_replay()
+        return
     elif module_name == "Simulador":
         st.subheader("Simulador")
         st.caption("Consulta dos limites de risco em modo de leitura. Nenhuma operação financeira ou ordem é simulada.")
