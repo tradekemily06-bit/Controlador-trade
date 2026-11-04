@@ -111,4 +111,4 @@ def test_streamlit_keeps_brazilian_pending_items_separate_from_foreign_queue():
     assert "/api/fiscal-reserve/domestic-pending/summary" in source
     assert "Brasil · pendente de classificação" in source
     assert "Exterior · pendente de classificação" in source
-    assert "fila brasileira indisponível" in source
+    assert "Fila brasileira indisponível" in source
