@@ -349,7 +349,7 @@ def show_fiscal() -> None:
                             st.write(f"**{candidate.get('symbol', 'Ativo')} · ticket {ticket}**")
                             st.caption(f"Encerramento UTC: {candidate.get('occurred_at_utc', '—')} · Resultado líquido da posição: {candidate.get('net_result_account_currency', '—')} {account_currency} · Negócios somados: {candidate.get('deal_count', '—')}")
                             pending_confirm = st.checkbox("Confirmo que quero guardar este negócio como pendência fiscal, sem classificação ou cálculo.", key="mt5_foreign_pending_confirm_" + ticket)
-                            pending_submit = st.form_submit_button("Guardar posição como pendência")
+                            pending_submit = st.form_submit_button("Guardar como pendência")
                         if pending_submit:
                             if not pending_confirm:
                                 st.error("Confirme antes de guardar a pendência.")
