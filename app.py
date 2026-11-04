@@ -24,6 +24,7 @@ from integration.execution_provider import build_demo_execution_port
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
 from finance.fiscal_reserve import FiscalReserve
+from finance.fiscal_taxonomy import fiscal_classification_catalog
 from finance.fiscal_pending_queue import CURRENCIES, FiscalPendingQueue
 from finance.fiscal_schema import migrate_fiscal_schema
 from finance.fiscal_identity import FiscalOwnerIdentityError
@@ -580,6 +581,7 @@ def application(environ, start_response):
             fiscal_summary = FISCAL_RESERVE.summary(
                 fiscal_owner_id, history_limit=history_limit, history_offset=history_offset
             )
+            fiscal_summary["classification_catalog"] = fiscal_classification_catalog()
             try:
                 fiscal_summary["foreign_pending"] = FISCAL_PENDING_QUEUE.summary(fiscal_owner_id)
             except (sqlite3.Error, RuntimeError, ValueError):
