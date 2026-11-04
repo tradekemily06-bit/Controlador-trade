@@ -28,12 +28,14 @@ def test_chat_is_persistent_read_only_and_owner_scoped(tmp_path):
  assert result["may_enable_real"] is False
  assert result["may_move_money"] is False
  assert [m["role"] for m in store.history("one@example.com",result["conversation_id"])]==["user","assistant"]
- system_message=C.calls[-1]["messages"][0]["content"]
+ messages=C.calls[-1]["messages"]
+ system_message=messages[0]["content"]
+ context_message=messages[1]["content"]
  assert "dia, semana, mês e ano" in system_message
- assert all(f'"{period}"' in system_message for period in ("day","week","month","year"))
  assert "não significa que foram lançados" in system_message
- assert "PRIVATE-TRADE-REFERENCE" not in system_message
- assert "PRIVATE-TRADE-NOTE" not in system_message
+ assert all(f'"{period}"' in context_message for period in ("day","week","month","year"))
+ assert "PRIVATE-TRADE-REFERENCE" not in context_message
+ assert "PRIVATE-TRADE-NOTE" not in context_message
  try: store.history("two@example.com",result["conversation_id"])
  except PermissionError: pass
  else: assert False
@@ -164,7 +166,7 @@ def test_user_prompt_is_not_promoted_to_system_instructions(tmp_path):
  messages=C.calls[-1]["messages"]
  assert messages[0]["role"]=="system"
  assert messages[1]["role"]=="user"
- assert messages[1]["content"]==injection
+ assert messages[-1]["content"]==injection
  assert "não ativa REAL" in messages[0]["content"]
 
 
@@ -260,8 +262,9 @@ def test_assistant_receives_live_fiscal_reserve_period_totals_without_history(tm
  assistant = EcosystemAssistant(store, S(), fiscal, client_factory=lambda: client)
 
  assistant.ask("owner@example.com", "Resuma minha Reserva Fiscal", fiscal_owner_id)
- prompt = client.calls[-1]["messages"][0]["content"]
- context = json.loads(prompt.split("CONTEXTO JSON:", 1)[1].strip())
+ context_message = client.calls[-1]["messages"][1]["content"]
+ context = json.loads(context_message.split("\n", 1)[1])
+ prompt = "\\n".join(item["content"] for item in client.calls[-1]["messages"])
 
  reserve = context["fiscal_reserve"]
  assert reserve["total_reserved_brl"] == 200
