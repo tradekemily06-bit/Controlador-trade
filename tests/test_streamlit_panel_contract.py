@@ -230,14 +230,18 @@ def test_streamlit_foreign_pending_queue_exposes_auditable_professional_review()
 
 
 
-def test_streamlit_assistant_does_not_expose_past_conversation_history():
+def test_streamlit_assistant_exposes_owner_scoped_past_conversation_history():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert "Nova consulta" in source
     assert "assistant_history" in source
-    assert 'api("/api/assistant/conversations")' not in source
-    assert 'api("/api/assistant/history?' not in source
-    assert 'st.selectbox("Histórico"' not in source
-    assert "Excluir conversa e mensagens locais" not in source
+    assert 'api("/api/assistant/conversations")' in source
+    assert 'api("/api/assistant/history?conversation_id="' in source
+    assert 'api("/api/assistant/conversations?conversation_id="' in source
+    assert '"DELETE"' in source
+    assert "Conversas anteriores" in source
+    assert "Abrir conversa" in source
+    assert "Excluir conversa" in source
+    assert "urllib.parse.quote(selected_saved_id, safe=\"\")" in source
 
 
 def test_streamlit_layout_uses_full_width_and_wraps_responsively():
