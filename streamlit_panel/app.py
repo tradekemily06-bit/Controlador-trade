@@ -312,20 +312,22 @@ def show_fiscal() -> None:
         if preview:
             candidates = preview.get("candidates", [])
             account_currency = str(preview.get("account_currency", "")).upper()
-            st.info(f"{preview.get('count', 0)} negócio(s) candidato(s) · moeda da conta: {account_currency or '—'} · consulta não registra nada automaticamente.")
+            st.info(f"{preview.get('count', 0)} posição(ões) integralmente encerrada(s) e conciliada(s) · moeda da conta: {account_currency or '—'} · consulta não registra nada automaticamente.")
+            if preview.get("withheld_incomplete_positions", 0):
+                st.warning(f"{preview.get('withheld_incomplete_positions')} posição(ões) retida(s): aberta(s), com histórico incompleto ou volume sem conciliação. Não serão oferecidas para lançamento.")
             if candidates:
-                st.dataframe([{"Data UTC": item.get("occurred_at_utc"), "Ativo": item.get("symbol"), "Ticket": item.get("ticket"), "Resultado": item.get("net_result_account_currency"), "Moeda": item.get("account_currency")} for item in candidates], use_container_width=True, hide_index=True)
+                st.dataframe([{"Encerramento UTC": item.get("occurred_at_utc"), "Ativo": item.get("symbol"), "Ticket final": item.get("ticket"), "Negócios somados": item.get("deal_count"), "Saídas": item.get("closing_deal_count"), "Resultado líquido da posição": item.get("net_result_account_currency"), "Moeda": item.get("account_currency")} for item in candidates], use_container_width=True, hide_index=True)
                 if account_currency == "BRL":
-                    st.warning("A confirmação abaixo registra somente negócios que você classificar expressamente como Brasil · day trade. Confira o extrato completo: custos lançados em negócios anteriores da posição podem não estar incluídos.")
+                    st.warning("A confirmação abaixo registra somente posições que você classificar expressamente como Brasil · day trade. O resultado agrega os negócios da posição e concilia os volumes; confira o extrato da corretora antes de confirmar.")
                     for candidate in candidates:
                         ticket = str(candidate.get("ticket", "")).strip()
                         if not ticket:
                             continue
                         with st.form("mt5_confirm_" + ticket):
                             st.write(f"**{candidate.get('symbol', 'Ativo')} · ticket {ticket}**")
-                            st.caption(f"Data UTC: {candidate.get('occurred_at_utc', '—')} · Resultado do negócio de saída: {candidate.get('net_result_account_currency', '—')} {account_currency}")
+                            st.caption(f"Encerramento UTC: {candidate.get('occurred_at_utc', '—')} · Resultado líquido da posição: {candidate.get('net_result_account_currency', '—')} {account_currency} · Negócios somados: {candidate.get('deal_count', '—')}")
                             classified = st.checkbox("Confirmo que este resultado pertence à categoria Brasil · day trade.", key="mt5_class_" + ticket)
-                            confirmed = st.form_submit_button("Confirmar e registrar este negócio")
+                            confirmed = st.form_submit_button("Confirmar e registrar esta posição")
                         if confirmed:
                             if not classified:
                                 st.error("Marque a confirmação de classificação antes de registrar.")
@@ -338,7 +340,7 @@ def show_fiscal() -> None:
                                 except Exception as exc:
                                     st.error(str(exc))
                 else:
-                    st.warning("A conta não está em BRL. Os negócios podem ser guardados somente como pendências, com moeda e resultado original; nenhum imposto ou conversão será calculado.")
+                    st.warning("A conta não está em BRL. As posições conciliadas podem ser guardadas somente como pendências, com moeda e resultado original; nenhum imposto ou conversão será calculado.")
                     for candidate in candidates:
                         ticket = str(candidate.get("ticket", "")).strip()
                         if not ticket:
@@ -347,7 +349,7 @@ def show_fiscal() -> None:
                             st.write(f"**{candidate.get('symbol', 'Ativo')} · ticket {ticket}**")
                             st.caption(f"Data UTC: {candidate.get('occurred_at_utc', '—')} · Resultado do negócio de saída: {candidate.get('net_result_account_currency', '—')} {account_currency}")
                             pending_confirm = st.checkbox("Confirmo que quero guardar este negócio como pendência fiscal, sem classificação ou cálculo.", key="mt5_foreign_pending_confirm_" + ticket)
-                            pending_submit = st.form_submit_button("Guardar como pendência")
+                            pending_submit = st.form_submit_button("Guardar posição como pendência")
                         if pending_submit:
                             if not pending_confirm:
                                 st.error("Confirme antes de guardar a pendência.")
@@ -359,7 +361,7 @@ def show_fiscal() -> None:
                                 except Exception as exc:
                                     st.error(str(exc))
             else:
-                st.caption("Nenhum negócio encerrado encontrado no período.")
+                st.caption("Nenhuma posição elegível encontrada. Se houver posições retidas, consulte o motivo antes de qualquer lançamento.")
 
     try:
         pending_data = api("/api/fiscal-reserve/pending?limit=50&offset=0")
