@@ -440,3 +440,25 @@ def test_foreign_realized_result_preserves_structured_declarations(tmp_path):
     assert result["event_type"] == "DISPOSAL"
     assert result["fx_conversion_method"] == "BROKER_STATEMENT"
     assert result["status"] == "PENDING_CLASSIFICATION"
+
+
+def test_foreign_structured_declarations_do_not_change_pending_summary_or_reserve_semantics(tmp_path):
+    queue = make_queue(tmp_path / "fiscal.sqlite3")
+    payload = sample("FOREIGN-DECLARATION-NOT-TAX")
+    payload.update({
+        "tax_residency_at_event": "BRAZIL",
+        "income_nature": "DIVIDEND",
+        "event_type": "DIVIDEND_RECEIPT",
+        "fx_conversion_method": "PTAX_SELL",
+    })
+    queue.add(OWNER, payload)
+    summary = queue.summary(OWNER)
+    assert summary["total"] == 1
+    assert summary["asset_amounts"] == 1
+    assert summary["realized_results"] == 0
+    assert summary["included_in_totals"] is False
+    assert summary["reserve_calculated"] is False
+    assert "tax_residency_at_event" not in summary
+    assert "income_nature" not in summary
+    assert "event_type" not in summary
+    assert "fx_conversion_method" not in summary
