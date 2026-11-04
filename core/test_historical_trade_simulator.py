@@ -180,7 +180,13 @@ def test_contract_multiplier_scales_pnl_and_costs():
         signals=[signal(Signal.COMPRA, 85), signal(), signal()],
         config=config(contract_multiplier=10),
     )
-    assert scaled.net_pnl_quote == pytest.approx(base.net_pnl_quote * 10)
-    assert scaled.total_costs_quote == pytest.approx(base.total_costs_quote * 10)
+    assert scaled.gross_pnl_quote == pytest.approx(base.gross_pnl_quote * 10)
+    assert scaled.total_costs_quote == pytest.approx(
+        (base.total_costs_quote - base.trades[0].commission_quote) * 10
+        + base.trades[0].commission_quote
+    )
+    assert scaled.net_pnl_quote == pytest.approx(
+        base.net_pnl_quote * 10 + base.trades[0].commission_quote * 9
+    )
 
 
