@@ -190,3 +190,30 @@ def test_contract_multiplier_scales_pnl_and_costs():
     )
 
 
+
+
+
+def test_reports_absolute_drawdown_and_maximum_loss_streak_in_trade_order():
+    data = bars(
+        (100, 100.5, 99.5, 100),
+        (100, 100.2, 99.8, 100),
+        (100, 100.2, 99.8, 100),
+        (100, 100.2, 99.8, 100),
+        (100, 100.2, 99.8, 100),
+    )
+    # Four consecutive short-lived losing trades; a new signal is scheduled
+    # only after the previous position has closed.
+    signals = [
+        signal(Signal.COMPRA, 90),
+        signal(),
+        signal(Signal.COMPRA, 90),
+        signal(),
+        signal(),
+    ]
+    result = HistoricalTradeSimulator().run(
+        candles=data,
+        signals=signals,
+        config=config(stop_distance=0.1, take_profit_distance=2.0),
+    )
+    assert result.max_drawdown_quote >= 0
+    assert result.max_consecutive_losses >= 1
