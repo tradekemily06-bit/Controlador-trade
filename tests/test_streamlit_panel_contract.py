@@ -353,6 +353,8 @@ def test_streamlit_market_analysis_requires_demo_confirmation_and_never_enables_
     assert '"filters_ok": True' not in analysis_screen
     assert "preferências de segurança do runtime são respeitadas" in analysis_screen
     assert 'Execução permitida: NÃO' in analysis_screen
+    assert 'st.session_state.pop("market_analysis_result", None)' in analysis_screen
+    assert analysis_screen.index('st.session_state.pop("market_analysis_result", None)') < analysis_screen.index('api("/api/runtime/analysis", "POST"')
 
 
 
