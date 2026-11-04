@@ -559,7 +559,12 @@ def application(environ, start_response):
                 "result_scope": "FULL_CLOSED_POSITION",
                 "deal_count": candidate.get("deal_count"),
                 "closing_deal_count": candidate.get("closing_deal_count"),
-                "reconciliation_notice": "Resultado agregado do histórico completo da posição; conferir extrato da corretora antes de qualquer uso fiscal.",
+                "tax_classification_status": "USER_DECLARED_PENDING_REVIEW",
+                "market_scope_source": "USER_DECLARATION_NOT_INDEPENDENTLY_VERIFIED",
+                "independent_market_eligibility_verified": False,
+                "tax_liability_confirmed": False,
+                "reserve_semantics": "PLANNING_ESTIMATE_ONLY",
+                "reconciliation_notice": "Resultado agregado do histórico completo da posição; conferir extrato da corretora antes de qualquer uso fiscal. Categoria e elegibilidade de mercado foram declaradas pelo usuário e ainda exigem revisão independente.",
             }
             payload = {
                 "category": "BR_DAY_TRADE",
@@ -580,6 +585,11 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.CREATED,
                                   {"entry": entry, "source": "IC Markets MT5 DEMO",
                                    "source_ticket": ticket, "registered": True,
+                                   "classification_status": "USER_DECLARED_PENDING_REVIEW",
+                                   "classification_source": "USER_DECLARATION",
+                                   "independent_market_eligibility_verified": False,
+                                   "tax_liability_confirmed": False,
+                                   "reserve_is_estimate": True,
                                    "execution_allowed": False}, request_id, environ)
         if path == "/api/fiscal-reserve/mt5-preview" and method == "GET":
             query = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
