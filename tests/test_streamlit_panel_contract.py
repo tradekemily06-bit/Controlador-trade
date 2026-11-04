@@ -140,3 +140,10 @@ def test_streamlit_unverified_mt5_history_never_displays_reserve_rate_or_amount(
     assert "Percentual de planejamento (%)" in source
     assert "Reserva estimada (R$)" in source
     assert "fila brasileira separada, sem cálculo e fora dos totais" in source
+
+
+def test_streamlit_labels_user_declared_day_trade_planning_estimates():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert "PLANEJAMENTO · DECLARAÇÃO DO USUÁRIO" in source
+    assert 'evidence.get("tax_classification_status") == "USER_DECLARED_PLANNING_ONLY"' in source
+    assert "Confirmo que foi o mesmo ativo, pela mesma instituição, no mesmo dia e em mercado brasileiro elegível." in source
