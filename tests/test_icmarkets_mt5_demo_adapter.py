@@ -317,3 +317,19 @@ def test_fiscal_confirmation_rejects_unknown_ticket_and_non_numeric_ticket():
         assert "ticket MT5 inválido" in str(exc)
     else:
         raise AssertionError("non-numeric ticket must be rejected")
+
+
+def test_mt5_account_fingerprint_is_stable_and_does_not_expose_login():
+    from types import SimpleNamespace
+
+    account = SimpleNamespace(login=12345678, server="ICMarketsSC-Demo")
+    fingerprint = ICMarketsMT5DemoAdapter._account_fingerprint(account)
+    assert len(fingerprint) == 32
+    assert fingerprint == ICMarketsMT5DemoAdapter._account_fingerprint(account)
+    assert "12345678" not in fingerprint
+    assert ICMarketsMT5DemoAdapter._account_fingerprint(
+        SimpleNamespace(login=12345678, server="")
+    ) is None
+    assert ICMarketsMT5DemoAdapter._account_fingerprint(
+        SimpleNamespace(login=None, server="ICMarketsSC-Demo")
+    ) is None
