@@ -1061,7 +1061,7 @@ def application(environ, start_response):
                 symbol=str(data.get("symbol", "")),
                 timeframe=str(data.get("timeframe", "5m")),
                 limit=data.get("limit", 100),
-                minimum_confidence=data.get("minimum_confidence", 70),
+                minimum_directional_score=data.get("minimum_directional_score", 70),
             )
             return _json_response(start_response, HTTPStatus.OK, result, request_id, environ)
         if path == "/api/replay/mt5" and method == "POST":
