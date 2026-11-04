@@ -61,7 +61,9 @@ def valid_payload():
 def test_manual_day_trade_entry_requires_explicit_user_declaration_and_is_only_a_planning_estimate(tmp_path, monkeypatch):
     database, reserve = _configure(tmp_path, monkeypatch)
 
-    payload = valid_payload()\n    payload["notes"] = "E" * 600\n    status, body = _request(payload)
+    payload = valid_payload()
+    payload["notes"] = "E" * 600
+    status, body = _request(payload)
 
     assert status.startswith("200")
     assert body["classification_status"] == "USER_DECLARED_PLANNING_ONLY"
