@@ -280,6 +280,7 @@ def test_summary_counts_entire_queue_and_is_scoped_to_owner(tmp_path):
 
     summary = queue.summary(OWNER, as_of=date(2026, 11, 3))
     assert summary == {
+        "available": True,
         "as_of": "2026-11-03",
         "total": 501,
         "realized_results": 501,
