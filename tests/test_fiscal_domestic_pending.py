@@ -4,6 +4,7 @@ import pytest
 
 from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
 from finance.fiscal_reserve import FiscalReserve
+from finance.fiscal_schema import migrate_fiscal_schema
 
 
 def sample(reference="BR-PENDING-001"):
@@ -23,6 +24,7 @@ def test_domestic_pending_is_separate_from_foreign_queue_and_reserve(tmp_path, m
     path = str(tmp_path / "fiscal.sqlite3")
     queue = FiscalDomesticPendingQueue(path)
     queue.add("owner-a", sample())
+    migrate_fiscal_schema(path)
     reserve = FiscalReserve(path)
 
     assert queue.list_pending("owner-a")["total"] == 1
