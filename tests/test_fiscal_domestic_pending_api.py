@@ -108,3 +108,46 @@ def test_domestic_pending_api_rejects_duplicate_reference(tmp_path, monkeypatch)
     assert first_status.startswith("201")
     assert second_status.startswith("409")
     assert "Já existe" in duplicate["error"]
+
+
+def test_domestic_pending_review_api_records_evidence_without_changing_pending_status(tmp_path, monkeypatch):
+    queue, owner_id = _configure(tmp_path, monkeypatch)
+    item = queue.add(owner_id, {
+        "reference": "BR-REVIEW-API-001",
+        "category_candidate": "BR_COMMON_EXCHANGE",
+        "instrument": "ETF",
+        "market_scope": "B3",
+        "occurred_on": "2026-11-04",
+        "realized_result_brl": 125.0,
+    })
+    payload = {
+        "candidate_classification": "BR_COMMON_EXCHANGE",
+        "confirmed_jurisdiction": "Brasil",
+        "reviewer_name": "Profissional declarado",
+        "reviewer_role": "Contador",
+        "professional_registration": "CRC-DECLARADO",
+        "evidence_reference": "DOC-BR-REVIEW-001",
+        "reviewed_on": "2026-11-04",
+        "review_notes": "Identidade profissional não verificada pelo sistema.",
+    }
+
+    status, created = _request(
+        f"/api/fiscal-reserve/domestic-pending/{item['pending_id']}/reviews",
+        method="POST",
+        payload=payload,
+    )
+    assert status.startswith("201")
+    assert created["review"]["reviewer_identity_status"] == "DECLARED_NOT_VERIFIED"
+    assert created["review"]["professional_registration_verified"] is False
+    assert created["review"]["status_unchanged"] == "PENDING_CLASSIFICATION"
+    assert created["reserve_calculated"] is False
+
+    status, listed = _request(
+        f"/api/fiscal-reserve/domestic-pending/{item['pending_id']}/reviews",
+        query="owner_id=forged-owner",
+    )
+    assert status.startswith("200")
+    assert len(listed["reviews"]) == 1
+    assert listed["reviews"][0]["evidence_reference"] == "DOC-BR-REVIEW-001"
+    assert listed["status_unchanged"] == "PENDING_CLASSIFICATION"
+    assert queue.list_pending(owner_id)["items"][0]["status"] == "PENDING_CLASSIFICATION"
