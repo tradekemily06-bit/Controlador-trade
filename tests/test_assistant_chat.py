@@ -365,3 +365,52 @@ def test_assistant_readiness_reports_configured_provider_without_returning_key(t
  assert status["connection_tested"] is False
  assert "secret-test-key" not in str(status)
  assert status["read_only"] is True
+
+
+def test_chat_provider_receives_only_aggregates_not_structured_foreign_declarations(tmp_path):
+ import json
+ class ForeignQueue:
+  def summary(self, owner_id):
+   assert owner_id == "test-fiscal-owner"
+   return {
+    "total": 1,
+    "realized_results": 1,
+    "asset_amounts": 0,
+    "currencies": ["USD"],
+    "as_of": "2026-11-04",
+    "periods": {},
+    "items": [{
+     "reference": "PRIVATE-FOREIGN-ROW",
+     "tax_residency_at_event": "BRAZIL",
+     "income_nature": "DIVIDEND",
+     "event_type": "DIVIDEND_RECEIPT",
+     "fx_conversion_method": "PTAX_SELL",
+     "notes": "PRIVATE-FOREIGN-NOTE",
+     "original_result": 12345.67,
+    }],
+    "included_in_totals": False,
+    "reserve_calculated": False,
+   }
+ client = C()
+ assistant = EcosystemAssistant(
+  AssistantConversationStore(tmp_path/"assistant-foreign-boundary.sqlite"),
+  S(), F(), client_factory=lambda: client, fiscal_pending_queue=ForeignQueue(),
+ )
+ assistant.ask("owner@example.com", "Quantas pendências estrangeiras tenho?", "test-fiscal-owner")
+ messages = client.calls[-1]["messages"]
+ context = json.loads(messages[1]["content"].split("\\n", 1)[1])
+ foreign = context["fiscal_reserve"]["foreign_pending"]
+ assert foreign["total"] == 1
+ assert foreign["included_in_totals"] is False
+ assert foreign["reserve_calculated"] is False
+ provider_payload = json.dumps(messages, ensure_ascii=False)
+ for private in (
+  "PRIVATE-FOREIGN-ROW",
+  "PRIVATE-FOREIGN-NOTE",
+  "tax_residency_at_event",
+  "income_nature",
+  "event_type",
+  "fx_conversion_method",
+  "12345.67",
+ ):
+  assert private not in provider_payload
