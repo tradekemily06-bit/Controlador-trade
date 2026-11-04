@@ -407,7 +407,7 @@ class ConfiguredEcosystemService(EcosystemService):
         symbol: str,
         timeframe: str = "5m",
         limit: int = 100,
-        minimum_confidence: int = 70,
+        minimum_directional_score: int = 70,
     ) -> dict[str, Any]:
         """Evaluate a historical signal-threshold scenario; never simulate fills or P&L."""
         if self.execution_provider != "ic_markets_mt5_demo":
@@ -421,11 +421,11 @@ class ConfiguredEcosystemService(EcosystemService):
         if not isinstance(limit, int) or isinstance(limit, bool) or not 20 <= limit <= 500:
             raise ValueError("limit deve estar entre 20 e 500")
         if (
-            not isinstance(minimum_confidence, int)
-            or isinstance(minimum_confidence, bool)
-            or not 70 <= minimum_confidence <= 95
+            not isinstance(minimum_directional_score, int)
+            or isinstance(minimum_directional_score, bool)
+            or not 70 <= minimum_directional_score <= 95
         ):
-            raise ValueError("minimum_confidence deve estar entre 70 e 95")
+            raise ValueError("minimum_directional_score deve estar entre 70 e 95")
 
         request = BrokerMarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
         candles = tuple(self.mt5_market_adapter.fetch_market_data(request))
@@ -451,7 +451,7 @@ class ConfiguredEcosystemService(EcosystemService):
             )
             analysis = evaluate_candle_snapshot(snapshot)
             signal = analysis.signal.value
-            confidence = (
+            directional_score = (
                 float(analysis.score)
                 if signal == Signal.COMPRA.value
                 else 100.0 - float(analysis.score)
@@ -461,11 +461,11 @@ class ConfiguredEcosystemService(EcosystemService):
             if signal == Signal.AGUARDAR.value:
                 outcome = "AGUARDAR"
                 reason = analysis.reason
-            elif confidence < minimum_confidence:
+            elif directional_score < minimum_directional_score:
                 outcome = "FILTRADO"
                 reason = (
-                    f"Confiança hipotética {confidence:.1f}% abaixo do mínimo "
-                    f"configurado de {minimum_confidence}%."
+                    f"Score direcional hipotético {directional_score:.1f} abaixo do mínimo "
+                    f"configurado de {minimum_directional_score}."
                 )
             else:
                 outcome = "CANDIDATO"
@@ -478,7 +478,7 @@ class ConfiguredEcosystemService(EcosystemService):
                 "timestamp": prefix[-1].timestamp.isoformat(),
                 "close": prefix[-1].close,
                 "signal": signal,
-                "confidence": round(confidence, 2),
+                "directional_score": round(directional_score, 2),
                 "scenario": outcome,
                 "reason": reason,
             })
@@ -488,7 +488,7 @@ class ConfiguredEcosystemService(EcosystemService):
             "timeframe": timeframe,
             "source": "IC Markets MT5 DEMO",
             "candles_replayed": len(candles),
-            "minimum_confidence": minimum_confidence,
+            "minimum_directional_score": minimum_directional_score,
             "records": records,
             "candidates": sum(item["scenario"] == "CANDIDATO" for item in records),
             "filtered": sum(item["scenario"] == "FILTRADO" for item in records),
