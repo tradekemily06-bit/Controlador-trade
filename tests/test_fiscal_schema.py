@@ -128,3 +128,36 @@ def test_migration_adds_signed_result_fields_to_existing_owner_schema(tmp_path, 
         "SELECT original_result,record_kind FROM fiscal_reserve_pending_foreign WHERE pending_id='p1'"
     ).fetchone() == (None, "ASSET_AMOUNT")
     db.close()
+
+def test_rebuild_preserves_signed_results_in_partially_migrated_owner_schema(tmp_path, monkeypatch):
+    path = str(tmp_path / "partially-owned.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    owner = migrate_fiscal_schema(path)
+    db = sqlite3.connect(path)
+    db.execute(
+        "INSERT INTO fiscal_reserve_pending_foreign "
+        "(pending_id,owner_id,reference,original_amount,original_result,record_kind,"
+        "original_currency,instrument,jurisdiction,occurred_on,notes,status,created_at) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("p1", owner, "signed-result", 12.5, -12.5, "REALIZED_RESULT",
+         "EUR", "FUTURES", "PENDING_REVIEW", "2026-11-03", "",
+         "PENDING_CLASSIFICATION", "now"),
+    )
+    # Simulate a partially migrated database: one fiscal table still has its
+    # legacy shape, forcing the atomic rebuild path for all four tables.
+    db.execute("DROP TABLE fiscal_reserve_settings")
+    db.execute(
+        "CREATE TABLE fiscal_reserve_settings(category TEXT PRIMARY KEY, rate REAL NOT NULL)"
+    )
+    db.execute("INSERT INTO fiscal_reserve_settings VALUES('BR_DAY_TRADE',20)")
+    db.commit()
+    db.close()
+
+    assert migrate_fiscal_schema(path) == owner
+    db = sqlite3.connect(path)
+    assert db.execute(
+        "SELECT original_amount,original_result,record_kind FROM "
+        "fiscal_reserve_pending_foreign WHERE pending_id='p1'"
+    ).fetchone() == (12.5, -12.5, "REALIZED_RESULT")
+    assert db.execute("PRAGMA foreign_key_check").fetchall() == []
+    db.close()
