@@ -95,12 +95,22 @@ def test_context_sanitizes_all_legacy_foreign_tax_values():
 
 def test_pending_queue_context_contract_is_read_only():
     class Queue:
-        def list_pending(self, owner_id, limit, offset):
+        def summary(self, owner_id):
             assert owner_id == "test-owner"
-            assert (limit, offset) == (500, 0)
-            return {"total": 1, "items": [{"record_kind": "REALIZED_RESULT", "original_currency": "USD"}]}
+            return {
+                "total": 501,
+                "realized_results": 500,
+                "asset_amounts": 1,
+                "currencies": ["USD", "EUR"],
+                "classification_status": "PENDING_CLASSIFICATION",
+                "included_in_totals": False,
+                "reserve_calculated": False,
+            }
     context = collect_read_only_context(FakeService(), FakeFiscalReserve(), "test-owner", Queue())
     pending = context["fiscal_reserve"]["foreign_pending"]
-    assert pending["realized_results"] == 1
+    assert pending["total"] == 501
+    assert pending["realized_results"] == 500
+    assert pending["asset_amounts"] == 1
+    assert pending["currencies"] == ["EUR", "USD"]
     assert pending["included_in_totals"] is False
     assert pending["reserve_calculated"] is False
