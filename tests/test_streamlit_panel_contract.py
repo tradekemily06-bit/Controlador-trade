@@ -61,3 +61,12 @@ def test_streamlit_mt5_foreign_result_can_only_be_saved_as_pending():
     assert '"confirmed": True' in source
     assert "Guardar como pendência" in source
     assert "sem classificação ou cálculo" in source
+
+
+
+def test_streamlit_fiscal_panel_shows_foreign_pending_counts_by_period_without_amounts():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'summary.get("foreign_pending", {})' in source
+    assert 'pending_periods.get(period, {})' in source
+    assert "Exterior pendente · {label}" in source
+    assert "sem cálculo" in source
