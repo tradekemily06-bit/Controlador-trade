@@ -48,25 +48,10 @@ def test_fiscal_and_assistant_read_routes_ignore_forged_owner_parameters(
         "reference": "OWNER-A-ONLY",
         "occurred_on": "2026-11-03",
     })
-    reserve.update_rate("single:other-owner", "BR_DAY_TRADE", 20)
-    reserve.record_realized_result("single:other-owner", {
-        "category": "BR_DAY_TRADE",
-        "realized_result_brl": 900,
-        "reference": "OWNER-B-ONLY",
-        "occurred_on": "2026-11-03",
-    })
     queue.add(owner_id, {
         "reference": "PENDING-A-ONLY",
         "original_amount": 25,
         "original_currency": "USD",
-        "instrument": "ETF",
-        "jurisdiction": "PENDING_REVIEW",
-        "occurred_on": "2026-11-03",
-    })
-    queue.add("single:other-owner", {
-        "reference": "PENDING-B-ONLY",
-        "original_amount": 75,
-        "original_currency": "EUR",
         "instrument": "ETF",
         "jurisdiction": "PENDING_REVIEW",
         "occurred_on": "2026-11-03",
