@@ -23,12 +23,12 @@ def test_domestic_pending_is_separate_from_foreign_queue_and_reserve(tmp_path, m
     monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner-a")
     path = str(tmp_path / "fiscal.sqlite3")
     queue = FiscalDomesticPendingQueue(path)
-    queue.add("owner-a", sample())
-    migrate_fiscal_schema(path)
+    owner_id = migrate_fiscal_schema(path)
+    queue.add(owner_id, sample())
     reserve = FiscalReserve(path)
 
-    assert queue.list_pending("owner-a")["total"] == 1
-    assert reserve.summary("owner-a")["total_reserved_brl"] == 0
+    assert queue.list_pending(owner_id)["total"] == 1
+    assert reserve.summary(owner_id)["total_reserved_brl"] == 0
 
 
 def test_domestic_pending_keeps_signed_result_but_never_calculates_reserve(tmp_path):
