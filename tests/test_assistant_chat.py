@@ -405,7 +405,7 @@ def test_chat_provider_receives_only_aggregates_not_structured_foreign_declarati
  )
  assistant.ask("owner@example.com", "Quantas pendências estrangeiras tenho?", "test-fiscal-owner")
  messages = client.calls[-1]["messages"]
- context = json.loads(messages[1]["content"].split("\\n", 1)[1])
+ context = json.loads(messages[1]["content"].split("\n", 1)[1])
  foreign = context["fiscal_reserve"]["foreign_pending"]
  assert foreign["total"] == 1
  assert foreign["included_in_totals"] is False
