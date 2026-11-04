@@ -149,7 +149,15 @@ class FiscalReserve:
             raise ValueError(f"{field} excede o limite permitido")
         return round(amount, 2)
 
+    @staticmethod
+    def _require_owner(owner_id: str) -> str:
+        owner = str(owner_id or "").strip()
+        if not owner or len(owner) > 160:
+            raise ValueError("identidade proprietária obrigatória e inválida")
+        return owner
+
     def settings(self, owner_id: str) -> dict[str, float]:
+        owner_id = self._require_owner(owner_id)
         with self._connect() as db:
             rows = db.execute(
                 "SELECT category, rate FROM fiscal_reserve_settings WHERE owner_id = ? ORDER BY category",
@@ -158,6 +166,7 @@ class FiscalReserve:
         return {row["category"]: float(row["rate"]) for row in rows}
 
     def update_rate(self, owner_id: str, category: str, rate: Any) -> dict[str, float]:
+        owner_id = self._require_owner(owner_id)
         category = self._category(category)
         if category == "FOREIGN_FINANCIAL_ASSET":
             raise ValueError("percentual internacional genérico não pode ser alterado sem classificação validada")
@@ -173,6 +182,7 @@ class FiscalReserve:
         return self.settings(owner_id)
 
     def update_rates(self, owner_id: str, rates: dict[str, Any]) -> dict[str, float]:
+        owner_id = self._require_owner(owner_id)
         if not isinstance(rates, dict) or set(rates) != {"BR_DAY_TRADE"}:
             raise ValueError("somente o percentual brasileiro pode ser alterado nesta etapa")
         parsed = {}
@@ -189,6 +199,7 @@ class FiscalReserve:
         return self.settings(owner_id)
 
     def record_realized_result(self, owner_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        owner_id = self._require_owner(owner_id)
         if not isinstance(payload, dict):
             raise ValueError("payload deve ser um objeto")
         category = self._category(payload.get("category"))
@@ -254,6 +265,7 @@ class FiscalReserve:
     def summary(
         self,
         owner_id: str,
+        owner_id = self._require_owner(owner_id)
         as_of: date | None = None,
         history_limit: int = 100,
         history_offset: int = 0,
