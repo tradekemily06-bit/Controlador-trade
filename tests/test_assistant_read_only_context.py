@@ -149,3 +149,69 @@ def test_assistant_receives_domestic_pending_counts_separately_without_values():
     assert domestic["included_in_totals"] is False
     assert domestic["reserve_calculated"] is False
     assert "realized_result_brl" not in str(domestic)
+
+
+def test_assistant_foreign_pending_context_never_exposes_structured_user_declarations():
+    class ForeignQueue:
+        def summary(self, owner_id):
+            assert owner_id == "test-owner"
+            return {
+                "total": 2,
+                "realized_results": 1,
+                "asset_amounts": 1,
+                "currencies": ["USD"],
+                "as_of": "2026-11-04",
+                "periods": {
+                    "day": {
+                        "start": "2026-11-04",
+                        "end": "2026-11-04",
+                        "total": 2,
+                        "realized_results": 1,
+                        "asset_amounts": 1,
+                    }
+                },
+                "items": [{
+                    "reference": "PRIVATE-FOREIGN-REFERENCE",
+                    "tax_residency_at_event": "BRAZIL",
+                    "income_nature": "DIVIDEND",
+                    "event_type": "DIVIDEND_RECEIPT",
+                    "fx_conversion_method": "PTAX_SELL",
+                    "notes": "PRIVATE-FOREIGN-NOTE",
+                    "original_amount": 999999,
+                    "original_currency": "USD",
+                }],
+                "included_in_totals": False,
+                "reserve_calculated": False,
+            }
+
+    import json
+    context = collect_read_only_context(
+        FakeService(), FakeFiscalReserve(), "test-owner",
+        fiscal_pending_queue=ForeignQueue(),
+    )
+    pending = context["fiscal_reserve"]["foreign_pending"]
+    serialized = json.dumps(pending, ensure_ascii=False)
+    assert pending["total"] == 2
+    assert pending["currencies"] == ["USD"]
+    assert pending["included_in_totals"] is False
+    assert pending["reserve_calculated"] is False
+    for private_value in (
+        "PRIVATE-FOREIGN-REFERENCE", "PRIVATE-FOREIGN-NOTE",
+        "tax_residency_at_event", "income_nature", "event_type",
+        "fx_conversion_method", "original_amount", "999999",
+    ):
+        assert private_value not in serialized
+
+
+def test_assistant_foreign_pending_context_fails_closed_when_owner_scoped_summary_fails():
+    class BrokenForeignQueue:
+        def summary(self, owner_id):
+            assert owner_id == "test-owner"
+            raise PermissionError("owner mismatch")
+
+    context = collect_read_only_context(
+        FakeService(), FakeFiscalReserve(), "test-owner",
+        fiscal_pending_queue=BrokenForeignQueue(),
+    )
+    pending = context["fiscal_reserve"]["foreign_pending"]
+    assert pending == {"available": False, "included_in_totals": False}
