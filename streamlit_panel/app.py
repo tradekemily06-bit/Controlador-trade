@@ -806,6 +806,9 @@ def show_market_analysis() -> None:
             if not confirmed:
                 st.error("Confirme o uso somente em DEMO/SIMULAÇÃO para solicitar a análise.")
             else:
+                # A solicitação nova invalida o sinal anterior até que a análise
+                # atual termine. Se o runtime falhar, o C não exibe dado obsoleto.
+                st.session_state.pop("market_analysis_result", None)
                 try:
                     result = api("/api/runtime/analysis", "POST", {"symbol": symbol, "timeframe": timeframe, "limit": candle_limit})
                     st.session_state.market_analysis_result = result
