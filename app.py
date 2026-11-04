@@ -549,7 +549,18 @@ def application(environ, start_response):
             fiscal_summary = FISCAL_RESERVE.summary(
                 fiscal_owner_id, history_limit=history_limit, history_offset=history_offset
             )
-            fiscal_summary["foreign_pending"] = FISCAL_PENDING_QUEUE.summary(fiscal_owner_id)
+            try:
+                fiscal_summary["foreign_pending"] = FISCAL_PENDING_QUEUE.summary(fiscal_owner_id)
+            except (sqlite3.Error, RuntimeError, ValueError):
+                # The main Brazilian ledger remains readable if an older or
+                # independently configured pending-queue database is not migrated.
+                # Never substitute guessed counts or include pending items in totals.
+                fiscal_summary["foreign_pending"] = {
+                    "available": False,
+                    "classification_status": "PENDING_CLASSIFICATION",
+                    "included_in_totals": False,
+                    "reserve_calculated": False,
+                }
             # Keep legacy foreign settings in storage for historical compatibility,
             # but never expose the generic percentage as a usable public tax rate.
             foreign = fiscal_summary.get("categories", {}).get("FOREIGN_FINANCIAL_ASSET")
