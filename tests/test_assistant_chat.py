@@ -293,3 +293,10 @@ def test_assistant_explicitly_keeps_unverified_brazilian_mt5_deals_pending():
  assert "elegibilidade de mercado não foi verificada" in SYSTEM_PROMPT
  assert "fila doméstica pendente, sem cálculo e fora dos totais" in SYSTEM_PROMPT
  assert "nunca os descreva como reserva lançada" in SYSTEM_PROMPT
+
+
+def test_assistant_distinguishes_manual_user_declared_day_trade_estimates_from_tax_assessment():
+ from assistant.chat_service import SYSTEM_PROMPT
+ assert "estimativas baseadas na declaração do usuário" in SYSTEM_PROMPT
+ assert "não constituem validação independente do mercado" in SYSTEM_PROMPT
+ assert "nem obrigação tributária apurada" in SYSTEM_PROMPT
