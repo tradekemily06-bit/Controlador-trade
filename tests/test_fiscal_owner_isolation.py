@@ -51,7 +51,7 @@ def test_reserve_and_pending_queue_are_isolated_by_owner(tmp_path, monkeypatch):
     assert queue.list_pending(owner_b)["total"] == 1
 
     review_payload = {
-        "candidate_classification": "ETF",
+        "candidate_classification": "FOREIGN_FINANCIAL_INVESTMENT",
         "confirmed_jurisdiction": "US",
         "reviewer_name": "Revisor",
         "reviewer_role": "contador",

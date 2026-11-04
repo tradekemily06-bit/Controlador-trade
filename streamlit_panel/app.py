@@ -666,7 +666,7 @@ def show_fiscal() -> None:
             with st.expander("Registrar evidência de revisão profissional"):
                 st.warning("Identidade e registro profissional são declarados pelo usuário; o sistema não verifica credenciais. A revisão é evidência documental, não validação fiscal automática.")
                 with st.form("professional_review_form"):
-                    classification = st.text_input("Classificação sugerida")
+                    classification = st.selectbox("Classificação candidata", ["FOREIGN_FINANCIAL_INVESTMENT", "FOREIGN_ENTITY_CONTROLLED", "FOREIGN_CRYPTO"])
                     confirmed_jurisdiction = st.text_input("Jurisdição indicada na revisão")
                     reviewer_name = st.text_input("Nome do profissional")
                     role = st.selectbox("Qualificação", ["contador", "consultor tributário", "profissional tributário"])

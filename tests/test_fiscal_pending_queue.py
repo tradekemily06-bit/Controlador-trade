@@ -116,7 +116,7 @@ def test_pending_queue_rejects_invalid_pagination(tmp_path):
 
 def review_sample():
     return {
-        "candidate_classification": "ETF - revisar enquadramento",
+        "candidate_classification": "FOREIGN_FINANCIAL_INVESTMENT",
         "confirmed_jurisdiction": "Estados Unidos",
         "reviewer_name": "Profissional de teste",
         "reviewer_role": "contador",

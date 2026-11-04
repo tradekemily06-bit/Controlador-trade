@@ -109,6 +109,11 @@ def test_domestic_pending_review_is_auditable_but_does_not_classify_or_book(tmp_
     assert reviews[0]["reviewer_identity_status"] == "DECLARED_NOT_VERIFIED"
     assert queue.list_pending("owner-a")["items"][0]["status"] == "PENDING_CLASSIFICATION"
 
+    invalid = review_payload()
+    invalid["candidate_classification"] = "FOREIGN_CRYPTO"
+    with pytest.raises(ValueError, match="catálogo brasileiro permitido"):
+        queue.record_review("owner-a", item["pending_id"], invalid)
+
 
 def test_domestic_pending_review_is_owner_scoped_and_rejects_unqualified_role(tmp_path):
     queue = FiscalDomesticPendingQueue(str(tmp_path / "domestic-review-scope.sqlite3"))
@@ -140,3 +145,11 @@ def test_domestic_pending_rejects_missing_or_invalid_owner_for_every_operation(t
         for operation in operations:
             with pytest.raises(ValueError, match="identidade proprietária"):
                 operation()
+
+
+
+def test_domestic_and_foreign_review_catalogs_are_disjoint():
+    from finance.fiscal_pending_queue import FOREIGN_REVIEW_CANDIDATES
+    from finance.fiscal_taxonomy import BRAZIL_CATEGORIES
+
+    assert set(BRAZIL_CATEGORIES).isdisjoint(FOREIGN_REVIEW_CANDIDATES)

@@ -11,6 +11,13 @@ from typing import Any, Iterator
 
 
 CURRENCIES = frozenset({"USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "BRL"})
+FOREIGN_REVIEW_CANDIDATES = frozenset({
+    "FOREIGN_FINANCIAL_INVESTMENT",
+    "FOREIGN_ENTITY_CONTROLLED",
+    "FOREIGN_CRYPTO",
+})
+
+
 FIELD_OPTIONS = {
     "tax_residency_at_event": frozenset({"NOT_INFORMED", "BRAZIL", "FOREIGN", "DUAL_OR_UNCERTAIN"}),
     "income_nature": frozenset({"NOT_INFORMED", "CAPITAL_GAIN", "INVESTMENT_INCOME", "TRADING_RESULT", "DIVIDEND", "INTEREST", "RENTAL_INCOME", "OTHER"}),
@@ -254,7 +261,16 @@ class FiscalPendingQueue:
                 raise ValueError(f"{name} é obrigatório e deve ter até {maximum} caracteres")
             return value
 
+        with self._connect() as db:
+            if not db.execute(
+                "SELECT 1 FROM fiscal_reserve_pending_foreign WHERE owner_id = ? AND pending_id = ?",
+                (owner_id, pending_id),
+            ).fetchone():
+                raise ValueError("pendência não encontrada")
+
         candidate = required("candidate_classification", 120)
+        if candidate not in FOREIGN_REVIEW_CANDIDATES:
+            raise ValueError("candidate_classification não pertence ao catálogo estrangeiro permitido")
         jurisdiction = required("confirmed_jurisdiction", 120)
         reviewer = required("reviewer_name", 160)
         role = required("reviewer_role", 80).casefold()
