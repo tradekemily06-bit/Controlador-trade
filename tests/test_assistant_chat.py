@@ -331,5 +331,6 @@ def test_assistant_readiness_reports_configured_provider_without_returning_key(t
  assert status["available"] is True
  assert status["provider"] == "OpenAI API"
  assert status["model"] == assistant.model
+ assert status["connection_tested"] is False
  assert "secret-test-key" not in str(status)
  assert status["read_only"] is True
