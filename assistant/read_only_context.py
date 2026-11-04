@@ -177,7 +177,7 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
 
     return {
         "as_of": datetime.now(timezone.utc).isoformat(),
-        "sources": ["system_status", "risk_status", "operational_observability", "statistics", "fiscal_reserve", "recent_decisions"],
+        "sources": ["system_status", "risk_status", "operational_observability", "statistics", "fiscal_reserve", "fiscal_pending_queue_summary", "recent_decisions"],
         "system": {
             "mode": str(status.get("mode", "UNKNOWN"))[:24],
             "execution_allowed": False,
