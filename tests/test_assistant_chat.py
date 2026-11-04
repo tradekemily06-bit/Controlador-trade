@@ -300,3 +300,11 @@ def test_assistant_distinguishes_manual_user_declared_day_trade_estimates_from_t
  assert "estimativas baseadas na declaração do usuário" in SYSTEM_PROMPT
  assert "não constituem validação independente do mercado" in SYSTEM_PROMPT
  assert "nem obrigação tributária apurada" in SYSTEM_PROMPT
+
+
+def test_assistant_does_not_treat_declared_professional_review_as_verified_or_classified():
+ from assistant.chat_service import SYSTEM_PROMPT
+ assert "Revisões documentais brasileiras ou estrangeiras são evidências declaradas" in SYSTEM_PROMPT
+ assert "não verifica identidade ou registro profissional" in SYSTEM_PROMPT
+ assert "não muda o status pendente" in SYSTEM_PROMPT
+ assert "não autoriza cálculo fiscal" in SYSTEM_PROMPT
