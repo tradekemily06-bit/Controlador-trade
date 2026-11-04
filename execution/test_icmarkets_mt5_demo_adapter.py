@@ -154,8 +154,8 @@ def test_read_operational_state_uses_mt5_observations():
 
     assert state.balance == 1000.0
     assert state.equity == 1015.0
-    assert state.realized_pnl == -7.3
-    assert state.realized_loss_today == 7.3
+    assert round(state.realized_pnl, 8) == -7.3
+    assert round(state.realized_loss_today, 8) == 7.3
     assert state.trades_today == 2
     assert state.consecutive_losses == 2
     assert state.open_positions == 1
