@@ -269,6 +269,8 @@ def show_fiscal() -> None:
         except Exception as exc:
             st.error(str(exc))
 
+    st.caption("Resultados estrangeiros com sinal original serão mantidos em pendência, fora dos totais até revisão.")
+
     with st.expander("Prévia de negócios encerrados · MT5 DEMO"):
         lookback = st.number_input("Período de consulta (dias)", min_value=1, max_value=365, value=30, step=1)
         if st.button("Consultar MT5 DEMO", key="mt5_fiscal_preview"):
