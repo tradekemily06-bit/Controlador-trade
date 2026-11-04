@@ -567,29 +567,32 @@ def application(environ, start_response):
                 "reconciliation_notice": "Resultado agregado do histórico completo da posição; conferir extrato da corretora antes de qualquer uso fiscal. Categoria e elegibilidade de mercado foram declaradas pelo usuário e ainda exigem revisão independente.",
             }
             payload = {
-                "category": "BR_DAY_TRADE",
+                "category_candidate": "BR_DAY_TRADE",
+                "instrument": str(candidate.get("symbol") or "INSTRUMENT_NOT_PROVIDED"),
+                "market_scope": "USER_DECLARED_BR_ELIGIBLE_MARKET_PENDING_REVIEW",
                 "realized_result_brl": candidate["net_result_account_currency"],
                 "reference": reference,
                 "occurred_on": occurred_on,
                 "notes": json.dumps(evidence, ensure_ascii=False, separators=(",", ":"))[:1000],
             }
             try:
-                entry = FISCAL_RESERVE.record_realized_result(fiscal_owner_id, payload)
-            except ValueError as exc:
-                if "já foi registrada" in str(exc):
-                    return _json_response(start_response, HTTPStatus.CONFLICT,
-                                          {"error": "Este ticket MT5 já foi registrado na Reserva Fiscal.",
-                                           "reference": reference, "registered": False,
-                                           "execution_allowed": False}, request_id, environ)
-                raise
+                pending = FISCAL_DOMESTIC_PENDING_QUEUE.add(fiscal_owner_id, payload)
+            except sqlite3.IntegrityError:
+                return _json_response(start_response, HTTPStatus.CONFLICT,
+                                      {"error": "Este ticket MT5 DEMO já está na fila de revisão fiscal brasileira.",
+                                       "reference": reference, "registered": False,
+                                       "classification_status": "PENDING_CLASSIFICATION",
+                                       "reserve_calculated": False, "included_in_totals": False,
+                                       "execution_allowed": False}, request_id, environ)
             return _json_response(start_response, HTTPStatus.CREATED,
-                                  {"entry": entry, "source": "IC Markets MT5 DEMO",
+                                  {"pending": pending, "source": "IC Markets MT5 DEMO",
                                    "source_ticket": ticket, "registered": True,
-                                   "classification_status": "USER_DECLARED_PENDING_REVIEW",
+                                   "classification_status": "PENDING_CLASSIFICATION",
                                    "classification_source": "USER_DECLARATION",
                                    "independent_market_eligibility_verified": False,
                                    "tax_liability_confirmed": False,
-                                   "reserve_is_estimate": True,
+                                   "reserve_is_estimate": False,
+                                   "reserve_calculated": False, "included_in_totals": False,
                                    "execution_allowed": False}, request_id, environ)
         if path == "/api/fiscal-reserve/mt5-preview" and method == "GET":
             query = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
