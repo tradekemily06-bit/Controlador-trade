@@ -46,6 +46,6 @@ A autorização local acima é somente para desenvolvimento no próprio computad
 
 - O Assistente precisa de `OPENAI_API_KEY` configurada no ambiente protegido do processo do runtime. Não coloque a chave no navegador, no código, no repositório ou em mensagens.
 - `OPENAI_MODEL` é opcional; o padrão atual é `gpt-4o-mini`.
-- A rota autenticada `/api/assistant/status` verifica se o provedor e a biblioteca estão configurados, sem devolver a chave.
+- A rota autenticada `/api/assistant/status` verifica se o provedor e a biblioteca estão configurados, sem devolver a chave; não testa conectividade ou validade da credencial.
 - Sem a chave ou sem a biblioteca, o Assistente falha de forma controlada e a interface informa que está indisponível.
 - As perguntas e o resumo operacional filtrado são enviados à API da OpenAI para gerar respostas; a interface exibe esse aviso antes do chat.
