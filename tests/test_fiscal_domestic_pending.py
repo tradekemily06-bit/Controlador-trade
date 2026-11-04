@@ -145,3 +145,11 @@ def test_domestic_pending_rejects_missing_or_invalid_owner_for_every_operation(t
         for operation in operations:
             with pytest.raises(ValueError, match="identidade proprietária"):
                 operation()
+
+
+
+def test_domestic_and_foreign_review_catalogs_are_disjoint():
+    from finance.fiscal_pending_queue import FOREIGN_REVIEW_CANDIDATES
+    from finance.fiscal_taxonomy import BRAZIL_CATEGORIES
+
+    assert set(BRAZIL_CATEGORIES).isdisjoint(FOREIGN_REVIEW_CANDIDATES)
