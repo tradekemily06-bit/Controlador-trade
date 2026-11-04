@@ -70,3 +70,10 @@ def test_streamlit_fiscal_panel_shows_foreign_pending_counts_by_period_without_a
     assert 'pending_periods.get(period, {})' in source
     assert "Exterior pendente · {label}" in source
     assert "sem cálculo" in source
+
+
+
+def test_streamlit_mt5_preview_displays_opening_and_closing_timestamps():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert '"Abertura UTC": item.get("opened_at_utc")' in source
+    assert '"Encerramento UTC": item.get("occurred_at_utc")' in source
