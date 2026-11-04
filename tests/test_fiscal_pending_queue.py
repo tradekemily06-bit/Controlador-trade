@@ -350,3 +350,29 @@ def test_pending_period_counts_are_date_scoped_and_never_become_money_totals(tmp
     assert summary["included_in_totals"] is False
     assert summary["reserve_calculated"] is False
     assert "original_result" not in str(summary)
+
+
+def test_foreign_queue_rejects_missing_owner_identity_for_every_operation(tmp_path):
+    queue = make_queue(tmp_path / "fiscal.sqlite3")
+    payload = sample("OWNER-REQUIRED")
+    for operation in (
+        lambda: queue.add("", payload),
+        lambda: queue.add_realized_result("", {
+            "reference": "OWNER-REQUIRED-RESULT",
+            "original_result": 1.0,
+            "original_currency": "USD",
+            "instrument": "ETF",
+            "jurisdiction": "PENDING_REVIEW",
+            "occurred_on": "2026-11-03",
+        }),
+        lambda: queue.list_pending(""),
+        lambda: queue.summary(""),
+        lambda: queue.list_reviews("", "missing"),
+        lambda: queue.record_review("", "missing", review_sample()),
+    ):
+        try:
+            operation()
+        except ValueError as exc:
+            assert "identidade proprietária" in str(exc)
+        else:
+            raise AssertionError("foreign queue operation must reject missing owner identity")
