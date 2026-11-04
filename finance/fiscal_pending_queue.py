@@ -285,6 +285,38 @@ class FiscalPendingQueue:
             ).fetchall()
         return [{key: value for key, value in dict(row).items() if key != "owner_id"} for row in rows]
 
+    def summary(self, owner_id: str) -> dict[str, Any]:
+        """Return owner-scoped aggregates over the complete queue, never item details."""
+        with self._connect() as db:
+            total = int(db.execute(
+                "SELECT COUNT(*) FROM fiscal_reserve_pending_foreign WHERE owner_id = ?",
+                (owner_id,),
+            ).fetchone()[0])
+            kinds = db.execute(
+                """SELECT record_kind, COUNT(*) AS item_count
+                   FROM fiscal_reserve_pending_foreign
+                   WHERE owner_id = ?
+                   GROUP BY record_kind""",
+                (owner_id,),
+            ).fetchall()
+            currencies = db.execute(
+                """SELECT DISTINCT original_currency
+                   FROM fiscal_reserve_pending_foreign
+                   WHERE owner_id = ?
+                   ORDER BY original_currency""",
+                (owner_id,),
+            ).fetchall()
+        counts = {str(row["record_kind"]): int(row["item_count"]) for row in kinds}
+        return {
+            "total": total,
+            "realized_results": counts.get("REALIZED_RESULT", 0),
+            "asset_amounts": counts.get("ASSET_AMOUNT", 0),
+            "currencies": [str(row["original_currency"]) for row in currencies],
+            "classification_status": "PENDING_CLASSIFICATION",
+            "included_in_totals": False,
+            "reserve_calculated": False,
+        }
+
     def list_pending(self, owner_id: str, limit: int = 100, offset: int = 0) -> dict[str, Any]:
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
             raise ValueError("limit deve estar entre 1 e 500")
