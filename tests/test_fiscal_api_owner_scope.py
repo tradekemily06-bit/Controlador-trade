@@ -96,3 +96,37 @@ def test_fiscal_and_assistant_read_routes_ignore_forged_owner_parameters(
     assert len(conversations["conversations"]) == 1
     assert conversations["conversations"][0]["title"] == "conversa do titular"
     assert "conversa de outra identidade" not in json.dumps(conversations)
+
+
+def test_assistant_readiness_api_requires_trusted_identity_and_returns_no_secret(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    database = tmp_path / "assistant-status.sqlite3"
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "X-Auth-User")
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", database)
+    monkeypatch.setattr(app_module.SECURITY, "allow", lambda environ: True)
+    monkeypatch.setattr(app_module.SECURITY, "headers", lambda request_id, **kwargs: [])
+    monkeypatch.setattr(app_module, "_audit", lambda *args, **kwargs: None)
+    monkeypatch.setattr(app_module, "ASSISTANT", SimpleNamespace(readiness=lambda: {
+        "available": True,
+        "provider": "OpenAI API",
+        "model": "gpt-4o-mini",
+        "connection_tested": False,
+        "read_only": True,
+        "may_execute_orders": False,
+        "may_enable_real": False,
+        "may_move_money": False,
+    }))
+
+    status, body = _request("/api/assistant/status")
+
+    assert status.startswith("200")
+    assert body["available"] is True
+    assert body["connection_tested"] is False
+    assert body["read_only"] is True
+    assert body["may_execute_orders"] is False
+    assert body["may_enable_real"] is False
+    assert body["may_move_money"] is False
+    assert "OPENAI_API_KEY" not in json.dumps(body)
