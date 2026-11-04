@@ -50,7 +50,8 @@ try {
         $fiscal.foreign_pending.reserve_calculated -eq $false
     )
     $periodNames = @($fiscal.periods.PSObject.Properties.Name)
-    $periodsComplete = @('day', 'week', 'month', 'year' | Where-Object { $periodNames -contains $_ }).Count -eq 4
+    $requiredPeriods = @('day', 'week', 'month', 'year')
+    $periodsComplete = @($requiredPeriods | Where-Object { $periodNames -contains $_ }).Count -eq 4
     $semanticsSafe = (
         $fiscal.reserve_semantics.kind -eq 'PLANNING_ESTIMATE_ONLY' -and
         $fiscal.reserve_semantics.tax_liability_confirmed -eq $false -and
@@ -72,12 +73,13 @@ try {
 try {
     $domestic = Get-LocalJson '/api/fiscal-reserve/domestic-pending/summary'
     $domesticPeriods = @($domestic.periods.PSObject.Properties.Name)
+    $requiredPeriods = @('day', 'week', 'month', 'year')
     $domesticSafe = (
         $domestic.available -eq $true -and
         $domestic.classification_status -eq 'PENDING_CLASSIFICATION' -and
         $domestic.included_in_totals -eq $false -and
         $domestic.reserve_calculated -eq $false -and
-        @('day', 'week', 'month', 'year' | Where-Object { $domesticPeriods -contains $_ }).Count -eq 4
+        @($requiredPeriods | Where-Object { $domesticPeriods -contains $_ }).Count -eq 4
     )
     Add-Check 'domestic-pending-read-only' $domesticSafe 'Fila brasileira owner-scoped, pendente, sem classificação automática ou lançamento; períodos conferidos.'
 } catch {
