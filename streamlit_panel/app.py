@@ -848,6 +848,10 @@ def show_simulator() -> None:
         totals[0].metric("Resultado bruto", f"{float(result.get('gross_pnl_quote', 0)):.6f}")
         totals[1].metric("Custos totais", f"{float(result.get('total_costs_quote', 0)):.6f}")
         totals[2].metric("Candles analisados", int(result.get("candles_processed", 0)))
+        risk_totals = st.columns(2)
+        risk_totals[0].metric("Drawdown máximo · moeda cotada", f"{float(result.get('max_drawdown_quote', 0)):.6f}")
+        risk_totals[1].metric("Maior sequência de perdas", int(result.get("max_consecutive_losses", 0)))
+        st.caption(result.get("drawdown_note", "Drawdown percentual não calculado sem saldo inicial."))
         trades = result.get("trades", [])
         if trades:
             st.dataframe(trades, use_container_width=True, hide_index=True)
