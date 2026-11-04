@@ -304,6 +304,9 @@ def test_fiscal_assistant_runtime_validator_is_read_only_and_checks_safe_contrac
     ):
         assert required in text
     assert "Invoke-WebRequest -UseBasicParsing -Method Get" in text
+    assert "unauthorized-smoke-identity@example.invalid" in text
+    assert "Test-RejectedIdentity '/api/assistant/status'" in text
+    assert "Test-RejectedIdentity '/api/fiscal-reserve/pending?limit=1'" in text
     assert "Invoke-WebRequest -UseBasicParsing -Method Post" not in text
     assert "/api/assistant/chat" not in text
     assert "Start-Process" not in text
