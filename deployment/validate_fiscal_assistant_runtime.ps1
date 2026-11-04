@@ -19,7 +19,7 @@ function Add-Check([string]$Name, [bool]$Ok, [string]$Detail) {
 function Get-LocalJson([string]$Path) {
     $response = Invoke-WebRequest -UseBasicParsing -Method Get -Uri ($BaseUrl + $Path) -Headers $headers -TimeoutSec 8 -ErrorAction Stop
     if ($response.StatusCode -lt 200 -or $response.StatusCode -ge 300) {
-        throw "HTTP inesperado em $Path: $($response.StatusCode)"
+        throw "HTTP inesperado em ${Path}: $($response.StatusCode)"
     }
     return ($response.Content | ConvertFrom-Json)
 }
