@@ -285,7 +285,7 @@ def test_mt5_signal_scenario_rejects_invalid_confidence_and_non_demo_provider():
     service = ConfiguredEcosystemService(execution_provider="ic_markets_mt5_demo")
     try:
         service.simulate_mt5_signal_scenario(
-            symbol="EURUSD", timeframe="5m", limit=25, minimum_confidence=69
+            symbol="EURUSD", timeframe="5m", limit=25, minimum_directional_score=69
         )
     except ValueError as exc:
         assert "70 e 95" in str(exc)
@@ -311,7 +311,7 @@ def test_mt5_signal_scenario_rejects_out_of_order_history():
     service.mt5_market_adapter = FakeMarketAdapter()
     try:
         service.simulate_mt5_signal_scenario(
-            symbol="EURUSD", timeframe="5m", limit=25, minimum_confidence=80
+            symbol="EURUSD", timeframe="5m", limit=25, minimum_directional_score=80
         )
     except RuntimeError as exc:
         assert "ordem cronológica" in str(exc)
