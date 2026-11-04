@@ -283,6 +283,6 @@ def test_assistant_rejects_user_message_over_4000_characters(tmp_path):
 
 def test_assistant_prompt_explains_foreign_pending_items_without_tax_inference():
  from assistant.chat_service import SYSTEM_PROMPT
- assert "Pendências estrangeiras são apenas uma contagem por tipo e moeda" in SYSTEM_PROMPT
+ assert "Pendências estrangeiras são apenas contagens por tipo, moeda e período" in SYSTEM_PROMPT
  assert "não as trate como lucro tributável, patrimônio ou reserva calculada" in SYSTEM_PROMPT
  assert "permanecem fora dos totais até classificação e revisão" in SYSTEM_PROMPT
