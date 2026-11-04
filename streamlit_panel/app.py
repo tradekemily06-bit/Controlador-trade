@@ -716,6 +716,133 @@ def show_fiscal() -> None:
         st.warning(str(exc))
 
 
+def show_market_analysis() -> None:
+    st.subheader("Análise de Mercado")
+    st.caption("Consulta de candles do MT5 DEMO e análise. Esta tela não envia ordens nem autoriza execução.")
+    try:
+        assets_payload = api("/api/market/assets")
+        assets = assets_payload.get("assets", [])
+        symbols = []
+        for asset in assets:
+            if isinstance(asset, str):
+                symbols.append(asset)
+            elif isinstance(asset, dict) and asset.get("symbol"):
+                symbols.append(str(asset["symbol"]))
+        if not symbols:
+            st.warning("O runtime não disponibilizou ativos do MT5 DEMO. Verifique a conexão e a fonte de candles.")
+            return
+        with st.form("market_analysis_form"):
+            symbol = st.selectbox("Ativo", sorted(set(symbols)))
+            timeframe = st.selectbox("Período gráfico", ["1m", "5m", "15m", "30m", "1h", "4h", "1d"], index=1)
+            candle_limit = st.slider("Quantidade de candles", min_value=30, max_value=500, value=100, step=10)
+            confirmed = st.checkbox("Confirmo que esta análise é somente para estudo em DEMO/SIMULAÇÃO.")
+            submitted = st.form_submit_button("Analisar mercado")
+        if submitted:
+            if not confirmed:
+                st.error("Confirme o uso somente em DEMO/SIMULAÇÃO para solicitar a análise.")
+            else:
+                try:
+                    result = api("/api/runtime/analysis", "POST", {"symbol": symbol, "timeframe": timeframe, "limit": candle_limit, "confirmed": True, "filters_ok": True})
+                    st.session_state.market_analysis_result = result
+                except Exception as exc:
+                    st.error(f"Análise indisponível: {exc}")
+        result = st.session_state.get("market_analysis_result")
+        if result:
+            analysis = result.get("analysis", {})
+            signal = str(result.get("signal") or "AGUARDAR").upper()
+            cols = st.columns(4)
+            cols[0].metric("Sinal", signal)
+            cols[1].metric("Pontuação", f"{analysis.get('score', '—')}/100")
+            cols[2].metric("Ativo", analysis.get("symbol", "—"))
+            cols[3].metric("Período", analysis.get("timeframe", "—"))
+            st.write(result.get("reason") or "Sem justificativa fornecida pelo motor.")
+            st.caption("Decisão: " + str(result.get("decision", "AGUARDAR")) + " · Execução permitida: NÃO")
+            candles = result.get("market_data", {}).get("ohlcv", [])
+            if candles:
+                st.markdown("#### Candles recebidos")
+                st.dataframe(candles[-100:], use_container_width=True, hide_index=True)
+    except Exception as exc:
+        st.warning(f"Não foi possível carregar ativos do MT5 DEMO: {exc}")
+
+
+def show_readonly_module(module_name: str) -> None:
+    """Render existing runtime capabilities as read-only Streamlit screens."""
+    views = {
+        "Operação": ("Estado operacional", "/api/health"),
+        "Motor de Decisão": ("Estatísticas do motor", "/api/statistics"),
+        "Gestão de Risco": ("Limites e bloqueios de risco", "/api/risk"),
+        "Notificações": ("Notificações do Ecossistema", "/api/notifications"),
+        "MT5 DEMO / Simulação": ("Conexões e ambiente", "/api/connections"),
+        "Kill Switch": ("Estado de segurança", "/api/health"),
+        "Memória": ("Memória de decisões", "/api/memory?limit=50"),
+        "Estatísticas": ("Estatísticas operacionais", "/api/statistics"),
+        "Relatórios": ("Resumo para relatórios", "/api/statistics"),
+        "Laboratório": ("Recursos de estudo", "/api/learning"),
+        "Aprendizado": ("Aprendizado validado", "/api/learning"),
+        "Descobertas": ("Observações e descobertas", "/api/learning"),
+        "Escola / Tutorial / Onboarding": ("Guia de primeiro uso", "/api/onboarding"),
+        "Configurações": ("Preferências do Ecossistema", "/api/preferences"),
+        "Segurança": ("Estado de segurança e conexões", "/api/health"),
+        "Conexões": ("Conexões disponíveis", "/api/connections"),
+        "Multi-Broker": ("Estado de conexões", "/api/connections"),
+        "Auditoria": ("Integridade e estado operacional", "/api/health"),
+    }
+    if module_name == "Análise de Mercado":
+        show_market_analysis()
+        return
+    if module_name == "Replay":
+        st.subheader("Replay")
+        st.caption("O histórico de decisões disponível pode ser consultado abaixo. A reprodução interativa de cenários ainda requer integração específica nesta tela.")
+        endpoint = "/api/memory?limit=50"
+    elif module_name == "Simulador":
+        st.subheader("Simulador")
+        st.caption("Consulta de risco e estatísticas em modo de leitura. Nenhuma ordem ou simulação financeira é executada nesta tela.")
+        endpoint = "/api/risk"
+    else:
+        view = views.get(module_name)
+        if not view:
+            st.subheader(module_name)
+            st.info("Esta tela ainda está em implementação. Nenhuma ação operacional será simulada ou apresentada como concluída.")
+            return
+        heading, endpoint = view
+        st.subheader(heading)
+    try:
+        data = api(endpoint)
+        if module_name == "Memória" or module_name == "Replay":
+            records = data if isinstance(data, list) else data.get("records", [])
+            if records:
+                st.dataframe(records, use_container_width=True, hide_index=True)
+            else:
+                st.caption("Ainda não há registros disponíveis.")
+        elif module_name == "Notificações":
+            items = data.get("items", []) if isinstance(data, dict) else []
+            if items:
+                for item in items:
+                    st.warning(f"{item.get('title', 'Notificação')} · {item.get('message', '')}")
+            else:
+                st.caption("Nenhuma notificação ativa.")
+            st.json(data)
+        else:
+            if module_name == "Gestão de Risco":
+                limits = data.get("configured_limits", {})
+                cols = st.columns(3)
+                cols[0].metric("Limite de perda diária", str(limits.get("daily_loss_limit", "—")))
+                cols[1].metric("Máximo de operações", str(limits.get("max_operations", "—")))
+                cols[2].metric("Perdas consecutivas", str(limits.get("max_consecutive_losses", "—")))
+                st.write("Permissão de risco: " + ("LIBERADA PELO GATE" if data.get("allowed") else "BLOQUEADA"))
+                st.write(data.get("reason", "Sem justificativa disponível."))
+            elif module_name in {"Operação", "Kill Switch", "Segurança", "Auditoria"}:
+                st.metric("Saúde do Ecossistema", str(data.get("health", "NÃO CONFIRMADA")))
+                st.metric("Execução permitida", "NÃO" if data.get("execution_allowed") is False else "NÃO CONFIRMADA")
+                obs = data.get("operational_observability", {})
+                if obs:
+                    st.write("Kill Switch: " + str(obs.get("kill_switch", {}).get("state", "NÃO CONFIRMADO")))
+                    st.write("Recuperação: " + str(obs.get("recovery", {}).get("state", "NÃO CONFIRMADA")))
+            st.json(data)
+    except Exception as exc:
+        st.warning(f"Não foi possível carregar este módulo do runtime: {exc}")
+
+
 # The Figma reference defines four visual areas. The Assistant is an additional
 # functional module requested by the user and lives inside the Streamlit panel,
 # without changing the reference JSON or creating a fifth navigation area.
@@ -738,12 +865,10 @@ module = st.radio("Módulos", AREAS[area], horizontal=False, label_visibility="c
 
 if module == "Assistente do Ecossistema":
     show_assistant()
-elif module == "Financeiro":
-    show_fiscal()
-elif module == "Reserva Fiscal":
+elif module in {"Financeiro", "Reserva Fiscal"}:
     show_fiscal()
 else:
-    st.empty()
+    show_readonly_module(module)
 
 st.divider()
 st.subheader("Estado do Ecossistema")
