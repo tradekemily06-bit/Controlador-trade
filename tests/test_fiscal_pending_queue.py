@@ -1,4 +1,5 @@
 import os
+from datetime import date
 from finance.fiscal_pending_queue import FiscalPendingQueue
 from finance.fiscal_schema import migrate_fiscal_schema
 
@@ -277,12 +278,19 @@ def test_summary_counts_entire_queue_and_is_scoped_to_owner(tmp_path):
         "fx_source": None,
     })
 
-    summary = queue.summary(OWNER)
+    summary = queue.summary(OWNER, as_of=date(2026, 11, 3))
     assert summary == {
+        "as_of": "2026-11-03",
         "total": 501,
         "realized_results": 501,
         "asset_amounts": 0,
         "currencies": ["EUR", "USD"],
+        "periods": {
+            "day": {"start": "2026-11-03", "end": "2026-11-03", "total": 501, "realized_results": 501, "asset_amounts": 0},
+            "week": {"start": "2026-11-02", "end": "2026-11-03", "total": 501, "realized_results": 501, "asset_amounts": 0},
+            "month": {"start": "2026-11-01", "end": "2026-11-03", "total": 501, "realized_results": 501, "asset_amounts": 0},
+            "year": {"start": "2026-01-01", "end": "2026-11-03", "total": 501, "realized_results": 501, "asset_amounts": 0},
+        },
         "classification_status": "PENDING_CLASSIFICATION",
         "included_in_totals": False,
         "reserve_calculated": False,
@@ -304,3 +312,40 @@ def test_review_cannot_attach_to_another_owners_pending_item(tmp_path):
     else:
         raise AssertionError("cross-owner review must be rejected")
     assert queue.list_reviews(OWNER, pending["pending_id"]) == []
+
+
+
+def test_pending_period_counts_are_date_scoped_and_never_become_money_totals(tmp_path):
+    queue = make_queue(tmp_path / "fiscal.sqlite3")
+    for day, kind, ref in (
+        ("2026-10-31", "asset", "BEFORE-WEEK"),
+        ("2026-11-02", "result", "THIS-WEEK-RESULT"),
+        ("2026-11-03", "asset", "TODAY-ASSET"),
+        ("2026-11-04", "result", "FUTURE-RESULT"),
+    ):
+        payload = sample(ref)
+        payload["occurred_on"] = day
+        if kind == "result":
+            payload = {
+                "reference": ref,
+                "original_result": -12.0,
+                "original_currency": "USD",
+                "instrument": "ETF",
+                "jurisdiction": "PENDING_REVIEW",
+                "occurred_on": day,
+            }
+            queue.add_realized_result(OWNER, payload)
+        else:
+            queue.add(OWNER, payload)
+
+    summary = queue.summary(OWNER, as_of=date(2026, 11, 3))
+    assert summary["periods"]["day"]["total"] == 1
+    assert summary["periods"]["day"]["asset_amounts"] == 1
+    assert summary["periods"]["day"]["realized_results"] == 0
+    assert summary["periods"]["week"]["total"] == 2
+    assert summary["periods"]["month"]["total"] == 2
+    assert summary["periods"]["year"]["total"] == 2
+    assert summary["total"] == 4
+    assert summary["included_in_totals"] is False
+    assert summary["reserve_calculated"] is False
+    assert "original_result" not in str(summary)
