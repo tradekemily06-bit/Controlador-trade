@@ -268,7 +268,9 @@ class FiscalPendingQueue:
                 review,
             )
         public_review = {key: value for key, value in review.items() if key != "owner_id"}
-        return {**public_review, "status_unchanged": "PENDING_CLASSIFICATION",
+        return {**public_review, "reviewer_identity_status": "DECLARED_NOT_VERIFIED",
+                "professional_registration_verified": False,
+                "status_unchanged": "PENDING_CLASSIFICATION",
                 "reserve_calculated": False, "tax_rate_available": False}
 
     def list_reviews(self, owner_id: str, pending_id: str) -> list[dict[str, Any]]:
@@ -283,7 +285,9 @@ class FiscalPendingQueue:
                 "SELECT * FROM fiscal_pending_reviews WHERE owner_id = ? AND pending_id = ? ORDER BY created_at DESC, review_id DESC",
                 (owner_id, pending_id),
             ).fetchall()
-        return [{key: value for key, value in dict(row).items() if key != "owner_id"} for row in rows]
+        return [{**{key: value for key, value in dict(row).items() if key != "owner_id"},
+                 "reviewer_identity_status": "DECLARED_NOT_VERIFIED",
+                 "professional_registration_verified": False} for row in rows]
 
     def summary(self, owner_id: str) -> dict[str, Any]:
         """Return owner-scoped aggregates over the complete queue, never item details."""
