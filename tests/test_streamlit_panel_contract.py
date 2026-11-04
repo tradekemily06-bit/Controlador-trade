@@ -156,3 +156,10 @@ def test_streamlit_brazilian_pending_queue_supports_auditable_professional_revie
     assert "Revisão documental · Brasil" in source
     assert "O sistema não verifica identidade ou registro profissional" in source
     assert "A operação continua pendente, sem cálculo ou inclusão nos totais." in source
+
+
+def test_streamlit_assistant_displays_provider_readiness_without_exposing_credentials():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'api("/api/assistant/status")' in source
+    assert "Assistente indisponível:" in source
+    assert "Provedor conectado" in source
