@@ -596,6 +596,9 @@ class ConfiguredEcosystemService(EcosystemService):
             "gross_pnl_quote": result.gross_pnl_quote,
             "total_costs_quote": result.total_costs_quote,
             "net_pnl_quote": result.net_pnl_quote,
+            "max_drawdown_quote": result.max_drawdown_quote,
+            "max_consecutive_losses": result.max_consecutive_losses,
+            "drawdown_note": "Drawdown absoluto em moeda cotada, calculado a partir de capital inicial zero; percentual não calculado porque saldo inicial não foi informado.",
             "assumptions": {
                 "entry": "próxima abertura após o sinal no fechamento",
                 "position_limit": "uma posição por vez",
