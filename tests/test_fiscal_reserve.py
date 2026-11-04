@@ -337,3 +337,22 @@ def test_unverified_mt5_declarations_in_legacy_ledger_are_preserved_but_excluded
         assert summary["periods"][period]["reserve_amount_brl"] == 0.0
     assert summary["history_page"]["total"] == 1
     assert summary["history"][0]["reference"] == "MT5-DEMO:UNVERIFIED-LEGACY-001"
+
+
+def test_summary_discloses_planning_only_semantics_and_missing_monthly_offsets(tmp_path):
+    reserve = make_reserve(tmp_path / "planning-semantics.sqlite3")
+    reserve.record_realized_result(OWNER, {
+        "category": "BR_DAY_TRADE",
+        "realized_result_brl": 1000,
+        "reference": "PLANNING-SEMANTICS-001",
+        "occurred_on": "2026-11-04",
+    })
+    summary = reserve.summary(OWNER)
+    semantics = summary["reserve_semantics"]
+    assert semantics["kind"] == "PLANNING_ESTIMATE_ONLY"
+    assert semantics["tax_liability_confirmed"] is False
+    assert semantics["monthly_tax_assessment"] is False
+    assert semantics["monthly_loss_offsets_calculated"] is False
+    assert semantics["irrf_credits_calculated"] is False
+    assert semantics["positive_entry_only"] is True
+    assert "não é apuração mensal" in semantics["description"]
