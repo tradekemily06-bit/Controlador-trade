@@ -46,6 +46,15 @@ def migrate_fiscal_schema(database_path: str) -> str:
             ).fetchall()}
             if domestic_owners and domestic_owners != {owner_id}:
                 raise RuntimeError("A identidade fiscal configurada não corresponde ao proprietário da fila brasileira; migração automática bloqueada.")
+        if "fiscal_domestic_pending_reviews" in existing:
+            review_columns = {row["name"] for row in db.execute("PRAGMA table_info(fiscal_domestic_pending_reviews)")}
+            if "owner_id" not in review_columns:
+                raise RuntimeError("A revisão brasileira pendente não possui identidade proprietária; acesso bloqueado.")
+            review_owners = {row[0] for row in db.execute(
+                "SELECT DISTINCT owner_id FROM fiscal_domestic_pending_reviews WHERE owner_id IS NOT NULL"
+            ).fetchall()}
+            if review_owners and review_owners != {owner_id}:
+                raise RuntimeError("A identidade fiscal configurada não corresponde às revisões brasileiras; migração automática bloqueada.")
         if all(table in existing for table in TABLES):
             owner_columns = {
                 table: {row["name"] for row in db.execute(f'PRAGMA table_info("{table}")')}
@@ -64,6 +73,11 @@ def migrate_fiscal_schema(database_path: str) -> str:
                     if "owner_id" not in domestic_columns:
                         raise RuntimeError("A fila brasileira pendente não possui identidade proprietária; acesso bloqueado.")
                     scoped_tables.append("fiscal_reserve_pending_domestic")
+                if "fiscal_domestic_pending_reviews" in existing:
+                    review_columns = {row["name"] for row in db.execute("PRAGMA table_info(fiscal_domestic_pending_reviews)")}
+                    if "owner_id" not in review_columns:
+                        raise RuntimeError("A revisão brasileira pendente não possui identidade proprietária; acesso bloqueado.")
+                    scoped_tables.append("fiscal_domestic_pending_reviews")
                 for table in scoped_tables:
                     stored_owners.update(
                         row[0] for row in db.execute(
