@@ -27,7 +27,7 @@ st.markdown("""
 .block-container { width: 100%; max-width: none; padding: 1rem clamp(.75rem, 2vw, 1.5rem) 6rem; }
 .st-key-panel-toggle { position: fixed; left: 18px; bottom: 14px; z-index: 1000; width: 58px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .st-key-panel-toggle .stButton > button { width: 48px; min-width: 48px; height: 48px; min-height: 48px; padding: 0; border-radius: 50%; background: #080B0F; color: #46D6AD; border: 1px solid #46D6AD; box-shadow: 0 0 10px #46D6AD33; font-weight: 800; }
-.st-key-panel-toggle [data-testid="stCaptionContainer"] { width: 100%; white-space: nowrap; text-align: center; font-size: 9px; color: #7F8B97; }
+.st-key-panel-toggle .closed-signal { width: 150px; display: flex; flex-direction: column; align-items: center; gap: 1px; white-space: nowrap; text-align: center; font-size: 10px; line-height: 1.2; text-shadow: 0 1px 4px #080B0F; }\n.st-key-panel-toggle .closed-signal strong { font-size: 10px; font-weight: 800; }
 *, *::before, *::after { box-sizing: border-box; }
 [data-testid="stAppViewContainer"], [data-testid="stMain"], [data-testid="stMainBlockContainer"] { min-width: 0; }
 [data-testid="stDataFrame"], [data-testid="stTable"], .status-card { max-width: 100%; }
@@ -50,6 +50,30 @@ section[data-testid="stSidebar"] { background:#10151B; border-right:1px solid #2
 .muted { color:#7F8B97; }
 </style>
 """, unsafe_allow_html=True)
+
+
+def closed_panel_signal(result: Any) -> tuple[str, str, str]:
+    """Return only a validated last-session signal, score label, and display color."""
+    if not isinstance(result, dict):
+        return "INDISPONÍVEL", "—", "#7F8B97"
+    raw_signal = str(result.get("signal") or "").strip().upper()
+    signals = {
+        "BUY": ("↑ COMPRAR", "#46D6AD"),
+        "COMPRAR": ("↑ COMPRAR", "#46D6AD"),
+        "SELL": ("↓ VENDER", "#FF667A"),
+        "VENDER": ("↓ VENDER", "#FF667A"),
+        "WAIT": ("AGUARDAR", "#E8C66A"),
+        "AGUARDAR": ("AGUARDAR", "#E8C66A"),
+    }
+    if raw_signal not in signals:
+        return "INDISPONÍVEL", "—", "#7F8B97"
+    analysis = result.get("analysis")
+    score = analysis.get("score") if isinstance(analysis, dict) else None
+    if isinstance(score, bool) or not isinstance(score, (int, float)) or not 1 <= score <= 100:
+        return "INDISPONÍVEL", "—", "#7F8B97"
+    strength = "FRACA" if score <= 69 else "MODERADA" if score <= 79 else "FORTE"
+    signal_label, color = signals[raw_signal]
+    return signal_label, f"{int(score)}% · {strength}", color
 
 
 def api(path: str, method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -1212,7 +1236,14 @@ if not st.session_state.panel_open:
         if st.button("C", key="open_control_hub"):
             st.session_state.panel_open = True
             st.rerun()
-        st.caption("INDISPONÍVEL")
+        closed_signal, closed_score, closed_color = closed_panel_signal(
+            st.session_state.get("market_analysis_result")
+        )
+        st.markdown(
+            f'<div class="closed-signal" style="color:{closed_color}">'
+            f'<strong>{closed_signal}</strong><span>{closed_score}</span></div>',
+            unsafe_allow_html=True,
+        )
     st.stop()
 
 st.markdown('<div class="status-card"><span style="font-size:1.35rem;font-weight:800">Controlador-Trader</span> <span class="demo-pill" style="float:right">DEMO</span></div>', unsafe_allow_html=True)
