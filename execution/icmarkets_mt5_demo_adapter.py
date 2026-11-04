@@ -216,7 +216,11 @@ class ICMarketsMT5DemoAdapter:
                         else:
                             identifiers.append(str(identifier))
 
-                    if entries_valid:
+                    has_netting_reversal = (
+                        entry_inout is not None
+                        and any(getattr(deal, "entry", None) == entry_inout for deal in deals)
+                    )
+                    if entries_valid and not has_netting_reversal:
                         trades_today = len(set(identifiers))
                     grouped = {}
                     for index, (deal, identifier, cashflow) in enumerate(zip(deals, identifiers, cashflows)):
