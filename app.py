@@ -494,6 +494,7 @@ def application(environ, start_response):
                 raise ValueError("categoria precisa ser confirmada explicitamente como BR_DAY_TRADE")
             if data.get("market_scope") != "BR_ELIGIBLE_MARKET":
                 raise ValueError("mercado brasileiro elegível não foi confirmado; mantenha o negócio pendente até classificação")
+            declared_market_scope = str(data.get("market_scope") or "").strip()[:80]
             try:
                 candidate = SERVICE.mt5_operational_adapter.read_closed_deal_candidate(ticket)
             except RuntimeError as exc:
@@ -561,6 +562,7 @@ def application(environ, start_response):
                 "closing_deal_count": candidate.get("closing_deal_count"),
                 "tax_classification_status": "USER_DECLARED_PENDING_REVIEW",
                 "market_scope_source": "USER_DECLARATION_NOT_INDEPENDENTLY_VERIFIED",
+                "declared_market_scope": declared_market_scope,
                 "independent_market_eligibility_verified": False,
                 "tax_liability_confirmed": False,
                 "reserve_semantics": "PLANNING_ESTIMATE_ONLY",
@@ -569,7 +571,7 @@ def application(environ, start_response):
             payload = {
                 "category_candidate": "BR_DAY_TRADE",
                 "instrument": str(candidate.get("symbol") or "INSTRUMENT_NOT_PROVIDED"),
-                "market_scope": "USER_DECLARED_BR_ELIGIBLE_MARKET_PENDING_REVIEW",
+                "market_scope": declared_market_scope,
                 "realized_result_brl": candidate["net_result_account_currency"],
                 "reference": reference,
                 "occurred_on": occurred_on,
