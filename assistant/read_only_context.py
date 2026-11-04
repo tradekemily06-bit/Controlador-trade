@@ -116,7 +116,7 @@ def _statistics_summary(value: Any) -> dict[str, Any]:
     return safe
 
 
-def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id: str, fiscal_pending_queue: Any = None) -> dict[str, Any]:
+def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id: str, fiscal_pending_queue: Any = None, fiscal_domestic_pending_queue: Any = None) -> dict[str, Any]:
     """Build a compact, privacy-filtered snapshot for an assistant response."""
     if service is None or fiscal_reserve is None:
         raise ValueError("serviço do ecossistema e Reserva Fiscal são obrigatórios")
@@ -180,6 +180,31 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
         except Exception:
             pending_context = {"available": False, "included_in_totals": False}
     fiscal_context["foreign_pending"] = pending_context
+    domestic_pending_context = {"available": False, "included_in_totals": False}
+    if fiscal_domestic_pending_queue is not None:
+        try:
+            domestic_summary = fiscal_domestic_pending_queue.summary(fiscal_owner_id)
+            domestic_pending_context = {
+                "available": True,
+                "total": _count(domestic_summary.get("total")),
+                "periods": {
+                    str(period): {
+                        "start": str(values.get("start", ""))[:10],
+                        "end": str(values.get("end", ""))[:10],
+                        "total": _count(values.get("total")),
+                        "results": _count(values.get("results")),
+                    }
+                    for period, values in domestic_summary.get("periods", {}).items()
+                    if period in {"day", "week", "month", "year"} and isinstance(values, dict)
+                },
+                "as_of": str(domestic_summary.get("as_of", ""))[:10],
+                "classification_status": "PENDING_CLASSIFICATION",
+                "included_in_totals": False,
+                "reserve_calculated": False,
+            }
+        except Exception:
+            domestic_pending_context = {"available": False, "included_in_totals": False}
+    fiscal_context["domestic_pending"] = domestic_pending_context
     recent_decisions = service.memory_view(limit=5)
 
     components = status.get("components", {})
@@ -191,7 +216,7 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
 
     return {
         "as_of": datetime.now(timezone.utc).isoformat(),
-        "sources": ["system_status", "risk_status", "operational_observability", "statistics", "fiscal_reserve", "fiscal_pending_queue_summary", "recent_decisions"],
+        "sources": ["system_status", "risk_status", "operational_observability", "statistics", "fiscal_reserve", "fiscal_pending_queue_summary", "fiscal_domestic_pending_queue_summary", "recent_decisions"],
         "system": {
             "mode": str(status.get("mode", "UNKNOWN"))[:24],
             "execution_allowed": False,
