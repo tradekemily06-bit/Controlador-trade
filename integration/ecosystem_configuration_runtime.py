@@ -362,6 +362,8 @@ class ConfiguredEcosystemService(EcosystemService):
         candles = tuple(self.mt5_market_adapter.fetch_market_data(request))
         if len(candles) < 2:
             raise RuntimeError("histórico insuficiente: são necessários pelo menos dois candles fechados")
+        if any(candles[index].timestamp < candles[index - 1].timestamp for index in range(1, len(candles))):
+            raise RuntimeError("histórico MT5 fora de ordem cronológica; replay bloqueado")
 
         records: list[dict[str, Any]] = []
         for index in range(1, len(candles)):
