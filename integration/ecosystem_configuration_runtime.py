@@ -28,6 +28,8 @@ from execution.icmarkets_mt5_market_data import ICMarketsMT5DemoMarketDataAdapte
 from core.ecosystem_preferences import ChartTheme, EcosystemPreferencesStore
 from core.ecosystem_state_store import EcosystemStateStore
 from core.models import AnalysisResult, Signal
+from core.p122_broker_market_data import BrokerMarketDataRequest, BrokerMarketDataSnapshot
+from core.candle_analysis_evaluator import evaluate_candle_snapshot
 from core.senior_analysis_gate import SeniorAnalysisGate
 from core.senior_context_orchestrator import SeniorContextInput
 from core.senior_risk_reasoning import RiskDomain, RiskObservation
@@ -342,6 +344,60 @@ class ConfiguredEcosystemService(EcosystemService):
             )
         self._record_analysis(orchestration.analysis)
         return orchestration
+
+    def replay_mt5_history(self, *, symbol: str, timeframe: str = "5m", limit: int = 100) -> dict[str, Any]:
+        """Replay closed historical MT5 DEMO candles chronologically, without side effects."""
+        if self.execution_provider != "ic_markets_mt5_demo":
+            raise RuntimeError("Replay histórico exige provider IC Markets MT5 DEMO")
+        symbol = str(symbol).strip()
+        timeframe = str(timeframe).strip()
+        if not symbol:
+            raise ValueError("symbol é obrigatório")
+        if not timeframe:
+            raise ValueError("timeframe é obrigatório")
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 20 <= limit <= 500:
+            raise ValueError("limit deve estar entre 20 e 500")
+
+        request = BrokerMarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
+        candles = tuple(self.mt5_market_adapter.fetch_market_data(request))
+        if len(candles) < 2:
+            raise RuntimeError("histórico insuficiente: são necessários pelo menos dois candles fechados")
+
+        records: list[dict[str, Any]] = []
+        for index in range(1, len(candles)):
+            prefix = candles[: index + 1]
+            snapshot = BrokerMarketDataSnapshot(
+                symbol=symbol,
+                timeframe=timeframe,
+                candles=prefix,
+                source="IC Markets MT5 DEMO · histórico fechado",
+                received_at=prefix[-1].timestamp,
+            )
+            result = evaluate_candle_snapshot(snapshot)
+            signal = result.signal.value
+            records.append({
+                "index": index + 1,
+                "timestamp": prefix[-1].timestamp.isoformat(),
+                "close": prefix[-1].close,
+                "signal": signal,
+                "score": result.score,
+                "decision": "SINAL" if signal != Signal.AGUARDAR.value and result.confirmed else "AGUARDAR",
+                "reason": result.reason,
+            })
+
+        return {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "source": "IC Markets MT5 DEMO",
+            "candles_replayed": len(candles),
+            "records": records,
+            "buy_signals": sum(item["signal"] == Signal.COMPRA.value for item in records),
+            "sell_signals": sum(item["signal"] == Signal.VENDA.value for item in records),
+            "waiting": sum(item["decision"] == "AGUARDAR" for item in records),
+            "orders_sent": False,
+            "execution_allowed": False,
+            "lookahead": False,
+        }
 
     def get_mt5_assets(self, *, include_invisible: bool = False) -> tuple[dict[str, Any], ...]:
         """Return the broker-observed MT5 universe with session and 24/7 evidence."""
