@@ -167,6 +167,7 @@ def show_assistant() -> None:
 
     st.caption(
         "Privacidade: a pergunta e um resumo operacional filtrado são enviados pelo servidor à OpenAI. "
+        "As mensagens também ficam armazenadas no histórico local do Assistente no servidor do Ecossistema. "
         "A chave permanece no servidor. Não envie senhas, códigos de acesso ou dados bancários sensíveis."
     )
     if "assistant_history" not in st.session_state:
