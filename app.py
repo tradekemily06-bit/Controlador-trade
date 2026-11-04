@@ -373,6 +373,78 @@ def application(environ, start_response):
                 return _json_response(start_response, HTTPStatus.CREATED,
                                       {"review": review, "reserve_calculated": False},
                                       request_id, environ)
+        if path == "/api/fiscal-reserve/mt5-pending-result" and method == "POST":
+            data = _read_json(environ)
+            if data.get("confirmed") is not True:
+                raise ValueError("confirmação explícita obrigatória para guardar como pendente")
+            ticket = str(data.get("ticket") or "").strip()
+            try:
+                candidate = SERVICE.mt5_operational_adapter.read_closed_deal_candidate(ticket)
+            except RuntimeError as exc:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                                      {"error": "Negócio não pôde ser revalidado no MT5 DEMO.",
+                                       "detail": str(exc), "registered": False,
+                                       "reserve_calculated": False, "execution_allowed": False},
+                                      request_id, environ)
+            currency = str(candidate.get("account_currency") or "").strip().upper()
+            if currency == "BRL":
+                return _json_response(start_response, HTTPStatus.UNPROCESSABLE_ENTITY,
+                                      {"error": "Conta em BRL: use a confirmação Brasil · day trade; este fluxo é para resultados ainda não classificados.",
+                                       "registered": False, "reserve_calculated": False,
+                                       "execution_allowed": False}, request_id, environ)
+            if not currency or currency == "UNKNOWN":
+                return _json_response(start_response, HTTPStatus.UNPROCESSABLE_ENTITY,
+                                      {"error": "Moeda da conta não identificada; resultado não foi salvo.",
+                                       "registered": False, "reserve_calculated": False,
+                                       "execution_allowed": False}, request_id, environ)
+            fingerprint = str(candidate.get("account_fingerprint") or "")
+            if len(fingerprint) != 32:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                                      {"error": "Identidade da conta MT5 insuficiente para deduplicação segura; informe login e servidor configurados no terminal.",
+                                       "registered": False, "reserve_calculated": False,
+                                       "execution_allowed": False}, request_id, environ)
+            timestamp = candidate.get("occurred_at_utc")
+            if not timestamp:
+                raise ValueError("data do negócio ausente no histórico MT5")
+            occurred_at = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
+            if occurred_at.tzinfo is None:
+                raise ValueError("data do negócio sem fuso horário")
+            occurred_on = occurred_at.astimezone(ZoneInfo("America/Sao_Paulo")).date().isoformat()
+            reference = f"MT5-DEMO:{fingerprint}:{ticket}"
+            components = {
+                "source": "IC Markets MT5 DEMO",
+                "ticket": ticket,
+                "position_id": candidate.get("position_id"),
+                "occurred_at_utc": timestamp,
+                "profit": candidate.get("profit"),
+                "commission": candidate.get("commission"),
+                "swap": candidate.get("swap"),
+                "fee": candidate.get("fee"),
+                "account_currency": currency,
+                "partial_deal_warning": "Custos lançados em outros negócios da posição podem não estar incluídos.",
+            }
+            payload = {
+                "reference": reference,
+                "original_result": candidate.get("net_result_account_currency"),
+                "original_currency": currency,
+                "instrument": str(candidate.get("symbol") or "MT5_INSTRUMENT_UNKNOWN")[:80],
+                "jurisdiction": "PENDING_REVIEW",
+                "occurred_on": occurred_on,
+                "notes": json.dumps(components, ensure_ascii=False, separators=(",", ":"))[:1000],
+            }
+            try:
+                item = FISCAL_PENDING_QUEUE.add_realized_result(fiscal_owner_id, payload)
+            except sqlite3.IntegrityError:
+                return _json_response(start_response, HTTPStatus.CONFLICT,
+                                      {"error": "Este ticket MT5 DEMO já está na fila fiscal desta conta.",
+                                       "registered": False, "reserve_calculated": False,
+                                       "execution_allowed": False}, request_id, environ)
+            return _json_response(start_response, HTTPStatus.CREATED,
+                                  {"pending": item, "source": "IC Markets MT5 DEMO",
+                                   "source_ticket": ticket, "registered": True,
+                                   "classification_status": "PENDING_CLASSIFICATION",
+                                   "reserve_calculated": False, "execution_allowed": False},
+                                  request_id, environ)
         if path == "/api/fiscal-reserve/mt5-confirm" and method == "POST":
             data = _read_json(environ)
             if data.get("confirmed") is not True:
