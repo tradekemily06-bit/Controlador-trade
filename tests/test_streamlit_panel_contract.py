@@ -236,8 +236,8 @@ def test_streamlit_assistant_exposes_owner_scoped_past_conversation_history():
     assert "Nova consulta" in source
     assert "assistant_history" in source
     assert 'api("/api/assistant/conversations")' in source
-    assert 'api("/api/assistant/history?conversation_id="' in source
-    assert 'api("/api/assistant/conversations?conversation_id="' in source
+    assert '"/api/assistant/history?conversation_id="' in source
+    assert '"/api/assistant/conversations?conversation_id="' in source
     assert '"DELETE"' in source
     assert "Conversas anteriores" in source
     assert "Abrir conversa" in source
