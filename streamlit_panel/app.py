@@ -326,7 +326,7 @@ def show_fiscal() -> None:
             if preview.get("withheld_incomplete_positions", 0):
                 st.warning(f"{preview.get('withheld_incomplete_positions')} posição(ões) retida(s): aberta(s), com histórico incompleto ou volume sem conciliação. Não serão oferecidas para lançamento.")
             if candidates:
-                st.dataframe([{"Encerramento UTC": item.get("occurred_at_utc"), "Ativo": item.get("symbol"), "Ticket final": item.get("ticket"), "Negócios somados": item.get("deal_count"), "Saídas": item.get("closing_deal_count"), "Resultado líquido da posição": item.get("net_result_account_currency"), "Moeda": item.get("account_currency")} for item in candidates], use_container_width=True, hide_index=True)
+                st.dataframe([{"Abertura UTC": item.get("opened_at_utc"), "Encerramento UTC": item.get("occurred_at_utc"), "Ativo": item.get("symbol"), "Ticket final": item.get("ticket"), "Negócios somados": item.get("deal_count"), "Saídas": item.get("closing_deal_count"), "Resultado líquido da posição": item.get("net_result_account_currency"), "Moeda": item.get("account_currency")} for item in candidates], use_container_width=True, hide_index=True)
                 if account_currency == "BRL":
                     st.warning("A confirmação abaixo registra somente posições que você classificar expressamente como Brasil · day trade. O resultado agrega os negócios da posição e concilia os volumes; confira o extrato da corretora antes de confirmar.")
                     for candidate in candidates:
