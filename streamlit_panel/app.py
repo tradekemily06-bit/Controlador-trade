@@ -798,6 +798,40 @@ def show_replay() -> None:
         st.error(f"Replay indisponível: {exc}")
 
 
+def show_simulator() -> None:
+    st.subheader("Simulador histórico · MT5 DEMO")
+    st.caption("Testa um filtro de confiança sobre candles históricos fechados. O resultado mostra candidatos de sinal, sinais filtrados e períodos de espera — não representa operações preenchidas nem rentabilidade.")
+    with st.form("historical_signal_simulator_form"):
+        symbol = st.text_input("Ativo no MT5", value="EURUSD", max_chars=32)
+        timeframe = st.selectbox("Timeframe", ["1m", "5m", "15m", "30m", "1h", "4h", "1d"], index=1, key="simulator_timeframe")
+        limit = st.number_input("Quantidade de candles fechados", min_value=20, max_value=500, value=100, step=10, key="simulator_limit")
+        minimum_confidence = st.slider("Confiança mínima do cenário (%)", min_value=70, max_value=95, value=80, step=1)
+        submitted = st.form_submit_button("Simular cenário histórico DEMO")
+    if not submitted:
+        st.info("Ajuste o filtro de confiança e execute a leitura histórica para comparar os sinais.")
+        return
+    try:
+        result = api("/api/simulator/mt5", "POST", {
+            "symbol": symbol.strip(),
+            "timeframe": timeframe,
+            "limit": int(limit),
+            "minimum_confidence": int(minimum_confidence),
+        })
+        st.caption(f"Fonte: {result.get('source', '—')} · {result.get('symbol')} · {result.get('timeframe')}")
+        cols = st.columns(4)
+        cols[0].metric("Candles", int(result.get("candles_replayed", 0)))
+        cols[1].metric("Candidatos", int(result.get("candidates", 0)))
+        cols[2].metric("Filtrados", int(result.get("filtered", 0)))
+        cols[3].metric("Aguardar", int(result.get("waiting", 0)))
+        records = result.get("records", [])
+        if records:
+            st.dataframe(records, use_container_width=True, hide_index=True)
+        st.warning("Cenário hipotético de sinais: sem ordens, sem preenchimentos, sem P&L e sem aplicação das regras completas de risco.")
+        st.caption("Execução permitida: NÃO · Envio de ordens: NÃO · Antecipação de candles futuros: NÃO")
+    except Exception as exc:
+        st.error(f"Simulador indisponível: {exc}")
+
+
 def show_readonly_module(module_name: str) -> None:
     """Render existing runtime capabilities as clear, read-only Streamlit screens."""
     views = {
@@ -827,9 +861,8 @@ def show_readonly_module(module_name: str) -> None:
         show_replay()
         return
     elif module_name == "Simulador":
-        st.subheader("Simulador")
-        st.caption("Consulta dos limites de risco em modo de leitura. Nenhuma operação financeira ou ordem é simulada.")
-        endpoint = "/api/risk"
+        show_simulator()
+        return
     else:
         view = views.get(module_name)
         if not view:
