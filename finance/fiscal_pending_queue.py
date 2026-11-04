@@ -5,6 +5,7 @@ import sqlite3
 import uuid
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -289,8 +290,16 @@ class FiscalPendingQueue:
                  "reviewer_identity_status": "DECLARED_NOT_VERIFIED",
                  "professional_registration_verified": False} for row in rows]
 
-    def summary(self, owner_id: str) -> dict[str, Any]:
-        """Return owner-scoped aggregates over the complete queue, never item details."""
+    def summary(self, owner_id: str, as_of: date | None = None) -> dict[str, Any]:
+        """Return owner-scoped counts by period; never expose values or calculate tax."""
+        reference_day = as_of or datetime.now(ZoneInfo("America/Sao_Paulo")).date()
+        week_start = date.fromordinal(reference_day.toordinal() - reference_day.weekday())
+        periods = {
+            "day": (reference_day, reference_day),
+            "week": (week_start, reference_day),
+            "month": (reference_day.replace(day=1), reference_day),
+            "year": (reference_day.replace(month=1, day=1), reference_day),
+        }
         with self._connect() as db:
             total = int(db.execute(
                 "SELECT COUNT(*) FROM fiscal_reserve_pending_foreign WHERE owner_id = ?",
@@ -310,12 +319,31 @@ class FiscalPendingQueue:
                    ORDER BY original_currency""",
                 (owner_id,),
             ).fetchall()
+            period_counts = {}
+            for period_name, (start_day, end_day) in periods.items():
+                row = db.execute(
+                    """SELECT COUNT(*) AS total,
+                              SUM(CASE WHEN record_kind='REALIZED_RESULT' THEN 1 ELSE 0 END) AS realized_results,
+                              SUM(CASE WHEN record_kind='ASSET_AMOUNT' THEN 1 ELSE 0 END) AS asset_amounts
+                       FROM fiscal_reserve_pending_foreign
+                       WHERE owner_id = ? AND occurred_on >= ? AND occurred_on < ?""",
+                    (owner_id, start_day.isoformat(), date.fromordinal(end_day.toordinal() + 1).isoformat()),
+                ).fetchone()
+                period_counts[period_name] = {
+                    "start": start_day.isoformat(),
+                    "end": end_day.isoformat(),
+                    "total": int(row["total"] or 0),
+                    "realized_results": int(row["realized_results"] or 0),
+                    "asset_amounts": int(row["asset_amounts"] or 0),
+                }
         counts = {str(row["record_kind"]): int(row["item_count"]) for row in kinds}
         return {
+            "as_of": reference_day.isoformat(),
             "total": total,
             "realized_results": counts.get("REALIZED_RESULT", 0),
             "asset_amounts": counts.get("ASSET_AMOUNT", 0),
             "currencies": [str(row["original_currency"]) for row in currencies],
+            "periods": period_counts,
             "classification_status": "PENDING_CLASSIFICATION",
             "included_in_totals": False,
             "reserve_calculated": False,
