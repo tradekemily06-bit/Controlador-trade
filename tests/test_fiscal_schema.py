@@ -100,3 +100,28 @@ def test_migration_refuses_to_reassign_an_existing_owner(tmp_path, monkeypatch):
     db = sqlite3.connect(path)
     assert db.execute("SELECT DISTINCT owner_id FROM fiscal_reserve_entries").fetchall() == [(first_owner,)]
     db.close()
+
+
+def test_migration_adds_signed_result_fields_to_existing_owner_schema(tmp_path, monkeypatch):
+    path = str(tmp_path / "owned.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    migrate_fiscal_schema(path)
+    db = sqlite3.connect(path)
+    db.execute(
+        "INSERT INTO fiscal_reserve_pending_foreign "
+        "(pending_id,owner_id,reference,original_amount,original_currency,instrument,jurisdiction,"
+        "occurred_on,notes,status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        ("p1", "single:owner@example.com", "legacy", 10, "USD", "ETF", "US",
+         "2026-11-03", "", "PENDING_CLASSIFICATION", "now"),
+    )
+    db.commit()
+    db.close()
+
+    migrate_fiscal_schema(path)
+    db = sqlite3.connect(path)
+    columns = {row[1] for row in db.execute("PRAGMA table_info(fiscal_reserve_pending_foreign)")}
+    assert {"original_result", "record_kind"} <= columns
+    assert db.execute(
+        "SELECT original_result,record_kind FROM fiscal_reserve_pending_foreign WHERE pending_id='p1'"
+    ).fetchone() == (None, "ASSET_AMOUNT")
+    db.close()
