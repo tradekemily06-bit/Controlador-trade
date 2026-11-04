@@ -40,3 +40,12 @@ A autorização local acima é somente para desenvolvimento no próprio computad
 - Não modificar nem recriar as imagens ou o arquivo original do Figma. A validação visual só poderá avançar quando as cinco imagens de referência forem disponibilizadas no projeto, mantendo os arquivos originais intactos.
 - A prévia Streamlit não é o overlay nativo do gráfico MT5. A integração visual nativa no MT5 é uma etapa distinta.
 - Outros módulos aparecem como seleção, mas só Assistente e Reserva Fiscal têm chamadas funcionais conectadas nesta prévia.
+
+
+## Assistente · configuração do provedor
+
+- O Assistente precisa de `OPENAI_API_KEY` configurada no ambiente protegido do processo do runtime. Não coloque a chave no navegador, no código, no repositório ou em mensagens.
+- `OPENAI_MODEL` é opcional; o padrão atual é `gpt-4o-mini`.
+- A rota autenticada `/api/assistant/status` verifica se o provedor e a biblioteca estão configurados, sem devolver a chave.
+- Sem a chave ou sem a biblioteca, o Assistente falha de forma controlada e a interface informa que está indisponível.
+- As perguntas e o resumo operacional filtrado são enviados à API da OpenAI para gerar respostas; a interface exibe esse aviso antes do chat.
