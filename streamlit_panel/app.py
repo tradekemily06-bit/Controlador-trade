@@ -370,6 +370,7 @@ def show_fiscal() -> None:
             pending_ids = [item.get("pending_id") for item in items]
             selected_id = st.selectbox("Selecionar pendência para revisão", pending_ids, format_func=lambda value: next((f"{x.get('instrument')} · {x.get('jurisdiction')} · {x.get('original_result') if x.get('record_kind') == 'REALIZED_RESULT' else x.get('original_amount')} {x.get('original_currency')}" for x in items if x.get("pending_id") == value), value))
             with st.expander("Registrar evidência de revisão profissional"):
+                st.warning("Identidade e registro profissional são declarados pelo usuário; o sistema não verifica credenciais. A revisão é evidência documental, não validação fiscal automática.")
                 with st.form("professional_review_form"):
                     classification = st.text_input("Classificação sugerida")
                     confirmed_jurisdiction = st.text_input("Jurisdição indicada na revisão")
@@ -394,7 +395,7 @@ def show_fiscal() -> None:
                     if history:
                         for item in history:
                             st.write(f"{item.get('reviewed_on')} · {item.get('reviewer_name')} · {item.get('candidate_classification')} · {item.get('confirmed_jurisdiction')}")
-                            st.caption(f"Registro declarado: {item.get('professional_registration')} · Evidência: {item.get('evidence_reference')}")
+                            st.caption(f"Registro declarado (não verificado): {item.get('professional_registration')} · Evidência: {item.get('evidence_reference')} · Situação: {item.get('reviewer_identity_status', 'DECLARED_NOT_VERIFIED')}")
                     else:
                         st.caption("Nenhuma revisão registrada.")
             except Exception as exc:
