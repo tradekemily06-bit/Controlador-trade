@@ -853,7 +853,7 @@ def show_simulator() -> None:
             st.info("Nenhuma operação hipotética foi aberta com estes parâmetros e sinais.")
         assumptions = result.get("assumptions", {})
         st.caption(f"Entradas: {assumptions.get('entry', '—')} · Posições simultâneas: {assumptions.get('position_limit', '—')}")
-        st.warning("Limitações: stop-loss é priorizado quando stop e alvo aparecem no mesmo candle; o backtest não integra o Risk Manager, margem, alavancagem, swap ou conversão cambial. O resultado não é previsão nem promessa de rentabilidade.")
+        st.warning("Limitações: stop-loss é priorizado quando stop e alvo aparecem no mesmo candle; O backtest não integra o Risk Manager, margem, alavancagem, swap ou conversão cambial. O resultado não é previsão nem promessa de rentabilidade.")
         st.caption("Execução permitida: NÃO · Ordens enviadas: NÃO · Antecipação de candles futuros: NÃO")
     except Exception as exc:
         st.error(f"Backtest histórico indisponível: {exc}")
