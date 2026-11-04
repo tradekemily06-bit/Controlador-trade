@@ -225,3 +225,95 @@ def test_mt5_historical_replay_rejects_out_of_order_candles():
         raise AssertionError("replay must reject out-of-order market data")
 
 
+
+
+def test_mt5_signal_scenario_is_hypothetical_and_side_effect_free():
+    from datetime import datetime, timedelta, timezone
+    from data.models import Candle
+
+    class FakeMarketAdapter:
+        def __init__(self, candles):
+            self.request = None
+            self.candles = candles
+
+        def fetch_market_data(self, request):
+            self.request = request
+            return self.candles
+
+    candles = tuple(
+        Candle(
+            datetime(2026, 11, 1, tzinfo=timezone.utc) + timedelta(minutes=index),
+            100 + index, 102 + index, 99 + index, 101 + index, 10,
+        )
+        for index in range(25)
+    )
+    service = ConfiguredEcosystemService(execution_provider="ic_markets_mt5_demo")
+    adapter = FakeMarketAdapter(candles)
+    service.mt5_market_adapter = adapter
+    before_memory = list(service.memory)
+
+    result = service.simulate_mt5_signal_scenario(
+        symbol="EURUSD", timeframe="5m", limit=25, minimum_confidence=80
+    )
+
+    assert adapter.request.symbol == "EURUSD"
+    assert adapter.request.timeframe == "5m"
+    assert adapter.request.limit == 25
+    assert result["candles_replayed"] == 25
+    assert len(result["records"]) == 24
+    assert result["minimum_confidence"] == 80
+    assert result["orders_sent"] is False
+    assert result["execution_allowed"] is False
+    assert result["pnl_calculated"] is False
+    assert result["risk_rules_applied"] is False
+    assert result["lookahead"] is False
+    assert result["simulation_kind"] == "HISTORICAL_SIGNAL_THRESHOLD_ONLY"
+    assert service.memory == before_memory
+
+
+def test_mt5_signal_scenario_rejects_invalid_confidence_and_non_demo_provider():
+    service = ConfiguredEcosystemService(execution_provider="paper")
+    try:
+        service.simulate_mt5_signal_scenario(
+            symbol="EURUSD", timeframe="5m", limit=25, minimum_confidence=69
+        )
+    except RuntimeError as exc:
+        assert "DEMO" in str(exc)
+    else:
+        raise AssertionError("signal simulator must require MT5 DEMO")
+
+    service = ConfiguredEcosystemService(execution_provider="ic_markets_mt5_demo")
+    try:
+        service.simulate_mt5_signal_scenario(
+            symbol="EURUSD", timeframe="5m", limit=25, minimum_confidence=69
+        )
+    except ValueError as exc:
+        assert "70 e 95" in str(exc)
+    else:
+        raise AssertionError("confidence below the allowed range must be rejected")
+
+
+def test_mt5_signal_scenario_rejects_out_of_order_history():
+    from datetime import datetime, timedelta, timezone
+    from data.models import Candle
+
+    class FakeMarketAdapter:
+        def fetch_market_data(self, request):
+            return tuple(
+                Candle(
+                    datetime(2026, 11, 1, tzinfo=timezone.utc) + timedelta(minutes=index),
+                    100 + index, 102 + index, 99 + index, 101 + index, 10,
+                )
+                for index in reversed(range(25))
+            )
+
+    service = ConfiguredEcosystemService(execution_provider="ic_markets_mt5_demo")
+    service.mt5_market_adapter = FakeMarketAdapter()
+    try:
+        service.simulate_mt5_signal_scenario(
+            symbol="EURUSD", timeframe="5m", limit=25, minimum_confidence=80
+        )
+    except RuntimeError as exc:
+        assert "ordem cronológica" in str(exc)
+    else:
+        raise AssertionError("simulator must reject out-of-order market data")
