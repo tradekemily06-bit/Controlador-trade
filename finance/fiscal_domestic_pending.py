@@ -16,7 +16,12 @@ from zoneinfo import ZoneInfo
 class FiscalDomesticPendingQueue:
     def __init__(self, database_path: str = ":memory:") -> None:
         self.database_path = str(database_path)
-        if self.database_path != ":memory:":
+        self._uri = None
+        self._anchor = None
+        if self.database_path == ":memory:":
+            self._uri = f"file:fiscal_domestic_{uuid.uuid4().hex}?mode=memory&cache=shared"
+            self._anchor = sqlite3.connect(self._uri, uri=True, timeout=10)
+        else:
             Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as db:
             db.execute("""
@@ -42,7 +47,7 @@ class FiscalDomesticPendingQueue:
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
-        db = sqlite3.connect(self.database_path, timeout=10)
+        db = sqlite3.connect(self._uri or self.database_path, uri=bool(self._uri), timeout=10)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA busy_timeout = 10000")
         try:
