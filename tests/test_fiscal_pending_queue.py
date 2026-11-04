@@ -376,3 +376,67 @@ def test_foreign_queue_rejects_missing_owner_identity_for_every_operation(tmp_pa
             assert "identidade proprietária" in str(exc)
         else:
             raise AssertionError("foreign queue operation must reject missing owner identity")
+
+
+def test_foreign_pending_stores_structured_tax_and_event_declarations(tmp_path):
+    queue = make_queue(tmp_path / "fiscal.sqlite3")
+    payload = sample("FOREIGN-STRUCTURED-EVIDENCE")
+    payload.update({
+        "tax_residency_at_event": "BRAZIL",
+        "income_nature": "DIVIDEND",
+        "event_type": "DIVIDEND_RECEIPT",
+        "fx_conversion_method": "PTAX_SELL",
+    })
+    item = queue.add(OWNER, payload)
+    assert item["tax_residency_at_event"] == "BRAZIL"
+    assert item["income_nature"] == "DIVIDEND"
+    assert item["event_type"] == "DIVIDEND_RECEIPT"
+    assert item["fx_conversion_method"] == "PTAX_SELL"
+    listed = queue.list_pending(OWNER)["items"][0]
+    assert listed["tax_residency_at_event"] == "BRAZIL"
+    assert listed["status"] == "PENDING_CLASSIFICATION"
+
+
+def test_foreign_pending_structured_fields_default_to_unknown_and_reject_invalid_values(tmp_path):
+    queue = make_queue(tmp_path / "fiscal.sqlite3")
+    item = queue.add(OWNER, sample("FOREIGN-DEFAULT-EVIDENCE"))
+    assert item["tax_residency_at_event"] == "NOT_INFORMED"
+    assert item["income_nature"] == "NOT_INFORMED"
+    assert item["event_type"] == "NOT_INFORMED"
+    assert item["fx_conversion_method"] == "NOT_INFORMED"
+    for field, invalid in (
+        ("tax_residency_at_event", "BRAZILIAN"),
+        ("income_nature", "GENERIC_15_PERCENT"),
+        ("event_type", "TAXABLE"),
+        ("fx_conversion_method", "AUTOMATIC_GUESS"),
+    ):
+        payload = sample("INVALID-" + field)
+        payload[field] = invalid
+        try:
+            queue.add(OWNER, payload)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"invalid declaration must be rejected for {field}")
+
+
+def test_foreign_realized_result_preserves_structured_declarations(tmp_path):
+    queue = make_queue(tmp_path / "fiscal.sqlite3")
+    result = queue.add_realized_result(OWNER, {
+        "reference": "FOREIGN-RESULT-STRUCTURED",
+        "original_result": -10.5,
+        "original_currency": "EUR",
+        "instrument": "ETF",
+        "jurisdiction": "EU",
+        "occurred_on": "2026-11-04",
+        "tax_residency_at_event": "DUAL_OR_UNCERTAIN",
+        "income_nature": "CAPITAL_GAIN",
+        "event_type": "DISPOSAL",
+        "fx_conversion_method": "BROKER_STATEMENT",
+    })
+    assert result["original_result"] == -10.5
+    assert result["tax_residency_at_event"] == "DUAL_OR_UNCERTAIN"
+    assert result["income_nature"] == "CAPITAL_GAIN"
+    assert result["event_type"] == "DISPOSAL"
+    assert result["fx_conversion_method"] == "BROKER_STATEMENT"
+    assert result["status"] == "PENDING_CLASSIFICATION"
