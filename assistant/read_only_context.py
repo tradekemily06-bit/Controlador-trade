@@ -8,6 +8,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from finance.fiscal_taxonomy import fiscal_classification_catalog
+
 
 def _count(value: Any) -> int:
     try:
@@ -201,6 +203,7 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
         "operations": _operations_summary(observability),
         "statistics": _statistics_summary(statistics),
         "fiscal_reserve": fiscal_context,
+        "fiscal_classification_catalog": fiscal_classification_catalog(),
         "recent_decisions": [_decision_summary(item) for item in recent_decisions if isinstance(item, dict)][-5:],
         "assistant_safety": {
             "read_only": True,
