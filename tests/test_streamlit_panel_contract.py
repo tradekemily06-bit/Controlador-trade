@@ -136,7 +136,7 @@ def test_streamlit_marks_mt5_tax_classification_as_user_declared_pending_review(
 
 def test_streamlit_unverified_mt5_history_never_displays_reserve_rate_or_amount():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
-    assert 'if not user_declared:' in source
+    assert 'if not user_declared_pending:' in source
     assert "Percentual de planejamento (%)" in source
     assert "Reserva estimada (R$)" in source
     assert "fila brasileira separada, sem cálculo e fora dos totais" in source
