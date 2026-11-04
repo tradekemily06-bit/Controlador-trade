@@ -25,7 +25,7 @@ st.markdown("""
 .stApp { background: #080B0F; color: #E9EEF3; }
 [data-testid="stHeader"] { background: transparent; }
 .block-container { width: 100%; max-width: none; padding: 1rem clamp(.75rem, 2vw, 1.5rem) 6rem; }
-.st-key-panel-toggle { position: fixed; left: 18px; bottom: 14px; z-index: 1000; width: 58px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.st-key-panel-toggle { position: fixed; left: 18px; bottom: 14px; z-index: 1000; width: 220px; display: flex; flex-direction: row; align-items: center; gap: 8px; }
 .st-key-panel-toggle .stButton > button { width: 48px; min-width: 48px; height: 48px; min-height: 48px; padding: 0; border-radius: 50%; background: #080B0F; color: #46D6AD; border: 1px solid #46D6AD; box-shadow: 0 0 10px #46D6AD33; font-weight: 800; }
 .st-key-panel-toggle .closed-signal { width: 150px; display: flex; flex-direction: column; align-items: center; gap: 1px; white-space: nowrap; text-align: center; font-size: 10px; line-height: 1.2; text-shadow: 0 1px 4px #080B0F; }\n.st-key-panel-toggle .closed-signal strong { font-size: 10px; font-weight: 800; }
 *, *::before, *::after { box-sizing: border-box; }
