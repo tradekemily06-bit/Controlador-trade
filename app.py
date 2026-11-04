@@ -480,17 +480,34 @@ def application(environ, start_response):
             if occurred_at.tzinfo is None:
                 raise ValueError("data do negócio sem fuso horário")
             occurred_on = occurred_at.astimezone(ZoneInfo("America/Sao_Paulo")).date().isoformat()
-            reference = f"MT5-DEMO-DEAL:{ticket}"
+            fingerprint = str(candidate.get("account_fingerprint") or "")
+            if len(fingerprint) != 32:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                                      {"error": "Identidade da conta MT5 insuficiente para deduplicação segura; informe login e servidor configurados no terminal.",
+                                       "registered": False, "execution_allowed": False},
+                                      request_id, environ)
+            reference = f"MT5-DEMO:{fingerprint}:{ticket}"
+            evidence = {
+                "source": "IC Markets MT5 DEMO",
+                "ticket": ticket,
+                "position_id": candidate.get("position_id"),
+                "occurred_at_utc": timestamp,
+                "profit": candidate.get("profit"),
+                "commission": candidate.get("commission"),
+                "swap": candidate.get("swap"),
+                "fee": candidate.get("fee"),
+                "account_currency": "BRL",
+                "result_scope": "FULL_CLOSED_POSITION",
+                "deal_count": candidate.get("deal_count"),
+                "closing_deal_count": candidate.get("closing_deal_count"),
+                "reconciliation_notice": "Resultado agregado do histórico completo da posição; conferir extrato da corretora antes de qualquer uso fiscal.",
+            }
             payload = {
                 "category": "BR_DAY_TRADE",
                 "realized_result_brl": candidate["net_result_account_currency"],
                 "reference": reference,
                 "occurred_on": occurred_on,
-                "notes": (
-                    f"Importação confirmada manualmente do MT5 DEMO; ticket={ticket}; "
-                    f"símbolo={candidate.get('symbol', '')}; moeda=BRL. "
-                    "Conferir custos de negócios anteriores da posição no extrato completo."
-                ),
+                "notes": json.dumps(evidence, ensure_ascii=False, separators=(",", ":"))[:1000],
             }
             try:
                 entry = FISCAL_RESERVE.record_realized_result(fiscal_owner_id, payload)
