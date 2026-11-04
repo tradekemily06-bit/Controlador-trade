@@ -520,6 +520,8 @@ def show_fiscal() -> None:
             if fx_rate or fx_source:
                 if not fx_rate or not fx_source:
                     raise ValueError("Para guardar a cotação, informe valor e fonte.")
+                if fx_conversion_method == "NOT_CONVERTED":
+                    raise ValueError("Altere o método cambial: há uma cotação informada, mas o método está marcado como ainda não convertido.")
                 pending_payload.update({"fx_rate": fx_rate, "fx_date": fx_date.isoformat(), "fx_source": fx_source})
             api("/api/fiscal-reserve/pending", "POST", pending_payload)
             st.success("Registro guardado como pendente. Nenhum cálculo foi feito.")
@@ -551,6 +553,8 @@ def show_fiscal() -> None:
             if fx_signed or fx_source_signed:
                 if not fx_signed or not fx_source_signed:
                     raise ValueError("Informe cotação e fonte juntas.")
+                if fx_method_signed == "NOT_CONVERTED":
+                    raise ValueError("Altere o método cambial: há uma cotação informada, mas o método está marcado como ainda não convertido.")
                 signed_payload.update({"fx_rate": fx_signed, "fx_date": fx_date_signed.isoformat(), "fx_source": fx_source_signed})
             api("/api/fiscal-reserve/pending-result", "POST", signed_payload)
             st.success("Resultado guardado com o sinal original; continua fora dos totais.")
