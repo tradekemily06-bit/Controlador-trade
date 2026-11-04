@@ -666,8 +666,52 @@ def application(environ, start_response):
             settings.pop("FOREIGN_FINANCIAL_ASSET", None)
             return _json_response(start_response, HTTPStatus.OK, {"settings": settings}, request_id, environ)
         if path == "/api/fiscal-reserve/results" and method == "POST":
-            entry = FISCAL_RESERVE.record_realized_result(fiscal_owner_id, _read_json(environ))
-            return _json_response(start_response, HTTPStatus.OK, {"entry": entry, "execution_allowed": False}, request_id, environ)
+            data = _read_json(environ)
+            if data.get("confirmed") is not True:
+                raise ValueError("confirmação explícita dos critérios de day trade é obrigatória")
+            instrument = str(data.get("instrument") or "").strip()
+            institution = str(data.get("institution") or "").strip()
+            market_label = str(data.get("market_label") or "").strip()
+            if not instrument or len(instrument) > 80:
+                raise ValueError("instrumento é obrigatório e deve ter até 80 caracteres")
+            if not institution or len(institution) > 120:
+                raise ValueError("instituição é obrigatória e deve ter até 120 caracteres")
+            if not market_label or len(market_label) > 120:
+                raise ValueError("mercado de negociação é obrigatório e deve ter até 120 caracteres")
+            if data.get("market_scope") != "BR_ELIGIBLE_MARKET":
+                raise ValueError("mercado brasileiro elegível não foi confirmado")
+            if any(data.get(flag) is not True for flag in ("same_asset", "same_institution", "same_day")):
+                raise ValueError("mesmo ativo, mesma instituição e mesmo dia precisam ser confirmados")
+            notes = {
+                "user_notes": str(data.get("notes") or "").strip()[:600],
+                "tax_classification_status": "USER_DECLARED_PLANNING_ONLY",
+                "classification_source": "USER_DECLARATION",
+                "market_scope_source": "USER_DECLARATION_NOT_INDEPENDENTLY_VERIFIED",
+                "instrument": instrument,
+                "institution": institution,
+                "market_label": market_label,
+                "same_asset_confirmed_by_user": True,
+                "same_institution_confirmed_by_user": True,
+                "same_day_confirmed_by_user": True,
+                "independent_market_eligibility_verified": False,
+                "tax_liability_confirmed": False,
+                "reserve_semantics": "PLANNING_ESTIMATE_ONLY",
+            }
+            payload = {
+                "category": "BR_DAY_TRADE",
+                "realized_result_brl": data.get("realized_result_brl"),
+                "reference": data.get("reference"),
+                "occurred_on": data.get("occurred_on"),
+                "notes": json.dumps(notes, ensure_ascii=False, separators=(",", ":"))[:1000],
+            }
+            entry = FISCAL_RESERVE.record_realized_result(fiscal_owner_id, payload)
+            return _json_response(
+                start_response, HTTPStatus.OK,
+                {"entry": entry, "classification_status": "USER_DECLARED_PLANNING_ONLY",
+                 "classification_source": "USER_DECLARATION",
+                 "independent_market_eligibility_verified": False,
+                 "tax_liability_confirmed": False, "reserve_is_estimate": True,
+                 "execution_allowed": False}, request_id, environ)
         if path == "/api/onboarding" and method == "GET":
             guide = ONBOARDING.build_first_use_guide()
             return _json_response(start_response, HTTPStatus.OK, {"guide": {"guide_id": guide.guide_id, "title": guide.title, "steps": [{"step_id": step.step_id, "title": step.title, "purpose": step.purpose, "location": step.location.value, "action_hint": step.action_hint, "technical_details_hidden": step.technical_details_hidden} for step in guide.steps], "completion_message": guide.completion_message, "execution_authorized": guide.execution_authorized}}, request_id, environ)
