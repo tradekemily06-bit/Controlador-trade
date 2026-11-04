@@ -77,3 +77,49 @@ def test_domestic_pending_supports_shared_in_memory_database():
     queue = FiscalDomesticPendingQueue()
     queue.add("owner-a", sample())
     assert queue.list_pending("owner-a")["total"] == 1
+
+
+def review_payload():
+    return {
+        "candidate_classification": "BR_COMMON_EXCHANGE",
+        "confirmed_jurisdiction": "Brasil",
+        "reviewer_name": "Profissional declarado",
+        "reviewer_role": "Contador",
+        "professional_registration": "CRC-DECLARADO",
+        "evidence_reference": "DOC-REVISAO-001",
+        "reviewed_on": "2026-11-04",
+        "review_notes": "Registro de revisão para auditoria; identidade e registro não foram verificados pelo sistema.",
+    }
+
+
+def test_domestic_pending_review_is_auditable_but_does_not_classify_or_book(tmp_path):
+    queue = FiscalDomesticPendingQueue(str(tmp_path / "domestic-review.sqlite3"))
+    item = queue.add("owner-a", sample())
+
+    review = queue.record_review("owner-a", item["pending_id"], review_payload())
+
+    assert review["reviewer_identity_status"] == "DECLARED_NOT_VERIFIED"
+    assert review["professional_registration_verified"] is False
+    assert review["status_unchanged"] == "PENDING_CLASSIFICATION"
+    assert review["reserve_calculated"] is False
+    assert review["tax_rate_available"] is False
+    reviews = queue.list_reviews("owner-a", item["pending_id"])
+    assert len(reviews) == 1
+    assert reviews[0]["evidence_reference"] == "DOC-REVISAO-001"
+    assert reviews[0]["reviewer_identity_status"] == "DECLARED_NOT_VERIFIED"
+    assert queue.list_pending("owner-a")["items"][0]["status"] == "PENDING_CLASSIFICATION"
+
+
+def test_domestic_pending_review_is_owner_scoped_and_rejects_unqualified_role(tmp_path):
+    queue = FiscalDomesticPendingQueue(str(tmp_path / "domestic-review-scope.sqlite3"))
+    item = queue.add("owner-a", sample())
+
+    with pytest.raises(ValueError):
+        queue.record_review("owner-b", item["pending_id"], review_payload())
+    with pytest.raises(ValueError):
+        queue.list_reviews("owner-b", item["pending_id"])
+
+    invalid = review_payload()
+    invalid["reviewer_role"] = "proprietário"
+    with pytest.raises(ValueError):
+        queue.record_review("owner-a", item["pending_id"], invalid)
