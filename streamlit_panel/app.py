@@ -87,6 +87,25 @@ def money(value: Any) -> str:
     except (TypeError, ValueError):
         return "—"
 
+
+def save_leverage_preference() -> None:
+    """Persist only the user's leverage preference; it never grants execution authority."""
+    try:
+        api(
+            "/api/preferences",
+            "POST",
+            {"leverage_enabled": bool(st.session_state.get("leverage_enabled", False))},
+        )
+        st.session_state.leverage_preference_error = ""
+    except Exception as exc:
+        st.session_state.leverage_preference_error = str(exc)
+        try:
+            saved = api("/api/preferences").get("preferences", {})
+            st.session_state.leverage_enabled = saved.get("leverage_enabled") is True
+        except Exception:
+            st.session_state.leverage_enabled = False
+
+
 def fiscal_history_display_row(item: dict[str, Any]) -> dict[str, Any]:
     """Fail closed: only the explicitly supported Brazilian category shows estimates."""
     category = str(item.get("category") or "").strip().upper()
@@ -1191,7 +1210,20 @@ left, right = st.columns([2, 1])
 with left:
     st.caption("Execução REAL permanece bloqueada. Confirme o estado DEMO no runtime antes de operar.")
 with right:
-    st.checkbox("Alavancagem", value=False, key="leverage_enabled")
+    if "leverage_enabled" not in st.session_state:
+        try:
+            saved_preferences = api("/api/preferences").get("preferences", {})
+            st.session_state.leverage_enabled = saved_preferences.get("leverage_enabled") is True
+        except Exception:
+            st.session_state.leverage_enabled = False
+    st.checkbox(
+        "Alavancagem",
+        key="leverage_enabled",
+        on_change=save_leverage_preference,
+        help="Salva somente a preferência. Não ativa ordens, não altera margem e não concede autorização de execução.",
+    )
+    if st.session_state.get("leverage_preference_error"):
+        st.warning("Preferência de alavancagem não sincronizada com o runtime.")
 with st.container(key="panel-toggle"):
     if st.button("C", key="close_control_hub"):
         st.session_state.panel_open = False
