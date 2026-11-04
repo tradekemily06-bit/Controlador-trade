@@ -326,6 +326,19 @@ def test_streamlit_market_analysis_requires_demo_confirmation_and_never_enables_
 
 
 
+def test_streamlit_preferences_never_submit_execution_authority_fields():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index('if module_name == "Configurações":')
+    end = source.index('if module_name == "Análise de Mercado":', start)
+    preferences_screen = source[start:end]
+    assert '"real_execution_enabled"' not in preferences_screen
+    assert '"autonomous_operation_enabled"' not in preferences_screen
+    assert '"selected_mode"' not in preferences_screen
+    assert '"execution_allowed"' not in preferences_screen
+    assert '"require_closed_candle": require_closed' in preferences_screen
+    assert '"require_filters": require_filters' in preferences_screen
+
+
 def test_streamlit_operational_screens_render_human_readable_summaries_without_raw_json_dump():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert "Central de Notificações" in source
