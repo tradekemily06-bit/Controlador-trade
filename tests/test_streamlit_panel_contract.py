@@ -77,3 +77,10 @@ def test_streamlit_mt5_preview_displays_opening_and_closing_timestamps():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert '"Abertura UTC": item.get("opened_at_utc")' in source
     assert '"Encerramento UTC": item.get("occurred_at_utc")' in source
+
+
+
+def test_streamlit_does_not_show_unavailable_foreign_pending_counts_as_zero():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'foreign_pending.get("available") is False' in source
+    assert "A contagem das pendências do exterior está indisponível" in source
