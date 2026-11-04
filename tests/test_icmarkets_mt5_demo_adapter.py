@@ -227,6 +227,7 @@ def test_fiscal_preview_aggregates_all_position_deals_and_never_books_results():
     assert result["count"] == 1
     candidate = result["candidates"][0]
     assert candidate["ticket"] == "12"
+    assert candidate["opened_at_utc"] == datetime(2026, 10, 30, 11, 58, 20, tzinfo=timezone.utc).isoformat()
     assert candidate["deal_count"] == 3
     assert candidate["closing_deal_count"] == 2
     assert candidate["net_result_account_currency"] == 11.05
