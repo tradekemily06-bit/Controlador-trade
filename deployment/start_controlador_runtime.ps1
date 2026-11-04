@@ -49,6 +49,13 @@ $env:CONTROLADOR_REMOTE_ACCESS_REQUIRED = 'true'
 $env:CONTROLADOR_LOCAL_MUTATIONS_ALLOWED = 'true'
 $env:CONTROLADOR_LOCAL_MUTATION_HOSTS = 'localhost,127.0.0.1,[::1]'
 $env:CONTROLADOR_TRUSTED_IDENTITY_HEADER = 'Cf-Access-Authenticated-User-Email'
+
+# Remote fiscal and assistant routes fail closed unless the trusted identity is
+# pinned to the one authorized account. Detect a missing pin before starting
+# the supervisor instead of launching a runtime whose remote UI cannot work.
+if ([string]::IsNullOrWhiteSpace([string]$env:CONTROLADOR_SINGLE_USER_IDENTITY)) {
+    throw 'CONTROLADOR_SINGLE_USER_IDENTITY não configurado. Defina no ambiente do Windows a identidade autorizada pelo Cloudflare Access antes de iniciar o runtime.'
+}
 $env:CONTROLADOR_REAL_EXPLICITLY_ENABLED = 'false'
 $env:CONTROLADOR_REAL_EXECUTION_ALLOWED = 'false'
 $env:CONTROLADOR_REAL_AUDIT_VERIFIED = 'false'
@@ -411,6 +418,11 @@ function Stop-ControllerProcess {
 $env:PYTHONPATH = if ([string]::IsNullOrWhiteSpace($env:PYTHONPATH)) { $ProjectRoot } else { "$ProjectRoot;$($env:PYTHONPATH)" }
 Set-Location $ProjectRoot
 Write-StartupLog 'Supervisor do Controlador iniciado.'
+if ([string]::IsNullOrWhiteSpace([string]$env:OPENAI_API_KEY)) {
+    Write-StartupLog 'Assistente do Ecossistema indisponível: OPENAI_API_KEY ausente no ambiente; nenhum segredo foi registrado.'
+} else {
+    Write-StartupLog 'OPENAI_API_KEY detectada no ambiente; conexão com o provedor permanece não testada até uma chamada autorizada.'
+}
 
 while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
     if (-not $script:RestartHistoryValid) {
