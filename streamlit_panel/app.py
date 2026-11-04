@@ -285,7 +285,11 @@ def show_fiscal() -> None:
             notes = st.text_area("Observações / evidências", max_chars=600)
             confirmed = st.checkbox("Confirmo que foi o mesmo ativo, pela mesma instituição, no mesmo dia e em mercado brasileiro elegível.")
             submitted = st.form_submit_button("Registrar estimativa de planejamento")
-        if submitted:
+        if submitted and not confirmed:
+            st.error("Confirme os critérios de day trade ou registre a operação na fila brasileira pendente.")
+        elif submitted and (not instrument.strip() or not institution.strip() or not market_label.strip() or not reference.strip()):
+            st.error("Preencha ativo, instituição, mercado e referência / comprovante.")
+        elif submitted:
             try:
                 result_data = api("/api/fiscal-reserve/results", "POST", {
                     "category": "BR_DAY_TRADE", "realized_result_brl": result,
