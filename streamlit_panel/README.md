@@ -28,7 +28,7 @@ A autorização local acima é somente para desenvolvimento no próprio computad
 - Em implantação remota, configure `CONTROLADOR_REMOTE_ACCESS_REQUIRED=true` e `CONTROLADOR_TRUSTED_IDENTITY_HEADER` no runtime e no Streamlit.
 - O proxy de identidade deve remover qualquer cabeçalho de identidade enviado pelo visitante e inserir o valor autenticado. O Streamlit encaminha apenas esse cabeçalho para a API.
 - Configure a identidade individual autorizada em `CONTROLADOR_SINGLE_USER_IDENTITY`. Não exponha diretamente a porta 8501 nem a porta 8000; publique somente pelo proxy/Tunnel com Cloudflare Access.
-- Até existir isolamento fiscal por proprietário, mantenha somente uma identidade individual autorizada para acessar o runtime remoto.
+- O banco e as conversas têm escopo por proprietário, mas este runtime permanece configurado para uma única identidade autorizada (`CONTROLADOR_SINGLE_USER_IDENTITY`). Isso não significa que o deployment esteja liberado para múltiplos usuários.
 - Não coloque tokens ou chaves em arquivos do repositório.
 - A tela REAL permanece desabilitada. A prévia não envia ordens.
 
