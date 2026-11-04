@@ -122,13 +122,14 @@ def test_mql5_config_mode_and_leverage_controls_persist_without_real_authority()
     save = panel.split("void SaveConfig()", 1)[1].split("void Analyze(bool render=true)", 1)[0]
     events = panel.split("void OnChartEvent", 1)[1]
 
-    assert 'Obj("MODE_TOGGLE")' in prefs
+    assert 'Obj("MODE_TOGGLE")' not in prefs
+    assert 'Obj("MODE_TOGGLE")' not in events
     assert 'Obj("LEVERAGE_TOGGLE")' in prefs
     assert '"ALAVANCAGEM: ON"' in prefs
     assert '"ALAVANCAGEM: OFF"' in prefs
-    assert 'selected_mode=(selected_mode=="DEMO"?"REAL":"DEMO")' in events
+    assert 'selected_mode="DEMO";' in prefs
+    assert '"selected_mode":"DEMO"' in save
     assert "leverage_enabled=!leverage_enabled" in events
-    assert "selected_mode" in save
     assert "leverage_enabled" in save
     assert 'SetLabel(Obj("INFO5"),"REAL: BLOQUEADO' in prefs
 
