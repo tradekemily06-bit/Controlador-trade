@@ -260,18 +260,32 @@ def test_streamlit_uses_the_same_fixed_c_toggle_in_open_and_closed_states():
     assert 'st.button("C", key="close_control_hub")' in source
     assert ".st-key-panel-toggle { position: fixed;" in source
     assert "border-radius: 50%" in source
-    assert 'st.caption("INDISPONÍVEL")' in source
+    assert "closed_panel_signal(" in source
 
 
-def test_streamlit_closed_panel_contains_only_c_and_unavailable_status():
+def test_streamlit_closed_panel_shows_only_c_and_last_validated_signal_summary():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     start = source.index("if not st.session_state.panel_open:")
     end = source.index("st.stop()", start) + len("st.stop()")
     closed_state = source[start:end]
     assert 'st.button("C", key="open_control_hub")' in closed_state
-    assert 'st.caption("INDISPONÍVEL")' in closed_state
+    assert 'st.session_state.get("market_analysis_result")' in closed_state
+    assert "closed_signal" in closed_state
+    assert "closed_score" in closed_state
     assert "Controlador-Trader" not in closed_state
     assert "Histórico" not in closed_state
+    assert "INDISPONÍVEL" not in closed_state
+
+
+def test_closed_panel_signal_requires_explicit_signal_and_valid_score():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    helper = source[source.index("def closed_panel_signal"):source.index("def api(")]
+    assert '"BUY": ("↑ COMPRAR"' in helper
+    assert '"SELL": ("↓ VENDER"' in helper
+    assert '"WAIT": ("AGUARDAR"' in helper
+    assert 'not 1 <= score <= 100' in helper
+    assert '"FRACA" if score <= 69 else "MODERADA" if score <= 79 else "FORTE"' in helper
+    assert 'return "INDISPONÍVEL", "—", "#7F8B97"' in helper
 
 
 
