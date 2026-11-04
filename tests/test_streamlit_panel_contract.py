@@ -99,3 +99,8 @@ def test_streamlit_panel_explains_fiscal_catalog_automation_boundaries():
     assert "Pendente · sem cálculo automático" in source
     assert "Lançamento parcial habilitado" in source
     assert "Nenhuma categoria adicional foi habilitada" in source
+
+def test_streamlit_fiscal_catalog_reuses_the_single_summary_request():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert source.count('api("/api/fiscal-reserve?limit=50&offset="') == 1
+    assert 'api("/api/fiscal-reserve")' not in source
