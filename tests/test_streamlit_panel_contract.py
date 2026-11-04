@@ -43,7 +43,8 @@ def test_streamlit_mt5_preview_requires_explicit_classification_and_confirmation
     assert '"confirmed": True' in source
     assert 'Confirmo que este resultado pertence à categoria Brasil · day trade.' in source
     assert 'account_currency == "BRL"' in source
-    assert "moeda original, classificação e conversão documentada" in source
+    assert '"/api/fiscal-reserve/mt5-pending-result"' in source
+    assert "Guardar como pendência" in source
 
 
 def test_streamlit_panel_preserves_signed_foreign_results_as_pending():
