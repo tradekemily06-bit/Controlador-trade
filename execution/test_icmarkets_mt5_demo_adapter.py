@@ -14,6 +14,7 @@ class FakeMT5:
     ORDER_TIME_GTC = 0
     ORDER_FILLING_IOC = 1
     TRADE_RETCODE_DONE = 10009
+    DEAL_ENTRY_IN = 0
     DEAL_ENTRY_OUT = 1
     DEAL_ENTRY_OUT_BY = 2
     ORDER_STATE_CANCELED = 4
@@ -244,17 +245,31 @@ def test_real_adapter_never_accepts_demo_request():
     assert mt5.calls == []
 
 
-def test_closed_deal_preview_returns_raw_components_without_booking():
+def test_closed_deal_preview_returns_complete_position_components_without_booking():
     mt5 = FakeMT5()
     mt5.account_info = lambda: SimpleNamespace(trade_mode=mt5.ACCOUNT_TRADE_MODE_DEMO, currency="USD")
-    mt5.history_deals_get = lambda *args, **kwargs: (
-        SimpleNamespace(entry=mt5.DEAL_ENTRY_OUT, ticket=789, position_id=456, symbol="EURUSD", volume=0.1, profit=10.0, commission=-1.0, swap=-0.5, fee=0.0, time=1793318400),
-    )
+    opening = SimpleNamespace(entry=mt5.DEAL_ENTRY_IN, ticket=788, position_id=456,
+                              symbol="EURUSD", volume=0.1, profit=0.0,
+                              commission=-1.0, swap=0.0, fee=0.0, time=1793318300)
+    closing = SimpleNamespace(entry=mt5.DEAL_ENTRY_OUT, ticket=789, position_id=456,
+                              symbol="EURUSD", volume=0.1, profit=10.0,
+                              commission=0.0, swap=-0.5, fee=0.0, time=1793318400)
+
+    def history_deals_get(*args, **kwargs):
+        if "position" in kwargs:
+            return (opening, closing)
+        return (closing,)
+
+    mt5.history_deals_get = history_deals_get
     preview = ICMarketsMT5DemoAdapter(mt5_module=mt5).read_closed_deal_candidates()
     assert preview["count"] == 1
-    assert preview["candidates"][0]["net_result_account_currency"] == 8.5
-    assert preview["candidates"][0]["account_currency"] == "USD"
+    candidate = preview["candidates"][0]
+    assert candidate["ticket"] == "789"
+    assert candidate["net_result_account_currency"] == 8.5
+    assert candidate["account_currency"] == "USD"
+    assert candidate["result_scope"] == "FULL_CLOSED_POSITION"
     assert preview["auto_registered"] is False
+
 
 def test_closed_deal_preview_excludes_missing_or_non_closing_entry_types():
     mt5 = FakeMT5()
@@ -264,11 +279,11 @@ def test_closed_deal_preview_excludes_missing_or_non_closing_entry_types():
     mt5.history_deals_get = lambda *args, **kwargs: (
         SimpleNamespace(entry=mt5.DEAL_ENTRY_OUT, ticket=1, profit=5.0),
         SimpleNamespace(entry=None, ticket=2, profit=100.0),
-        SimpleNamespace(entry=0, ticket=3, profit=200.0),
+        SimpleNamespace(entry=mt5.DEAL_ENTRY_IN, ticket=3, profit=200.0),
     )
 
     preview = ICMarketsMT5DemoAdapter(mt5_module=mt5).read_closed_deal_candidates()
 
-    assert preview["count"] == 1
-    assert preview["candidates"][0]["ticket"] == "1"
+    assert preview["count"] == 0
+    assert preview["candidates"] == []
     assert preview["auto_registered"] is False
