@@ -338,6 +338,7 @@ class FiscalPendingQueue:
                 }
         counts = {str(row["record_kind"]): int(row["item_count"]) for row in kinds}
         return {
+            "available": True,
             "as_of": reference_day.isoformat(),
             "total": total,
             "realized_results": counts.get("REALIZED_RESULT", 0),
