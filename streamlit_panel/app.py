@@ -122,9 +122,11 @@ def _reset_assistant_conversation() -> None:
 def show_assistant() -> None:
     st.subheader("Assistente do Ecossistema")
     st.caption("Somente leitura · não envia ordens, não movimenta dinheiro e não substitui orientação fiscal profissional.")
+    assistant_available = False
     try:
         readiness = api("/api/assistant/status")
-        if readiness.get("available") is False:
+        assistant_available = readiness.get("available") is True
+        if not assistant_available:
             st.warning("Assistente indisponível: " + str(readiness.get("message") or "configuração do provedor ausente"))
         else:
             st.caption("Provedor configurado · " + str(readiness.get("model") or "modelo configurado") + " · conexão ainda não testada")
@@ -173,7 +175,10 @@ def show_assistant() -> None:
     for message in st.session_state.get("assistant_history", []):
         with st.chat_message("assistant" if message.get("role") == "assistant" else "user"):
             st.write(message.get("content", ""))
-    prompt = st.chat_input("Pergunte sobre o Ecossistema, risco ou Reserva Fiscal")
+    prompt = st.chat_input(
+        "Pergunte sobre o Ecossistema, risco ou Reserva Fiscal",
+        disabled=not assistant_available,
+    )
     if prompt:
         with st.chat_message("user"):
             st.write(prompt)
