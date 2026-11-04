@@ -290,6 +290,7 @@ def test_mt5_historical_backtest_api_is_read_only(monkeypatch):
             "stop_distance": 0.1,
             "take_profit_distance": 0.2,
             "quantity_units": 100,
+            "contract_multiplier": 1.0,
             "spread_price_units": 0.01,
             "slippage_price_units_per_side": 0.001,
             "commission_quote_per_unit_round_turn": 0.001,
