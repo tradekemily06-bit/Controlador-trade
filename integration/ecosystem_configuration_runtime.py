@@ -28,6 +28,9 @@ from execution.icmarkets_mt5_market_data import ICMarketsMT5DemoMarketDataAdapte
 from core.ecosystem_preferences import ChartTheme, EcosystemPreferencesStore
 from core.ecosystem_state_store import EcosystemStateStore
 from core.models import AnalysisResult, Signal
+from core.p122_broker_market_data import BrokerMarketDataRequest, BrokerMarketDataSnapshot
+from core.candle_analysis_evaluator import evaluate_candle_snapshot
+from core.historical_trade_simulator import HistoricalBacktestConfig, HistoricalSignal, HistoricalTradeSimulator
 from core.senior_analysis_gate import SeniorAnalysisGate
 from core.senior_context_orchestrator import SeniorContextInput
 from core.senior_risk_reasoning import RiskDomain, RiskObservation
@@ -342,6 +345,281 @@ class ConfiguredEcosystemService(EcosystemService):
             )
         self._record_analysis(orchestration.analysis)
         return orchestration
+
+    def replay_mt5_history(self, *, symbol: str, timeframe: str = "5m", limit: int = 100) -> dict[str, Any]:
+        """Replay closed historical MT5 DEMO candles chronologically, without side effects."""
+        if self.execution_provider != "ic_markets_mt5_demo":
+            raise RuntimeError("Replay histórico exige provider IC Markets MT5 DEMO")
+        symbol = str(symbol).strip()
+        timeframe = str(timeframe).strip()
+        if not symbol:
+            raise ValueError("symbol é obrigatório")
+        if not timeframe:
+            raise ValueError("timeframe é obrigatório")
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 20 <= limit <= 500:
+            raise ValueError("limit deve estar entre 20 e 500")
+
+        request = BrokerMarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
+        candles = tuple(self.mt5_market_adapter.fetch_market_data(request))
+        if len(candles) < 2:
+            raise RuntimeError("histórico insuficiente: são necessários pelo menos dois candles fechados")
+        if any(candles[index].timestamp < candles[index - 1].timestamp for index in range(1, len(candles))):
+            raise RuntimeError("histórico MT5 fora de ordem cronológica; replay bloqueado")
+
+        records: list[dict[str, Any]] = []
+        for index in range(1, len(candles)):
+            prefix = candles[: index + 1]
+            snapshot = BrokerMarketDataSnapshot(
+                symbol=symbol,
+                timeframe=timeframe,
+                candles=prefix,
+                source="IC Markets MT5 DEMO · histórico fechado",
+                received_at=prefix[-1].timestamp,
+            )
+            result = evaluate_candle_snapshot(snapshot)
+            signal = result.signal.value
+            records.append({
+                "index": index + 1,
+                "timestamp": prefix[-1].timestamp.isoformat(),
+                "close": prefix[-1].close,
+                "signal": signal,
+                "score": result.score,
+                "decision": "SINAL" if signal != Signal.AGUARDAR.value and result.confirmed else "AGUARDAR",
+                "reason": result.reason,
+            })
+
+        return {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "source": "IC Markets MT5 DEMO",
+            "candles_replayed": len(candles),
+            "records": records,
+            "buy_signals": sum(item["signal"] == Signal.COMPRA.value for item in records),
+            "sell_signals": sum(item["signal"] == Signal.VENDA.value for item in records),
+            "waiting": sum(item["decision"] == "AGUARDAR" for item in records),
+            "orders_sent": False,
+            "execution_allowed": False,
+            "lookahead": False,
+        }
+
+    def simulate_mt5_signal_scenario(
+        self,
+        *,
+        symbol: str,
+        timeframe: str = "5m",
+        limit: int = 100,
+        minimum_directional_score: int = 70,
+    ) -> dict[str, Any]:
+        """Evaluate a historical signal-threshold scenario; never simulate fills or P&L."""
+        if self.execution_provider != "ic_markets_mt5_demo":
+            raise RuntimeError("Simulador histórico exige provider IC Markets MT5 DEMO")
+        symbol = str(symbol).strip()
+        timeframe = str(timeframe).strip()
+        if not symbol:
+            raise ValueError("symbol é obrigatório")
+        if not timeframe:
+            raise ValueError("timeframe é obrigatório")
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 20 <= limit <= 500:
+            raise ValueError("limit deve estar entre 20 e 500")
+        if (
+            not isinstance(minimum_directional_score, int)
+            or isinstance(minimum_directional_score, bool)
+            or not 70 <= minimum_directional_score <= 95
+        ):
+            raise ValueError("minimum_directional_score deve estar entre 70 e 95")
+
+        request = BrokerMarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
+        candles = tuple(self.mt5_market_adapter.fetch_market_data(request))
+        if len(candles) < 2:
+            raise RuntimeError("histórico insuficiente: são necessários pelo menos dois candles fechados")
+        if any(
+            candles[index].timestamp < candles[index - 1].timestamp
+            for index in range(1, len(candles))
+        ):
+            raise RuntimeError("histórico MT5 fora de ordem cronológica; simulação bloqueada")
+        if any(not candle.is_valid() for candle in candles):
+            raise RuntimeError("histórico MT5 contém candle inválido; simulação bloqueada")
+
+        records: list[dict[str, Any]] = []
+        for index in range(1, len(candles)):
+            prefix = candles[: index + 1]
+            snapshot = BrokerMarketDataSnapshot(
+                symbol=symbol,
+                timeframe=timeframe,
+                candles=prefix,
+                source="IC Markets MT5 DEMO · histórico fechado",
+                received_at=prefix[-1].timestamp,
+            )
+            analysis = evaluate_candle_snapshot(snapshot)
+            signal = analysis.signal.value
+            directional_score = (
+                float(analysis.score)
+                if signal == Signal.COMPRA.value
+                else 100.0 - float(analysis.score)
+                if signal == Signal.VENDA.value
+                else 0.0
+            )
+            if signal == Signal.AGUARDAR.value:
+                outcome = "AGUARDAR"
+                reason = analysis.reason
+            elif directional_score < minimum_directional_score:
+                outcome = "FILTRADO"
+                reason = (
+                    f"Score direcional hipotético {directional_score:.1f} abaixo do mínimo "
+                    f"configurado de {minimum_directional_score}."
+                )
+            else:
+                outcome = "CANDIDATO"
+                reason = (
+                    f"Sinal {signal} atende ao filtro hipotético de "
+                    f"score direcional {minimum_directional_score}."
+                )
+            records.append({
+                "index": index + 1,
+                "timestamp": prefix[-1].timestamp.isoformat(),
+                "close": prefix[-1].close,
+                "signal": signal,
+                "directional_score": round(directional_score, 2),
+                "scenario": outcome,
+                "reason": reason,
+            })
+
+        return {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "source": "IC Markets MT5 DEMO",
+            "candles_replayed": len(candles),
+            "minimum_directional_score": minimum_directional_score,
+            "records": records,
+            "candidates": sum(item["scenario"] == "CANDIDATO" for item in records),
+            "filtered": sum(item["scenario"] == "FILTRADO" for item in records),
+            "waiting": sum(item["scenario"] == "AGUARDAR" for item in records),
+            "orders_sent": False,
+            "execution_allowed": False,
+            "pnl_calculated": False,
+            "risk_rules_applied": False,
+            "lookahead": False,
+            "simulation_kind": "HISTORICAL_SIGNAL_THRESHOLD_ONLY",
+        }
+
+    def run_mt5_historical_backtest(
+        self,
+        *,
+        symbol: str,
+        timeframe: str = "5m",
+        limit: int = 200,
+        stop_distance: float,
+        take_profit_distance: float,
+        quantity_units: float,
+        contract_multiplier: float = 1.0,
+        spread_price_units: float,
+        slippage_price_units_per_side: float,
+        commission_quote_per_unit_round_turn: float = 0.0,
+        minimum_directional_score: int = 80,
+    ) -> dict[str, Any]:
+        """Run a deterministic, single-position OHLC backtest on closed MT5 DEMO bars."""
+        if self.execution_provider != "ic_markets_mt5_demo":
+            raise RuntimeError("Backtest histórico exige provider IC Markets MT5 DEMO")
+        symbol = str(symbol).strip()
+        timeframe = str(timeframe).strip()
+        if not symbol or not timeframe:
+            raise ValueError("symbol e timeframe são obrigatórios")
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 20 <= limit <= 500:
+            raise ValueError("limit deve estar entre 20 e 500")
+        config = HistoricalBacktestConfig(
+            stop_distance=stop_distance,
+            take_profit_distance=take_profit_distance,
+            quantity_units=quantity_units,
+            contract_multiplier=contract_multiplier,
+            spread_price_units=spread_price_units,
+            slippage_price_units_per_side=slippage_price_units_per_side,
+            commission_quote_per_unit_round_turn=commission_quote_per_unit_round_turn,
+            minimum_directional_score=minimum_directional_score,
+        )
+        request = BrokerMarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
+        candles = tuple(self.mt5_market_adapter.fetch_market_data(request))
+        if len(candles) < 20:
+            raise RuntimeError("histórico insuficiente: são necessários pelo menos 20 candles fechados")
+        if any(
+            candles[index].timestamp <= candles[index - 1].timestamp
+            for index in range(1, len(candles))
+        ):
+            raise RuntimeError("histórico MT5 fora de ordem ou com timestamps repetidos; backtest bloqueado")
+        if any(not candle.is_valid() for candle in candles):
+            raise RuntimeError("histórico MT5 contém candle inválido; backtest bloqueado")
+
+        signals: list[HistoricalSignal] = []
+        for index in range(len(candles)):
+            prefix = candles[: index + 1]
+            snapshot = BrokerMarketDataSnapshot(
+                symbol=symbol,
+                timeframe=timeframe,
+                candles=prefix,
+                source="IC Markets MT5 DEMO · histórico fechado",
+                received_at=prefix[-1].timestamp,
+            )
+            analysis = evaluate_candle_snapshot(snapshot)
+            directional_score = (
+                float(analysis.score)
+                if analysis.signal is Signal.COMPRA
+                else 100.0 - float(analysis.score)
+                if analysis.signal is Signal.VENDA
+                else 0.0
+            )
+            signals.append(HistoricalSignal(
+                signal=analysis.signal,
+                directional_score=directional_score,
+                reason=analysis.reason,
+            ))
+
+        result = HistoricalTradeSimulator().run(
+            candles=candles,
+            signals=signals,
+            config=config,
+        )
+        return {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "source": "IC Markets MT5 DEMO",
+            "quote_currency_note": "P&L expresso na moeda cotada do instrumento; não convertido para a moeda da conta.",
+            "candles_processed": result.candles_processed,
+            "candidates": result.candidates,
+            "filtered": result.filtered,
+            "waiting": result.waiting,
+            "trades": [asdict(trade) for trade in result.trades],
+            "trade_count": len(result.trades),
+            "wins": result.wins,
+            "losses": result.losses,
+            "breakeven": result.breakeven,
+            "win_rate": round(result.win_rate * 100, 2),
+            "profit_factor": result.profit_factor,
+            "gross_pnl_quote": result.gross_pnl_quote,
+            "total_costs_quote": result.total_costs_quote,
+            "net_pnl_quote": result.net_pnl_quote,
+            "max_drawdown_quote": result.max_drawdown_quote,
+            "max_consecutive_losses": result.max_consecutive_losses,
+            "drawdown_note": "Drawdown absoluto em moeda cotada, calculado a partir de capital inicial zero; percentual não calculado porque saldo inicial não foi informado.",
+            "assumptions": {
+                "entry": "próxima abertura após o sinal no fechamento",
+                "position_limit": "uma posição por vez",
+                "stop_take_same_candle": "stop-loss primeiro, abordagem conservadora",
+                "spread_price_units": config.spread_price_units,
+                "slippage_price_units_per_side": config.slippage_price_units_per_side,
+                "commission_quote_per_unit_round_turn": config.commission_quote_per_unit_round_turn,
+                "quantity_units": config.quantity_units,
+                "contract_multiplier": config.contract_multiplier,
+                "stop_distance": config.stop_distance,
+                "take_profit_distance": config.take_profit_distance,
+                "minimum_directional_score": config.minimum_directional_score,
+                "risk_manager_integrated": False,
+                "margin_and_leverage_simulated": False,
+                "account_currency_conversion": False,
+            },
+            "orders_sent": result.orders_sent,
+            "execution_allowed": result.execution_allowed,
+            "lookahead": result.lookahead,
+            "simulation_kind": result.simulation_kind,
+        }
 
     def get_mt5_assets(self, *, include_invisible: bool = False) -> tuple[dict[str, Any], ...]:
         """Return the broker-observed MT5 universe with session and 24/7 evidence."""

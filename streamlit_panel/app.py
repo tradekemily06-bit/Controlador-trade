@@ -10,6 +10,8 @@ from typing import Any
 
 import streamlit as st
 
+from presentation import closed_panel_signal
+
 ROOT = Path(__file__).resolve().parent
 CONFIG = json.loads((ROOT / "controlador_trader_referencia_visual.json").read_text(encoding="utf-8"))
 BASE_URL = os.environ.get("CONTROLADOR_API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
@@ -24,7 +26,21 @@ st.markdown("""
 :root { color-scheme: dark; }
 .stApp { background: #080B0F; color: #E9EEF3; }
 [data-testid="stHeader"] { background: transparent; }
-.block-container { max-width: 1180px; padding-top: 1.4rem; }
+.block-container { width: 100%; max-width: none; padding: 1rem clamp(.75rem, 2vw, 1.5rem) 6rem; }
+.st-key-panel-toggle { position: fixed; left: 18px; bottom: 14px; z-index: 1000; width: 220px; display: flex; flex-direction: row; align-items: center; gap: 8px; }
+.st-key-panel-toggle .stButton > button { width: 48px; min-width: 48px; height: 48px; min-height: 48px; padding: 0; border-radius: 50%; background: #080B0F; color: #46D6AD; border: 1px solid #46D6AD; box-shadow: 0 0 10px #46D6AD33; font-weight: 800; }
+.st-key-panel-toggle .closed-signal { width: 150px; display: flex; flex-direction: column; align-items: center; gap: 1px; white-space: nowrap; text-align: center; font-size: 10px; line-height: 1.2; text-shadow: 0 1px 4px #080B0F; }\n.st-key-panel-toggle .closed-signal strong { font-size: 10px; font-weight: 800; }
+*, *::before, *::after { box-sizing: border-box; }
+[data-testid="stAppViewContainer"], [data-testid="stMain"], [data-testid="stMainBlockContainer"] { min-width: 0; }
+[data-testid="stDataFrame"], [data-testid="stTable"], .status-card { max-width: 100%; }
+[data-baseweb="tab-list"], [role="radiogroup"] { flex-wrap: wrap; }
+.stMarkdown, .stCaption, [data-testid="stMetric"] { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 720px) {
+  .block-container { padding: .75rem .65rem 1.25rem; }
+  [data-testid="stHorizontalBlock"] { flex-wrap: wrap; gap: .5rem; }
+  [data-testid="column"] { min-width: min(100%, 14rem); }
+  [data-testid="stDataFrame"] { overflow-x: auto; }
+}
 div[data-testid="stMetric"] { background:#161C24; border:1px solid #25303B; padding:14px; border-radius:12px; }
 .stButton > button, .stFormSubmitButton > button { border:1px solid #25303B; border-radius:10px; }
 .stButton > button[kind="primary"], .stFormSubmitButton > button { background:#46D6AD; color:#080B0F; border:0; font-weight:700; }
@@ -73,6 +89,25 @@ def money(value: Any) -> str:
     except (TypeError, ValueError):
         return "—"
 
+
+def save_leverage_preference() -> None:
+    """Persist only the user's leverage preference; it never grants execution authority."""
+    try:
+        api(
+            "/api/preferences",
+            "POST",
+            {"leverage_enabled": bool(st.session_state.get("leverage_enabled", False))},
+        )
+        st.session_state.leverage_preference_error = ""
+    except Exception as exc:
+        st.session_state.leverage_preference_error = str(exc)
+        try:
+            saved = api("/api/preferences").get("preferences", {})
+            st.session_state.leverage_enabled = saved.get("leverage_enabled") is True
+        except Exception:
+            st.session_state.leverage_enabled = False
+
+
 def fiscal_history_display_row(item: dict[str, Any]) -> dict[str, Any]:
     """Fail closed: only the explicitly supported Brazilian category shows estimates."""
     category = str(item.get("category") or "").strip().upper()
@@ -113,10 +148,9 @@ def fiscal_history_display_row(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def _reset_assistant_conversation() -> None:
+    """Start a fresh assistant session without exposing stored conversation history."""
     st.session_state.assistant_conversation_id = None
     st.session_state.assistant_history = []
-    st.session_state.assistant_loaded_id = None
-    st.session_state.assistant_selector = "__new__"
 
 
 def show_assistant() -> None:
@@ -132,67 +166,88 @@ def show_assistant() -> None:
             st.caption(str(readiness.get("message") or "Credenciais configuradas; conexão com a API ainda não testada.") + " · " + str(readiness.get("model") or "modelo configurado"))
     except Exception as exc:
         st.warning(f"Não foi possível verificar a configuração do Assistente. {exc}")
-    st.warning("Privacidade: sua pergunta e um resumo dos dados operacionais disponíveis são enviados pelo servidor à OpenAI para gerar a resposta. A chave permanece no servidor. Excluir uma conversa remove o histórico local, mas não solicita a exclusão de dados já transmitidos à OpenAI. Não envie senhas, códigos de acesso ou dados bancários sensíveis.")
-    if "_assistant_pending_select_id" in st.session_state:
-        st.session_state.assistant_selector = st.session_state.pop("_assistant_pending_select_id")
-    try:
-        conversations = api("/api/assistant/conversations").get("conversations", [])
-    except Exception as exc:
-        conversations = []
-        st.error(str(exc))
-    ids = [item.get("conversation_id") for item in conversations]
-    labels = {item.get("conversation_id"): item.get("title", "Conversa") for item in conversations}
-    if st.session_state.get("assistant_selector", "__new__") not in ["__new__"] + ids:
-        st.session_state.assistant_selector = "__new__"
-    selected = st.selectbox("Histórico", options=["__new__"] + ids, format_func=lambda value: "Nova conversa" if value == "__new__" else labels.get(value, "Conversa"), key="assistant_selector")
-    if st.button("Iniciar nova conversa", key="new_assistant", on_click=_reset_assistant_conversation):
-        st.rerun()
-    if selected == "__new__" and st.session_state.get("assistant_last_selected") != "__new__":
-        st.session_state.assistant_conversation_id = None
+
+    st.caption(
+        "Privacidade: a pergunta, as mensagens recentes desta conversa e um resumo operacional filtrado são enviados pelo servidor à OpenAI. "
+        "As mensagens também ficam armazenadas no histórico local do Assistente no servidor do Ecossistema. "
+        "A chave permanece no servidor. Não envie senhas, códigos de acesso ou dados bancários sensíveis."
+    )
+    if "assistant_history" not in st.session_state:
         st.session_state.assistant_history = []
-        st.session_state.assistant_loaded_id = None
-    st.session_state.assistant_last_selected = selected
-    cid = None if selected == "__new__" else selected
-    if cid and st.checkbox("Confirmo que desejo excluir a conversa selecionada", key="confirm_delete_assistant"):
-        if st.button("Excluir conversa e mensagens locais", key="delete_assistant"):
-            try:
-                api("/api/assistant/conversations?conversation_id=" + urllib.parse.quote(cid), "DELETE")
-                st.session_state.assistant_conversation_id = None
-                st.session_state.assistant_loaded_id = None
-                st.session_state.assistant_history = []
-                st.session_state._assistant_pending_select_id = "__new__"
-                st.success("Conversa removida do histórico local.")
+
+    try:
+        saved_conversations = api("/api/assistant/conversations").get("conversations", [])
+        if saved_conversations:
+            conversation_labels = {
+                item["conversation_id"]: (
+                    str(item.get("title") or "Conversa")
+                    + " · "
+                    + str(item.get("updated_at") or "")
+                )
+                for item in saved_conversations
+                if item.get("conversation_id")
+            }
+            selected_saved_id = st.selectbox(
+                "Conversas anteriores",
+                options=list(conversation_labels),
+                format_func=lambda conversation_id: conversation_labels[conversation_id],
+                key="saved_assistant_conversation",
+            )
+            history_col, delete_col = st.columns([3, 1])
+            if history_col.button("Abrir conversa", key="load_assistant_conversation"):
+                saved = api(
+                    "/api/assistant/history?conversation_id="
+                    + urllib.parse.quote(selected_saved_id, safe="")
+                ).get("messages", [])
+                st.session_state.assistant_conversation_id = selected_saved_id
+                st.session_state.assistant_history = [
+                    {"role": item["role"], "content": item["content"]}
+                    for item in saved
+                    if item.get("role") in ("user", "assistant")
+                ]
                 st.rerun()
-            except Exception as exc:
-                st.error(str(exc))
-    if cid and st.session_state.get("assistant_loaded_id") != cid:
-        try:
-            st.session_state.assistant_history = api("/api/assistant/history?conversation_id=" + urllib.parse.quote(cid)).get("messages", [])
-            st.session_state.assistant_loaded_id = cid
-            st.session_state.assistant_conversation_id = cid
-        except Exception as exc:
-            st.error(str(exc))
-    for message in st.session_state.get("assistant_history", []):
-        with st.chat_message("assistant" if message.get("role") == "assistant" else "user"):
-            st.write(message.get("content", ""))
+            if delete_col.button("Excluir conversa", key="delete_assistant_conversation"):
+                api(
+                    "/api/assistant/conversations?conversation_id="
+                    + urllib.parse.quote(selected_saved_id, safe=""),
+                    "DELETE",
+                )
+                if st.session_state.get("assistant_conversation_id") == selected_saved_id:
+                    _reset_assistant_conversation()
+                st.rerun()
+    except Exception as exc:
+        st.warning(f"Não foi possível carregar o histórico de conversas. {exc}")
+
+    if st.button("Nova consulta", key="new_assistant_session"):
+        _reset_assistant_conversation()
+        st.rerun()
+
+    for message in st.session_state.assistant_history:
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
+
     prompt = st.chat_input(
         "Pergunte sobre o Ecossistema, risco ou Reserva Fiscal",
         disabled=not assistant_available,
     )
     if prompt:
-        with st.chat_message("user"):
-            st.write(prompt)
+        st.session_state.assistant_history.append({"role": "user", "content": prompt})
         try:
-            response = api("/api/assistant/chat", "POST", {"message": prompt, "conversation_id": st.session_state.get("assistant_conversation_id")})
+            response = api(
+                "/api/assistant/chat",
+                "POST",
+                {
+                    "message": prompt,
+                    "conversation_id": st.session_state.get("assistant_conversation_id"),
+                },
+            )
             st.session_state.assistant_conversation_id = response.get("conversation_id")
-            with st.chat_message("assistant"):
-                st.write(response.get("answer", "Sem resposta."))
-            st.session_state.assistant_history = api("/api/assistant/history?conversation_id=" + urllib.parse.quote(response["conversation_id"])).get("messages", [])
-            st.session_state.assistant_loaded_id = response["conversation_id"]
-            st.session_state._assistant_pending_select_id = response["conversation_id"]
+            answer = response.get("answer", "Sem resposta.")
+            st.session_state.assistant_history.append({"role": "assistant", "content": answer})
             st.rerun()
         except Exception as exc:
             st.error(str(exc))
+
 
 
 def show_fiscal() -> None:
@@ -343,7 +398,10 @@ def show_fiscal() -> None:
         except Exception as exc:
             st.error(str(exc))
     try:
-        domestic_data = api("/api/fiscal-reserve/domestic-pending?limit=50&offset=0")
+        if "domestic_pending_offset" not in st.session_state:
+            st.session_state.domestic_pending_offset = 0
+        domestic_offset = int(st.session_state.domestic_pending_offset)
+        domestic_data = api(f"/api/fiscal-reserve/domestic-pending?limit=50&offset={domestic_offset}")
         domestic_items = domestic_data.get("items", [])
         domestic_summary = api("/api/fiscal-reserve/domestic-pending/summary")
         domestic_cols = st.columns(4)
@@ -353,6 +411,16 @@ def show_fiscal() -> None:
             col.caption(f"{int(period_data.get('results', 0))} resultado(s) · sem cálculo")
         if domestic_items:
             st.dataframe([{"Data": item.get("occurred_on"), "Ativo": item.get("instrument"), "Categoria candidata": item.get("category_candidate") or "Não informada", "Mercado": item.get("market_scope"), "Resultado (R$)": item.get("realized_result_brl") if item.get("realized_result_brl") is not None else "—", "Status": "PENDENTE DE CLASSIFICAÇÃO"} for item in domestic_items], use_container_width=True, hide_index=True)
+            domestic_page_cols = st.columns(2)
+            with domestic_page_cols[0]:
+                if st.button("← Pendências brasileiras anteriores", key="domestic_pending_previous", disabled=domestic_offset <= 0):
+                    st.session_state.domestic_pending_offset = max(0, domestic_offset - 50)
+                    st.rerun()
+            with domestic_page_cols[1]:
+                if st.button("Próximas pendências brasileiras →", key="domestic_pending_next", disabled=domestic_offset + len(domestic_items) >= int(domestic_data.get("total", 0))):
+                    st.session_state.domestic_pending_offset = domestic_offset + 50
+                    st.rerun()
+            st.caption(f"Exibindo {domestic_offset + 1}–{domestic_offset + len(domestic_items)} de {int(domestic_data.get('total', 0))} pendências brasileiras.")
             st.markdown("##### Revisão documental · Brasil")
             st.caption("A revisão registra evidências declaradas. O sistema não verifica identidade ou registro profissional, não muda a classificação e não calcula reserva.")
             review_options = {
@@ -496,7 +564,10 @@ def show_fiscal() -> None:
     st.markdown("#### Revisão documental · Exterior")
     st.caption("A revisão registra a classificação candidata e as evidências informadas pelo profissional. O sistema não verifica identidade ou registro, não muda o status pendente e não calcula imposto.")
     try:
-        foreign_pending_data = api("/api/fiscal-reserve/pending?limit=100&offset=0")
+        if "foreign_pending_offset" not in st.session_state:
+            st.session_state.foreign_pending_offset = 0
+        foreign_offset = int(st.session_state.foreign_pending_offset)
+        foreign_pending_data = api(f"/api/fiscal-reserve/pending?limit=50&offset={foreign_offset}")
         foreign_items = foreign_pending_data.get("items", [])
         if foreign_items:
             st.dataframe([{
@@ -510,6 +581,16 @@ def show_fiscal() -> None:
                 "Evento": item.get("event_type"),
                 "Status": "PENDENTE DE CLASSIFICAÇÃO",
             } for item in foreign_items], use_container_width=True, hide_index=True)
+            foreign_page_cols = st.columns(2)
+            with foreign_page_cols[0]:
+                if st.button("← Pendências do exterior anteriores", key="foreign_pending_previous", disabled=foreign_offset <= 0):
+                    st.session_state.foreign_pending_offset = max(0, foreign_offset - 50)
+                    st.rerun()
+            with foreign_page_cols[1]:
+                if st.button("Próximas pendências do exterior →", key="foreign_pending_next", disabled=foreign_offset + len(foreign_items) >= int(foreign_pending_data.get("total", 0))):
+                    st.session_state.foreign_pending_offset = foreign_offset + 50
+                    st.rerun()
+            st.caption(f"Exibindo {foreign_offset + 1}–{foreign_offset + len(foreign_items)} de {int(foreign_pending_data.get('total', 0))} pendências do exterior.")
             foreign_review_options = {
                 item["pending_id"]: f"{item.get('occurred_on')} · {item.get('instrument')} · {item.get('reference')}"
                 for item in foreign_items if item.get("pending_id")
@@ -700,45 +781,506 @@ def show_fiscal() -> None:
         st.warning(str(exc))
 
 
-AREAS = CONFIG["open_state"]["tabs"]
+def show_market_analysis() -> None:
+    st.subheader("Análise de Mercado")
+    st.caption("Consulta de candles do MT5 DEMO e análise. Esta tela não envia ordens nem autoriza execução.")
+    try:
+        assets_payload = api("/api/market/assets")
+        assets = assets_payload.get("assets", [])
+        symbols = []
+        for asset in assets:
+            if isinstance(asset, str):
+                symbols.append(asset)
+            elif isinstance(asset, dict) and asset.get("symbol"):
+                symbols.append(str(asset["symbol"]))
+        if not symbols:
+            st.warning("O runtime não disponibilizou ativos do MT5 DEMO. Verifique a conexão e a fonte de candles.")
+            return
+        with st.form("market_analysis_form"):
+            symbol = st.selectbox("Ativo", sorted(set(symbols)))
+            timeframe = st.selectbox("Período gráfico", ["1m", "5m", "15m", "30m", "1h", "4h", "1d"], index=1)
+            candle_limit = st.slider("Quantidade de candles", min_value=30, max_value=500, value=100, step=10)
+            confirmed = st.checkbox("Confirmo que esta análise é somente para estudo em DEMO/SIMULAÇÃO.")
+            submitted = st.form_submit_button("Analisar mercado")
+        if submitted:
+            if not confirmed:
+                st.error("Confirme o uso somente em DEMO/SIMULAÇÃO para solicitar a análise.")
+            else:
+                # A solicitação nova invalida o sinal anterior até que a análise
+                # atual termine. Se o runtime falhar, o C não exibe dado obsoleto.
+                st.session_state.pop("market_analysis_result", None)
+                try:
+                    result = api("/api/runtime/analysis", "POST", {"symbol": symbol, "timeframe": timeframe, "limit": candle_limit})
+                    st.session_state.market_analysis_result = result
+                except Exception as exc:
+                    st.error(f"Análise indisponível: {exc}")
+        result = st.session_state.get("market_analysis_result")
+        if result:
+            analysis = result.get("analysis", {})
+            signal = str(result.get("signal") or "AGUARDAR").upper()
+            cols = st.columns(4)
+            cols[0].metric("Sinal", signal)
+            cols[1].metric("Pontuação", f"{analysis.get('score', '—')}/100")
+            cols[2].metric("Ativo", analysis.get("symbol", "—"))
+            cols[3].metric("Período", analysis.get("timeframe", "—"))
+            st.write(result.get("reason") or "Sem justificativa fornecida pelo motor.")
+            st.caption("Decisão: " + str(result.get("decision", "AGUARDAR")) + " · Execução permitida: NÃO")
+            st.caption("A confirmação de uso em DEMO não substitui o fechamento do candle nem os filtros internos. As preferências de segurança do runtime são respeitadas.")
+            candles = result.get("market_data", {}).get("ohlcv", [])
+            if candles:
+                st.markdown("#### Candles recebidos")
+                st.dataframe(candles[-100:], use_container_width=True, hide_index=True)
+    except Exception as exc:
+        st.warning(f"Não foi possível carregar ativos do MT5 DEMO: {exc}")
+
+
+def show_replay() -> None:
+    st.subheader("Replay histórico · MT5 DEMO")
+    st.caption("Reproduz candles históricos já fechados, em ordem cronológica. Cada decisão usa somente os candles disponíveis até aquele instante. Não envia ordens, não altera a memória operacional e não libera execução.")
+    with st.form("historical_replay_form"):
+        symbol = st.text_input("Ativo no MT5", value="EURUSD", max_chars=32)
+        timeframe = st.selectbox("Timeframe", ["1m", "5m", "15m", "30m", "1h", "4h", "1d"], index=1)
+        limit = st.number_input("Quantidade de candles fechados", min_value=20, max_value=500, value=100, step=10)
+        submitted = st.form_submit_button("Reproduzir histórico DEMO")
+    if not submitted:
+        st.info("Selecione o ativo e o período para iniciar uma reprodução histórica somente de leitura.")
+        return
+    try:
+        result = api("/api/replay/mt5", "POST", {
+            "symbol": symbol.strip(),
+            "timeframe": timeframe,
+            "limit": int(limit),
+        })
+        st.caption(f"Fonte: {result.get('source', '—')} · {result.get('symbol')} · {result.get('timeframe')}")
+        cols = st.columns(4)
+        cols[0].metric("Candles", int(result.get("candles_replayed", 0)))
+        cols[1].metric("Sinais de compra", int(result.get("buy_signals", 0)))
+        cols[2].metric("Sinais de venda", int(result.get("sell_signals", 0)))
+        cols[3].metric("Aguardar", int(result.get("waiting", 0)))
+        records = result.get("records", [])
+        if records:
+            st.dataframe(records, use_container_width=True, hide_index=True)
+        st.success("Replay concluído sem envio de ordens.") if result.get("orders_sent") is False else st.error("Estado de execução inesperado.")
+        st.caption("Execução permitida: NÃO · Antecipação de candles futuros: NÃO")
+    except Exception as exc:
+        st.error(f"Replay indisponível: {exc}")
+
+
+def show_simulator() -> None:
+    st.subheader("Simulador histórico · MT5 DEMO")
+    st.caption("Backtest determinístico com sinais no fechamento e entrada somente na abertura do candle seguinte. Configure os parâmetros reais do instrumento e da sua conta antes de executar.")
+    st.info("P&L é calculado na moeda cotada do instrumento, sem conversão para a moeda da conta. Quantidade em unidades do ativo — não em lotes MT5.")
+    with st.form("historical_trade_backtest_form"):
+        symbol = st.text_input("Ativo no MT5", value="EURUSD", max_chars=32)
+        timeframe = st.selectbox("Timeframe", ["1m", "5m", "15m", "30m", "1h", "4h", "1d"], index=1, key="backtest_timeframe")
+        limit = st.number_input("Candles históricos fechados", min_value=20, max_value=500, value=200, step=10, key="backtest_limit")
+        minimum_directional_score = st.slider("Score direcional mínimo", min_value=70, max_value=95, value=80, step=1)
+        st.markdown("**Parâmetros da operação hipotética**")
+        stop_distance = st.number_input("Stop-loss · distância em unidades de preço", min_value=0.0, value=0.0, step=0.0001, format="%.6f")
+        take_profit_distance = st.number_input("Take-profit · distância em unidades de preço", min_value=0.0, value=0.0, step=0.0001, format="%.6f")
+        quantity_units = st.number_input("Quantidade em unidades/contratos", min_value=0.0, value=0.0, step=1.0, format="%.2f")
+        contract_multiplier = st.number_input("Multiplicador do contrato", min_value=0.0, value=1.0, step=1.0, format="%.4f")
+        st.markdown("**Custos por operação completa**")
+        spread_price_units = st.number_input("Spread total em unidades de preço", min_value=0.0, value=0.0, step=0.00001, format="%.6f")
+        slippage_price_units_per_side = st.number_input("Slippage por lado em unidades de preço", min_value=0.0, value=0.0, step=0.00001, format="%.6f")
+        commission_quote_per_unit_round_turn = st.number_input("Comissão total por unidade · moeda cotada", min_value=0.0, value=0.0, step=0.0001, format="%.6f")
+        submitted = st.form_submit_button("Executar backtest histórico DEMO")
+    if not submitted:
+        st.caption("Preencha stop, alvo, quantidade e custos conforme a especificação do instrumento e da corretora. Valores zero significam custo zero assumido, não custo verificado.")
+        return
+    if not symbol.strip() or stop_distance <= 0 or take_profit_distance <= 0 or quantity_units <= 0 or contract_multiplier <= 0 or spread_price_units <= 0:
+        st.error("Informe ativo, stop-loss, take-profit, quantidade e spread maiores que zero. Não vou presumir esses parâmetros.")
+        return
+    try:
+        result = api("/api/simulator/mt5/backtest", "POST", {
+            "symbol": symbol.strip(),
+            "timeframe": timeframe,
+            "limit": int(limit),
+            "minimum_directional_score": int(minimum_directional_score),
+            "stop_distance": float(stop_distance),
+            "take_profit_distance": float(take_profit_distance),
+            "quantity_units": float(quantity_units),
+            "contract_multiplier": float(contract_multiplier),
+            "spread_price_units": float(spread_price_units),
+            "slippage_price_units_per_side": float(slippage_price_units_per_side),
+            "commission_quote_per_unit_round_turn": float(commission_quote_per_unit_round_turn),
+        })
+        st.caption(f"Fonte: {result.get('source', '—')} · {result.get('symbol')} · {result.get('timeframe')}")
+        st.caption(result.get("quote_currency_note", ""))
+        cols = st.columns(4)
+        cols[0].metric("Operações", int(result.get("trade_count", 0)))
+        cols[1].metric("Taxa vencedora", f"{float(result.get('win_rate', 0)):.2f}%")
+        cols[2].metric("Fator de lucro", "—" if result.get("profit_factor") is None else f"{float(result['profit_factor']):.3f}")
+        cols[3].metric("Resultado líquido", f"{float(result.get('net_pnl_quote', 0)):.6f}")
+        totals = st.columns(3)
+        totals[0].metric("Resultado bruto", f"{float(result.get('gross_pnl_quote', 0)):.6f}")
+        totals[1].metric("Custos totais", f"{float(result.get('total_costs_quote', 0)):.6f}")
+        totals[2].metric("Candles analisados", int(result.get("candles_processed", 0)))
+        risk_totals = st.columns(2)
+        risk_totals[0].metric("Drawdown máximo · moeda cotada", f"{float(result.get('max_drawdown_quote', 0)):.6f}")
+        risk_totals[1].metric("Maior sequência de perdas", int(result.get("max_consecutive_losses", 0)))
+        st.caption(result.get("drawdown_note", "Drawdown percentual não calculado sem saldo inicial."))
+        trades = result.get("trades", [])
+        if trades:
+            st.dataframe(trades, use_container_width=True, hide_index=True)
+        else:
+            st.info("Nenhuma operação hipotética foi aberta com estes parâmetros e sinais.")
+        assumptions = result.get("assumptions", {})
+        st.caption(f"Entradas: {assumptions.get('entry', '—')} · Posições simultâneas: {assumptions.get('position_limit', '—')}")
+        st.warning("Limitações: stop-loss é priorizado quando stop e alvo aparecem no mesmo candle; O backtest não integra o Risk Manager, margem, alavancagem, swap ou conversão cambial. O resultado não é previsão nem promessa de rentabilidade.")
+        st.caption("Execução permitida: NÃO · Ordens enviadas: NÃO · Antecipação de candles futuros: NÃO")
+    except Exception as exc:
+        st.error(f"Backtest histórico indisponível: {exc}")
+
+
+
+def show_readonly_module(module_name: str) -> None:
+    """Render existing runtime capabilities as clear, read-only Streamlit screens."""
+    views = {
+        "Operação": ("Estado operacional", "/api/health"),
+        "Motor de Decisão": ("Motor de Decisão", "/api/statistics"),
+        "Gestão de Risco": ("Gestão de Risco", "/api/risk"),
+        "Notificações": ("Central de Notificações", "/api/notifications"),
+        "MT5 DEMO / Simulação": ("Conexões e ambiente", "/api/connections"),
+        "Kill Switch": ("Proteção operacional", "/api/health"),
+        "Memória": ("Memória de decisões", "/api/memory?limit=50"),
+        "Estatísticas": ("Estatísticas operacionais", "/api/statistics"),
+        "Relatórios": ("Resumo operacional", "/api/statistics"),
+        "Laboratório": ("Laboratório de aprendizado", "/api/learning"),
+        "Aprendizado": ("Aprendizado validado", "/api/learning"),
+        "Descobertas": ("Descobertas registradas", "/api/learning"),
+        "Escola / Tutorial / Onboarding": ("Primeiros passos", "/api/onboarding"),
+        "Configurações": ("Preferências do Ecossistema", "/api/preferences"),
+        "Segurança": ("Segurança do Ecossistema", "/api/health"),
+        "Conexões": ("Conexões disponíveis", "/api/connections"),
+        "Multi-Broker": ("Disponibilidade de conexões", "/api/connections"),
+        "Auditoria": ("Auditoria operacional", "/api/health"),
+    }
+    if module_name == "Análise de Mercado":
+        show_market_analysis()
+        return
+    if module_name == "Replay":
+        show_replay()
+        return
+    elif module_name == "Simulador":
+        show_simulator()
+        return
+    else:
+        view = views.get(module_name)
+        if not view:
+            st.subheader(module_name)
+            st.info("Esta função ainda não possui integração operacional nesta versão.")
+            return
+        heading, endpoint = view
+        st.subheader(heading)
+
+    try:
+        data = api(endpoint)
+        if module_name in {"Memória", "Replay"}:
+            records = data.get("records", []) if isinstance(data, dict) else []
+            if records:
+                st.dataframe(records, use_container_width=True, hide_index=True)
+            else:
+                st.caption("Ainda não há decisões registradas na memória.")
+            return
+
+        if module_name == "Notificações":
+            items = data.get("items", [])
+            summary_cols = st.columns(2)
+            summary_cols[0].metric("Notificações", data.get("count", len(items)))
+            summary_cols[1].metric("Críticas", data.get("critical_count", 0))
+            if not items:
+                st.success("Nenhuma notificação ativa.")
+            for item in items:
+                severity = str(item.get("severity", "INFO")).upper()
+                message = f"{item.get('title', 'Notificação')} — {item.get('message', '')}"
+                if severity == "CRITICAL":
+                    st.error(message)
+                elif severity == "IMPORTANT":
+                    st.warning(message)
+                else:
+                    st.info(message)
+            st.caption("Alertas críticos não são ocultados pelas preferências de notificação.")
+            return
+
+        if module_name in {"Gestão de Risco", "Simulador"}:
+            limits = data.get("configured_limits", {})
+            cols = st.columns(3)
+            cols[0].metric("Limite de perda diária", str(limits.get("daily_loss_limit", "—")))
+            cols[1].metric("Máximo de operações", str(limits.get("max_operations", "—")))
+            cols[2].metric("Perdas consecutivas", str(limits.get("max_consecutive_losses", "—")))
+            st.write("Gate de risco: " + ("LIBERADO" if data.get("allowed") else "BLOQUEADO"))
+            st.caption(str(data.get("reason") or "O motor não forneceu uma justificativa."))
+            st.caption("Os limites são informativos nesta tela; nenhum controle de execução é acionado.")
+            return
+
+        if module_name in {"Operação", "Kill Switch", "Segurança", "Auditoria"}:
+            obs = data.get("operational_observability", {})
+            health = str(data.get("health") or "NÃO CONFIRMADA").upper()
+            st.metric("Saúde do Ecossistema", health)
+            st.metric("Execução REAL", "BLOQUEADA" if data.get("real") == "DESABILITADO" else "NÃO CONFIRMADA")
+            st.metric("Modo", str(data.get("mode") or "NÃO CONFIRMADO"))
+            if obs:
+                kill = obs.get("kill_switch", {})
+                recovery = obs.get("recovery", {})
+                market = obs.get("market_data", {})
+                cols = st.columns(3)
+                cols[0].metric("Kill Switch", "ATIVO" if kill.get("enabled") else str(kill.get("state", "NÃO CONFIRMADO")))
+                cols[1].metric("Recuperação", str(recovery.get("state", "NÃO CONFIRMADA")))
+                cols[2].metric("Dados de mercado", str(market.get("health", "NÃO CONFIRMADOS")))
+                if recovery.get("message"):
+                    st.caption(str(recovery["message"]))
+            alerts = data.get("alerts", [])
+            if alerts:
+                st.markdown("#### Alertas que exigem atenção")
+                for alert in alerts:
+                    message = f"{alert.get('component', 'Sistema')} — {alert.get('message', 'Verificar')}"
+                    if str(alert.get("severity", "")).upper() == "CRITICAL":
+                        st.error(message)
+                    else:
+                        st.warning(message)
+            else:
+                st.caption("Nenhum alerta foi retornado pelo runtime.")
+            return
+
+        if module_name in {"MT5 DEMO / Simulação", "Conexões", "Multi-Broker"}:
+            labels = {
+                "decision_core": "Motor de decisão",
+                "execution_gateway": "Gateway de execução",
+                "ic_markets_mt5_demo": "IC Markets MT5 DEMO",
+                "cTrader": "cTrader",
+                "saas": "Serviços do Ecossistema",
+                "real": "Execução REAL",
+            }
+            for key, label in labels.items():
+                if key in data:
+                    value = str(data[key])
+                    if key == "real":
+                        value = "DESABILITADO" if value in {"DESABILITADO", "DISABLED"} else "NÃO CONFIRMADO"
+                    st.write(f"**{label}:** {value}")
+            st.caption("Conexões futuras não são apresentadas como disponíveis. REAL permanece desabilitado.")
+            return
+
+        if module_name in {"Laboratório", "Aprendizado", "Descobertas"}:
+            groups = [
+                ("Materiais", "resources"),
+                ("Observações", "observations"),
+                ("Atividades", "activities"),
+                ("Tentativas", "attempts"),
+                ("Fontes", "learning_sources"),
+            ]
+            cols = st.columns(len(groups))
+            for col, (label, key) in zip(cols, groups):
+                col.metric(label, len(data.get(key, [])))
+            st.caption("Fontes externas exigem validação antes de seu conhecimento ser considerado validado.")
+            st.caption("Aprendizado não autoriza operações: execução permitida = NÃO.")
+            for label, key in groups:
+                items = data.get(key, [])
+                if items:
+                    with st.expander(f"{label} ({len(items)})"):
+                        st.dataframe(items, use_container_width=True, hide_index=True)
+            return
+
+        if module_name == "Escola / Tutorial / Onboarding":
+            guide = data.get("guide", {})
+            st.markdown(f"#### {guide.get('title', 'Guia de primeiro uso')}")
+            for index, step in enumerate(guide.get("steps", []), start=1):
+                st.markdown(f"**{index}. {step.get('title', 'Etapa')}**")
+                st.write(step.get("purpose", ""))
+                st.caption(f"Local: {step.get('location', '—')} · {step.get('action_hint', '')}")
+            if guide.get("completion_message"):
+                st.success(str(guide["completion_message"]))
+            st.caption("Concluir o guia não autoriza execução.")
+            return
+
+        if module_name == "Configurações":
+            preferences = data.get("preferences", {})
+            candle = preferences.get("candle", {})
+            notification_prefs = preferences.get("notifications", {})
+            st.caption("Preferências de apresentação e análise. Estes controles não autorizam ordens, autonomia ou execução REAL.")
+            with st.form("ecosystem_preferences_form"):
+                theme_options = ["DARK", "LIGHT", "SYSTEM"]
+                current_theme = str(preferences.get("chart_theme", "DARK")).upper()
+                theme = st.selectbox("Tema do gráfico", theme_options, index=theme_options.index(current_theme) if current_theme in theme_options else 0)
+                default_symbol = st.text_input("Ativo padrão", value=str(preferences.get("default_symbol", "EURUSD")), max_chars=32)
+                timeframe_options = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"]
+                current_timeframe = str(preferences.get("default_timeframe", "5m"))
+                timeframe = st.selectbox("Período gráfico padrão", timeframe_options, index=timeframe_options.index(current_timeframe) if current_timeframe in timeframe_options else 1)
+                require_closed = st.checkbox("Exigir candle fechado", value=bool(preferences.get("require_closed_candle", True)))
+                require_filters = st.checkbox("Exigir filtros internos", value=bool(preferences.get("require_filters", True)))
+                show_details = st.checkbox("Exibir detalhes técnicos por padrão", value=bool(preferences.get("show_technical_details_by_default", False)))
+                save_preferences = st.form_submit_button("Salvar preferências")
+            if save_preferences:
+                if not default_symbol.strip():
+                    st.error("Informe um ativo padrão válido.")
+                else:
+                    try:
+                        api("/api/preferences", "POST", {
+                            "chart_theme": theme,
+                            "default_symbol": default_symbol.strip().upper(),
+                            "default_timeframe": timeframe,
+                            "require_closed_candle": require_closed,
+                            "require_filters": require_filters,
+                            "show_technical_details_by_default": show_details,
+                        })
+                        st.success("Preferências de apresentação e análise salvas. Os bloqueios de execução foram preservados.")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"Não foi possível salvar as preferências: {exc}")
+
+            st.markdown("#### Aparência dos candles")
+            with st.form("candle_preferences_form"):
+                style_options = ["CANDLESTICK", "HOLLOW", "OHLC", "LINE"]
+                color_options = ["DEFAULT", "CUSTOM", "MONOCHROME"]
+                current_style = str(candle.get("style", "CANDLESTICK")).upper()
+                current_color_mode = str(candle.get("color_mode", "DEFAULT")).upper()
+                candle_style = st.selectbox("Estilo", style_options, index=style_options.index(current_style) if current_style in style_options else 0)
+                color_mode = st.selectbox("Modo de cores", color_options, index=color_options.index(current_color_mode) if current_color_mode in color_options else 0)
+                bullish_color = st.text_input("Cor de alta (HEX)", value=str(candle.get("bullish_color", "#58d68d")))
+                bearish_color = st.text_input("Cor de baixa (HEX)", value=str(candle.get("bearish_color", "#ff7676")))
+                wick_color = st.text_input("Cor do pavio (HEX)", value=str(candle.get("wick_color", "#aab5c8")))
+                show_wicks = st.checkbox("Mostrar pavios", value=bool(candle.get("show_wicks", True)))
+                show_bodies = st.checkbox("Mostrar corpos", value=bool(candle.get("show_bodies", True)))
+                border_enabled = st.checkbox("Mostrar bordas", value=bool(candle.get("border_enabled", True)))
+                save_candles = st.form_submit_button("Salvar aparência")
+            if save_candles:
+                try:
+                    api("/api/preferences/candles", "POST", {
+                        "style": candle_style, "color_mode": color_mode,
+                        "bullish_color": bullish_color.strip(), "bearish_color": bearish_color.strip(),
+                        "wick_color": wick_color.strip(), "show_wicks": show_wicks,
+                        "show_bodies": show_bodies, "border_enabled": border_enabled,
+                    })
+                    st.success("Aparência dos candles salva.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Não foi possível salvar a aparência: {exc}")
+
+            st.markdown("#### Preferências de notificações")
+            notification_labels = {
+                "important_enabled": "Notificações importantes",
+                "security_enabled": "Segurança",
+                "market_enabled": "Mercado",
+                "risk_enabled": "Risco",
+                "connection_enabled": "Conexões",
+                "execution_enabled": "Execução",
+                "learning_enabled": "Aprendizado",
+                "recovery_enabled": "Recuperação",
+                "system_updates_enabled": "Atualizações do sistema",
+                "info_enabled": "Informativas",
+            }
+            with st.form("notification_preferences_form"):
+                updated_notifications = {}
+                for key, label in notification_labels.items():
+                    updated_notifications[key] = st.checkbox(label, value=bool(notification_prefs.get(key, False)), key="notification_" + key)
+                st.caption("Alertas críticos permanecem sempre ativos e não podem ser desabilitados.")
+                save_notifications = st.form_submit_button("Salvar notificações")
+            if save_notifications:
+                try:
+                    api("/api/preferences/notifications", "POST", updated_notifications)
+                    st.success("Preferências de notificações salvas. Alertas críticos continuam ativos.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Não foi possível salvar as notificações: {exc}")
+            return
+
+        if module_name in {"Motor de Decisão", "Estatísticas", "Relatórios"}:
+            scalar_values = [(key, value) for key, value in data.items() if isinstance(value, (str, int, float, bool)) or value is None]
+            if scalar_values:
+                cols = st.columns(min(4, len(scalar_values)))
+                for index, (key, value) in enumerate(scalar_values[:12]):
+                    label = key.replace("_", " ").capitalize()
+                    cols[index % len(cols)].metric(label, "—" if value is None else str(value))
+            periods = data.get("periods")
+            if isinstance(periods, dict) and periods:
+                with st.expander("Resultados por período"):
+                    for period, summary in periods.items():
+                        st.markdown(f"**{str(period).capitalize()}**")
+                        if isinstance(summary, dict):
+                            st.write(" · ".join(f"{key.replace('_', ' ')}: {value}" for key, value in summary.items() if isinstance(value, (str, int, float))))
+            st.caption("Os números refletem apenas os registros disponíveis na memória do runtime.")
+            return
+
+    except Exception as exc:
+        st.warning(f"Não foi possível carregar este módulo do runtime: {exc}")
+
+
+# The Figma reference defines four visual areas. The Assistant is an additional
+# functional module requested by the user and lives inside the Streamlit panel,
+# without changing the reference JSON or creating a fifth navigation area.
+AREAS = {name: list(modules) for name, modules in CONFIG["open_state"]["tabs"].items()}
+AREAS["MAIS / ADMIN"].append("Assistente do Ecossistema")
 if "panel_open" not in st.session_state:
     st.session_state.panel_open = True
 if not st.session_state.panel_open:
-    if st.button("C", key="open_control_hub"):
-        st.session_state.panel_open = True
-        st.rerun()
-    st.caption("INDISPONÍVEL")
+    with st.container(key="panel-toggle"):
+        if st.button("C", key="open_control_hub"):
+            st.session_state.panel_open = True
+            st.rerun()
+        closed_signal, closed_score, closed_color = closed_panel_signal(
+            st.session_state.get("market_analysis_result")
+        )
+        st.markdown(
+            f'<div class="closed-signal" style="color:{closed_color}">'
+            f'<strong>{closed_signal}</strong><span>{closed_score}</span></div>',
+            unsafe_allow_html=True,
+        )
     st.stop()
 
-st.markdown('<div class="status-card"><span style="font-size:1.35rem;font-weight:800">Controlador-Trader</span> <span class="demo-pill" style="float:right">DEMO</span><div class="muted">Área funcional de desenvolvimento · não é a reprodução visual aprovada do Figma</div></div>', unsafe_allow_html=True)
-st.warning("A referência JSON de navegação está carregada, mas as cinco imagens originais (8870.jpg, 8871.jpg, 8872.jpg, 8873.jpg e 8878.jpg) não estão presentes neste branch. Portanto, esta tela não deve ser tratada como validação visual nem como substituta do painel aprovado.")
+st.markdown('<div class="status-card"><span style="font-size:1.35rem;font-weight:800">Controlador-Trader</span> <span class="demo-pill" style="float:right">DEMO</span></div>', unsafe_allow_html=True)
 area = st.radio("Áreas principais", list(AREAS), horizontal=True, label_visibility="collapsed")
 st.divider()
 module = st.radio("Módulos", AREAS[area], horizontal=False, label_visibility="collapsed")
 
-if area == "MAIS / ADMIN" and module == "Financeiro":
-    financial = st.radio("Financeiro", ["Reserva Fiscal", "Assistente do Ecossistema"], horizontal=True)
-    if financial == "Reserva Fiscal":
-        show_fiscal()
-    else:
-        show_assistant()
-elif module == "Assistente do Ecossistema":
+if module == "Assistente do Ecossistema":
     show_assistant()
-elif module == "Reserva Fiscal":
+elif module in {"Financeiro", "Reserva Fiscal"}:
     show_fiscal()
 else:
-    st.info(f"Módulo {module} selecionado. A integração funcional deste módulo ainda não foi habilitada nesta prévia.")
-    if module in {"MT5 DEMO / Simulação", "Operação"}:
-        st.warning("Execução real permanece bloqueada. Esta prévia não envia ordens.")
-    st.markdown('<div class="status-card"><b>Estado do sistema:</b> INDISPONÍVEL · <b>REAL:</b> DESABILITADO</div>', unsafe_allow_html=True)
+    show_readonly_module(module)
 
 st.divider()
+st.subheader("Estado do Ecossistema")
+try:
+    runtime_status = api("/api/health")
+    components = runtime_status.get("components", {})
+    health_state = str(runtime_status.get("health") or "UNKNOWN").upper()
+    mt5_state = str(components.get("mt5_demo") or runtime_status.get("mt5_demo") or "UNKNOWN").upper()
+    mode_state = str(runtime_status.get("mode") or "UNKNOWN").upper()
+    real_state = str(runtime_status.get("real") or "DESABILITADO").upper()
+    health_label = {"OK": "SISTEMA ONLINE", "WARNING": "ATENÇÃO", "CRITICAL": "INDISPONÍVEL"}.get(health_state, "ESTADO NÃO CONFIRMADO")
+    status_cols = st.columns(4)
+    status_cols[0].metric("Saúde do sistema", health_label)
+    status_cols[1].metric("Modo", mode_state)
+    status_cols[2].metric("MT5 DEMO", mt5_state)
+    status_cols[3].metric("REAL", real_state)
+    if runtime_status.get("execution_allowed") is not False or real_state not in {"DESABILITADO", "DISABLED"}:
+        st.error("Estado de segurança inesperado. Operações bloqueadas na interface; verifique o runtime antes de continuar.")
+    if runtime_status.get("alerts"):
+        with st.expander("Alertas do sistema", expanded=health_state == "CRITICAL"):
+            for alert in runtime_status["alerts"]:
+                st.write(f"- **{alert.get('severity', 'INFO')} · {alert.get('component', 'Sistema')}** — {alert.get('message', 'Verificar componente')}")
+except Exception:
+    st.warning("Runtime indisponível. Estado do MT5 e do sistema não confirmado.")
 left, right = st.columns([2, 1])
 with left:
-    st.markdown('<div class="status-card"><b>Estado do sistema:</b> INDISPONÍVEL<br><b>REAL:</b> DESABILITADO</div>', unsafe_allow_html=True)
+    st.caption("Execução REAL permanece bloqueada. Confirme o estado DEMO no runtime antes de operar.")
 with right:
-    st.checkbox("Alavancagem", value=False, disabled=True, help="Controle visual nesta prévia; não altera a conta MT5.")
-    if st.button("C · Fechar painel", key="close_control_hub"):
+    if "leverage_enabled" not in st.session_state:
+        try:
+            saved_preferences = api("/api/preferences").get("preferences", {})
+            st.session_state.leverage_enabled = saved_preferences.get("leverage_enabled") is True
+        except Exception:
+            st.session_state.leverage_enabled = False
+    st.checkbox(
+        "Alavancagem",
+        key="leverage_enabled",
+        on_change=save_leverage_preference,
+        help="Salva somente a preferência. Não ativa ordens, não altera margem e não concede autorização de execução.",
+    )
+    if st.session_state.get("leverage_preference_error"):
+        st.warning("Preferência de alavancagem não sincronizada com o runtime.")
+with st.container(key="panel-toggle"):
+    if st.button("C", key="close_control_hub"):
         st.session_state.panel_open = False
         st.rerun()
-st.caption("Estado do sistema: consulte /api/health para validação operacional. Esta interface não declara o runtime online sem resposta real.")

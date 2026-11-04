@@ -208,3 +208,99 @@ def test_fiscal_pending_api_returns_conflict_for_duplicate_reference(tmp_path, m
     assert created["reserve_calculated"] is False
     assert duplicate_status.startswith("409")
     assert duplicate["error"] == "Já existe uma pendência com essa referência."
+
+
+def test_mt5_historical_replay_api_is_read_only_and_returns_service_result(monkeypatch):
+    import app
+
+    expected = {
+        "symbol": "EURUSD",
+        "timeframe": "5m",
+        "candles_replayed": 24,
+        "records": [],
+        "orders_sent": False,
+        "execution_allowed": False,
+        "lookahead": False,
+    }
+    monkeypatch.setattr(app.SERVICE, "replay_mt5_history", lambda **kwargs: expected)
+    status, data = call_app(
+        "/api/replay/mt5",
+        "POST",
+        {"symbol": "EURUSD", "timeframe": "5m", "limit": 25},
+    )
+    assert status.startswith("200")
+    assert data == expected
+    assert data["orders_sent"] is False
+    assert data["execution_allowed"] is False
+
+
+def test_mt5_historical_signal_simulator_api_is_read_only(monkeypatch):
+    import app
+
+    expected = {
+        "symbol": "EURUSD",
+        "timeframe": "5m",
+        "candles_replayed": 24,
+        "records": [],
+        "orders_sent": False,
+        "execution_allowed": False,
+        "pnl_calculated": False,
+        "risk_rules_applied": False,
+        "lookahead": False,
+    }
+    monkeypatch.setattr(app.SERVICE, "simulate_mt5_signal_scenario", lambda **kwargs: expected)
+    status, data = call_app(
+        "/api/simulator/mt5",
+        "POST",
+        {
+            "symbol": "EURUSD",
+            "timeframe": "5m",
+            "limit": 25,
+            "minimum_directional_score": 80,
+        },
+    )
+    assert status.startswith("200")
+    assert data == expected
+    assert data["orders_sent"] is False
+    assert data["execution_allowed"] is False
+    assert data["pnl_calculated"] is False
+
+
+
+def test_mt5_historical_backtest_api_is_read_only(monkeypatch):
+    import app
+
+    expected = {
+        "symbol": "EURUSD",
+        "timeframe": "5m",
+        "candles_processed": 25,
+        "trades": [],
+        "orders_sent": False,
+        "execution_allowed": False,
+        "lookahead": False,
+    }
+    monkeypatch.setattr(app.SERVICE, "run_mt5_historical_backtest", lambda **kwargs: expected)
+    status, data = call_app(
+        "/api/simulator/mt5/backtest",
+        "POST",
+        {
+            "symbol": "EURUSD",
+            "timeframe": "5m",
+            "limit": 25,
+            "stop_distance": 0.1,
+            "take_profit_distance": 0.2,
+            "quantity_units": 100,
+            "contract_multiplier": 1.0,
+            "spread_price_units": 0.01,
+            "slippage_price_units_per_side": 0.001,
+            "commission_quote_per_unit_round_turn": 0.001,
+            "minimum_directional_score": 80,
+        },
+    )
+    assert status.startswith("200")
+    assert data == expected
+    assert data["orders_sent"] is False
+    assert data["execution_allowed"] is False
+    assert data["lookahead"] is False
+
+

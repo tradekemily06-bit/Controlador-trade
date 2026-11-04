@@ -15,14 +15,21 @@ def test_streamlit_panel_keeps_the_four_reference_navigation_areas():
 def test_streamlit_panel_connects_assistant_and_fiscal_to_existing_api():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     for route in (
-        "/api/assistant/conversations",
-        "/api/assistant/history",
+        "/api/assistant/status",
         "/api/assistant/chat",
         "/api/fiscal-reserve",
         "/api/fiscal-reserve/pending",
         "/api/fiscal-reserve/results",
     ):
         assert route in source
+    assert "/api/assistant/conversations" in source
+    assert "/api/assistant/history?conversation_id=" in source
+    assert '"DELETE"' in source
+    assert "Conversas anteriores" in source
+    assert "Abrir conversa" in source
+    assert "Excluir conversa" in source
+    assert "histórico local do Assistente no servidor do Ecossistema" in source
+    assert "a pergunta, as mensagens recentes desta conversa e um resumo operacional filtrado são enviados pelo servidor à OpenAI." in source
     assert "CONTROLADOR_TRUSTED_IDENTITY_HEADER" in source
     assert "REAL permanece bloqueado" in source or "REAL" in source
 
@@ -121,10 +128,13 @@ def test_streamlit_domestic_pending_can_distinguish_zero_from_missing_result():
     assert 'domestic_payload["realized_result_brl"] = domestic_result' in source
 
 
-def test_streamlit_does_not_claim_visual_fidelity_without_original_images():
+def test_streamlit_documents_missing_reference_images_outside_the_panel():
+    readme = (PANEL_DIR / "README.md").read_text(encoding="utf-8")
+    assert "O Figma é somente referência visual" in readme
+    assert "não estão presentes neste branch" in readme
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
-    assert "não é a reprodução visual aprovada do Figma" in source
-    assert "não estão presentes neste branch" in source
+    assert "não é a reprodução visual aprovada do Figma" not in source
+    assert "As cinco imagens originais" not in source
 
 
 def test_streamlit_marks_mt5_tax_classification_as_user_declared_pending_review():
@@ -207,7 +217,9 @@ def test_streamlit_assistant_distinguishes_configured_credentials_from_tested_co
 
 def test_streamlit_foreign_pending_queue_exposes_auditable_professional_review():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
-    assert 'api("/api/fiscal-reserve/pending?limit=100&offset=0")' in source
+    assert 'foreign_pending_data = api(f"/api/fiscal-reserve/pending?limit=50&offset={foreign_offset}")' in source
+    assert "foreign_pending_next" in source
+    assert "foreign_pending_previous" in source
     assert '"/api/fiscal-reserve/pending/"' in source
     assert "Revisão documental · Exterior" in source
     assert "FOREIGN_FINANCIAL_INVESTMENT" in source
@@ -216,3 +228,187 @@ def test_streamlit_foreign_pending_queue_exposes_auditable_professional_review()
     assert "Identidade" in source
     assert "NÃO VERIFICADA" in source
     assert "A operação continua pendente, sem cálculo ou inclusão nos totais." in source
+
+
+
+def test_streamlit_assistant_exposes_owner_scoped_past_conversation_history():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert "Nova consulta" in source
+    assert "assistant_history" in source
+    assert 'api("/api/assistant/conversations")' in source
+    assert '"/api/assistant/history?conversation_id="' in source
+    assert '"/api/assistant/conversations?conversation_id="' in source
+    assert '"DELETE"' in source
+    assert "Conversas anteriores" in source
+    assert "Abrir conversa" in source
+    assert "Excluir conversa" in source
+    assert "urllib.parse.quote(selected_saved_id, safe=\"\")" in source
+
+
+def test_streamlit_layout_uses_full_width_and_wraps_responsively():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert ".block-container { width: 100%; max-width: none;" in source
+    assert "[role=\"radiogroup\"] { flex-wrap: wrap; }" in source
+    assert "@media (max-width: 720px)" in source
+
+
+
+def test_streamlit_uses_the_same_fixed_c_toggle_in_open_and_closed_states():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'st.container(key="panel-toggle")' in source
+    assert 'st.button("C", key="open_control_hub")' in source
+    assert 'st.button("C", key="close_control_hub")' in source
+    assert ".st-key-panel-toggle { position: fixed;" in source
+    assert "border-radius: 50%" in source
+    assert "closed_panel_signal(" in source
+
+
+def test_streamlit_closed_panel_shows_only_c_and_last_validated_signal_summary():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index("if not st.session_state.panel_open:")
+    end = source.index("st.stop()", start) + len("st.stop()")
+    closed_state = source[start:end]
+    assert 'st.button("C", key="open_control_hub")' in closed_state
+    assert 'st.session_state.get("market_analysis_result")' in closed_state
+    assert "closed_signal" in closed_state
+    assert "closed_score" in closed_state
+    assert "Controlador-Trader" not in closed_state
+    assert "Histórico" not in closed_state
+    assert "INDISPONÍVEL" not in closed_state
+
+
+def test_closed_panel_uses_the_standalone_validated_signal_helper():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert "from presentation import closed_panel_signal" in source
+    assert "closed_panel_signal(" in source
+
+
+
+def test_streamlit_does_not_fill_unimplemented_modules_with_placeholder_copy():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'st.info(f"Módulo {module} selecionado.' not in source
+    assert "A integração funcional deste módulo ainda não foi habilitada nesta prévia." not in source
+
+
+def test_streamlit_leverage_control_persists_only_the_preference_without_execution_authority():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'st.checkbox(' in source
+    assert '"Alavancagem",' in source
+    assert 'key="leverage_enabled",' in source
+    assert 'on_change=save_leverage_preference,' in source
+    assert '"/api/preferences",' in source
+    assert '"POST",' in source
+    assert '{"leverage_enabled": bool(st.session_state.get("leverage_enabled", False))}' in source
+    callback = source[source.index("def save_leverage_preference"):source.index("def fiscal_history_display_row")]
+    assert '"real_execution_enabled"' not in callback
+    assert '"autonomous_operation_enabled"' not in callback
+    assert '"execution_allowed"' not in callback
+    assert "Não ativa ordens, não altera margem e não concede autorização de execução." in source
+    assert "Desativada" not in source
+
+
+
+def test_assistant_is_a_standalone_module_inside_streamlit_without_changing_figma_tabs():
+    config = json.loads((PANEL_DIR / "controlador_trader_referencia_visual.json").read_text(encoding="utf-8"))
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert list(config["open_state"]["tabs"]) == ["COCKPIT", "ANÁLISE", "ESTUDO", "MAIS / ADMIN"]
+    assert 'AREAS["MAIS / ADMIN"].append("Assistente do Ecossistema")' in source
+    assert 'if module == "Assistente do Ecossistema":' in source
+    assert 'financial = st.radio("Financeiro", ["Reserva Fiscal", "Assistente do Ecossistema"]' not in source
+    assert "show_assistant()" in source
+
+
+def test_streamlit_readme_identifies_the_streamlit_panel_as_user_facing_and_figma_as_reference():
+    readme = (PANEL_DIR / "README.md").read_text(encoding="utf-8")
+    assert "O Figma é somente referência visual" in readme
+    assert "painel de uso pretendido" in readme
+    assert "Assistente do Ecossistema é acrescentado como módulo funcional próprio em MAIS / ADMIN" in readme
+
+
+
+def test_streamlit_operational_modules_use_live_read_only_runtime_endpoints():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    for route in (
+        "/api/health",
+        "/api/statistics",
+        "/api/risk",
+        "/api/notifications",
+        "/api/connections",
+        "/api/memory?limit=50",
+        "/api/learning",
+        "/api/onboarding",
+        "/api/preferences",
+    ):
+        assert route in source
+    assert "show_readonly_module(module)" in source
+    assert "st.empty()" not in source
+
+
+def test_streamlit_market_analysis_requires_demo_confirmation_and_never_enables_execution():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'api("/api/runtime/analysis", "POST"' in source
+    assert 'confirmed = st.checkbox("Confirmo que esta análise é somente para estudo em DEMO/SIMULAÇÃO.")' in source
+    analysis_screen = source[source.index("def show_market_analysis"):source.index("def show_readonly_module")]
+    assert '"confirmed": True' not in analysis_screen
+    assert '"filters_ok": True' not in analysis_screen
+    assert "preferências de segurança do runtime são respeitadas" in analysis_screen
+    assert 'Execução permitida: NÃO' in analysis_screen
+    assert 'st.session_state.pop("market_analysis_result", None)' in analysis_screen
+    assert analysis_screen.index('st.session_state.pop("market_analysis_result", None)') < analysis_screen.index('api("/api/runtime/analysis", "POST"')
+
+
+
+def test_streamlit_preferences_never_submit_execution_authority_fields():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index('if module_name == "Configurações":')
+    end = source.index('if module_name in {"Motor de Decisão", "Estatísticas", "Relatórios"}:', start)
+    preferences_screen = source[start:end]
+    assert '"real_execution_enabled"' not in preferences_screen
+    assert '"autonomous_operation_enabled"' not in preferences_screen
+    assert '"selected_mode"' not in preferences_screen
+    assert '"execution_allowed"' not in preferences_screen
+    assert '"require_closed_candle": require_closed' in preferences_screen
+    assert '"require_filters": require_filters' in preferences_screen
+
+
+def test_streamlit_operational_screens_render_human_readable_summaries_without_raw_json_dump():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert "Central de Notificações" in source
+    assert 'data.get("critical_count", 0)' in source
+    assert "Limite de perda diária" in source
+    assert "Kill Switch" in source
+    assert "Fontes externas exigem validação" in source
+    assert "Guia de primeiro uso" in source
+    assert "Salvar preferências" in source
+    assert "Salvar aparência" in source
+    assert "Salvar notificações" in source
+    assert '"/api/preferences"' in source
+    assert '"/api/preferences/candles"' in source
+    assert '"/api/preferences/notifications"' in source
+    assert "alertas críticos" in source.lower()
+    assert "st.json(data)" not in source
+
+
+def test_streamlit_replay_uses_historical_mt5_demo_data_without_orders():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'api("/api/replay/mt5", "POST"' in source
+    assert "Reproduzir histórico DEMO" in source
+    assert "candles fechados" in source
+    assert "Antecipação de candles futuros: NÃO" in source
+    assert "Replay concluído sem envio de ordens." in source
+    assert 'show_replay()' in source
+
+
+
+def test_streamlit_simulator_discloses_backtest_assumptions_and_no_execution():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'api("/api/simulator/mt5/backtest", "POST"' in source
+    assert "Executar backtest histórico DEMO" in source
+    assert "Stop-loss · distância em unidades de preço" in source
+    assert "Take-profit · distância em unidades de preço" in source
+    assert "Quantidade em unidades/contratos" in source
+
+    assert "Multiplicador do contrato" in source
+    assert "Spread total em unidades de preço" in source
+    assert "Execução permitida: NÃO" in source
+    assert "O backtest não integra o Risk Manager" in source
