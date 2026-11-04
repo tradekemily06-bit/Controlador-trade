@@ -198,11 +198,13 @@ def test_existing_owner_schema_repairs_missing_default_rate_without_overwriting_
 
 def test_migration_refuses_a_different_owner_for_domestic_pending_queue(tmp_path, monkeypatch):
     from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
+    from finance.fiscal_identity import configured_fiscal_owner_id
 
     path = str(tmp_path / "domestic-owned.sqlite3")
     monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner-a")
+    owner = configured_fiscal_owner_id()
     queue = FiscalDomesticPendingQueue(path)
-    queue.add("owner-a", {
+    queue.add(owner, {
         "reference": "BR-OWNER-A",
         "instrument": "ETF",
         "occurred_on": "2026-11-03",
@@ -212,4 +214,4 @@ def test_migration_refuses_a_different_owner_for_domestic_pending_queue(tmp_path
     monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner-b")
     with pytest.raises(RuntimeError, match="proprietário da fila brasileira"):
         migrate_fiscal_schema(path)
-    assert queue.list_pending("owner-a")["total"] == 1
+    assert queue.list_pending(owner)["total"] == 1
