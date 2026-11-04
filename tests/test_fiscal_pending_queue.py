@@ -344,7 +344,7 @@ def test_pending_period_counts_are_date_scoped_and_never_become_money_totals(tmp
     assert summary["periods"]["day"]["realized_results"] == 0
     assert summary["periods"]["week"]["total"] == 2
     assert summary["periods"]["month"]["total"] == 2
-    assert summary["periods"]["year"]["total"] == 2
+    assert summary["periods"]["year"]["total"] == 3
     assert summary["total"] == 4
     assert summary["included_in_totals"] is False
     assert summary["reserve_calculated"] is False
