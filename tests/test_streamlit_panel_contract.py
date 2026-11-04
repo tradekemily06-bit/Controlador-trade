@@ -34,7 +34,7 @@ def test_streamlit_fiscal_panel_records_losses_and_pages_the_ledger():
     assert "fiscal_history_offset" in source
     assert "fiscal_history_next" in source
     assert "fiscal_history_previous" in source
-    assert "compensação ou transporte de perdas não é calculado automaticamente" in source
+    assert "Compensações mensais e créditos de IRRF não são calculados." in source
 
 
 def test_streamlit_mt5_preview_requires_explicit_classification_and_confirmation():
