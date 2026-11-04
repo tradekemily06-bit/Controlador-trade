@@ -150,3 +150,53 @@ def test_healthy_operational_observability_does_not_create_incident_notification
     }
 
     assert service.notification_summary()["count"] == 0
+
+
+
+def test_mt5_historical_replay_uses_closed_candles_chronologically_without_side_effects():
+    from datetime import datetime, timedelta, timezone
+    from data.models import Candle
+
+    class FakeMarketAdapter:
+        def __init__(self, candles):
+            self.candles = candles
+            self.request = None
+
+        def fetch_market_data(self, request):
+            self.request = request
+            return self.candles
+
+    candles = tuple(
+        Candle(
+            datetime(2026, 11, 1, tzinfo=timezone.utc) + timedelta(minutes=index),
+            100 + index, 102 + index, 99 + index, 101 + index, 10,
+        )
+        for index in range(25)
+    )
+    service = ConfiguredEcosystemService(execution_provider="ic_markets_mt5_demo")
+    adapter = FakeMarketAdapter(candles)
+    service.mt5_market_adapter = adapter
+    before_memory = list(service.memory)
+
+    result = service.replay_mt5_history(symbol="EURUSD", timeframe="5m", limit=25)
+
+    assert adapter.request.symbol == "EURUSD"
+    assert adapter.request.timeframe == "5m"
+    assert adapter.request.limit == 25
+    assert result["candles_replayed"] == 25
+    assert len(result["records"]) == 24
+    assert result["records"][-1]["timestamp"] == candles[-1].timestamp.isoformat()
+    assert result["orders_sent"] is False
+    assert result["execution_allowed"] is False
+    assert result["lookahead"] is False
+    assert service.memory == before_memory
+
+
+def test_mt5_historical_replay_requires_demo_provider():
+    service = ConfiguredEcosystemService(execution_provider="paper")
+    try:
+        service.replay_mt5_history(symbol="EURUSD", timeframe="5m", limit=25)
+    except RuntimeError as exc:
+        assert "DEMO" in str(exc)
+    else:
+        raise AssertionError("historical replay must require the MT5 DEMO provider")
