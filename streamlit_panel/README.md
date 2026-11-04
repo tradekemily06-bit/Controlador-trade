@@ -73,3 +73,13 @@ Para atingir o objetivo de acessar o mesmo painel pelo celular e pelo notebook s
 - Validar saúde, autenticação, isolamento de identidade, persistência após reinício, conectividade MT5 DEMO e bloqueio REAL antes de liberar o link para uso.
 
 Não foi feita implantação, não foram criadas credenciais, não foi aberto acesso público e nenhuma ordem foi enviada. A escolha do provedor e a configuração de produção permanecem pendentes.
+
+## Integração funcional dentro do gráfico MT5
+
+O repositório também contém a interface nativa do MT5 em `mql5/Experts/ControladorTrading/Controlador-Trading.mq5`. Ela é um Expert Advisor (EA) que desenha controles reais no gráfico com objetos MQL5, trata cliques em `OnChartEvent`, atualiza dados por `OnTimer` e consulta o runtime por HTTP usando `WebRequest`. Portanto, a interface do MT5 não é uma imagem estática.
+
+A arquitetura tem dois clientes ligados ao mesmo runtime:
+- **MT5:** o EA MQL5 é a camada nativa que fica dentro do gráfico e apresenta controles e dados operacionais.
+- **Streamlit:** é a interface web complementar para as áreas do Ecossistema, incluindo Reserva Fiscal e Assistente, conectada à mesma API/runtime.
+
+**Limite importante:** o Streamlit não é executado dentro do gráfico MT5 e não deve ser descrito como se fosse. A camada que aparece dentro do gráfico é o EA MQL5. As duas interfaces só podem ser consideradas integradas ponta a ponta depois de validar que consultam e atualizam o mesmo estado do runtime, com autenticação e permissões seguras. O EA atualmente usa por padrão `http://127.0.0.1:8000`; esse endereço local exige que o runtime esteja ativo no mesmo computador. Para uso remoto, a arquitetura precisa ser adaptada com segurança, sem expor a API diretamente.
