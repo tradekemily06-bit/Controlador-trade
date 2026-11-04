@@ -159,6 +159,18 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
                     for currency in pending_summary.get("currencies", [])
                     if currency
                 }),
+                "periods": {
+                    str(period): {
+                        "start": str(values.get("start", ""))[:10],
+                        "end": str(values.get("end", ""))[:10],
+                        "total": _count(values.get("total")),
+                        "realized_results": _count(values.get("realized_results")),
+                        "asset_amounts": _count(values.get("asset_amounts")),
+                    }
+                    for period, values in pending_summary.get("periods", {}).items()
+                    if period in {"day", "week", "month", "year"} and isinstance(values, dict)
+                },
+                "as_of": str(pending_summary.get("as_of", ""))[:10],
                 "classification_status": "PENDING_CLASSIFICATION",
                 "included_in_totals": False,
                 "reserve_calculated": False,
