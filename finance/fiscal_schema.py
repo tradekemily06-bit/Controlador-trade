@@ -12,6 +12,7 @@ TABLES = (
     "fiscal_reserve_entries",
     "fiscal_reserve_pending_foreign",
     "fiscal_pending_reviews",
+    "fiscal_reserve_pending_domestic",
 )
 
 
