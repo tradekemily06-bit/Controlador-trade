@@ -360,6 +360,58 @@ def application(environ, start_response):
                 return _json_response(start_response, HTTPStatus.CREATED,
                                       {"review": review, "reserve_calculated": False},
                                       request_id, environ)
+        if path == "/api/fiscal-reserve/mt5-confirm" and method == "POST":
+            data = _read_json(environ)
+            if data.get("confirmed") is not True:
+                raise ValueError("confirmação explícita obrigatória")
+            ticket = str(data.get("ticket") or "").strip()
+            category = str(data.get("category") or "").strip().upper()
+            if category != "BR_DAY_TRADE":
+                raise ValueError("categoria precisa ser confirmada explicitamente como BR_DAY_TRADE")
+            try:
+                candidate = SERVICE.mt5_operational_adapter.read_closed_deal_candidate(ticket)
+            except RuntimeError as exc:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                                       {"error": "Negócio não pôde ser revalidado no MT5 DEMO.", "detail": str(exc),
+                                        "registered": False, "execution_allowed": False}, request_id, environ)
+            if str(candidate.get("account_currency", "")).upper() != "BRL":
+                return _json_response(start_response, HTTPStatus.UNPROCESSABLE_ENTITY,
+                                      {"error": "Conta MT5 não está em BRL. O negócio deve permanecer pendente até classificação e conversão documentadas.",
+                                       "registered": False, "classification_status": "PENDING_CLASSIFICATION",
+                                       "reserve_calculated": False, "execution_allowed": False},
+                                      request_id, environ)
+            timestamp = candidate.get("occurred_at_utc")
+            if not timestamp:
+                raise ValueError("data do negócio ausente no histórico MT5")
+            occurred_at = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
+            if occurred_at.tzinfo is None:
+                raise ValueError("data do negócio sem fuso horário")
+            occurred_on = occurred_at.astimezone(ZoneInfo("America/Sao_Paulo")).date().isoformat()
+            reference = f"MT5-DEMO-DEAL:{ticket}"
+            payload = {
+                "category": "BR_DAY_TRADE",
+                "realized_result_brl": candidate["net_result_account_currency"],
+                "reference": reference,
+                "occurred_on": occurred_on,
+                "notes": (
+                    f"Importação confirmada manualmente do MT5 DEMO; ticket={ticket}; "
+                    f"símbolo={candidate.get('symbol', '')}; moeda=BRL. "
+                    "Conferir custos de negócios anteriores da posição no extrato completo."
+                ),
+            }
+            try:
+                entry = FISCAL_RESERVE.record_realized_result(fiscal_owner_id, payload)
+            except ValueError as exc:
+                if "já foi registrada" in str(exc):
+                    return _json_response(start_response, HTTPStatus.CONFLICT,
+                                          {"error": "Este ticket MT5 já foi registrado na Reserva Fiscal.",
+                                           "reference": reference, "registered": False,
+                                           "execution_allowed": False}, request_id, environ)
+                raise
+            return _json_response(start_response, HTTPStatus.CREATED,
+                                  {"entry": entry, "source": "IC Markets MT5 DEMO",
+                                   "source_ticket": ticket, "registered": True,
+                                   "execution_allowed": False}, request_id, environ)
         if path == "/api/fiscal-reserve/mt5-preview" and method == "GET":
             query = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
             try:
