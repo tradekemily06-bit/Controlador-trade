@@ -254,7 +254,7 @@ def test_streamlit_uses_the_same_fixed_c_toggle_in_open_and_closed_states():
 def test_streamlit_closed_panel_contains_only_c_and_unavailable_status():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     start = source.index("if not st.session_state.panel_open:")
-    end = source.index("area = st.radio", start)
+    end = source.index("st.stop()", start) + len("st.stop()")
     closed_state = source[start:end]
     assert 'st.button("C", key="open_control_hub")' in closed_state
     assert 'st.caption("INDISPONÍVEL")' in closed_state
