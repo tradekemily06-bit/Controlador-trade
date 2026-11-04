@@ -24,8 +24,8 @@ class FakeFiscalAdapter:
             "account_currency": self.currency,
             "occurred_at_utc": datetime(2026, 11, 3, 12, tzinfo=timezone.utc).isoformat(),
             "account_fingerprint": "a" * 32,
-            "profit": -10.0,
-            "commission": -1.0,
+            "profit": self.result,
+            "commission": 0.0,
             "swap": 0.0,
             "fee": 0.0,
             "position_id": "12345",
@@ -156,7 +156,7 @@ def call_pending_result(monkeypatch, tmp_path, payload, adapter=None):
     return response["status"], json.loads(body), fake
 
 
-def test_mt5_foreign_signed_loss_is_imported_as_pending_with_private_dedupe_key(monkeypatch, tmp_path):
+def test_mt5_foreign_result_is_imported_as_pending_with_private_dedupe_key(monkeypatch, tmp_path):
     status, body, adapter = call_pending_result(
         monkeypatch, tmp_path, {"confirmed": True, "ticket": "7654321"}
     )
@@ -171,6 +171,11 @@ def test_mt5_foreign_signed_loss_is_imported_as_pending_with_private_dedupe_key(
     assert body["reserve_calculated"] is False
     assert body["execution_allowed"] is False
     assert adapter.calls == ["7654321"]
+    status, duplicate, _ = call_pending_result(
+        monkeypatch, tmp_path, {"confirmed": True, "ticket": "7654321"}
+    )
+    assert status.startswith("409")
+    assert duplicate["registered"] is False
 
 
 def test_mt5_foreign_pending_import_rejects_missing_confirmation_and_brl(monkeypatch, tmp_path):
