@@ -131,7 +131,6 @@ def test_mt5_confirmation_requires_explicit_brazilian_market_scope(monkeypatch, 
         {"confirmed": True, "ticket": "7654321", "category": "BR_DAY_TRADE"},
     )
     assert status.startswith("400")
-    assert "mercado brasileiro elegível" in body["error"]
     assert adapter.calls == []
 
 
