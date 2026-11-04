@@ -49,3 +49,4 @@ A autorização local acima é somente para desenvolvimento no próprio computad
 - A rota autenticada `/api/assistant/status` verifica se o provedor e a biblioteca estão configurados, sem devolver a chave; não testa conectividade ou validade da credencial.
 - Sem a chave ou sem a biblioteca, o Assistente falha de forma controlada e a interface informa que está indisponível.
 - As perguntas e o resumo operacional filtrado são enviados à API da OpenAI para gerar respostas; a interface exibe esse aviso antes do chat.
+- A prévia Streamlit mostra somente a sessão de consulta atual do Assistente; não lista conversas anteriores, títulos, histórico persistido ou controles para abrir/excluir conversas antigas.
