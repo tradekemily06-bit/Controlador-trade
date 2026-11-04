@@ -318,9 +318,8 @@ void RefreshPreferences(){
    string filters=JsonObjectValue(r,"preferences","require_filters");
    string leverage=JsonObjectValue(r,"preferences","leverage_enabled");
    if(mode=="") mode="DEMO";
-   selected_mode=mode;
+   selected_mode="DEMO";
    leverage_enabled=(leverage=="true");
-   SetButton(Obj("MODE_TOGGLE"),selected_mode=="REAL"?"MODO: REAL":"MODO: DEMO",20,465,172,28);
    SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,505,177,28);
    SetLabel(Obj("INFO1"),"Modo selecionado: "+selected_mode,20,361,9,C'205,215,230');
    SetLabel(Obj("INFO2"),"Alavancagem: "+(leverage_enabled?"ON":"OFF"),20,381,9,leverage_enabled?C'255,209,102':C'205,215,230');
@@ -512,7 +511,7 @@ void SaveConfig(){
    if(tf=="") tf=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
    tf=NormalizeTimeframe(tf);
    string leverage=leverage_enabled?"true":"false";
-   string body="{\"selected_mode\":\""+JsonEscape(selected_mode)+"\",\"leverage_enabled\":"+leverage+",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":true,\"require_filters\":true}";
+   string body="{\"selected_mode\":\"DEMO\",\"leverage_enabled\":"+leverage+",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":true,\"require_filters\":true}";
    string r; int code=0;
    if(Http("POST","/api/preferences",body,r,code)){
       SetLabel(Obj("INFO4"),"Configuracoes sincronizadas",20,421,9,C'88,214,141');
@@ -672,7 +671,6 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    }
    else if(sparam==Obj("CYCLE")) RunCycle();
    else if(sparam==Obj("SAVE")) SaveConfig();
-   else if(sparam==Obj("MODE_TOGGLE")) { selected_mode=(selected_mode=="DEMO"?"REAL":"DEMO"); SaveConfig(); }
    else if(sparam==Obj("LEVERAGE_TOGGLE")) { leverage_enabled=!leverage_enabled; SaveConfig(); }
    else if(sparam==Obj("CLOSE")) CloseCycle();
 }
