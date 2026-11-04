@@ -73,7 +73,7 @@ def call_confirm(monkeypatch, tmp_path, payload, adapter=None):
 
 
 def test_mt5_confirmation_revalidates_and_registers_once(monkeypatch, tmp_path):
-    payload = {"confirmed": True, "ticket": "7654321", "category": "BR_DAY_TRADE",
+    payload = {"confirmed": True, "ticket": "7654321", "category": "BR_DAY_TRADE", "market_scope": "BR_ELIGIBLE_MARKET",
                "realized_result_brl": 999999, "reference": "CLIENT-FORGED"}
     status, body, adapter = call_confirm(monkeypatch, tmp_path, payload)
     assert status.startswith("201")
@@ -97,7 +97,7 @@ def test_mt5_confirmation_requires_account_fingerprint_for_safe_deduplication(mo
 
     status, body, _ = call_confirm(
         monkeypatch, tmp_path,
-        {"confirmed": True, "ticket": "7654321", "category": "BR_DAY_TRADE"},
+        {"confirmed": True, "ticket": "7654321", "category": "BR_DAY_TRADE", "market_scope": "BR_ELIGIBLE_MARKET"},
         adapter=MissingFingerprintAdapter(),
     )
     assert status.startswith("503")
@@ -117,12 +117,22 @@ def test_mt5_confirmation_keeps_non_brl_account_unregistered(monkeypatch, tmp_pa
     adapter = FakeFiscalAdapter(currency="USD")
     status, body, _ = call_confirm(
         monkeypatch, tmp_path,
-        {"confirmed": True, "ticket": "7654321", "category": "BR_DAY_TRADE"},
+        {"confirmed": True, "ticket": "7654321", "category": "BR_DAY_TRADE", "market_scope": "BR_ELIGIBLE_MARKET"},
         adapter=adapter,
     )
     assert status.startswith("422")
     assert body["registered"] is False
     assert body["classification_status"] == "PENDING_CLASSIFICATION"
+
+
+def test_mt5_confirmation_requires_explicit_brazilian_market_scope(monkeypatch, tmp_path):
+    status, body, adapter = call_confirm(
+        monkeypatch, tmp_path,
+        {"confirmed": True, "ticket": "7654321", "category": "BR_DAY_TRADE"},
+    )
+    assert status.startswith("400")
+    assert "mercado brasileiro elegível" in body["error"]
+    assert adapter.calls == []
 
 
 def test_mt5_confirmation_requires_explicit_supported_category(monkeypatch, tmp_path):
