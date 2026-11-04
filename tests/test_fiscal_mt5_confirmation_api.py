@@ -22,6 +22,12 @@ class FakeFiscalAdapter:
             "net_result_account_currency": 250.0,
             "account_currency": self.currency,
             "occurred_at_utc": datetime(2026, 11, 3, 12, tzinfo=timezone.utc).isoformat(),
+            "account_fingerprint": "a" * 32,
+            "profit": -10.0,
+            "commission": -1.0,
+            "swap": 0.0,
+            "fee": 0.0,
+            "position_id": "12345",
             "auto_registered": False,
         }
 
@@ -108,3 +114,92 @@ def test_mt5_confirmation_requires_explicit_supported_category(monkeypatch, tmp_
     )
     assert status.startswith("400")
     assert adapter.calls == []
+
+
+def call_pending_result(monkeypatch, tmp_path, payload, adapter=None):
+    from finance.fiscal_pending_queue import FiscalPendingQueue
+    from finance.fiscal_schema import migrate_fiscal_schema
+
+    database = tmp_path / "fiscal-pending.sqlite3"
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "test-owner")
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "false")
+    monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "true")
+    monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATION_HOSTS", "localhost")
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", database)
+    migrate_fiscal_schema(str(database))
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE", FiscalReserve(str(database)))
+    monkeypatch.setattr(app_module, "FISCAL_PENDING_QUEUE", FiscalPendingQueue(str(database)))
+    fake = adapter or FakeFiscalAdapter(currency="USD")
+    monkeypatch.setattr(app_module, "SERVICE", SimpleNamespace(mt5_operational_adapter=fake))
+    monkeypatch.setattr(app_module.SECURITY, "allow", lambda environ: True)
+    monkeypatch.setattr(app_module.SECURITY, "headers", lambda request_id, **kwargs: [])
+    monkeypatch.setattr(app_module, "_audit", lambda *args, **kwargs: None)
+
+    raw = json.dumps(payload).encode("utf-8")
+    environ = {
+        "REQUEST_METHOD": "POST",
+        "PATH_INFO": "/api/fiscal-reserve/mt5-pending-result",
+        "QUERY_STRING": "",
+        "REMOTE_ADDR": "127.0.0.1",
+        "HTTP_HOST": "localhost:8000",
+        "CONTENT_LENGTH": str(len(raw)),
+        "wsgi.input": io.BytesIO(raw),
+    }
+    response = {}
+
+    def start_response(status, headers):
+        response["status"] = status
+        response["headers"] = headers
+
+    body = b"".join(app_module.application(environ, start_response))
+    return response["status"], json.loads(body), fake
+
+
+def test_mt5_foreign_signed_loss_is_imported_as_pending_with_private_dedupe_key(monkeypatch, tmp_path):
+    status, body, adapter = call_pending_result(
+        monkeypatch, tmp_path, {"confirmed": True, "ticket": "7654321"}
+    )
+    assert status.startswith("201")
+    assert body["registered"] is True
+    pending = body["pending"]
+    assert pending["original_result"] == 250.0
+    assert pending["original_currency"] == "USD"
+    assert pending["record_kind"] == "REALIZED_RESULT"
+    assert pending["status"] == "PENDING_CLASSIFICATION"
+    assert pending["reference"] == "MT5-DEMO:" + ("a" * 32) + ":7654321"
+    assert body["reserve_calculated"] is False
+    assert body["execution_allowed"] is False
+    assert adapter.calls == ["7654321"]
+
+
+def test_mt5_foreign_pending_import_rejects_missing_confirmation_and_brl(monkeypatch, tmp_path):
+    status, _, adapter = call_pending_result(
+        monkeypatch, tmp_path, {"confirmed": False, "ticket": "7654321"}
+    )
+    assert status.startswith("400")
+    assert adapter.calls == []
+
+    status, body, _ = call_pending_result(
+        monkeypatch, tmp_path, {"confirmed": True, "ticket": "7654321"},
+        adapter=FakeFiscalAdapter(currency="BRL"),
+    )
+    assert status.startswith("422")
+    assert body["registered"] is False
+    assert body["reserve_calculated"] is False
+
+
+def test_mt5_foreign_pending_import_rejects_missing_account_fingerprint(monkeypatch, tmp_path):
+    adapter = FakeFiscalAdapter(currency="USD")
+    original = adapter.read_closed_deal_candidate
+
+    def candidate(ticket):
+        result = original(ticket)
+        result["account_fingerprint"] = None
+        return result
+
+    adapter.read_closed_deal_candidate = candidate
+    status, body, _ = call_pending_result(
+        monkeypatch, tmp_path, {"confirmed": True, "ticket": "7654321"}, adapter=adapter
+    )
+    assert status.startswith("503")
+    assert body["registered"] is False
