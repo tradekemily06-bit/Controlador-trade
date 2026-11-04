@@ -226,8 +226,10 @@ def show_fiscal() -> None:
         a, b, c = st.columns(3)
         a.metric("Reserva estimada · Brasil", money(br.get("reserve_amount_brl")))
         b.metric("Resultado realizado · Brasil", money(br.get("realized_result_brl")))
-        c.metric("Total atualmente calculado", money(summary.get("total_reserved_brl")))
-        st.caption(f"Referência: {summary.get('as_of', '—')} · Brasil day trade · percentual aplicado: {br.get('rate', '—')}%")
+        c.metric("Estimativa acumulada · Brasil", money(summary.get("total_reserved_brl")))
+        st.caption(f"Referência: {summary.get('as_of', '—')} · Brasil day trade · percentual de planejamento configurado: {br.get('rate', '—')}%")
+        semantics = summary.get("reserve_semantics", {})
+        st.warning("ESTIMATIVA DE PLANEJAMENTO — não é imposto apurado ou devido. " + str(semantics.get("description") or "Não calcula compensação mensal de prejuízos nem créditos de IRRF."))
         st.info(f"Exterior: {foreign.get('entries', 0)} registro(s) legado(s) · classificação pendente · fora dos totais.")
         foreign_pending = summary.get("foreign_pending", {})
         if foreign_pending.get("available") is False:
