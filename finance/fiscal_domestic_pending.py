@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
+from zoneinfo import ZoneInfo
 
 
 class FiscalDomesticPendingQueue:
@@ -130,7 +131,7 @@ class FiscalDomesticPendingQueue:
                 "included_in_totals": False, "reserve_calculated": False}
 
     def summary(self, owner_id: str, as_of: date | None = None) -> dict[str, Any]:
-        today = as_of or date.today()
+        today = as_of or datetime.now(ZoneInfo("America/Sao_Paulo")).date()
         week = date.fromordinal(today.toordinal() - today.weekday())
         bounds = {
             "day": (today, today),
