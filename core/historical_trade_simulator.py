@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import isfinite
+from datetime import datetime
 from typing import Iterable, Sequence
 
 from .market_data import Candle
@@ -106,7 +107,16 @@ class HistoricalTradeSimulator:
         if len(signals) != len(bars):
             raise ValueError("Deve existir exatamente um sinal por candle.")
         for index, candle in enumerate(bars):
-            if not candle.is_valid():
+            values = (candle.open, candle.high, candle.low, candle.close, candle.volume)
+            if (
+                not isinstance(candle.timestamp, datetime)
+                or any(isinstance(value, bool) or not isinstance(value, (int, float)) or not isfinite(value) for value in values)
+                or candle.open <= 0
+                or candle.low <= 0
+                or candle.high < max(candle.open, candle.close)
+                or candle.low > min(candle.open, candle.close)
+                or candle.volume < 0
+            ):
                 raise ValueError(f"Candle inválido no índice {index}.")
             if index and candle.timestamp <= bars[index - 1].timestamp:
                 raise ValueError("Os candles devem estar em ordem cronológica estritamente crescente.")
