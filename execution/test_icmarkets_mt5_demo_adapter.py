@@ -165,6 +165,32 @@ def test_read_operational_state_uses_mt5_observations():
     assert "positions_get" in mt5.calls
 
 
+def test_missing_position_identity_keeps_risk_counters_unknown():
+    class MissingPositionIdentityMT5(FakeMT5):
+        def history_deals_get(self, *args, **kwargs):
+            return (
+                SimpleNamespace(
+                    entry=self.DEAL_ENTRY_OUT,
+                    profit=-10.0,
+                    commission=-1.0,
+                    swap=0.0,
+                    fee=0.0,
+                ),
+            )
+
+        def positions_get(self):
+            return ()
+
+    state = ICMarketsMT5DemoAdapter(
+        mt5_module=MissingPositionIdentityMT5()
+    ).read_operational_state()
+
+    assert state.realized_pnl == -11.0
+    assert state.realized_loss_today == 11.0
+    assert state.trades_today is None
+    assert state.consecutive_losses is None
+
+
 def test_query_order_reconciles_external_deal_as_executed():
     mt5 = FakeMT5()
     adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
