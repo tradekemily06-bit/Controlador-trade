@@ -355,3 +355,13 @@ def test_streamlit_operational_screens_render_human_readable_summaries_without_r
     assert '"/api/preferences/notifications"' in source
     assert "alertas críticos" in source.lower()
     assert "st.json(data)" not in source
+
+
+def test_streamlit_replay_uses_historical_mt5_demo_data_without_orders():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'api("/api/replay/mt5", "POST"' in source
+    assert "Reproduzir histórico DEMO" in source
+    assert "candles fechados" in source
+    assert "Antecipação de candles futuros: NÃO" in source
+    assert "Replay concluído sem envio de ordens." in source
+    assert 'show_replay()' in source
