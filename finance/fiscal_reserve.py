@@ -350,6 +350,7 @@ class FiscalReserve:
             },
             "limitations": [
                 "Estimativa de planejamento; não representa imposto apurado ou devido.",
+                "Lançamentos manuais BR_DAY_TRADE dependem de declaração do usuário; elegibilidade de mercado não é verificada independentemente.",
                 "Resultados negativos são registrados, mas compensações fiscais não são calculadas.",
                 "Registros MT5 com classificação declarada pelo usuário e ainda não verificada permanecem fora dos totais, mesmo se existirem no histórico legado.",
                 "Resultados estrangeiros, inclusive registros legados, ficam fora dos totais até classificação tributária validada e conversão para BRL.",
