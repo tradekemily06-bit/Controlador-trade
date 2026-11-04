@@ -109,6 +109,11 @@ def test_domestic_pending_review_is_auditable_but_does_not_classify_or_book(tmp_
     assert reviews[0]["reviewer_identity_status"] == "DECLARED_NOT_VERIFIED"
     assert queue.list_pending("owner-a")["items"][0]["status"] == "PENDING_CLASSIFICATION"
 
+    invalid = review_payload()
+    invalid["candidate_classification"] = "FOREIGN_CRYPTO"
+    with pytest.raises(ValueError, match="catálogo brasileiro permitido"):
+        queue.record_review("owner-a", item["pending_id"], invalid)
+
 
 def test_domestic_pending_review_is_owner_scoped_and_rejects_unqualified_role(tmp_path):
     queue = FiscalDomesticPendingQueue(str(tmp_path / "domestic-review-scope.sqlite3"))
