@@ -442,3 +442,16 @@ def test_streamlit_setup_documents_runtime_openai_and_windows_mt5_dependencies()
     assert "cliente OpenAI usado pelo Assistente" in readme
     assert "py -3.12 -m pip install MetaTrader5" in readme
     assert "terminal MT5 está instalado e em execução" in readme
+
+
+def test_mt5_native_panel_is_real_mql5_client_of_shared_runtime():
+    repo_root = PANEL_DIR.parent
+    ea = (repo_root / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    readme = (PANEL_DIR / "README.md").read_text(encoding="utf-8")
+    assert 'WebRequest(method,InpRuntimeUrl+path' in ea
+    assert "void OnChartEvent(" in ea
+    assert "void OnTimer()" in ea
+    assert '"/api/health"' in ea
+    assert '"/api/runtime/analysis"' in ea
+    assert "não é executado dentro do gráfico MT5" in readme
+    assert "não é uma imagem estática" in readme
