@@ -188,3 +188,11 @@ def test_streamlit_foreign_pending_forms_capture_structured_evidence_and_display
     assert "Residência declarada" in source
     assert "Método cambial" in source
     assert "NOT_INFORMED" in source
+
+
+def test_streamlit_fiscal_summary_labels_accumulated_amount_as_planning_estimate():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'c.metric("Estimativa acumulada · Brasil"' in source
+    assert "percentual de planejamento configurado" in source
+    assert "ESTIMATIVA DE PLANEJAMENTO — não é imposto apurado ou devido." in source
+    assert 'summary.get("reserve_semantics", {})' in source
