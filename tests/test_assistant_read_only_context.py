@@ -102,6 +102,11 @@ def test_pending_queue_context_contract_is_read_only():
                 "realized_results": 500,
                 "asset_amounts": 1,
                 "currencies": ["USD", "EUR"],
+                "as_of": "2026-11-03",
+                "periods": {
+                    "day": {"start": "2026-11-03", "end": "2026-11-03", "total": 2, "realized_results": 1, "asset_amounts": 1},
+                    "week": {"start": "2026-11-02", "end": "2026-11-03", "total": 4, "realized_results": 3, "asset_amounts": 1},
+                },
                 "classification_status": "PENDING_CLASSIFICATION",
                 "included_in_totals": False,
                 "reserve_calculated": False,
@@ -112,5 +117,9 @@ def test_pending_queue_context_contract_is_read_only():
     assert pending["realized_results"] == 500
     assert pending["asset_amounts"] == 1
     assert pending["currencies"] == ["EUR", "USD"]
+    assert pending["as_of"] == "2026-11-03"
+    assert pending["periods"]["day"]["total"] == 2
+    assert pending["periods"]["day"]["realized_results"] == 1
+    assert pending["periods"]["week"]["asset_amounts"] == 1
     assert pending["included_in_totals"] is False
     assert pending["reserve_calculated"] is False
