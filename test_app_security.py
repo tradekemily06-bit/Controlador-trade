@@ -387,7 +387,7 @@ class AppSecurityTests(unittest.TestCase):
                 })
                 app_module.FISCAL_PENDING_QUEUE = queue
                 review_payload = {
-                    "candidate_classification": "ETF",
+                    "candidate_classification": "FOREIGN_FINANCIAL_INVESTMENT",
                     "confirmed_jurisdiction": "US",
                     "reviewer_name": "Revisor de teste",
                     "reviewer_role": "contador",
