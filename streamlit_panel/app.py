@@ -274,14 +274,44 @@ def show_fiscal() -> None:
         if st.button("Consultar MT5 DEMO", key="mt5_fiscal_preview"):
             try:
                 preview = api("/api/fiscal-reserve/mt5-preview?lookback_days=" + str(int(lookback)))
-                st.info(f"{preview.get('count', 0)} negócio(s) candidato(s) · moeda da conta: {preview.get('account_currency', '—')} · nenhum lançamento foi criado.")
-                candidates = preview.get("candidates", [])
-                if candidates:
-                    st.dataframe([{"Data UTC": item.get("occurred_at_utc"), "Ativo": item.get("symbol"), "Ticket": item.get("ticket"), "Resultado": item.get("net_result_account_currency"), "Moeda": item.get("account_currency")} for item in candidates], use_container_width=True, hide_index=True)
-                else:
-                    st.caption("Nenhum negócio encerrado encontrado no período.")
+                st.session_state.fiscal_mt5_preview = preview
+                st.session_state.fiscal_mt5_confirmed_tickets = set()
             except Exception as exc:
                 st.error(str(exc))
+
+        preview = st.session_state.get("fiscal_mt5_preview")
+        if preview:
+            candidates = preview.get("candidates", [])
+            account_currency = str(preview.get("account_currency", "")).upper()
+            st.info(f"{preview.get('count', 0)} negócio(s) candidato(s) · moeda da conta: {account_currency or '—'} · consulta não registra nada automaticamente.")
+            if candidates:
+                st.dataframe([{"Data UTC": item.get("occurred_at_utc"), "Ativo": item.get("symbol"), "Ticket": item.get("ticket"), "Resultado": item.get("net_result_account_currency"), "Moeda": item.get("account_currency")} for item in candidates], use_container_width=True, hide_index=True)
+                if account_currency == "BRL":
+                    st.warning("A confirmação abaixo registra somente negócios que você classificar expressamente como Brasil · day trade. Confira o extrato completo: custos lançados em negócios anteriores da posição podem não estar incluídos.")
+                    for candidate in candidates:
+                        ticket = str(candidate.get("ticket", "")).strip()
+                        if not ticket:
+                            continue
+                        with st.form("mt5_confirm_" + ticket):
+                            st.write(f"**{candidate.get('symbol', 'Ativo')} · ticket {ticket}**")
+                            st.caption(f"Data UTC: {candidate.get('occurred_at_utc', '—')} · Resultado do negócio de saída: {candidate.get('net_result_account_currency', '—')} {account_currency}")
+                            classified = st.checkbox("Confirmo que este resultado pertence à categoria Brasil · day trade.", key="mt5_class_" + ticket)
+                            confirmed = st.form_submit_button("Confirmar e registrar este negócio")
+                        if confirmed:
+                            if not classified:
+                                st.error("Marque a confirmação de classificação antes de registrar.")
+                            else:
+                                try:
+                                    result = api("/api/fiscal-reserve/mt5-confirm", "POST", {"ticket": ticket, "category": "BR_DAY_TRADE", "confirmed": True})
+                                    st.success(f"Ticket {ticket} registrado. A referência impede duplicidade.")
+                                    st.session_state.fiscal_mt5_confirmed_tickets = set(st.session_state.get("fiscal_mt5_confirmed_tickets", set())) | {ticket}
+                                    st.rerun()
+                                except Exception as exc:
+                                    st.error(str(exc))
+                else:
+                    st.warning("A conta não está em BRL. O registro direto está bloqueado; mantenha os negócios fora dos totais até implementar e validar a entrada internacional com moeda original, classificação e conversão documentada.")
+            else:
+                st.caption("Nenhum negócio encerrado encontrado no período.")
 
     try:
         pending_data = api("/api/fiscal-reserve/pending?limit=50&offset=0")
