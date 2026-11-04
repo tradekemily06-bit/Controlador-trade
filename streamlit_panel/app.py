@@ -24,7 +24,18 @@ st.markdown("""
 :root { color-scheme: dark; }
 .stApp { background: #080B0F; color: #E9EEF3; }
 [data-testid="stHeader"] { background: transparent; }
-.block-container { max-width: 1180px; padding-top: 1.4rem; }
+.block-container { width: 100%; max-width: none; padding: 1rem clamp(.75rem, 2vw, 1.5rem) 2rem; }
+*, *::before, *::after { box-sizing: border-box; }
+[data-testid="stAppViewContainer"], [data-testid="stMain"], [data-testid="stMainBlockContainer"] { min-width: 0; }
+[data-testid="stDataFrame"], [data-testid="stTable"], .status-card { max-width: 100%; }
+[data-baseweb="tab-list"], [role="radiogroup"] { flex-wrap: wrap; }
+.stMarkdown, .stCaption, [data-testid="stMetric"] { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 720px) {
+  .block-container { padding: .75rem .65rem 1.25rem; }
+  [data-testid="stHorizontalBlock"] { flex-wrap: wrap; gap: .5rem; }
+  [data-testid="column"] { min-width: min(100%, 14rem); }
+  [data-testid="stDataFrame"] { overflow-x: auto; }
+}
 div[data-testid="stMetric"] { background:#161C24; border:1px solid #25303B; padding:14px; border-radius:12px; }
 .stButton > button, .stFormSubmitButton > button { border:1px solid #25303B; border-radius:10px; }
 .stButton > button[kind="primary"], .stFormSubmitButton > button { background:#46D6AD; color:#080B0F; border:0; font-weight:700; }
@@ -113,10 +124,9 @@ def fiscal_history_display_row(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def _reset_assistant_conversation() -> None:
+    """Start a fresh assistant session without exposing stored conversation history."""
     st.session_state.assistant_conversation_id = None
     st.session_state.assistant_history = []
-    st.session_state.assistant_loaded_id = None
-    st.session_state.assistant_selector = "__new__"
 
 
 def show_assistant() -> None:
@@ -132,67 +142,44 @@ def show_assistant() -> None:
             st.caption(str(readiness.get("message") or "Credenciais configuradas; conexão com a API ainda não testada.") + " · " + str(readiness.get("model") or "modelo configurado"))
     except Exception as exc:
         st.warning(f"Não foi possível verificar a configuração do Assistente. {exc}")
-    st.warning("Privacidade: sua pergunta e um resumo dos dados operacionais disponíveis são enviados pelo servidor à OpenAI para gerar a resposta. A chave permanece no servidor. Excluir uma conversa remove o histórico local, mas não solicita a exclusão de dados já transmitidos à OpenAI. Não envie senhas, códigos de acesso ou dados bancários sensíveis.")
-    if "_assistant_pending_select_id" in st.session_state:
-        st.session_state.assistant_selector = st.session_state.pop("_assistant_pending_select_id")
-    try:
-        conversations = api("/api/assistant/conversations").get("conversations", [])
-    except Exception as exc:
-        conversations = []
-        st.error(str(exc))
-    ids = [item.get("conversation_id") for item in conversations]
-    labels = {item.get("conversation_id"): item.get("title", "Conversa") for item in conversations}
-    if st.session_state.get("assistant_selector", "__new__") not in ["__new__"] + ids:
-        st.session_state.assistant_selector = "__new__"
-    selected = st.selectbox("Histórico", options=["__new__"] + ids, format_func=lambda value: "Nova conversa" if value == "__new__" else labels.get(value, "Conversa"), key="assistant_selector")
-    if st.button("Iniciar nova conversa", key="new_assistant", on_click=_reset_assistant_conversation):
-        st.rerun()
-    if selected == "__new__" and st.session_state.get("assistant_last_selected") != "__new__":
-        st.session_state.assistant_conversation_id = None
+
+    st.caption(
+        "Privacidade: a pergunta e um resumo operacional filtrado são enviados pelo servidor à OpenAI. "
+        "A chave permanece no servidor. Não envie senhas, códigos de acesso ou dados bancários sensíveis."
+    )
+    if "assistant_history" not in st.session_state:
         st.session_state.assistant_history = []
-        st.session_state.assistant_loaded_id = None
-    st.session_state.assistant_last_selected = selected
-    cid = None if selected == "__new__" else selected
-    if cid and st.checkbox("Confirmo que desejo excluir a conversa selecionada", key="confirm_delete_assistant"):
-        if st.button("Excluir conversa e mensagens locais", key="delete_assistant"):
-            try:
-                api("/api/assistant/conversations?conversation_id=" + urllib.parse.quote(cid), "DELETE")
-                st.session_state.assistant_conversation_id = None
-                st.session_state.assistant_loaded_id = None
-                st.session_state.assistant_history = []
-                st.session_state._assistant_pending_select_id = "__new__"
-                st.success("Conversa removida do histórico local.")
-                st.rerun()
-            except Exception as exc:
-                st.error(str(exc))
-    if cid and st.session_state.get("assistant_loaded_id") != cid:
-        try:
-            st.session_state.assistant_history = api("/api/assistant/history?conversation_id=" + urllib.parse.quote(cid)).get("messages", [])
-            st.session_state.assistant_loaded_id = cid
-            st.session_state.assistant_conversation_id = cid
-        except Exception as exc:
-            st.error(str(exc))
-    for message in st.session_state.get("assistant_history", []):
-        with st.chat_message("assistant" if message.get("role") == "assistant" else "user"):
-            st.write(message.get("content", ""))
+
+    if st.button("Nova consulta", key="new_assistant_session"):
+        _reset_assistant_conversation()
+        st.rerun()
+
+    for message in st.session_state.assistant_history:
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
+
     prompt = st.chat_input(
         "Pergunte sobre o Ecossistema, risco ou Reserva Fiscal",
         disabled=not assistant_available,
     )
     if prompt:
-        with st.chat_message("user"):
-            st.write(prompt)
+        st.session_state.assistant_history.append({"role": "user", "content": prompt})
         try:
-            response = api("/api/assistant/chat", "POST", {"message": prompt, "conversation_id": st.session_state.get("assistant_conversation_id")})
+            response = api(
+                "/api/assistant/chat",
+                "POST",
+                {
+                    "message": prompt,
+                    "conversation_id": st.session_state.get("assistant_conversation_id"),
+                },
+            )
             st.session_state.assistant_conversation_id = response.get("conversation_id")
-            with st.chat_message("assistant"):
-                st.write(response.get("answer", "Sem resposta."))
-            st.session_state.assistant_history = api("/api/assistant/history?conversation_id=" + urllib.parse.quote(response["conversation_id"])).get("messages", [])
-            st.session_state.assistant_loaded_id = response["conversation_id"]
-            st.session_state._assistant_pending_select_id = response["conversation_id"]
+            answer = response.get("answer", "Sem resposta.")
+            st.session_state.assistant_history.append({"role": "assistant", "content": answer})
             st.rerun()
         except Exception as exc:
             st.error(str(exc))
+
 
 
 def show_fiscal() -> None:
