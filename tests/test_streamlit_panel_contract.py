@@ -125,3 +125,10 @@ def test_streamlit_does_not_claim_visual_fidelity_without_original_images():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert "não é a reprodução visual aprovada do Figma" in source
     assert "não estão presentes neste branch" in source
+
+
+def test_streamlit_marks_mt5_tax_classification_as_user_declared_pending_review():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert "DECLARAÇÃO DO USUÁRIO · REVISÃO PENDENTE" in source
+    assert 'evidence.get("tax_classification_status") == "USER_DECLARED_PENDING_REVIEW"' in source
+    assert "a estimativa não confirma obrigação tributária" in source
