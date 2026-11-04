@@ -333,7 +333,10 @@ def show_fiscal() -> None:
         except Exception as exc:
             st.error(str(exc))
     try:
-        domestic_data = api("/api/fiscal-reserve/domestic-pending?limit=50&offset=0")
+        if "domestic_pending_offset" not in st.session_state:
+            st.session_state.domestic_pending_offset = 0
+        domestic_offset = int(st.session_state.domestic_pending_offset)
+        domestic_data = api(f"/api/fiscal-reserve/domestic-pending?limit=50&offset={domestic_offset}")
         domestic_items = domestic_data.get("items", [])
         domestic_summary = api("/api/fiscal-reserve/domestic-pending/summary")
         domestic_cols = st.columns(4)
@@ -343,6 +346,16 @@ def show_fiscal() -> None:
             col.caption(f"{int(period_data.get('results', 0))} resultado(s) · sem cálculo")
         if domestic_items:
             st.dataframe([{"Data": item.get("occurred_on"), "Ativo": item.get("instrument"), "Categoria candidata": item.get("category_candidate") or "Não informada", "Mercado": item.get("market_scope"), "Resultado (R$)": item.get("realized_result_brl") if item.get("realized_result_brl") is not None else "—", "Status": "PENDENTE DE CLASSIFICAÇÃO"} for item in domestic_items], use_container_width=True, hide_index=True)
+            domestic_page_cols = st.columns(2)
+            with domestic_page_cols[0]:
+                if st.button("← Pendências brasileiras anteriores", key="domestic_pending_previous", disabled=domestic_offset <= 0):
+                    st.session_state.domestic_pending_offset = max(0, domestic_offset - 50)
+                    st.rerun()
+            with domestic_page_cols[1]:
+                if st.button("Próximas pendências brasileiras →", key="domestic_pending_next", disabled=domestic_offset + len(domestic_items) >= int(domestic_data.get("total", 0))):
+                    st.session_state.domestic_pending_offset = domestic_offset + 50
+                    st.rerun()
+            st.caption(f"Exibindo {domestic_offset + 1}–{domestic_offset + len(domestic_items)} de {int(domestic_data.get('total', 0))} pendências brasileiras.")
             st.markdown("##### Revisão documental · Brasil")
             st.caption("A revisão registra evidências declaradas. O sistema não verifica identidade ou registro profissional, não muda a classificação e não calcula reserva.")
             review_options = {
@@ -486,7 +499,10 @@ def show_fiscal() -> None:
     st.markdown("#### Revisão documental · Exterior")
     st.caption("A revisão registra a classificação candidata e as evidências informadas pelo profissional. O sistema não verifica identidade ou registro, não muda o status pendente e não calcula imposto.")
     try:
-        foreign_pending_data = api("/api/fiscal-reserve/pending?limit=100&offset=0")
+        if "foreign_pending_offset" not in st.session_state:
+            st.session_state.foreign_pending_offset = 0
+        foreign_offset = int(st.session_state.foreign_pending_offset)
+        foreign_pending_data = api(f"/api/fiscal-reserve/pending?limit=50&offset={foreign_offset}")
         foreign_items = foreign_pending_data.get("items", [])
         if foreign_items:
             st.dataframe([{
@@ -500,6 +516,16 @@ def show_fiscal() -> None:
                 "Evento": item.get("event_type"),
                 "Status": "PENDENTE DE CLASSIFICAÇÃO",
             } for item in foreign_items], use_container_width=True, hide_index=True)
+            foreign_page_cols = st.columns(2)
+            with foreign_page_cols[0]:
+                if st.button("← Pendências do exterior anteriores", key="foreign_pending_previous", disabled=foreign_offset <= 0):
+                    st.session_state.foreign_pending_offset = max(0, foreign_offset - 50)
+                    st.rerun()
+            with foreign_page_cols[1]:
+                if st.button("Próximas pendências do exterior →", key="foreign_pending_next", disabled=foreign_offset + len(foreign_items) >= int(foreign_pending_data.get("total", 0))):
+                    st.session_state.foreign_pending_offset = foreign_offset + 50
+                    st.rerun()
+            st.caption(f"Exibindo {foreign_offset + 1}–{foreign_offset + len(foreign_items)} de {int(foreign_pending_data.get('total', 0))} pendências do exterior.")
             foreign_review_options = {
                 item["pending_id"]: f"{item.get('occurred_on')} · {item.get('instrument')} · {item.get('reference')}"
                 for item in foreign_items if item.get("pending_id")
