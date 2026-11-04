@@ -118,7 +118,7 @@ def test_ask_uses_read_only_system_rules_bounded_history_and_no_execution(monkey
     assert sent[0]["role"] == "system"
     assert "Somente leitura" in sent[0]["content"]
     assert "não envia ordens" in sent[0]["content"]
-    assert "não movimenta dinheiro" in sent[0]["content"]
+    assert "não ativa REAL" in sent[0]["content"]
     assert sent[1]["role"] == "user"
     assert "BLOCO DE DADOS DO ECOSSISTEMA" in sent[1]["content"]
     assert sent[1]["content"].find('"execution"') >= 0
