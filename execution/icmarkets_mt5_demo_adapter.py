@@ -234,16 +234,15 @@ class ICMarketsMT5DemoAdapter:
                         if any(getattr(deal, "entry", None) in closing_entries for _, deal, _ in rows)
                     }
                     entry_data_valid = all(getattr(deal, "entry", None) is not None for deal in deals)
-                    if not closed_ids:
+                    if has_netting_reversal:
+                        consecutive_losses = None
+                    elif not closed_ids:
                         consecutive_losses = 0 if entries_valid and entry_data_valid else None
                     elif (
                         not entries_valid
                         or not entry_data_valid
                         or not positions_known
                         or entry_in is None
-                        or entry_inout is not None and any(
-                            getattr(deal, "entry", None) == entry_inout for deal in deals
-                        )
                     ):
                         consecutive_losses = None
                     else:
