@@ -48,3 +48,18 @@ A autorização local acima é somente para desenvolvimento no próprio computad
 - As quatro áreas visuais do Figma permanecem como referência; o Assistente é um módulo funcional próprio em MAIS / ADMIN, sem alterar o JSON ou inventar uma quinta área visual.
 - Não modificar nem recriar as imagens ou o arquivo original do Figma. A validação visual só poderá avançar quando as cinco imagens originais forem disponibilizadas para comparação, mantendo os arquivos intactos.
 - O Streamlit é acessado como painel web e conversa com o runtime do Ecossistema; não é desenhado nativamente sobre o gráfico MT5. A conexão funcional com MT5 deve ser validada no runtime DEMO antes do uso operacional.
+
+## Acesso por um único link e continuidade com o notebook desligado
+
+**Este acesso remoto ainda não está implantado nem validado.** A instalação local descrita acima depende de dois processos no computador e só fica disponível enquanto o runtime e o Streamlit estiverem em execução. Não existe, neste estado do repositório, um link público de produção pronto para uso no celular.
+
+Para atingir o objetivo de acessar o mesmo painel pelo celular e pelo notebook sem manter o notebook pessoal ligado, a implantação precisa manter os componentes necessários em infraestrutura remota:
+
+- Hospedar o Streamlit e o runtime/API como serviços persistentes, com comunicação privada entre eles. O painel deve apontar CONTROLADOR_API_BASE_URL para a API privada e confiável.
+- O runtime escuta em 127.0.0.1 por padrão. CONTROLADOR_BIND_HOST pode alterar o endereço de escuta; só configurar 0.0.0.0 quando o serviço estiver isolado em rede privada e protegido por proxy autenticado/firewall. Nunca publicar a porta 8000 diretamente na internet.
+- Proteger o acesso web e a API com o mesmo provedor de identidade confiável. O proxy precisa remover cabeçalhos de identidade fornecidos pelo visitante e inserir o cabeçalho autenticado; manter CONTROLADOR_REMOTE_ACCESS_REQUIRED=true, CONTROLADOR_TRUSTED_IDENTITY_HEADER e CONTROLADOR_SINGLE_USER_IDENTITY coerentes nos serviços.
+- Manter armazenamento persistente e backups protegidos para .runtime, banco fiscal e histórico do Assistente. Não usar armazenamento efêmero para esses dados.
+- Se as operações MT5 precisarem continuar enquanto o notebook pessoal estiver desligado, o terminal MT5 e o adaptador DEMO também precisam executar em uma máquina Windows/VPS continuamente ligada e validada. Hospedar somente o Streamlit não mantém o MT5 conectado.
+- Validar saúde, autenticação, isolamento de identidade, persistência após reinício, conectividade MT5 DEMO e bloqueio REAL antes de liberar o link para uso.
+
+Não foi feita implantação, não foram criadas credenciais, não foi aberto acesso público e nenhuma ordem foi enviada. A escolha do provedor e a configuração de produção permanecem pendentes.
