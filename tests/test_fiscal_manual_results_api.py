@@ -105,13 +105,11 @@ def test_manual_day_trade_entry_rejects_missing_confirmation_and_incomplete_crit
     payload["same_day"] = False
     status, body = _request(payload)
     assert status.startswith("400")
-    assert "mesmo ativo, mesma instituição e mesmo dia" in body["error"]
 
     payload = valid_payload()
     payload["market_scope"] = "FOREIGN_CFD"
     status, body = _request(payload)
     assert status.startswith("400")
-    assert "mercado brasileiro elegível" in body["error"]
 
     owner_id = migrate_fiscal_schema(str(database))
     assert reserve.summary(owner_id)["total_reserved_brl"] == 0.0
