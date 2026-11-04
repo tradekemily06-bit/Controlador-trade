@@ -122,10 +122,13 @@ def test_streamlit_domestic_pending_can_distinguish_zero_from_missing_result():
     assert 'domestic_payload["realized_result_brl"] = domestic_result' in source
 
 
-def test_streamlit_does_not_claim_visual_fidelity_without_original_images():
+def test_streamlit_documents_missing_reference_images_outside_the_panel():
+    readme = (PANEL_DIR / "README.md").read_text(encoding="utf-8")
+    assert "não é a reprodução visual aprovada do Figma" in readme
+    assert "não estão presentes neste branch" in readme
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
-    assert "não é a reprodução visual aprovada do Figma" in source
-    assert "não estão presentes neste branch" in source
+    assert "não é a reprodução visual aprovada do Figma" not in source
+    assert "As cinco imagens originais" not in source
 
 
 def test_streamlit_marks_mt5_tax_classification_as_user_declared_pending_review():
@@ -235,3 +238,25 @@ def test_streamlit_layout_uses_full_width_and_wraps_responsively():
     assert ".block-container { width: 100%; max-width: none;" in source
     assert "[role=\"radiogroup\"] { flex-wrap: wrap; }" in source
     assert "@media (max-width: 720px)" in source
+
+
+
+def test_streamlit_uses_the_same_fixed_c_toggle_in_open_and_closed_states():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'st.container(key="panel-toggle")' in source
+    assert 'st.button("C", key="open_control_hub")' in source
+    assert 'st.button("C", key="close_control_hub")' in source
+    assert ".st-key-panel-toggle { position: fixed;" in source
+    assert "border-radius: 50%" in source
+    assert 'st.caption("INDISPONÍVEL")' in source
+
+
+def test_streamlit_closed_panel_contains_only_c_and_unavailable_status():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index("if not st.session_state.panel_open:")
+    end = source.index("area = st.radio", start)
+    closed_state = source[start:end]
+    assert 'st.button("C", key="open_control_hub")' in closed_state
+    assert 'st.caption("INDISPONÍVEL")' in closed_state
+    assert "Controlador-Trader" not in closed_state
+    assert "Histórico" not in closed_state
