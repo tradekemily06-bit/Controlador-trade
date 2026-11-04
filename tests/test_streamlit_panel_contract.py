@@ -371,7 +371,7 @@ def test_streamlit_simulator_discloses_signal_only_scope_and_no_execution():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert 'api("/api/simulator/mt5", "POST"' in source
     assert "Simular cenário histórico DEMO" in source
-    assert "Confiança mínima do cenário (%)" in source
+    assert "Score direcional mínimo" in source
     assert "sem ordens, sem preenchimentos, sem P&L" in source
     assert "Execução permitida: NÃO" in source
     assert 'show_simulator()' in source
