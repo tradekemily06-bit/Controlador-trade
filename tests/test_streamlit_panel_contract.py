@@ -41,7 +41,7 @@ def test_streamlit_mt5_preview_requires_explicit_classification_and_confirmation
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert '"/api/fiscal-reserve/mt5-confirm"' in source
     assert '"confirmed": True' in source
-    assert 'Confirmo que este resultado pertence à categoria Brasil · day trade.' in source
+    assert "mercado brasileiro elegível" in source
     assert 'account_currency == "BRL"' in source
     assert '"/api/fiscal-reserve/mt5-pending-result"' in source
     assert "Guardar como pendência" in source
