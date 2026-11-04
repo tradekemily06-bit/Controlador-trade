@@ -347,9 +347,9 @@ def show_fiscal() -> None:
         items = pending_data.get("items", [])
         st.markdown("#### Pendências registradas")
         if items:
-            st.dataframe([{"Data": item.get("occurred_on"), "Instrumento": item.get("instrument"), "Jurisdição": item.get("jurisdiction"), "Valor": item.get("original_amount"), "Moeda": item.get("original_currency"), "Status": "PENDENTE DE CLASSIFICAÇÃO"} for item in items], use_container_width=True, hide_index=True)
+            st.dataframe([{"Data": item.get("occurred_on"), "Instrumento": item.get("instrument"), "Jurisdição": item.get("jurisdiction"), "Valor original": item.get("original_result") if item.get("record_kind") == "REALIZED_RESULT" else item.get("original_amount"), "Tipo": item.get("record_kind", "ASSET_AMOUNT"), "Moeda": item.get("original_currency"), "Status": "PENDENTE DE CLASSIFICAÇÃO"} for item in items], use_container_width=True, hide_index=True)
             pending_ids = [item.get("pending_id") for item in items]
-            selected_id = st.selectbox("Selecionar pendência para revisão", pending_ids, format_func=lambda value: next((f"{x.get('instrument')} · {x.get('jurisdiction')} · {x.get('original_amount')} {x.get('original_currency')}" for x in items if x.get("pending_id") == value), value))
+            selected_id = st.selectbox("Selecionar pendência para revisão", pending_ids, format_func=lambda value: next((f"{x.get('instrument')} · {x.get('jurisdiction')} · {x.get('original_result') if x.get('record_kind') == 'REALIZED_RESULT' else x.get('original_amount')} {x.get('original_currency')}" for x in items if x.get("pending_id") == value), value))
             with st.expander("Registrar evidência de revisão profissional"):
                 with st.form("professional_review_form"):
                     classification = st.text_input("Classificação sugerida")
