@@ -1,6 +1,6 @@
 # Control Hub · prévia Streamlit
 
-Esta aplicação é uma interface web separada para desenvolver e validar os módulos Assistente do Ecossistema e Reserva Fiscal. Ela não modifica o arquivo original do Figma nem substitui o painel aprovado do MT5.
+Esta é a interface Streamlit do Controlador-Trader destinada a reunir o painel operacional e os módulos Reserva Fiscal e Assistente do Ecossistema. O Figma é somente referência visual; não é o painel que será usado na operação. A aplicação Streamlit conecta-se ao runtime local do Ecossistema, que por sua vez integra as funções de MT5. A interface Streamlit é uma aplicação web e não um overlay nativo desenhado dentro do gráfico MT5.
 
 ## Instalação local (Windows / Python 3.12)
 
@@ -36,10 +36,10 @@ A autorização local acima é somente para desenvolvimento no próprio computad
 
 - O JSON contém a estrutura de navegação e tokens visuais extraídos das referências.
 - **As cinco imagens originais listadas no JSON (8870.jpg, 8871.jpg, 8872.jpg, 8873.jpg e 8878.jpg não estão presentes neste branch do repositório.** A árvore do GitHub foi verificada; por isso, a aplicação não consegue exibir nem comparar as capturas originais.
-- A interface atual é somente uma área funcional de desenvolvimento dos módulos. Ela **não é a reprodução visual aprovada do Figma**, não deve ser usada como validação de fidelidade e não substitui o painel do MT5.
+- A interface Streamlit é o painel de uso pretendido. As quatro áreas visuais do Figma permanecem como referência, e o Assistente do Ecossistema é acrescentado como módulo funcional próprio em MAIS / ADMIN, sem alterar o JSON ou inventar uma quinta área.
 - Não modificar nem recriar as imagens ou o arquivo original do Figma. A validação visual só poderá avançar quando as cinco imagens de referência forem disponibilizadas no projeto, mantendo os arquivos originais intactos.
-- A prévia Streamlit não é o overlay nativo do gráfico MT5. A integração visual nativa no MT5 é uma etapa distinta.
-- Outros módulos aparecem como seleção, mas só Assistente e Reserva Fiscal têm chamadas funcionais conectadas nesta prévia.
+- O Streamlit é acessado como painel web e conversa com o runtime do Ecossistema; não é desenhado nativamente sobre o gráfico MT5. A conexão funcional com MT5 deve ser validada no runtime DEMO antes do uso operacional.
+- O Assistente do Ecossistema aparece como módulo próprio dentro de MAIS / ADMIN. A Reserva Fiscal permanece em Financeiro. Os demais módulos só devem ser considerados funcionais quando suas integrações forem efetivamente implementadas e validadas.
 
 
 ## Assistente · configuração do provedor
