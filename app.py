@@ -420,6 +420,7 @@ def application(environ, start_response):
                 "source": "IC Markets MT5 DEMO",
                 "ticket": ticket,
                 "position_id": candidate.get("position_id"),
+                "opened_at_utc": opened_timestamp,
                 "occurred_at_utc": timestamp,
                 "profit": candidate.get("profit"),
                 "commission": candidate.get("commission"),
@@ -480,6 +481,31 @@ def application(environ, start_response):
             if occurred_at.tzinfo is None:
                 raise ValueError("data do negócio sem fuso horário")
             occurred_on = occurred_at.astimezone(ZoneInfo("America/Sao_Paulo")).date().isoformat()
+            opened_timestamp = candidate.get("opened_at_utc")
+            if not opened_timestamp:
+                return _json_response(start_response, HTTPStatus.UNPROCESSABLE_ENTITY,
+                                      {"error": "Data de abertura da posição ausente; classificação day trade não foi validada.",
+                                       "registered": False, "classification_status": "PENDING_CLASSIFICATION",
+                                       "reserve_calculated": False, "execution_allowed": False},
+                                      request_id, environ)
+            try:
+                opened_at = datetime.fromisoformat(str(opened_timestamp).replace("Z", "+00:00"))
+            except ValueError:
+                opened_at = None
+            if opened_at is None or opened_at.tzinfo is None:
+                return _json_response(start_response, HTTPStatus.UNPROCESSABLE_ENTITY,
+                                      {"error": "Data de abertura da posição sem fuso horário; classificação day trade não foi validada.",
+                                       "registered": False, "classification_status": "PENDING_CLASSIFICATION",
+                                       "reserve_calculated": False, "execution_allowed": False},
+                                      request_id, environ)
+            opened_on = opened_at.astimezone(ZoneInfo("America/Sao_Paulo")).date().isoformat()
+            if opened_on != occurred_on:
+                return _json_response(start_response, HTTPStatus.UNPROCESSABLE_ENTITY,
+                                      {"error": "A posição foi aberta e encerrada em dias diferentes; não pode ser registrada como day trade. Mantenha-a pendente para classificação.",
+                                       "opened_on": opened_on, "closed_on": occurred_on,
+                                       "registered": False, "classification_status": "PENDING_CLASSIFICATION",
+                                       "reserve_calculated": False, "execution_allowed": False},
+                                      request_id, environ)
             fingerprint = str(candidate.get("account_fingerprint") or "")
             if len(fingerprint) != 32:
                 return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE,
