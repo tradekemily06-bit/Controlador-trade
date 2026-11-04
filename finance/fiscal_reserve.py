@@ -348,6 +348,15 @@ class FiscalReserve:
                 "total": history_total,
                 "has_more": history_offset + len(history) < history_total,
             },
+            "reserve_semantics": {
+                "kind": "PLANNING_ESTIMATE_ONLY",
+                "tax_liability_confirmed": False,
+                "monthly_tax_assessment": False,
+                "monthly_loss_offsets_calculated": False,
+                "irrf_credits_calculated": False,
+                "positive_entry_only": True,
+                "description": "Estimativa de separação financeira por lançamento positivo; não é apuração mensal nem imposto devido.",
+            },
             "limitations": [
                 "Estimativa de planejamento; não representa imposto apurado ou devido.",
                 "Lançamentos manuais BR_DAY_TRADE dependem de declaração do usuário; elegibilidade de mercado não é verificada independentemente.",
