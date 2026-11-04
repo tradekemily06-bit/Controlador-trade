@@ -95,7 +95,7 @@ def test_stop_gap_uses_worse_open_price():
     )
     result = HistoricalTradeSimulator().run(
         candles=data,
-        signals=[signal(Signal.COMPRA, 90), signal()],
+        signals=[signal(Signal.COMPRA, 90), signal(), signal()],
         config=config(),
     )
     trade = result.trades[0]
