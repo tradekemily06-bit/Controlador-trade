@@ -90,6 +90,7 @@ def test_when_stop_and_target_are_both_touched_stop_is_assumed_first():
 def test_stop_gap_uses_worse_open_price():
     data = bars(
         (100, 100.5, 99.5, 100),
+        (100, 100.2, 99.8, 100),
         (99, 100, 98.8, 99.2),
     )
     result = HistoricalTradeSimulator().run(
