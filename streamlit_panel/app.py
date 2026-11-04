@@ -766,79 +766,210 @@ def show_market_analysis() -> None:
 
 
 def show_readonly_module(module_name: str) -> None:
-    """Render existing runtime capabilities as read-only Streamlit screens."""
+    """Render existing runtime capabilities as clear, read-only Streamlit screens."""
     views = {
         "Operação": ("Estado operacional", "/api/health"),
-        "Motor de Decisão": ("Estatísticas do motor", "/api/statistics"),
-        "Gestão de Risco": ("Limites e bloqueios de risco", "/api/risk"),
-        "Notificações": ("Notificações do Ecossistema", "/api/notifications"),
+        "Motor de Decisão": ("Motor de Decisão", "/api/statistics"),
+        "Gestão de Risco": ("Gestão de Risco", "/api/risk"),
+        "Notificações": ("Central de Notificações", "/api/notifications"),
         "MT5 DEMO / Simulação": ("Conexões e ambiente", "/api/connections"),
-        "Kill Switch": ("Estado de segurança", "/api/health"),
+        "Kill Switch": ("Proteção operacional", "/api/health"),
         "Memória": ("Memória de decisões", "/api/memory?limit=50"),
         "Estatísticas": ("Estatísticas operacionais", "/api/statistics"),
-        "Relatórios": ("Resumo para relatórios", "/api/statistics"),
-        "Laboratório": ("Recursos de estudo", "/api/learning"),
+        "Relatórios": ("Resumo operacional", "/api/statistics"),
+        "Laboratório": ("Laboratório de aprendizado", "/api/learning"),
         "Aprendizado": ("Aprendizado validado", "/api/learning"),
-        "Descobertas": ("Observações e descobertas", "/api/learning"),
-        "Escola / Tutorial / Onboarding": ("Guia de primeiro uso", "/api/onboarding"),
+        "Descobertas": ("Descobertas registradas", "/api/learning"),
+        "Escola / Tutorial / Onboarding": ("Primeiros passos", "/api/onboarding"),
         "Configurações": ("Preferências do Ecossistema", "/api/preferences"),
-        "Segurança": ("Estado de segurança e conexões", "/api/health"),
+        "Segurança": ("Segurança do Ecossistema", "/api/health"),
         "Conexões": ("Conexões disponíveis", "/api/connections"),
-        "Multi-Broker": ("Estado de conexões", "/api/connections"),
-        "Auditoria": ("Integridade e estado operacional", "/api/health"),
+        "Multi-Broker": ("Disponibilidade de conexões", "/api/connections"),
+        "Auditoria": ("Auditoria operacional", "/api/health"),
     }
     if module_name == "Análise de Mercado":
         show_market_analysis()
         return
     if module_name == "Replay":
         st.subheader("Replay")
-        st.caption("O histórico de decisões disponível pode ser consultado abaixo. A reprodução interativa de cenários ainda requer integração específica nesta tela.")
+        st.caption("Consulta do histórico de decisões. A reprodução interativa de cenários ainda não está habilitada nesta tela.")
         endpoint = "/api/memory?limit=50"
     elif module_name == "Simulador":
         st.subheader("Simulador")
-        st.caption("Consulta de risco e estatísticas em modo de leitura. Nenhuma ordem ou simulação financeira é executada nesta tela.")
+        st.caption("Consulta dos limites de risco em modo de leitura. Nenhuma operação financeira ou ordem é simulada.")
         endpoint = "/api/risk"
     else:
         view = views.get(module_name)
         if not view:
             st.subheader(module_name)
-            st.info("Esta tela ainda está em implementação. Nenhuma ação operacional será simulada ou apresentada como concluída.")
+            st.info("Esta função ainda não possui integração operacional nesta versão.")
             return
         heading, endpoint = view
         st.subheader(heading)
+
     try:
         data = api(endpoint)
-        if module_name == "Memória" or module_name == "Replay":
-            records = data if isinstance(data, list) else data.get("records", [])
+        if module_name in {"Memória", "Replay"}:
+            records = data.get("records", []) if isinstance(data, dict) else []
             if records:
                 st.dataframe(records, use_container_width=True, hide_index=True)
             else:
-                st.caption("Ainda não há registros disponíveis.")
-        elif module_name == "Notificações":
-            items = data.get("items", []) if isinstance(data, dict) else []
-            if items:
-                for item in items:
-                    st.warning(f"{item.get('title', 'Notificação')} · {item.get('message', '')}")
-            else:
-                st.caption("Nenhuma notificação ativa.")
-            st.json(data)
-        else:
-            if module_name == "Gestão de Risco":
-                limits = data.get("configured_limits", {})
+                st.caption("Ainda não há decisões registradas na memória.")
+            return
+
+        if module_name == "Notificações":
+            items = data.get("items", [])
+            summary_cols = st.columns(2)
+            summary_cols[0].metric("Notificações", data.get("count", len(items)))
+            summary_cols[1].metric("Críticas", data.get("critical_count", 0))
+            if not items:
+                st.success("Nenhuma notificação ativa.")
+            for item in items:
+                severity = str(item.get("severity", "INFO")).upper()
+                message = f"{item.get('title', 'Notificação')} — {item.get('message', '')}"
+                if severity == "CRITICAL":
+                    st.error(message)
+                elif severity == "IMPORTANT":
+                    st.warning(message)
+                else:
+                    st.info(message)
+            st.caption("Alertas críticos não são ocultados pelas preferências de notificação.")
+            return
+
+        if module_name in {"Gestão de Risco", "Simulador"}:
+            limits = data.get("configured_limits", {})
+            cols = st.columns(3)
+            cols[0].metric("Limite de perda diária", str(limits.get("daily_loss_limit", "—")))
+            cols[1].metric("Máximo de operações", str(limits.get("max_operations", "—")))
+            cols[2].metric("Perdas consecutivas", str(limits.get("max_consecutive_losses", "—")))
+            st.write("Gate de risco: " + ("LIBERADO" if data.get("allowed") else "BLOQUEADO"))
+            st.caption(str(data.get("reason") or "O motor não forneceu uma justificativa."))
+            st.caption("Os limites são informativos nesta tela; nenhum controle de execução é acionado.")
+            return
+
+        if module_name in {"Operação", "Kill Switch", "Segurança", "Auditoria"}:
+            obs = data.get("operational_observability", {})
+            health = str(data.get("health") or "NÃO CONFIRMADA").upper()
+            st.metric("Saúde do Ecossistema", health)
+            st.metric("Execução REAL", "BLOQUEADA" if data.get("real") == "DESABILITADO" else "NÃO CONFIRMADA")
+            st.metric("Modo", str(data.get("mode") or "NÃO CONFIRMADO"))
+            if obs:
+                kill = obs.get("kill_switch", {})
+                recovery = obs.get("recovery", {})
+                market = obs.get("market_data", {})
                 cols = st.columns(3)
-                cols[0].metric("Limite de perda diária", str(limits.get("daily_loss_limit", "—")))
-                cols[1].metric("Máximo de operações", str(limits.get("max_operations", "—")))
-                cols[2].metric("Perdas consecutivas", str(limits.get("max_consecutive_losses", "—")))
-                st.write("Permissão de risco: " + ("LIBERADA PELO GATE" if data.get("allowed") else "BLOQUEADA"))
-                st.write(data.get("reason", "Sem justificativa disponível."))
-            elif module_name in {"Operação", "Kill Switch", "Segurança", "Auditoria"}:
-                st.metric("Saúde do Ecossistema", str(data.get("health", "NÃO CONFIRMADA")))
-                st.metric("Execução permitida", "NÃO" if data.get("execution_allowed") is False else "NÃO CONFIRMADA")
-                obs = data.get("operational_observability", {})
-                if obs:
-                    st.write("Kill Switch: " + str(obs.get("kill_switch", {}).get("state", "NÃO CONFIRMADO")))
-                    st.write("Recuperação: " + str(obs.get("recovery", {}).get("state", "NÃO CONFIRMADA")))
-            st.json(data)
+                cols[0].metric("Kill Switch", "ATIVO" if kill.get("enabled") else str(kill.get("state", "NÃO CONFIRMADO")))
+                cols[1].metric("Recuperação", str(recovery.get("state", "NÃO CONFIRMADA")))
+                cols[2].metric("Dados de mercado", str(market.get("health", "NÃO CONFIRMADOS")))
+                if recovery.get("message"):
+                    st.caption(str(recovery["message"]))
+            alerts = data.get("alerts", [])
+            if alerts:
+                st.markdown("#### Alertas que exigem atenção")
+                for alert in alerts:
+                    message = f"{alert.get('component', 'Sistema')} — {alert.get('message', 'Verificar')}"
+                    if str(alert.get("severity", "")).upper() == "CRITICAL":
+                        st.error(message)
+                    else:
+                        st.warning(message)
+            else:
+                st.caption("Nenhum alerta foi retornado pelo runtime.")
+            return
+
+        if module_name in {"MT5 DEMO / Simulação", "Conexões", "Multi-Broker"}:
+            labels = {
+                "decision_core": "Motor de decisão",
+                "execution_gateway": "Gateway de execução",
+                "ic_markets_mt5_demo": "IC Markets MT5 DEMO",
+                "cTrader": "cTrader",
+                "saas": "Serviços do Ecossistema",
+                "real": "Execução REAL",
+            }
+            for key, label in labels.items():
+                if key in data:
+                    value = str(data[key])
+                    if key == "real":
+                        value = "DESABILITADO" if value in {"DESABILITADO", "DISABLED"} else "NÃO CONFIRMADO"
+                    st.write(f"**{label}:** {value}")
+            st.caption("Conexões futuras não são apresentadas como disponíveis. REAL permanece desabilitado.")
+            return
+
+        if module_name in {"Laboratório", "Aprendizado", "Descobertas"}:
+            groups = [
+                ("Materiais", "resources"),
+                ("Observações", "observations"),
+                ("Atividades", "activities"),
+                ("Tentativas", "attempts"),
+                ("Fontes", "learning_sources"),
+            ]
+            cols = st.columns(len(groups))
+            for col, (label, key) in zip(cols, groups):
+                col.metric(label, len(data.get(key, [])))
+            st.caption("Fontes externas exigem validação antes de seu conhecimento ser considerado validado.")
+            st.caption("Aprendizado não autoriza operações: execução permitida = NÃO.")
+            for label, key in groups:
+                items = data.get(key, [])
+                if items:
+                    with st.expander(f"{label} ({len(items)})"):
+                        st.dataframe(items, use_container_width=True, hide_index=True)
+            return
+
+        if module_name == "Escola / Tutorial / Onboarding":
+            guide = data.get("guide", {})
+            st.markdown(f"#### {guide.get('title', 'Guia de primeiro uso')}")
+            for index, step in enumerate(guide.get("steps", []), start=1):
+                st.markdown(f"**{index}. {step.get('title', 'Etapa')}**")
+                st.write(step.get("purpose", ""))
+                st.caption(f"Local: {step.get('location', '—')} · {step.get('action_hint', '')}")
+            if guide.get("completion_message"):
+                st.success(str(guide["completion_message"]))
+            st.caption("Concluir o guia não autoriza execução.")
+            return
+
+        if module_name == "Configurações":
+            preferences = data.get("preferences", {})
+            st.write("**Tema do gráfico:** " + str(preferences.get("chart_theme", "Não configurado")))
+            candle = preferences.get("candle", {})
+            st.write("**Candles:** " + str(candle.get("style", "—")))
+            st.write("**Cores dos candles:** " + str(candle.get("color_mode", "—")))
+            notification_prefs = preferences.get("notifications", {})
+            if notification_prefs:
+                st.markdown("#### Preferências de notificações")
+                labels = {
+                    "important_enabled": "Notificações importantes",
+                    "security_enabled": "Segurança",
+                    "market_enabled": "Mercado",
+                    "risk_enabled": "Risco",
+                    "connection_enabled": "Conexões",
+                    "execution_enabled": "Execução",
+                    "learning_enabled": "Aprendizado",
+                    "recovery_enabled": "Recuperação",
+                    "system_updates_enabled": "Atualizações do sistema",
+                    "info_enabled": "Informativas",
+                }
+                for key, label in labels.items():
+                    if key in notification_prefs:
+                        st.write(f"{'Ativadas' if notification_prefs[key] else 'Desativadas'} · {label}")
+            st.caption("Esta tela está em modo de consulta; alterações de preferências ainda não estão habilitadas aqui.")
+            return
+
+        if module_name in {"Motor de Decisão", "Estatísticas", "Relatórios"}:
+            scalar_values = [(key, value) for key, value in data.items() if isinstance(value, (str, int, float, bool)) or value is None]
+            if scalar_values:
+                cols = st.columns(min(4, len(scalar_values)))
+                for index, (key, value) in enumerate(scalar_values[:12]):
+                    label = key.replace("_", " ").capitalize()
+                    cols[index % len(cols)].metric(label, "—" if value is None else str(value))
+            periods = data.get("periods")
+            if isinstance(periods, dict) and periods:
+                with st.expander("Resultados por período"):
+                    for period, summary in periods.items():
+                        st.markdown(f"**{str(period).capitalize()}**")
+                        if isinstance(summary, dict):
+                            st.write(" · ".join(f"{key.replace('_', ' ')}: {value}" for key, value in summary.items() if isinstance(value, (str, int, float))))
+            st.caption("Os números refletem apenas os registros disponíveis na memória do runtime.")
+            return
+
     except Exception as exc:
         st.warning(f"Não foi possível carregar este módulo do runtime: {exc}")
 
