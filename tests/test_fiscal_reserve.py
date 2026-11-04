@@ -356,3 +356,27 @@ def test_summary_discloses_planning_only_semantics_and_missing_monthly_offsets(t
     assert semantics["irrf_credits_calculated"] is False
     assert semantics["positive_entry_only"] is True
     assert "não é apuração mensal" in semantics["description"]
+
+
+def test_every_public_reserve_operation_rejects_missing_or_invalid_owner(tmp_path):
+    reserve = make_reserve(tmp_path / "owner-required.sqlite3")
+    invalid_owners = ("", "   ", "x" * 161)
+    for owner in invalid_owners:
+        operations = (
+            lambda: reserve.settings(owner),
+            lambda: reserve.update_rate(owner, "BR_DAY_TRADE", 20),
+            lambda: reserve.update_rates(owner, {"BR_DAY_TRADE": 20}),
+            lambda: reserve.record_realized_result(owner, {
+                "category": "BR_DAY_TRADE",
+                "realized_result_brl": 100,
+                "reference": "OWNER-REQUIRED-001",
+            }),
+            lambda: reserve.summary(owner),
+        )
+        for operation in operations:
+            try:
+                operation()
+            except ValueError as exc:
+                assert "identidade proprietária" in str(exc)
+            else:
+                raise AssertionError("fiscal reserve operation must reject invalid owner identity")
