@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any, Iterator
 from zoneinfo import ZoneInfo
 
+from finance.fiscal_taxonomy import BRAZIL_CATEGORIES
+
 
 class FiscalDomesticPendingQueue:
     def __init__(self, database_path: str = ":memory:") -> None:
@@ -188,6 +190,8 @@ class FiscalDomesticPendingQueue:
             return value
 
         candidate = required("candidate_classification", 120)
+        if candidate not in BRAZIL_CATEGORIES:
+            raise ValueError("candidate_classification não pertence ao catálogo brasileiro permitido")
         jurisdiction = required("confirmed_jurisdiction", 120)
         reviewer = required("reviewer_name", 160)
         role = required("reviewer_role", 80).casefold()
