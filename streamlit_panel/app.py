@@ -271,6 +271,43 @@ def show_fiscal() -> None:
             except Exception as exc:
                 st.error(str(exc))
 
+    st.markdown("#### Brasil · pendente de classificação")
+    st.caption("Esta fila é separada do exterior. Guarda evidências brasileiras sem aplicar alíquota ou incluir valores na reserva.")
+    with st.form("domestic_pending_form"):
+        domestic_ref = st.text_input("Referência / comprovante · Brasil", max_chars=160)
+        domestic_instrument = st.text_input("Ativo ou instrumento · Brasil", max_chars=80)
+        domestic_category = st.selectbox("Categoria candidata · não confirmada", ["", "BR_COMMON_EXCHANGE", "BR_FII_FIAGRO", "BR_FIXED_INCOME", "BR_CRYPTO", "BR_FUTURES_OPTIONS", "BR_DAY_TRADE"])
+        domestic_market = st.text_input("Mercado / ambiente", placeholder="B3, balcão, corretora etc.", max_chars=80)
+        domestic_date = st.date_input("Data da operação · Brasil", key="domestic_pending_date")
+        domestic_result = st.number_input("Resultado realizado em R$ (opcional; lucro + / prejuízo -)", min_value=-1000000000000.0, max_value=1000000000000.0, value=0.0, format="%.2f", help="O valor fica pendente e não entra nos totais nem gera reserva.")
+        domestic_notes = st.text_area("Observações / evidências", key="domestic_pending_notes", max_chars=1000)
+        domestic_submit = st.form_submit_button("Guardar pendência brasileira")
+    if domestic_submit:
+        try:
+            domestic_payload = {"reference": domestic_ref, "instrument": domestic_instrument, "category_candidate": domestic_category, "market_scope": domestic_market, "occurred_on": domestic_date.isoformat(), "notes": domestic_notes}
+            if domestic_result != 0:
+                domestic_payload["realized_result_brl"] = domestic_result
+            api("/api/fiscal-reserve/domestic-pending", "POST", domestic_payload)
+            st.success("Pendência brasileira guardada separadamente. Nenhum cálculo foi realizado.")
+            st.rerun()
+        except Exception as exc:
+            st.error(str(exc))
+    try:
+        domestic_data = api("/api/fiscal-reserve/domestic-pending?limit=50&offset=0")
+        domestic_items = domestic_data.get("items", [])
+        domestic_summary = api("/api/fiscal-reserve/domestic-pending/summary")
+        domestic_cols = st.columns(4)
+        for col, period, label in zip(domestic_cols, ("day", "week", "month", "year"), ("Dia", "Semana", "Mês", "Ano")):
+            period_data = domestic_summary.get("periods", {}).get(period, {})
+            col.metric(f"Brasil pendente · {label}", int(period_data.get("total", 0)))
+            col.caption(f"{int(period_data.get('results', 0))} resultado(s) · sem cálculo")
+        if domestic_items:
+            st.dataframe([{"Data": item.get("occurred_on"), "Ativo": item.get("instrument"), "Categoria candidata": item.get("category_candidate") or "Não informada", "Mercado": item.get("market_scope"), "Resultado (R$)": item.get("realized_result_brl") if item.get("realized_result_brl") is not None else "—", "Status": "PENDENTE DE CLASSIFICAÇÃO"} for item in domestic_items], use_container_width=True, hide_index=True)
+        else:
+            st.caption("Nenhuma pendência brasileira cadastrada.")
+    except Exception as exc:
+        st.warning(f"Fila brasileira indisponível; nenhum registro foi incluído nos totais. {exc}")
+
     st.markdown("#### Exterior · pendente de classificação")
     st.caption("O registro abaixo guarda evidências; não calcula imposto nem entra na reserva.")
     with st.form("foreign_pending_form"):
