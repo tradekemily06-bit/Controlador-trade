@@ -223,6 +223,15 @@ def test_foreign_pending_api_intake_results_and_reviews_stay_owner_scoped_and_un
     assert reviews["status_unchanged"] == "PENDING_CLASSIFICATION"
     assert reviews["reserve_calculated"] is False
 
+    invalid_review_payload = {**review_payload, "candidate_classification": "BR_DAY_TRADE"}
+    status, invalid_review = _request(
+        f"/api/fiscal-reserve/pending/{pending_id}/reviews",
+        method="POST",
+        payload=invalid_review_payload,
+    )
+    assert status.startswith("400")
+    assert "catálogo estrangeiro permitido" in invalid_review["error"]
+
     listing = queue.list_pending(owner_id)
     assert listing["total"] == 2
     assert {item["reference"] for item in listing["items"]} == {
