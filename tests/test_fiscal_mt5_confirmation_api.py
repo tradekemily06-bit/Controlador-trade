@@ -263,7 +263,7 @@ def test_mt5_confirmation_rejects_position_opened_on_a_different_local_day(monke
     status, body, adapter = call_confirm(
         monkeypatch,
         tmp_path,
-        {"confirmed": True, "ticket": "7654321", "category": "BR_DAY_TRADE"},
+        {"confirmed": True, "ticket": "7654321", "category": "BR_DAY_TRADE", "market_scope": "BR_ELIGIBLE_MARKET"},
         adapter=OvernightPositionAdapter(),
     )
     assert status.startswith("422")
