@@ -201,8 +201,7 @@ def test_reports_absolute_drawdown_and_maximum_loss_streak_in_trade_order():
         (100, 100.2, 99.8, 100),
         (100, 100.2, 99.8, 100),
     )
-    # Four consecutive short-lived losing trades; a new signal is scheduled
-    # only after the previous position has closed.
+    # Two separate losing trades, with a signal only after each position closes.
     signals = [
         signal(Signal.COMPRA, 90),
         signal(),
@@ -215,5 +214,7 @@ def test_reports_absolute_drawdown_and_maximum_loss_streak_in_trade_order():
         signals=signals,
         config=config(stop_distance=0.1, take_profit_distance=2.0),
     )
-    assert result.max_drawdown_quote >= 0
-    assert result.max_consecutive_losses >= 1
+    assert len(result.trades) == 2
+    assert result.losses == 2
+    assert result.max_drawdown_quote == pytest.approx(2.6)
+    assert result.max_consecutive_losses == 2
