@@ -222,6 +222,13 @@ def test_mt5_foreign_result_is_imported_as_pending_with_private_dedupe_key(monke
     assert pending["record_kind"] == "REALIZED_RESULT"
     assert pending["status"] == "PENDING_CLASSIFICATION"
     assert pending["reference"] == "MT5-DEMO:" + ("a" * 32) + ":7654321"
+    evidence = json.loads(pending["notes"])
+    assert evidence["market_scope"] == "NOT_CONFIRMED"
+    assert evidence["market_scope_source"] == "NOT_DECLARED"
+    assert evidence["independent_market_eligibility_verified"] is False
+    assert evidence["tax_classification_status"] == "PENDING_CLASSIFICATION"
+    assert evidence["tax_classification_confirmed_by_user"] is False
+    assert evidence["tax_liability_confirmed"] is False
     assert body["reserve_calculated"] is False
     assert body["execution_allowed"] is False
     assert adapter.calls == ["7654321"]
