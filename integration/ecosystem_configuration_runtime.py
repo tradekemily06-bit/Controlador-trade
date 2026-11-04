@@ -401,6 +401,106 @@ class ConfiguredEcosystemService(EcosystemService):
             "lookahead": False,
         }
 
+    def simulate_mt5_signal_scenario(
+        self,
+        *,
+        symbol: str,
+        timeframe: str = "5m",
+        limit: int = 100,
+        minimum_confidence: int = 70,
+    ) -> dict[str, Any]:
+        """Evaluate a historical signal-threshold scenario; never simulate fills or P&L."""
+        if self.execution_provider != "ic_markets_mt5_demo":
+            raise RuntimeError("Simulador histórico exige provider IC Markets MT5 DEMO")
+        symbol = str(symbol).strip()
+        timeframe = str(timeframe).strip()
+        if not symbol:
+            raise ValueError("symbol é obrigatório")
+        if not timeframe:
+            raise ValueError("timeframe é obrigatório")
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 20 <= limit <= 500:
+            raise ValueError("limit deve estar entre 20 e 500")
+        if (
+            not isinstance(minimum_confidence, int)
+            or isinstance(minimum_confidence, bool)
+            or not 70 <= minimum_confidence <= 95
+        ):
+            raise ValueError("minimum_confidence deve estar entre 70 e 95")
+
+        request = BrokerMarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
+        candles = tuple(self.mt5_market_adapter.fetch_market_data(request))
+        if len(candles) < 2:
+            raise RuntimeError("histórico insuficiente: são necessários pelo menos dois candles fechados")
+        if any(
+            candles[index].timestamp < candles[index - 1].timestamp
+            for index in range(1, len(candles))
+        ):
+            raise RuntimeError("histórico MT5 fora de ordem cronológica; simulação bloqueada")
+        if any(not candle.is_valid() for candle in candles):
+            raise RuntimeError("histórico MT5 contém candle inválido; simulação bloqueada")
+
+        records: list[dict[str, Any]] = []
+        for index in range(1, len(candles)):
+            prefix = candles[: index + 1]
+            snapshot = BrokerMarketDataSnapshot(
+                symbol=symbol,
+                timeframe=timeframe,
+                candles=prefix,
+                source="IC Markets MT5 DEMO · histórico fechado",
+                received_at=prefix[-1].timestamp,
+            )
+            analysis = evaluate_candle_snapshot(snapshot)
+            signal = analysis.signal.value
+            confidence = (
+                float(analysis.score)
+                if signal == Signal.COMPRA.value
+                else 100.0 - float(analysis.score)
+                if signal == Signal.VENDA.value
+                else 0.0
+            )
+            if signal == Signal.AGUARDAR.value:
+                outcome = "AGUARDAR"
+                reason = analysis.reason
+            elif confidence < minimum_confidence:
+                outcome = "FILTRADO"
+                reason = (
+                    f"Confiança hipotética {confidence:.1f}% abaixo do mínimo "
+                    f"configurado de {minimum_confidence}%."
+                )
+            else:
+                outcome = "CANDIDATO"
+                reason = (
+                    f"Sinal {signal} atende ao filtro hipotético de "
+                    f"{minimum_confidence}% de confiança."
+                )
+            records.append({
+                "index": index + 1,
+                "timestamp": prefix[-1].timestamp.isoformat(),
+                "close": prefix[-1].close,
+                "signal": signal,
+                "confidence": round(confidence, 2),
+                "scenario": outcome,
+                "reason": reason,
+            })
+
+        return {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "source": "IC Markets MT5 DEMO",
+            "candles_replayed": len(candles),
+            "minimum_confidence": minimum_confidence,
+            "records": records,
+            "candidates": sum(item["scenario"] == "CANDIDATO" for item in records),
+            "filtered": sum(item["scenario"] == "FILTRADO" for item in records),
+            "waiting": sum(item["scenario"] == "AGUARDAR" for item in records),
+            "orders_sent": False,
+            "execution_allowed": False,
+            "pnl_calculated": False,
+            "risk_rules_applied": False,
+            "lookahead": False,
+            "simulation_kind": "HISTORICAL_SIGNAL_THRESHOLD_ONLY",
+        }
+
     def get_mt5_assets(self, *, include_invisible: bool = False) -> tuple[dict[str, Any], ...]:
         """Return the broker-observed MT5 universe with session and 24/7 evidence."""
         if self.execution_provider != "ic_markets_mt5_demo":
