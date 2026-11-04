@@ -82,6 +82,11 @@ def test_fiscal_and_assistant_read_routes_ignore_forged_owner_parameters(
     assert status.startswith("200")
     assert pending["total"] == 1
     assert [item["reference"] for item in pending["items"]] == ["PENDING-A-ONLY"]
+    fiscal_summary_status, fiscal_summary = _request("/api/fiscal-reserve")
+    assert fiscal_summary_status.startswith("200")
+    assert fiscal_summary["foreign_pending"]["total"] == 1
+    assert fiscal_summary["foreign_pending"]["currencies"] == ["USD"]
+    assert fiscal_summary["foreign_pending"]["included_in_totals"] is False
     assert "PENDING-B-ONLY" not in json.dumps(pending)
 
     status, conversations = _request(
