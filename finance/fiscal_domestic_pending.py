@@ -6,9 +6,10 @@ from __future__ import annotations
 
 import sqlite3
 import uuid
+from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 
 class FiscalDomesticPendingQueue:
@@ -38,11 +39,19 @@ class FiscalDomesticPendingQueue:
                 ON fiscal_reserve_pending_domestic(owner_id, occurred_on DESC)
             """)
 
-    def _connect(self):
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
         db = sqlite3.connect(self.database_path, timeout=10)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA busy_timeout = 10000")
-        return db
+        try:
+            yield db
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
 
     @staticmethod
     def _day(value: Any) -> str:
@@ -97,7 +106,6 @@ class FiscalDomesticPendingQueue:
                 VALUES (:pending_id,:owner_id,:reference,:category_candidate,:instrument,
                  :market_scope,:occurred_on,:realized_result_brl,:notes,:status,:created_at)
             """, item)
-            db.commit()
         return {key: value for key, value in item.items() if key != "owner_id"}
 
     def list_pending(self, owner_id: str, limit: int = 100, offset: int = 0) -> dict[str, Any]:
