@@ -123,3 +123,29 @@ def test_pending_queue_context_contract_is_read_only():
     assert pending["periods"]["week"]["asset_amounts"] == 1
     assert pending["included_in_totals"] is False
     assert pending["reserve_calculated"] is False
+
+def test_assistant_receives_domestic_pending_counts_separately_without_values():
+    class DomesticQueue:
+        def summary(self, owner_id):
+            assert owner_id == "test-owner"
+            return {
+                "total": 3,
+                "as_of": "2026-11-04",
+                "periods": {
+                    "day": {"start": "2026-11-04", "end": "2026-11-04", "total": 1, "results": 1},
+                    "week": {"start": "2026-11-02", "end": "2026-11-04", "total": 2, "results": 1},
+                },
+                "included_in_totals": False,
+                "reserve_calculated": False,
+            }
+
+    context = collect_read_only_context(
+        FakeService(), FakeFiscalReserve(), "test-owner",
+        fiscal_domestic_pending_queue=DomesticQueue(),
+    )
+    domestic = context["fiscal_reserve"]["domestic_pending"]
+    assert domestic["total"] == 3
+    assert domestic["periods"]["day"]["results"] == 1
+    assert domestic["included_in_totals"] is False
+    assert domestic["reserve_calculated"] is False
+    assert "realized_result_brl" not in str(domestic)
