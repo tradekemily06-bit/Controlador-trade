@@ -41,8 +41,35 @@ class FiscalDomesticPendingQueue:
                 )
             """)
             db.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_fiscal_pending_domestic_owner_id
+                ON fiscal_reserve_pending_domestic(owner_id, pending_id)
+            """)
+            db.execute("""
                 CREATE INDEX IF NOT EXISTS fiscal_pending_domestic_owner_date
                 ON fiscal_reserve_pending_domestic(owner_id, occurred_on DESC)
+            """)
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS fiscal_domestic_pending_reviews (
+                    review_id TEXT PRIMARY KEY,
+                    owner_id TEXT NOT NULL,
+                    pending_id TEXT NOT NULL,
+                    candidate_classification TEXT NOT NULL,
+                    confirmed_jurisdiction TEXT NOT NULL,
+                    reviewer_name TEXT NOT NULL,
+                    reviewer_role TEXT NOT NULL,
+                    professional_registration TEXT NOT NULL,
+                    evidence_reference TEXT NOT NULL,
+                    reviewed_on TEXT NOT NULL,
+                    review_notes TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(owner_id, pending_id)
+                        REFERENCES fiscal_reserve_pending_domestic(owner_id, pending_id)
+                        ON DELETE RESTRICT
+                )
+            """)
+            db.execute("""
+                CREATE INDEX IF NOT EXISTS fiscal_domestic_pending_reviews_item
+                ON fiscal_domestic_pending_reviews(owner_id, pending_id, created_at DESC)
             """)
 
     @contextmanager
@@ -134,6 +161,89 @@ class FiscalDomesticPendingQueue:
         return {"items": [dict(row) for row in rows], "total": total,
                 "limit": limit, "offset": offset,
                 "included_in_totals": False, "reserve_calculated": False}
+
+    def record_review(self, owner_id: str, pending_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Append declared professional review evidence; never classifies or books the item."""
+        if not isinstance(payload, dict):
+            raise ValueError("payload deve ser um objeto")
+        pending_id = str(pending_id or "").strip()
+        if not pending_id or len(pending_id) > 80:
+            raise ValueError("pending_id inválido")
+
+        def required(name: str, maximum: int) -> str:
+            value = str(payload.get(name) or "").strip()
+            if not value or len(value) > maximum:
+                raise ValueError(f"{name} é obrigatório e deve ter até {maximum} caracteres")
+            return value
+
+        candidate = required("candidate_classification", 120)
+        jurisdiction = required("confirmed_jurisdiction", 120)
+        reviewer = required("reviewer_name", 160)
+        role = required("reviewer_role", 80).casefold()
+        if role not in {"contador", "consultor tributário", "profissional tributário"}:
+            raise ValueError("reviewer_role deve identificar um profissional tributário")
+        registration = required("professional_registration", 100)
+        evidence = required("evidence_reference", 500)
+        reviewed_on = self._day(payload.get("reviewed_on"))
+        notes = str(payload.get("review_notes") or "").strip()
+        if len(notes) > 2000:
+            raise ValueError("review_notes deve ter até 2000 caracteres")
+
+        review = {
+            "review_id": str(uuid.uuid4()),
+            "owner_id": owner_id,
+            "pending_id": pending_id,
+            "candidate_classification": candidate,
+            "confirmed_jurisdiction": jurisdiction,
+            "reviewer_name": reviewer,
+            "reviewer_role": role,
+            "professional_registration": registration,
+            "evidence_reference": evidence,
+            "reviewed_on": reviewed_on,
+            "review_notes": notes,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        with self._connect() as db:
+            if not db.execute(
+                "SELECT 1 FROM fiscal_reserve_pending_domestic WHERE owner_id = ? AND pending_id = ?",
+                (owner_id, pending_id),
+            ).fetchone():
+                raise ValueError("pendência não encontrada")
+            db.execute(
+                """INSERT INTO fiscal_domestic_pending_reviews
+                (review_id, owner_id, pending_id, candidate_classification, confirmed_jurisdiction,
+                 reviewer_name, reviewer_role, professional_registration, evidence_reference,
+                 reviewed_on, review_notes, created_at)
+                VALUES (:review_id, :owner_id, :pending_id, :candidate_classification, :confirmed_jurisdiction,
+                 :reviewer_name, :reviewer_role, :professional_registration, :evidence_reference,
+                 :reviewed_on, :review_notes, :created_at)""",
+                review,
+            )
+        public_review = {key: value for key, value in review.items() if key != "owner_id"}
+        return {**public_review, "reviewer_identity_status": "DECLARED_NOT_VERIFIED",
+                "professional_registration_verified": False,
+                "status_unchanged": "PENDING_CLASSIFICATION",
+                "reserve_calculated": False, "tax_rate_available": False}
+
+    def list_reviews(self, owner_id: str, pending_id: str) -> list[dict[str, Any]]:
+        pending_id = str(pending_id or "").strip()
+        with self._connect() as db:
+            if not db.execute(
+                "SELECT 1 FROM fiscal_reserve_pending_domestic WHERE owner_id = ? AND pending_id = ?",
+                (owner_id, pending_id),
+            ).fetchone():
+                raise ValueError("pendência não encontrada")
+            rows = db.execute(
+                """SELECT * FROM fiscal_domestic_pending_reviews
+                WHERE owner_id = ? AND pending_id = ?
+                ORDER BY created_at DESC, review_id DESC""",
+                (owner_id, pending_id),
+            ).fetchall()
+        return [{
+            **{key: value for key, value in dict(row).items() if key != "owner_id"},
+            "reviewer_identity_status": "DECLARED_NOT_VERIFIED",
+            "professional_registration_verified": False,
+        } for row in rows]
 
     def summary(self, owner_id: str, as_of: date | None = None) -> dict[str, Any]:
         today = as_of or datetime.now(ZoneInfo("America/Sao_Paulo")).date()
