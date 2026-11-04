@@ -134,7 +134,11 @@ def test_professional_review_is_append_only_and_never_classifies_or_calculates(t
     assert review["status_unchanged"] == "PENDING_CLASSIFICATION"
     assert review["reserve_calculated"] is False
     assert review["tax_rate_available"] is False
-    assert queue.list_reviews(OWNER, pending["pending_id"])[0]["review_id"] == review["review_id"]
+    assert review["reviewer_identity_status"] == "DECLARED_NOT_VERIFIED"
+    assert review["professional_registration_verified"] is False
+    listed = queue.list_reviews(OWNER, pending["pending_id"])[0]
+    assert listed["review_id"] == review["review_id"]
+    assert listed["professional_registration_verified"] is False
     assert queue.list_pending(OWNER)["items"][0]["status"] == "PENDING_CLASSIFICATION"
 
 
@@ -288,3 +292,15 @@ def test_summary_counts_entire_queue_and_is_scoped_to_owner(tmp_path):
     assert other["asset_amounts"] == 1
     assert other["realized_results"] == 0
     assert other["currencies"] == ["USD"]
+
+
+def test_review_cannot_attach_to_another_owners_pending_item(tmp_path):
+    queue = make_queue(tmp_path / "fiscal.sqlite3")
+    pending = queue.add(OWNER, sample())
+    try:
+        queue.record_review("different-owner", pending["pending_id"], review_sample())
+    except ValueError as exc:
+        assert "não encontrada" in str(exc)
+    else:
+        raise AssertionError("cross-owner review must be rejected")
+    assert queue.list_reviews(OWNER, pending["pending_id"]) == []
