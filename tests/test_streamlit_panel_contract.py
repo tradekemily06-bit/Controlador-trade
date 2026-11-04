@@ -203,3 +203,16 @@ def test_streamlit_assistant_distinguishes_configured_credentials_from_tested_co
     assert 'readiness.get("message")' in source
     assert "Credenciais configuradas; conexão com a API ainda não testada." in source
     assert "disabled=not assistant_available" in source
+
+
+def test_streamlit_foreign_pending_queue_exposes_auditable_professional_review():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'api("/api/fiscal-reserve/pending?limit=100&offset=0")' in source
+    assert '"/api/fiscal-reserve/pending/"' in source
+    assert "Revisão documental · Exterior" in source
+    assert "FOREIGN_FINANCIAL_INVESTMENT" in source
+    assert "FOREIGN_ENTITY_CONTROLLED" in source
+    assert "FOREIGN_CRYPTO" in source
+    assert "Identidade" in source
+    assert "NÃO VERIFICADA" in source
+    assert "A operação continua pendente, sem cálculo ou inclusão nos totais." in source
