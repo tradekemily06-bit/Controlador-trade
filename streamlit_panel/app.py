@@ -270,17 +270,30 @@ def show_fiscal() -> None:
             except Exception as exc:
                 st.error(str(exc))
 
-    with st.expander("Registrar resultado realizado · Brasil day trade"):
+    with st.expander("Registrar estimativa · Brasil day trade"):
+        st.caption("Use somente se você puder confirmar os critérios abaixo. É uma estimativa de planejamento baseada na sua declaração; não valida o enquadramento nem confirma imposto devido. Se houver dúvida, registre na fila brasileira pendente.")
         with st.form("fiscal_result_form"):
             occurred_on = st.date_input("Data da realização")
-            result = st.number_input("Resultado realizado (R$)", min_value=-1000000000000.0, max_value=1000000000000.0, step=10.0, format="%.2f", help="Permite registrar lucro ou prejuízo. Prejuízos são registrados, mas compensação ou transporte de perdas não é calculado automaticamente.")
+            instrument = st.text_input("Ativo / instrumento negociado", max_chars=80)
+            institution = st.text_input("Instituição intermediária", max_chars=120)
+            market_label = st.text_input("Mercado / ambiente de negociação", max_chars=120, placeholder="Ex.: B3")
+            result = st.number_input("Resultado realizado (R$)", min_value=-1000000000000.0, max_value=1000000000000.0, step=10.0, format="%.2f", help="Lucro positivo / prejuízo negativo. Compensações mensais e créditos de IRRF não são calculados.")
             reference = st.text_input("Referência / comprovante", max_chars=160)
-            notes = st.text_area("Observações", max_chars=1000)
-            submitted = st.form_submit_button("Registrar resultado")
+            notes = st.text_area("Observações / evidências", max_chars=600)
+            confirmed = st.checkbox("Confirmo que foi o mesmo ativo, pela mesma instituição, no mesmo dia e em mercado brasileiro elegível.")
+            submitted = st.form_submit_button("Registrar estimativa de planejamento")
         if submitted:
             try:
-                result_data = api("/api/fiscal-reserve/results", "POST", {"category": "BR_DAY_TRADE", "realized_result_brl": result, "reference": reference, "occurred_on": occurred_on.isoformat(), "notes": notes})
-                st.success("Resultado registrado. Reserva estimada atualizada para este lançamento.")
+                result_data = api("/api/fiscal-reserve/results", "POST", {
+                    "category": "BR_DAY_TRADE", "realized_result_brl": result,
+                    "reference": reference, "occurred_on": occurred_on.isoformat(),
+                    "instrument": instrument, "institution": institution,
+                    "market_label": market_label,
+                    "market_scope": "BR_ELIGIBLE_MARKET" if confirmed else "",
+                    "same_asset": confirmed, "same_institution": confirmed, "same_day": confirmed,
+                    "confirmed": confirmed, "notes": notes,
+                })
+                st.success("Estimativa de planejamento registrada. Ela não representa imposto apurado ou devido.")
                 st.rerun()
             except Exception as exc:
                 st.error(str(exc))
