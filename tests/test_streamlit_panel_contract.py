@@ -15,14 +15,15 @@ def test_streamlit_panel_keeps_the_four_reference_navigation_areas():
 def test_streamlit_panel_connects_assistant_and_fiscal_to_existing_api():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     for route in (
-        "/api/assistant/conversations",
-        "/api/assistant/history",
+        "/api/assistant/status",
         "/api/assistant/chat",
         "/api/fiscal-reserve",
         "/api/fiscal-reserve/pending",
         "/api/fiscal-reserve/results",
     ):
         assert route in source
+    assert "/api/assistant/conversations" not in source
+    assert "/api/assistant/history" not in source
     assert "CONTROLADOR_TRUSTED_IDENTITY_HEADER" in source
     assert "REAL permanece bloqueado" in source or "REAL" in source
 
@@ -216,3 +217,21 @@ def test_streamlit_foreign_pending_queue_exposes_auditable_professional_review()
     assert "Identidade" in source
     assert "NÃO VERIFICADA" in source
     assert "A operação continua pendente, sem cálculo ou inclusão nos totais." in source
+
+
+
+def test_streamlit_assistant_does_not_expose_past_conversation_history():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert "Nova consulta" in source
+    assert "assistant_history" in source
+    assert 'api("/api/assistant/conversations")' not in source
+    assert 'api("/api/assistant/history?' not in source
+    assert 'st.selectbox("Histórico"' not in source
+    assert "Excluir conversa e mensagens locais" not in source
+
+
+def test_streamlit_layout_uses_full_width_and_wraps_responsively():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert ".block-container { width: 100%; max-width: none;" in source
+    assert "[role=\"radiogroup\"] { flex-wrap: wrap; }" in source
+    assert "@media (max-width: 720px)" in source
