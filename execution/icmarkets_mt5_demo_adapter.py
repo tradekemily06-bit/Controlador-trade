@@ -10,7 +10,7 @@ from typing import Any
 from core.models import Signal
 from core.operational_state import OperationalState
 from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
-from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
+from execution.ports import (\n    ExecutionMode, ExecutionRequest, ExecutionResult,\n    PositionCloseObservation, PositionCloseObservationStatus,\n)
 
 
 class MT5AdapterError(RuntimeError):
@@ -677,6 +677,100 @@ class ICMarketsMT5DemoAdapter:
             if any(int(getattr(p, "ticket", -1)) == int(position.ticket) for p in remaining):
                 return ExecutionResult(False, "MT5 confirmou o fechamento, mas a posição Controlador ainda permanece aberta.")
             return ExecutionResult(True, "posição DEMO fechada e confirmada pelo MT5.", str(close_external_id))
+        finally:
+            mt5.shutdown()
+
+    def reconcile_position_close(self, external_id: str) -> PositionCloseObservation:
+        """Read MT5 account, open-position, and deal history; never sends an order."""
+        unknown = PositionCloseObservationStatus.UNKNOWN
+        if not isinstance(external_id, str) or not external_id.strip():
+            return PositionCloseObservation(unknown, "external_id inválido para reconciliação.")
+        try:
+            target_ticket = int(external_id)
+        except (TypeError, ValueError):
+            return PositionCloseObservation(unknown, "external_id não é um ticket MT5 numérico.")
+
+        mt5 = self._module()
+        if not mt5.initialize():
+            return PositionCloseObservation(unknown, f"MT5 indisponível: {self._last_error(mt5)}")
+        try:
+            account = mt5.account_info()
+            if account is None or not self._is_demo_account(account, mt5):
+                return PositionCloseObservation(unknown, "tipo de conta MT5 não confirmado; reconciliação bloqueada.")
+
+            deal_fn = getattr(mt5, "history_deals_get", None)
+            order_fn = getattr(mt5, "history_orders_get", None)
+            positions_fn = getattr(mt5, "positions_get", None)
+            if not callable(deal_fn) or not callable(positions_fn):
+                return PositionCloseObservation(unknown, "MT5 não oferece histórico de negócios e posições para reconciliação.")
+
+            opening_deals = deal_fn(ticket=target_ticket)
+            if opening_deals is None:
+                return PositionCloseObservation(unknown, "MT5 não confirmou o histórico do ticket de abertura.")
+            position_ids = {
+                int(getattr(deal, "position_id", 0) or 0)
+                for deal in opening_deals
+                if str(getattr(deal, "position_id", "")).isdigit()
+                and int(getattr(deal, "position_id", 0) or 0) > 0
+            }
+            if not position_ids and callable(order_fn):
+                opening_orders = order_fn(ticket=target_ticket)
+                if opening_orders is None:
+                    return PositionCloseObservation(unknown, "MT5 não confirmou o histórico da ordem de abertura.")
+                position_ids = {
+                    int(getattr(order, "position_id", 0) or 0)
+                    for order in opening_orders
+                    if str(getattr(order, "position_id", "")).isdigit()
+                    and int(getattr(order, "position_id", 0) or 0) > 0
+                }
+            if len(position_ids) != 1:
+                return PositionCloseObservation(unknown, "ticket não pôde ser associado a uma única posição MT5.")
+
+            position_id = next(iter(position_ids))
+            positions = positions_fn()
+            if positions is None:
+                return PositionCloseObservation(unknown, "MT5 não confirmou a lista de posições abertas.")
+            owned_open = tuple(
+                position for position in positions
+                if int(getattr(position, "ticket", -1)) == position_id
+                and int(getattr(position, "magic", -1)) == self.config.magic
+            )
+            if len(owned_open) == 1:
+                return PositionCloseObservation(
+                    PositionCloseObservationStatus.OPEN,
+                    "posição do Controlador continua aberta no MT5; nenhuma nova ordem foi enviada.",
+                )
+            if len(owned_open) > 1:
+                return PositionCloseObservation(unknown, "mais de uma posição corresponde à identidade MT5.")
+
+            closing_deals = deal_fn(position=position_id)
+            if closing_deals is None:
+                return PositionCloseObservation(unknown, "MT5 não confirmou o histórico de fechamento da posição.")
+            close_entries = {
+                value for value in (
+                    getattr(mt5, "DEAL_ENTRY_OUT", None),
+                    getattr(mt5, "DEAL_ENTRY_OUT_BY", None),
+                ) if value is not None
+            }
+            confirmed_closes = tuple(
+                deal for deal in closing_deals
+                if getattr(deal, "entry", None) in close_entries
+                and int(getattr(deal, "magic", -1)) == self.config.magic
+            )
+            if confirmed_closes:
+                return PositionCloseObservation(
+                    PositionCloseObservationStatus.CLOSED,
+                    "histórico MT5 confirma negócio de saída e a posição não está aberta.",
+                )
+            return PositionCloseObservation(
+                unknown,
+                "posição não aparece aberta, mas não há negócio de saída verificável no histórico.",
+            )
+        except Exception as exc:
+            return PositionCloseObservation(
+                unknown,
+                f"falha ao consultar evidências MT5: {type(exc).__name__}",
+            )
         finally:
             mt5.shutdown()
 
