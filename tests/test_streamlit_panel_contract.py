@@ -1352,10 +1352,10 @@ def test_streamlit_static_api_actions_have_matching_runtime_routes():
     runtime_source = (PANEL_DIR.parent / "app.py").read_text(encoding="utf-8")
     endpoints = {
         match.split("?", 1)[0]
-        for match in re.findall(r'api\\(\\s*["\\']([^"\\']+)["\\']', panel_source)
+        for match in re.findall(r'api\(\s*["\']([^"\']+)["\']', panel_source)
     }
-    exact_routes = set(re.findall(r'path\\s*==\\s*["\\']([^"\\']+)["\\']', runtime_source))
-    prefixes = set(re.findall(r'path\\.startswith\\(["\\']([^"\\']+)["\\']\\)', runtime_source))
+    exact_routes = set(re.findall(r'path\s*==\s*["\']([^"\']+)["\']', runtime_source))
+    prefixes = set(re.findall(r'path\.startswith\(["\']([^"\']+)["\']\)', runtime_source))
 
     missing = sorted(
         endpoint for endpoint in endpoints
