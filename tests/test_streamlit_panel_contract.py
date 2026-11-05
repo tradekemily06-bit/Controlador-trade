@@ -1210,3 +1210,62 @@ def test_streamlit_laboratorio_has_separate_manual_source_review_and_knowledge_a
     assert 'source_status == "QUARANTINED"' in laboratory
     assert 'source_status == "VALIDATED" and not source.get("knowledge_validated", False)' in laboratory
     assert "Isso não autoriza operações" in laboratory
+
+
+def test_streamlit_fiscal_pending_page_validation_rejects_malformed_pagination():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index("def _valid_pending_page")
+    end = source.index("def _valid_fiscal_summary", start)
+    namespace = {"date": date}
+    exec(compile(source[start:end], "streamlit_panel/app.py", "exec"), namespace)
+    validate_page = namespace["_valid_pending_page"]
+    validate_reviews = namespace["_valid_review_history"]
+    valid_page = {
+        "items": [{"pending_id": "pending-1", "reference": "REF"}],
+        "total": 3, "limit": 50, "offset": 0,
+    }
+    assert validate_page(valid_page, 0) is True
+    for invalid in (
+        {**valid_page, "total": True},
+        {**valid_page, "total": "3"},
+        {**valid_page, "limit": 100},
+        {**valid_page, "offset": 50},
+        {**valid_page, "items": "not-a-list"},
+        {**valid_page, "items": [None]},
+        {**valid_page, "items": [{"pending_id": 123}]},
+        {**valid_page, "items": [{"pending_id": ""}]},
+        {**valid_page, "items": [{"pending_id": "x" * 81}]},
+        {**valid_page, "total": 0},
+    ):
+        assert validate_page(invalid, 0) is False
+    assert validate_page({"items": [], "total": 0, "limit": 50, "offset": 0}, 0) is True
+    assert validate_page({"items": [], "total": 3, "limit": 50, "offset": 3}, 3) is True
+
+    valid_review = {
+        "candidate_classification": "BR_DAY_TRADE",
+        "confirmed_jurisdiction": "Brasil",
+        "reviewer_name": "Profissional declarado",
+        "reviewer_role": "contador",
+        "professional_registration": "CRC-DECLARADO",
+        "evidence_reference": "PARECER-1",
+        "reviewed_on": "2026-11-05",
+        "reviewer_identity_status": "DECLARED_NOT_VERIFIED",
+        "professional_registration_verified": False,
+    }
+    assert validate_reviews({"reviews": [valid_review]}) is True
+    assert validate_reviews({"reviews": []}) is True
+    assert validate_reviews({"reviews": [None]}) is False
+    assert validate_reviews({"reviews": [{**valid_review, "reviewer_identity_status": "VERIFIED"}]}) is False
+    assert validate_reviews({"reviews": [{**valid_review, "professional_registration_verified": True}]}) is False
+    assert validate_reviews({"reviews": [{**valid_review, "reviewer_name": ["nome"]}]}) is False
+    assert validate_reviews({"reviews": "not-a-list"}) is False
+
+
+def test_streamlit_fiscal_pending_lists_validate_pages_and_review_history_before_rendering():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert "if not _valid_pending_page(domestic_data, domestic_offset):" in source
+    assert "if not _valid_pending_page(foreign_pending_data, foreign_offset):" in source
+    assert 'if not _valid_review_history(review_data):' in source
+    assert 'if not _valid_review_history(foreign_review_data):' in source
+    assert 'int(domestic_data.get("total", 0))' not in source
+    assert 'int(foreign_pending_data.get("total", 0))' not in source
