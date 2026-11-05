@@ -403,7 +403,7 @@ def test_streamlit_operational_modules_use_live_read_only_runtime_endpoints():
 def test_streamlit_operation_screen_aggregates_read_only_runtime_telemetry_and_keeps_execution_blocked():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     start = source.index('if module_name == "Operação":')
-    end = source.index('if module_name in {"Memória", "Replay"}:', start)
+    end = source.index('if module_name == "Notificações":', start)
     screen = source[start:end]
     for route in ("/api/health", "/api/connections", "/api/risk", "/api/runtime/analysis/latest"):
         assert route in screen
@@ -730,7 +730,7 @@ def test_streamlit_statistics_and_reports_have_distinct_aggregated_views():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     statistics_start = source.index('if module_name == "Estatísticas":')
     reports_start = source.index('if module_name == "Relatórios":', statistics_start)
-    generic_start = source.index('if module_name in {"Motor de Decisão", "Estatísticas", "Relatórios"}:', reports_start)
+    generic_start = source.index('    except Exception as exc:', reports_start)
     statistics_view = source[statistics_start:reports_start]
     reports_view = source[reports_start:generic_start]
     assert 'data.get("breakdowns", {})' in statistics_view
@@ -774,7 +774,7 @@ def test_streamlit_risk_management_has_dedicated_read_only_limits_view():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert '"Gestão de Risco": ("Gestão de Risco", "/api/risk")' in source
     start = source.index('if module_name == "Gestão de Risco":')
-    end = source.index('if module_name == "Simulador":', start)
+    end = source.index('if module_name == "Auditoria":', start)
     view = source[start:end]
     assert 'data.get("configured_limits", {})' in view
     assert 'limits.get("daily_loss_limit", "—")' in view
