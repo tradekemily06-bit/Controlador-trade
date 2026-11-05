@@ -4,6 +4,7 @@ import csv
 import io
 import json
 import os
+from math import isfinite
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -261,14 +262,62 @@ def show_assistant() -> None:
 
 
 
+def _valid_fiscal_summary(summary: Any) -> bool:
+    """Enable fiscal writes only when every required aggregate is structurally valid."""
+    if not isinstance(summary, dict):
+        return False
+    categories = summary.get("categories")
+    periods = summary.get("periods")
+    semantics = summary.get("reserve_semantics")
+    if not isinstance(categories, dict) or not isinstance(periods, dict) or not isinstance(semantics, dict):
+        return False
+    brazil = categories.get("BR_DAY_TRADE")
+    if not isinstance(brazil, dict):
+        return False
+    rate = brazil.get("rate")
+    if isinstance(rate, bool) or not isinstance(rate, (int, float)) or not isfinite(rate) or not 0 <= rate <= 100:
+        return False
+    total = summary.get("total_reserved_brl")
+    if isinstance(total, bool) or not isinstance(total, (int, float)) or not isfinite(total) or total < 0:
+        return False
+    if semantics.get("kind") != "PLANNING_ESTIMATE_ONLY":
+        return False
+    for flag in ("tax_liability_confirmed", "monthly_tax_assessment", "monthly_loss_offsets_calculated", "irrf_credits_calculated"):
+        if semantics.get(flag) is not False:
+            return False
+    for period in ("day", "week", "month", "year"):
+        row = periods.get(period)
+        if not isinstance(row, dict):
+            return False
+        for field in ("realized_result_brl", "reserve_amount_brl"):
+            value = row.get(field)
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not isfinite(value):
+                return False
+        for field in ("start", "end"):
+            value = row.get(field)
+            if not isinstance(value, str) or len(value) != 10:
+                return False
+            try:
+                from datetime import date
+                if date.fromisoformat(value).isoformat() != value:
+                    return False
+            except ValueError:
+                return False
+    return True
+
+
 def show_fiscal() -> None:
     if "fiscal_history_offset" not in st.session_state:
         st.session_state.fiscal_history_offset = 0
+    summary_available = False
     try:
         summary = api("/api/fiscal-reserve?limit=50&offset=" + str(int(st.session_state.fiscal_history_offset)))
+        summary_available = _valid_fiscal_summary(summary)
+        if not summary_available:
+            st.error("Resumo fiscal incompleto ou inválido. Os lançamentos e alterações de percentual ficam bloqueados até a leitura ser validada.")
     except Exception as exc:
         summary = {}
-        st.error(str(exc))
+        st.error(f"Resumo fiscal indisponível. Os lançamentos e alterações de percentual ficam bloqueados. {exc}")
     st.subheader("Reserva Fiscal")
     st.caption("Planejamento e separação estimada. Operações MT5 cuja elegibilidade fiscal não foi verificada ficam em fila brasileira separada, sem cálculo e fora dos totais. Registros estrangeiros não classificados também ficam fora dos totais; nenhuma alíquota genérica é aplicada.")
     with st.expander("Categorias fiscais e estado da automação", expanded=False):
@@ -387,7 +436,7 @@ def show_fiscal() -> None:
         current_rate = summary.get("categories", {}).get("BR_DAY_TRADE", {}).get("rate", 0) if summary else 0
         with st.form("fiscal_rate_form"):
             rate = st.number_input("Percentual para novos lançamentos", min_value=0.0, max_value=100.0, value=float(current_rate or 0), step=0.5)
-            rate_submit = st.form_submit_button("Salvar percentual")
+            rate_submit = st.form_submit_button("Salvar percentual", disabled=not summary_available)
         if rate_submit:
             try:
                 api("/api/fiscal-reserve/rates", "POST", {"rates": {"BR_DAY_TRADE": rate}})
@@ -407,7 +456,7 @@ def show_fiscal() -> None:
             reference = st.text_input("Referência / comprovante", max_chars=160)
             notes = st.text_area("Observações / evidências", max_chars=600)
             confirmed = st.checkbox("Confirmo que foi o mesmo ativo, pela mesma instituição, no mesmo dia e em mercado brasileiro elegível.")
-            submitted = st.form_submit_button("Registrar estimativa de planejamento")
+            submitted = st.form_submit_button("Registrar estimativa de planejamento", disabled=not summary_available)
         if submitted and not confirmed:
             st.error("Confirme os critérios de day trade ou registre a operação na fila brasileira pendente.")
         elif submitted and (not instrument.strip() or not institution.strip() or not market_label.strip() or not reference.strip()):

@@ -412,7 +412,7 @@ def test_assistant_fiscal_context_filters_nested_periods_limitations_and_semanti
                 },
                 "periods": {
                     "day": {"start": "2026-11-05", "end": "2026-11-05", "entries": 1, "realized_result_brl": 125.0, "reserve_amount_brl": 25.0, "notes": "PRIVATE-PERIOD-NOTE"},
-                    "week": {"start": "not-a-date", "end": "2026-11-05", "entries": 1, "unexpected": "PRIVATE-PERIOD-FIELD"},
+                    "week": {"start": "not-a-date", "end": "2026-11-05<script>", "entries": 1, "unexpected": "PRIVATE-PERIOD-FIELD"},
                     "private_period": {"notes": "PRIVATE-PERIOD-KEY"},
                 },
                 "limitations": ["PRIVATE-LIMITATION"],
@@ -430,12 +430,12 @@ def test_assistant_fiscal_context_filters_nested_periods_limitations_and_semanti
     serialized = json.dumps(fiscal, ensure_ascii=False)
     assert fiscal["name"] == "Reserva Fiscal"
     assert fiscal["currency"] == "BRL"
-    assert fiscal["as_of"] == "2026-11-05"
+    assert "as_of" not in fiscal
     assert fiscal["periods"]["day"] == {
         "start": "2026-11-05", "end": "2026-11-05", "entries": 1,
         "realized_result_brl": 125.0, "reserve_amount_brl": 25.0,
     }
-    assert fiscal["periods"]["week"] == {"end": "2026-11-05", "entries": 1}
+    assert fiscal["periods"]["week"] == {"entries": 1}
     assert "private_period" not in fiscal["periods"]
     assert "BR_CRYPTO" not in fiscal["categories"]
     assert fiscal["reserve_semantics"]["kind"] == "PLANNING_ESTIMATE_ONLY"
@@ -447,3 +447,208 @@ def test_assistant_fiscal_context_filters_nested_periods_limitations_and_semanti
     ):
         assert private_value not in serialized
 
+
+
+def test_pending_context_validates_currency_codes_and_iso_dates():
+    class UntrustedQueue:
+        def summary(self, owner_id):
+            return {
+                "total": 4,
+                "realized_results": 2,
+                "asset_amounts": 2,
+                "currencies": ["USD", "eur", "PRIVATE-CURRENCY", "💣", "USD"],
+                "as_of": "not-a-date-injected",
+                "periods": {
+                    "day": {
+                        "start": "2026-11-05<script>",
+                        "end": "2026-11-05",
+                        "total": 4,
+                        "realized_results": 2,
+                        "asset_amounts": 2,
+                    },
+                    "week": {
+                        "start": "not-a-date",
+                        "end": "2026-11-05",
+                        "total": 4,
+                    },
+                },
+                "included_in_totals": False,
+                "reserve_calculated": False,
+            }
+
+    context = collect_read_only_context(
+        FakeService(), FakeFiscalReserve(), "test-owner", UntrustedQueue()
+    )
+    pending = context["fiscal_reserve"]["foreign_pending"]
+
+    assert pending["currencies"] == ["EUR", "USD"]
+    assert pending["as_of"] == ""
+    assert pending["periods"]["day"]["start"] == ""
+    assert pending["periods"]["day"]["end"] == "2026-11-05"
+    assert pending["periods"]["week"]["start"] == ""
+    assert pending["periods"]["week"]["end"] == "2026-11-05"
+
+
+def test_domestic_pending_context_validates_dates():
+    class UntrustedDomesticQueue:
+        def summary(self, owner_id):
+            return {
+                "total": 1,
+                "as_of": "<script>2026-11-05",
+                "periods": {
+                    "day": {
+                        "start": "2026-99-99",
+                        "end": "2026-11-05",
+                        "total": 1,
+                        "results": 1,
+                    }
+                },
+                "included_in_totals": False,
+                "reserve_calculated": False,
+            }
+
+    context = collect_read_only_context(
+        FakeService(), FakeFiscalReserve(), "test-owner",
+        fiscal_domestic_pending_queue=UntrustedDomesticQueue(),
+    )
+    pending = context["fiscal_reserve"]["domestic_pending"]
+
+    assert pending["as_of"] == ""
+    assert pending["periods"]["day"]["start"] == ""
+    assert pending["periods"]["day"]["end"] == "2026-11-05"
+
+
+
+def test_real_pending_queues_reach_assistant_without_entering_fiscal_reserve(tmp_path, monkeypatch):
+    from datetime import date
+    from zoneinfo import ZoneInfo
+    from datetime import datetime
+
+    from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
+    from finance.fiscal_identity import configured_fiscal_owner_id
+    from finance.fiscal_pending_queue import FiscalPendingQueue
+    from finance.fiscal_reserve import FiscalReserve
+    from finance.fiscal_schema import migrate_fiscal_schema
+
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "assistant-pending-e2e-owner")
+    owner_id = configured_fiscal_owner_id()
+    database = tmp_path / "assistant-pending-e2e.sqlite3"
+    reserve = FiscalReserve(str(database))
+    migrate_fiscal_schema(str(database))
+    foreign_queue = FiscalPendingQueue(str(database))
+    domestic_queue = FiscalDomesticPendingQueue(str(database))
+    today = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
+
+    reserve.record_realized_result(owner_id, {
+        "category": "BR_DAY_TRADE",
+        "realized_result_brl": 1000.0,
+        "reference": "E2E-BR-RESERVE",
+        "occurred_on": today.isoformat(),
+    })
+    foreign_queue.add_realized_result(owner_id, {
+        "reference": "E2E-FOREIGN-RESULT",
+        "original_result": 250.0,
+        "original_currency": "USD",
+        "instrument": "ETF",
+        "jurisdiction": "US",
+        "occurred_on": today.isoformat(),
+        "income_nature": "CAPITAL_GAIN",
+        "event_type": "DISPOSAL",
+        "tax_residency_at_event": "BRAZIL",
+    })
+    foreign_queue.add(owner_id, {
+        "reference": "E2E-FOREIGN-ASSET",
+        "original_amount": 5000.0,
+        "original_currency": "EUR",
+        "instrument": "ETF",
+        "jurisdiction": "IE",
+        "occurred_on": today.isoformat(),
+    })
+    domestic_queue.add(owner_id, {
+        "reference": "E2E-DOMESTIC-PENDING",
+        "instrument": "FII",
+        "market_scope": "B3",
+        "occurred_on": today.isoformat(),
+        "realized_result_brl": 700.0,
+        "category_candidate": "BR_FII",
+    })
+
+    class FixedDateFiscalReserve:
+        def summary(self, requested_owner_id):
+            assert requested_owner_id == owner_id
+            return reserve.summary(requested_owner_id, as_of=today)
+
+    context = collect_read_only_context(
+        FakeService(),
+        FixedDateFiscalReserve(),
+        owner_id,
+        fiscal_pending_queue=foreign_queue,
+        fiscal_domestic_pending_queue=domestic_queue,
+    )
+
+    fiscal = context["fiscal_reserve"]
+    assert fiscal["total_reserved_brl"] == 200.0
+    assert fiscal["periods"]["day"]["realized_result_brl"] == 1000.0
+    assert fiscal["foreign_pending"]["total"] == 2
+    assert fiscal["foreign_pending"]["realized_results"] == 1
+    assert fiscal["foreign_pending"]["asset_amounts"] == 1
+    assert fiscal["foreign_pending"]["currencies"] == ["EUR", "USD"]
+    assert fiscal["foreign_pending"]["included_in_totals"] is False
+    assert fiscal["foreign_pending"]["reserve_calculated"] is False
+    assert fiscal["domestic_pending"]["total"] == 1
+    assert fiscal["domestic_pending"]["periods"]["day"]["results"] == 1
+    assert fiscal["domestic_pending"]["included_in_totals"] is False
+    assert fiscal["domestic_pending"]["reserve_calculated"] is False
+
+    serialized = str(fiscal)
+    for private_value in (
+        "E2E-BR-RESERVE",
+        "E2E-FOREIGN-RESULT",
+        "E2E-FOREIGN-ASSET",
+        "E2E-DOMESTIC-PENDING",
+        "250.0",
+        "5000.0",
+        "700.0",
+    ):
+        assert private_value not in serialized
+
+
+def test_assistant_context_rejects_non_finite_numbers_and_boolean_counts():
+    class MalformedFiscal:
+        def summary(self, owner_id):
+            return {
+                "total_reserved_brl": float("nan"),
+                "categories": {
+                    "BR_DAY_TRADE": {
+                        "entries": True,
+                        "rate": 10**1000,
+                        "realized_result_brl": float("-inf"),
+                        "reserve_amount_brl": 12.5,
+                    }
+                },
+                "periods": {
+                    "day": {
+                        "entries": True,
+                        "realized_result_brl": float("nan"),
+                        "reserve_amount_brl": 5.0,
+                    }
+                },
+            }
+
+    class MalformedQueue:
+        def summary(self, owner_id):
+            return {"total": True, "realized_results": float("inf"), "asset_amounts": 2}
+
+    context = collect_read_only_context(
+        FakeService(), MalformedFiscal(), "test-owner", fiscal_pending_queue=MalformedQueue()
+    )
+    fiscal = context["fiscal_reserve"]
+    assert "total_reserved_brl" not in fiscal
+    assert fiscal["categories"]["BR_DAY_TRADE"] == {
+        "entries": 0,
+        "reserve_amount_brl": 12.5,
+    }
+    assert fiscal["periods"]["day"] == {"entries": 0, "reserve_amount_brl": 5.0}
+    assert fiscal["foreign_pending"]["total"] == 0
+    assert fiscal["foreign_pending"]["realized_results"] == 0
+    assert fiscal["foreign_pending"]["asset_amounts"] == 2

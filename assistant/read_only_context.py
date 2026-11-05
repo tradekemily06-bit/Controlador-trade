@@ -6,12 +6,45 @@ This module does not execute trades, change settings, move funds, or infer tax o
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from math import isfinite
+import re
 from typing import Any
 
 from finance.fiscal_taxonomy import fiscal_classification_catalog
 
 
+def _iso_date(value: Any) -> str:
+    if not isinstance(value, str) or re.fullmatch(r"\d{4}-\d{2}-\d{2}", value) is None:
+        return ""
+    candidate = value[:10]
+    try:
+        datetime.strptime(candidate, "%Y-%m-%d")
+    except ValueError:
+        return ""
+    return candidate
+
+
+def _safe_currency_codes(value: Any) -> list[str]:
+    if not isinstance(value, (list, tuple, set)):
+        return []
+    return sorted({
+        item for item in (str(code).upper() for code in value)
+        if len(item) == 3 and item.isascii() and item.isalpha()
+    })[:10]
+
+
+def _is_finite_number(value: Any) -> bool:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return isfinite(value)
+    except (OverflowError, TypeError, ValueError):
+        return False
+
+
 def _count(value: Any) -> int:
+    if isinstance(value, bool):
+        return 0
     try:
         return max(0, int(value))
     except (TypeError, ValueError, OverflowError):
@@ -37,7 +70,7 @@ def _risk_summary(value: Any) -> dict[str, Any]:
     if isinstance(limits, dict):
         for key in ("daily_loss_limit", "max_operations", "max_consecutive_losses"):
             item = limits.get(key)
-            if isinstance(item, (int, float)) and not isinstance(item, bool):
+            if _is_finite_number(item):
                 safe_limits[key] = item
     return {
         "available": True,
@@ -100,7 +133,7 @@ def _statistics_summary(value: Any) -> dict[str, Any]:
     safe = {}
     for key in ("total", "total_decisions", "actionable", "wins", "losses", "draws", "open", "win_rate"):
         item = value.get(key)
-        if isinstance(item, (int, float)) and not isinstance(item, bool):
+        if _is_finite_number(item):
             safe[key] = item
     periods = value.get("periods")
     if isinstance(periods, dict):
@@ -110,7 +143,7 @@ def _statistics_summary(value: Any) -> dict[str, Any]:
             if isinstance(row, dict):
                 safe["periods"][period] = {
                     key: row[key] for key in ("total", "actionable", "wins", "losses", "draws", "open", "win_rate")
-                    if key in row and isinstance(row[key], (int, float)) and not isinstance(row[key], bool)
+                    if key in row and _is_finite_number(row[key])
                 }
     safe["available"] = True
     return safe
@@ -128,18 +161,14 @@ def _fiscal_periods(value: Any) -> dict[str, dict[str, Any]]:
         item: dict[str, Any] = {}
         for key in ("start", "end"):
             raw = row.get(key)
-            if isinstance(raw, str) and len(raw) >= 10:
-                candidate = raw[:10]
-                try:
-                    datetime.strptime(candidate, "%Y-%m-%d")
-                    item[key] = candidate
-                except ValueError:
-                    pass
+            candidate = _iso_date(raw)
+            if candidate:
+                item[key] = candidate
         if "entries" in row:
             item["entries"] = _count(row.get("entries"))
         for key in ("realized_result_brl", "reserve_amount_brl"):
             raw = row.get(key)
-            if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+            if _is_finite_number(raw):
                 item[key] = raw
         safe[period] = item
     return safe
@@ -175,13 +204,11 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
         "currency": "BRL",
     }
     as_of = fiscal.get("as_of") if isinstance(fiscal, dict) else None
-    if isinstance(as_of, str) and len(as_of) >= 10:
-        try:
-            fiscal_context["as_of"] = datetime.strptime(as_of[:10], "%Y-%m-%d").date().isoformat()
-        except ValueError:
-            pass
+    safe_as_of = _iso_date(as_of)
+    if safe_as_of:
+        fiscal_context["as_of"] = safe_as_of
     total_reserved = fiscal.get("total_reserved_brl") if isinstance(fiscal, dict) else None
-    if isinstance(total_reserved, (int, float)) and not isinstance(total_reserved, bool):
+    if _is_finite_number(total_reserved):
         fiscal_context["total_reserved_brl"] = total_reserved
     if isinstance(fiscal, dict):
         fiscal_context["categories"] = fiscal.get("categories", {}) if isinstance(fiscal.get("categories"), dict) else {}
@@ -219,7 +246,7 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
             safe_item = {"entries": _count(item.get("entries"))}
             for key in ("rate", "realized_result_brl", "reserve_amount_brl"):
                 value = item.get(key)
-                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                if _is_finite_number(value):
                     safe_item[key] = value
             safe_categories[category] = safe_item
         fiscal_context["categories"] = safe_categories
@@ -232,15 +259,11 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
                 "total": _count(pending_summary.get("total")),
                 "realized_results": _count(pending_summary.get("realized_results")),
                 "asset_amounts": _count(pending_summary.get("asset_amounts")),
-                "currencies": sorted({
-                    str(currency).upper()
-                    for currency in pending_summary.get("currencies", [])
-                    if currency
-                }),
+                "currencies": _safe_currency_codes(pending_summary.get("currencies", [])),
                 "periods": {
                     str(period): {
-                        "start": str(values.get("start", ""))[:10],
-                        "end": str(values.get("end", ""))[:10],
+                        "start": _iso_date(values.get("start")),
+                        "end": _iso_date(values.get("end")),
                         "total": _count(values.get("total")),
                         "realized_results": _count(values.get("realized_results")),
                         "asset_amounts": _count(values.get("asset_amounts")),
@@ -248,7 +271,7 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
                     for period, values in pending_summary.get("periods", {}).items()
                     if period in {"day", "week", "month", "year"} and isinstance(values, dict)
                 },
-                "as_of": str(pending_summary.get("as_of", ""))[:10],
+                "as_of": _iso_date(pending_summary.get("as_of")),
                 "classification_status": "PENDING_CLASSIFICATION",
                 "included_in_totals": False,
                 "reserve_calculated": False,
@@ -265,15 +288,15 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
                 "total": _count(domestic_summary.get("total")),
                 "periods": {
                     str(period): {
-                        "start": str(values.get("start", ""))[:10],
-                        "end": str(values.get("end", ""))[:10],
+                        "start": _iso_date(values.get("start")),
+                        "end": _iso_date(values.get("end")),
                         "total": _count(values.get("total")),
                         "results": _count(values.get("results")),
                     }
                     for period, values in domestic_summary.get("periods", {}).items()
                     if period in {"day", "week", "month", "year"} and isinstance(values, dict)
                 },
-                "as_of": str(domestic_summary.get("as_of", ""))[:10],
+                "as_of": _iso_date(domestic_summary.get("as_of")),
                 "classification_status": "PENDING_CLASSIFICATION",
                 "included_in_totals": False,
                 "reserve_calculated": False,
