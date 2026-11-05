@@ -682,6 +682,26 @@ def test_streamlit_settings_view_reads_preferences_without_mutations():
     assert 'api("/api/preferences", "POST"' not in view
 
 
+def test_streamlit_memory_view_displays_recent_records_with_read_only_filters():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert '"Memória": ("Memória de decisões", "/api/memory?limit=50")' in source
+    start = source.index('if module_name == "Memória":')
+    end = source.index('if module_name == "Motor de Decisão":', start)
+    view = source[start:end]
+    assert 'data.get("records", [])' in view
+    assert 'item.get("created_at", "—")' in view
+    assert 'item.get("outcome")' in view
+    assert 'item.get("outcome_source")' in view
+    assert 'filter_cols[0].selectbox("Filtrar resultado anotado"' in view
+    assert 'filter_cols[1].selectbox("Filtrar sinal"' in view
+    assert 'item.get("confirmed") is True' in view
+    assert "até 50 decisões recentes" in view
+    assert "estudo manual" in view.lower()
+    assert "Somente leitura" in view
+    assert "execução permitida: não · real: desabilitado" in view.lower()
+    assert 'api("/api/memory?limit=50", "POST"' not in view
+
+
 def test_streamlit_decision_engine_uses_latest_read_only_analysis_snapshot():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert '"Motor de Decisão": ("Motor de Decisão · última análise", "/api/runtime/analysis/latest")' in source
