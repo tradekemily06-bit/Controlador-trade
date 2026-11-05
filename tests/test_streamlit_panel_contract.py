@@ -395,18 +395,26 @@ def test_streamlit_market_analysis_shows_asset_session_and_news_readiness_withou
     assert 'api("/api/market/assets", "POST"' not in screen
 
 
-def test_streamlit_preferences_never_submit_execution_authority_fields():
+def test_streamlit_preferences_save_only_safe_presentation_fields():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert source.count('if module_name == "Configurações":') == 1
     start = source.index('if module_name == "Configurações":')
     end = source.index('if module_name == "Escola / Tutorial / Onboarding":', start)
     preferences_screen = source[start:end]
-    assert 'api("/api/preferences", "POST"' not in preferences_screen
-    assert "st.checkbox(" not in preferences_screen
-    assert "st.form(" not in preferences_screen
+    assert 'api("/api/preferences", "POST"' in preferences_screen
+    assert 'api("/api/preferences/candles", "POST"' in preferences_screen
+    assert 'api("/api/preferences/notifications", "POST"' in preferences_screen
+    assert "safe_general_preferences_form" in preferences_screen
+    assert "safe_candle_preferences_form" in preferences_screen
+    assert "safe_notification_preferences_form" in preferences_screen
+    for forbidden in (
+        "real_execution_enabled", "autonomous_operation_enabled",
+        "selected_mode", "risk_limits", "kill_switch",
+    ):
+        assert forbidden not in preferences_screen
     assert 'safety_cols[1].metric("Execução REAL", "DESABILITADA")' in preferences_screen
     assert 'safety_cols[2].metric("Execução permitida", "NÃO")' in preferences_screen
-    assert "Somente leitura" in preferences_screen
+    assert "Alertas críticos (sempre ativos)" in preferences_screen
 
 
 def test_streamlit_operational_screens_render_human_readable_summaries_without_raw_json_dump():
@@ -707,19 +715,24 @@ def test_streamlit_risk_management_has_dedicated_read_only_limits_view():
     assert 'api("/api/risk", "POST"' not in view
 
 
-def test_streamlit_settings_view_reads_preferences_without_mutations():
+def test_streamlit_settings_view_has_working_safe_save_actions():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert '"Configurações": ("Preferências do Ecossistema", "/api/preferences")' in source
     start = source.index('if module_name == "Configurações":')
-    end = source.index('if module_name == "Motor de Decisão":', start)
+    end = source.index('if module_name == "Escola / Tutorial / Onboarding":', start)
     view = source[start:end]
     assert 'data.get("preferences", {})' in view
-    assert 'prefs.get("default_symbol", "—")' in view
-    assert 'prefs.get("default_timeframe", "—")' in view
-    assert 'prefs.get("leverage_enabled", False)' in view
+    assert 'prefs.get("default_symbol", "EURUSD")' in view
+    assert 'prefs.get("default_timeframe", "5m")' in view
+    assert 'api("/api/preferences", "POST"' in view
+    assert 'api("/api/preferences/candles", "POST"' in view
+    assert 'api("/api/preferences/notifications", "POST"' in view
+    assert "Salvar preferências gerais" in view
+    assert "Salvar aparência dos candles" in view
+    assert "Salvar notificações" in view
     assert 'safety_cols[1].metric("Execução REAL", "DESABILITADA")' in view
-    assert "execução permitida: não · real: desabilitado" in view.lower()
-    assert 'api("/api/preferences", "POST"' not in view
+    assert 'safety_cols[2].metric("Execução permitida", "NÃO")' in view
+    assert "Estas configurações não alteram limites de risco" in view
 
 
 def test_streamlit_onboarding_shows_guided_steps_without_execution_authority():
