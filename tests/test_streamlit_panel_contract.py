@@ -1491,3 +1491,32 @@ def test_streamlit_kill_switch_exposes_read_only_position_close_reconciliation()
     assert 'REAL_RUNTIME.reconcile_position_close(' in route
     assert 'REAL_RUNTIME.close_and_reconcile' not in route
     assert '"position_close_recovery_items"' in controller_source
+
+def test_every_reference_navigation_module_has_an_explicit_streamlit_handler():
+    config = json.loads(
+        (PANEL_DIR / "controlador_trader_referencia_visual.json").read_text(encoding="utf-8")
+    )
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    configured_modules = {
+        module
+        for modules in config["open_state"]["tabs"].values()
+        for module in modules
+    }
+    explicit_handlers = set(
+        re.findall(r"(?:if|elif)\\s+module_name\\s*==\\s*[\"']([^\"']+)[\"']", source)
+    )
+    grouped_handlers = {
+        module
+        for group in re.findall(r"if module_name in \\{([^}]+)\\}:", source)
+        for module in re.findall(r"[\"']([^\"']+)[\"']", group)
+    }
+    # Financeiro is intentionally routed by the top-level panel dispatcher to
+    # the shared Reserva Fiscal view rather than by show_readonly_module.
+    explicitly_routed = explicit_handlers | grouped_handlers | {"Financeiro"}
+    missing = configured_modules - explicitly_routed
+
+    assert not missing, f"Navigation modules without an explicit Streamlit handler: {sorted(missing)}"
+    assert 'elif module_name == "Simulador":\\n        show_simulator()\\n        return' in source
+    assert 'if module_name == "Escola / Tutorial / Onboarding":' in source
+    assert '"Escola / Tutorial / Onboarding": ("Primeiros passos", "/api/onboarding")' in source
+
