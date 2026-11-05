@@ -279,7 +279,11 @@ def test_assistant_receives_fiscal_reserve_totals_for_day_week_month_and_year():
     assert fiscal["periods"]["week"]["realized_result_brl"] == 500.0
     assert fiscal["periods"]["month"]["reserve_amount_brl"] == 180.0
     assert fiscal["periods"]["year"]["realized_result_brl"] == 1200.0
-    assert fiscal["limitations"] == ["Estimativa de planejamento; não é imposto apurado."]
+    assert fiscal["limitations"] == [
+        "Estimativa de planejamento; não representa imposto apurado ou devido.",
+        "Compensações fiscais e créditos de IRRF não são calculados.",
+        "Categorias sem regra validada permanecem pendentes e fora dos totais.",
+    ]
     assert "history" not in fiscal
     assert "PRIVATE-ENTRY-REF" not in str(context)
     assert "não enviar" not in str(context)
