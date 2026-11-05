@@ -167,7 +167,7 @@ def test_real_close_serializes_concurrent_requests_and_prevents_duplicate_adapte
     assert adapter.calls == 1
     assert runtime.execution_ledger.status("req-close") is ExecutionLedgerStatus.ACCEPTED
     assert runtime.execution_lifecycle.get("req-close").state is ExecutionLifecycleState.ACCEPTED
-    assert controller.position_closes.get("req-close").state is PositionCloseState.ACCEPTED
+    assert controller.position_closes.get("req-close").state is PositionCloseState.CLOSED
 
 
 def test_real_close_persists_intent_and_blocks_retry_after_controller_restart(tmp_path):
