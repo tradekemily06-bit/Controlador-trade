@@ -1389,3 +1389,30 @@ def test_streamlit_foreign_realized_result_text_limits_match_api():
     assert 'notes_signed = st.text_area("Observações", max_chars=1000)' in source
     assert '"fx_source", 200' in api_source
     assert '"notes", 1000' in api_source
+
+
+def test_streamlit_fiscal_review_forms_match_queue_validation_limits():
+    panel_source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    domestic_api = (PANEL_DIR.parent / "finance" / "fiscal_domestic_pending.py").read_text(encoding="utf-8")
+    foreign_api = (PANEL_DIR.parent / "finance" / "fiscal_pending_queue.py").read_text(encoding="utf-8")
+
+    domestic_start = panel_source.index('with st.form("domestic_review_form"):')
+    domestic_end = panel_source.index('if review_submit:', domestic_start)
+    domestic_form = panel_source[domestic_start:domestic_end]
+    foreign_start = panel_source.index('with st.form("foreign_review_form"):')
+    foreign_end = panel_source.index('if foreign_review_submit:', foreign_start)
+    foreign_form = panel_source[foreign_start:foreign_end]
+
+    for form in (domestic_form, foreign_form):
+        assert "max_chars=120" in form
+        assert "max_chars=160" in form
+        assert "max_chars=100" in form
+        assert "max_chars=500" in form
+        assert "max_chars=2000" in form
+
+    for api_source in (domestic_api, foreign_api):
+        assert 'required("confirmed_jurisdiction", 120)' in api_source
+        assert 'required("reviewer_name", 160)' in api_source
+        assert 'required("professional_registration", 100)' in api_source
+        assert 'required("evidence_reference", 500)' in api_source
+        assert "if len(notes) > 2000:" in api_source
