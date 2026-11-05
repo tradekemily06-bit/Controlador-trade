@@ -805,3 +805,32 @@ def test_assistant_context_rejects_out_of_range_fiscal_rates_and_amounts():
         "tax_rate_verified": False,
     }
     assert fiscal["periods"]["day"] == {"entries": 1}
+
+
+def test_assistant_context_caps_unreasonably_large_aggregate_counts():
+    class HugeCountFiscal:
+        def summary(self, owner_id):
+            return {
+                "categories": {"BR_DAY_TRADE": {"entries": 10**1000}},
+                "periods": {"day": {"entries": 10**1000}},
+            }
+
+    class HugeCountQueue:
+        def summary(self, owner_id):
+            return {
+                "total": 10**1000,
+                "realized_results": 10**1000,
+                "asset_amounts": 10**1000,
+            }
+
+    context = collect_read_only_context(
+        FakeService(),
+        HugeCountFiscal(),
+        "test-owner",
+        fiscal_pending_queue=HugeCountQueue(),
+    )["fiscal_reserve"]
+    assert context["categories"]["BR_DAY_TRADE"]["entries"] == 1_000_000_000
+    assert context["periods"]["day"]["entries"] == 1_000_000_000
+    assert context["foreign_pending"]["total"] == 1_000_000_000
+    assert context["foreign_pending"]["realized_results"] == 1_000_000_000
+    assert context["foreign_pending"]["asset_amounts"] == 1_000_000_000
