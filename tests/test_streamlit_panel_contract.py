@@ -1378,3 +1378,14 @@ def test_streamlit_foreign_fiscal_inputs_match_api_limits():
     assert '_text(payload, "jurisdiction", 80, required=True)' in api_source
     assert '_positive(payload.get("original_amount"), "original_amount")' in api_source
     assert 'number > 1e12' in api_source
+
+
+
+def test_streamlit_foreign_realized_result_text_limits_match_api():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    api_source = (PANEL_DIR.parent / "finance" / "fiscal_pending_queue.py").read_text(encoding="utf-8")
+
+    assert 'fx_source_signed = st.text_input("Fonte da cotação", max_chars=200)' in source
+    assert 'notes_signed = st.text_area("Observações", max_chars=1000)' in source
+    assert '"fx_source", 200' in api_source
+    assert '"notes", 1000' in api_source
