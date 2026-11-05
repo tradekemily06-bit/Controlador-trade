@@ -1844,6 +1844,101 @@ def show_readonly_module(module_name: str) -> None:
             recovery = obs.get("recovery", {})
             reconciliation = obs.get("reconciliation", {})
             runtime_health = obs.get("runtime_health", {})
+            st.markdown("#### Reconciliação de fechamentos de posição")
+            st.caption(
+                "Consulta somente leitura ao MT5. Esta ação não fecha posições, não cancela ordens "
+                "e não envia novas ordens."
+            )
+            try:
+                real_status = api("/api/runtime/real/status")
+                close_items = real_status.get("position_close_recovery_items", [])
+                if not isinstance(close_items, list):
+                    close_items = []
+                if real_status.get("position_close_recovery_required") is True and not close_items:
+                    st.error(
+                        "Há fechamento pendente, mas o histórico detalhado não está disponível. "
+                        "A proteção permanece bloqueando novas entradas REAL."
+                    )
+                elif close_items:
+                    st.warning(
+                        f"{len(close_items)} fechamento(s) aguardam evidência da corretora. "
+                        "Não considere o resultado resolvido até a consulta retornar."
+                    )
+                    labels = {
+                        str(item.get("request_id")): (
+                            f"{item.get('request_id')} · {item.get('state')} · tentativa {item.get('attempt')}"
+                        )
+                        for item in close_items
+                        if isinstance(item, dict)
+                        and isinstance(item.get("request_id"), str)
+                        and isinstance(item.get("external_id"), str)
+                    }
+                    valid_items = {
+                        str(item["request_id"]): item
+                        for item in close_items
+                        if isinstance(item, dict)
+                        and isinstance(item.get("request_id"), str)
+                        and item.get("request_id", "").strip()
+                        and isinstance(item.get("external_id"), str)
+                        and item.get("external_id", "").strip()
+                    }
+                    if valid_items:
+                        with st.form("position_close_reconciliation_form"):
+                            selected_request = st.selectbox(
+                                "Fechamento pendente",
+                                options=list(valid_items),
+                                format_func=lambda value: labels.get(value, value),
+                            )
+                            selected_item = valid_items[selected_request]
+                            st.caption(
+                                "Ticket de abertura: "
+                                + str(selected_item.get("external_id"))
+                                + " · Última informação: "
+                                + str(selected_item.get("message") or "sem mensagem")
+                            )
+                            confirm_read = st.checkbox(
+                                "Confirmo consultar o histórico e as posições da conta MT5 vinculada, "
+                                "sem enviar ordens."
+                            )
+                            reconcile_submit = st.form_submit_button(
+                                "CONSULTAR E RECONCILIAR",
+                                type="primary",
+                            )
+                        if reconcile_submit:
+                            if not confirm_read:
+                                st.error("Marque a confirmação para autorizar a consulta somente leitura.")
+                            else:
+                                try:
+                                    reconciliation_result = api(
+                                        "/api/runtime/real/close/reconcile",
+                                        "POST",
+                                        {
+                                            "request_id": selected_request,
+                                            "external_id": selected_item["external_id"],
+                                        },
+                                    ).get("close_reconciliation", {})
+                                    state_label = str(reconciliation_result.get("state", "UNKNOWN"))
+                                    if state_label == "CLOSED":
+                                        st.success("MT5 confirmou o fechamento pelo histórico de saída.")
+                                    elif state_label == "OPEN":
+                                        st.warning(
+                                            "MT5 confirmou que a posição continua aberta. "
+                                            "Nenhuma ordem foi enviada; um novo fechamento exigiria ação separada."
+                                        )
+                                    else:
+                                        st.error(
+                                            "A situação continua inconclusiva. A proteção permanece ativa."
+                                        )
+                                    st.caption(str(reconciliation_result.get("message") or "Sem detalhe adicional."))
+                                    st.rerun()
+                                except Exception as exc:
+                                    st.error(f"Não foi possível reconciliar o fechamento: {exc}")
+                    else:
+                        st.error("Os dados do fechamento pendente não passaram pela validação da interface.")
+                else:
+                    st.success("Nenhum fechamento pendente ou desconhecido foi reportado pelo runtime.")
+            except Exception as exc:
+                st.warning(f"Reconciliação de fechamentos indisponível: {exc}")
             state = str(kill.get("state", "NOT_CONFIRMED")).upper()
             st.metric("Estado do Kill Switch", {
                 "ACTIVE": "ATIVO",
