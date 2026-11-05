@@ -11,6 +11,7 @@ from pathlib import Path
 from urllib.parse import parse_qs
 from zoneinfo import ZoneInfo
 from socketserver import ThreadingMixIn
+from threading import Lock
 from wsgiref.simple_server import WSGIServer, make_server
 
 from core.api_result import serialize_decision_record
@@ -54,6 +55,11 @@ FISCAL_DOMESTIC_PENDING_QUEUE = FiscalDomesticPendingQueue(str(FISCAL_RESERVE_DB
 ASSISTANT_DB = Path(os.environ.get('CONTROLADOR_ASSISTANT_DB', str(RUNTIME_DIR / 'assistant.sqlite3')))
 ASSISTANT_STORE = AssistantConversationStore(ASSISTANT_DB)
 ASSISTANT = EcosystemAssistant(ASSISTANT_STORE, SERVICE, FISCAL_RESERVE, fiscal_pending_queue=FISCAL_PENDING_QUEUE, fiscal_domestic_pending_queue=FISCAL_DOMESTIC_PENDING_QUEUE)
+
+# Latest read-only market snapshots are shared by the API and Streamlit process.
+# This cache is intentionally process-local; restart clears it and clients must show unavailable.
+_LATEST_MARKET_ANALYSIS: dict[tuple[str, str], dict] = {}
+_LATEST_MARKET_ANALYSIS_LOCK = Lock()
 
 
 def _audit(environ, request_id: str, status: int) -> None:
@@ -968,6 +974,41 @@ def application(environ, start_response):
                 request_id,
                 environ,
             )
+        if path == "/api/runtime/analysis/latest" and method == "GET":
+            authorized, reason = _authorize_remote_mutation(environ)
+            if not authorized:
+                status = HTTPStatus.UNAUTHORIZED if reason == "trusted identity is required" else HTTPStatus.SERVICE_UNAVAILABLE
+                return _json_response(
+                    start_response,
+                    status,
+                    {"error": "identidade autorizada necessária para consultar o último sinal", "execution_allowed": False},
+                    request_id,
+                    environ,
+                )
+            query = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
+            symbol = str(query.get("symbol", [""])[-1]).strip().upper()
+            timeframe = str(query.get("timeframe", [""])[-1]).strip().lower()
+            if bool(symbol) != bool(timeframe):
+                raise ValueError("symbol e timeframe devem ser informados juntos")
+            with _LATEST_MARKET_ANALYSIS_LOCK:
+                if symbol and timeframe:
+                    latest = _LATEST_MARKET_ANALYSIS.get((symbol, timeframe))
+                else:
+                    latest = next(reversed(_LATEST_MARKET_ANALYSIS.values()), None) if _LATEST_MARKET_ANALYSIS else None
+                snapshot = json.loads(json.dumps(latest)) if latest is not None else None
+            return _json_response(
+                start_response,
+                HTTPStatus.OK,
+                {
+                    "available": snapshot is not None,
+                    "analysis": snapshot,
+                    "cache_scope": "PROCESS_MEMORY_ONLY",
+                    "execution_allowed": False,
+                    "real": "DESABILITADO",
+                },
+                request_id,
+                environ,
+            )
         if path == "/api/runtime/analysis" and method == "POST":
             data = _read_json(environ)
             confirmed = data.get("confirmed")
@@ -1014,7 +1055,7 @@ def application(environ, start_response):
             snapshot_data["candidate_signal"] = snapshot_data.get("candidate_signal") or candidate_signal
             snapshot_data["signal"] = display_signal
             snapshot_data["actionable"] = bool(snapshot_data.get("actionable", False)) and display_decision == "EXECUTAR"
-            return _json_response(start_response, HTTPStatus.OK, {
+            analysis_payload = {
                 "analysis_cycle": {
                     "timestamp": orchestration.timestamp.isoformat(),
                     "symbol": orchestration.analysis.symbol,
@@ -1059,7 +1100,11 @@ def application(environ, start_response):
                     ],
                 },
                 "execution_allowed": False,
-            }, request_id, environ)
+            }
+            cache_key = (orchestration.analysis.symbol.upper(), orchestration.analysis.timeframe.lower())
+            with _LATEST_MARKET_ANALYSIS_LOCK:
+                _LATEST_MARKET_ANALYSIS[cache_key] = json.loads(json.dumps(analysis_payload))
+            return _json_response(start_response, HTTPStatus.OK, analysis_payload, request_id, environ)
         if path == "/api/analyze" and method == "POST":
             record = SERVICE.analyze(_read_json(environ))
             return _json_response(start_response, HTTPStatus.OK, {**record.to_dict(), **serialize_decision_record(record), "execution_allowed": False}, request_id, environ)
