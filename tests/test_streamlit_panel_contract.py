@@ -559,7 +559,7 @@ def test_streamlit_audit_module_uses_redacted_security_event_feed():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert '"Auditoria": ("Auditoria operacional", "/api/security/audit")' in source
     start = source.index('if module_name == "Auditoria":')
-    end = source.index('if module_name in {"Operação", "Kill Switch", "Segurança"}:', start)
+    end = source.index('if module_name == "Kill Switch":', start)
     audit_view = source[start:end]
     assert 'data.get("events", [])' in audit_view
     assert 'data.get("retention_limit", "—")' in audit_view
