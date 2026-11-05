@@ -1466,3 +1466,6 @@ def test_kill_switch_activation_api_is_confirmed_persisted_and_never_auto_resume
     assert '"unknown_request_ids"' in route
     assert 'não são canceladas' in route
     assert 'deactivate' not in route
+    assert 'if method == "POST" and path != "/api/updates":' in runtime_source
+    assert '_authorize_remote_mutation(environ)' in runtime_source
+    assert 'deactivate' not in route
