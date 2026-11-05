@@ -11,6 +11,26 @@ from typing import Any
 from finance.fiscal_taxonomy import fiscal_classification_catalog
 
 
+def _iso_date(value: Any) -> str:
+    if not isinstance(value, str) or len(value) < 10:
+        return ""
+    candidate = value[:10]
+    try:
+        datetime.strptime(candidate, "%Y-%m-%d")
+    except ValueError:
+        return ""
+    return candidate
+
+
+def _safe_currency_codes(value: Any) -> list[str]:
+    if not isinstance(value, (list, tuple, set)):
+        return []
+    return sorted({
+        item for item in (str(code).upper() for code in value)
+        if len(item) == 3 and item.isascii() and item.isalpha()
+    })[:10]
+
+
 def _count(value: Any) -> int:
     try:
         return max(0, int(value))
@@ -248,7 +268,7 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
                     for period, values in pending_summary.get("periods", {}).items()
                     if period in {"day", "week", "month", "year"} and isinstance(values, dict)
                 },
-                "as_of": str(pending_summary.get("as_of", ""))[:10],
+                "as_of": _iso_date(pending_summary.get("as_of")),
                 "classification_status": "PENDING_CLASSIFICATION",
                 "included_in_totals": False,
                 "reserve_calculated": False,
@@ -273,7 +293,7 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
                     for period, values in domestic_summary.get("periods", {}).items()
                     if period in {"day", "week", "month", "year"} and isinstance(values, dict)
                 },
-                "as_of": str(domestic_summary.get("as_of", ""))[:10],
+                "as_of": _iso_date(domestic_summary.get("as_of")),
                 "classification_status": "PENDING_CLASSIFICATION",
                 "included_in_totals": False,
                 "reserve_calculated": False,
