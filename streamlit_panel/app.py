@@ -948,7 +948,7 @@ def show_readonly_module(module_name: str) -> None:
         "Segurança": ("Segurança do Ecossistema", "/api/health"),
         "Conexões": ("Conexões disponíveis", "/api/connections"),
         "Multi-Broker": ("Disponibilidade de conexões", "/api/connections"),
-        "Auditoria": ("Auditoria operacional", "/api/health"),
+        "Auditoria": ("Auditoria operacional", "/api/security/audit"),
     }
     if module_name == "Análise de Mercado":
         show_market_analysis()
@@ -1045,7 +1045,22 @@ def show_readonly_module(module_name: str) -> None:
             st.caption("Os limites são informativos nesta tela; nenhum controle de execução é acionado.")
             return
 
-        if module_name in {"Operação", "Kill Switch", "Segurança", "Auditoria"}:
+        if module_name == "Auditoria":
+            events = data.get("events", [])
+            cols = st.columns(3)
+            cols[0].metric("Eventos retidos", data.get("count", len(events)))
+            cols[1].metric("Eventos exibidos", data.get("returned", len(events)))
+            cols[2].metric("Limite de retenção", data.get("retention_limit", "—"))
+            if events:
+                st.dataframe(events, use_container_width=True, hide_index=True)
+            else:
+                st.info("Nenhum evento de segurança foi registrado nesta instância.")
+            st.caption("Registro de segurança somente leitura. Hashes de cliente, endereços IP, credenciais e corpos de requisição não são exibidos.")
+            st.caption("A trilha é limitada à retenção configurada no runtime; não substitui armazenamento centralizado nem auditoria externa.")
+            st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
+            return
+
+        if module_name in {"Operação", "Kill Switch", "Segurança"}:
             obs = data.get("operational_observability", {})
             health = str(data.get("health") or "NÃO CONFIRMADA").upper()
             st.metric("Saúde do Ecossistema", health)

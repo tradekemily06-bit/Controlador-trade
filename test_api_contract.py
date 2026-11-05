@@ -60,6 +60,36 @@ class ApiContractTests(unittest.TestCase):
                 "single:test-owner", None,
             )
 
+    def test_security_audit_endpoint_is_read_only_redacted_and_limited(self):
+        import app as app_module
+        sample = [{
+            "timestamp": 1793836800.0,
+            "request_id": "req-audit-test",
+            "method": "GET",
+            "path": "/api/health",
+            "status": 200,
+            "client_hash": "must-not-be-exposed",
+        }]
+        with patch.object(app_module.AUDIT, "snapshot", return_value=sample), \
+             patch.object(app_module.AUDIT, "max_events", 1000), \
+             patch.dict("os.environ", {"CONTROLADOR_REMOTE_ACCESS_REQUIRED": "false"}, clear=False):
+            status, _, payload = self.request("/api/security/audit", query="limit=1")
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(payload["returned"], 1)
+        self.assertEqual(payload["events"][0]["request_id"], "req-audit-test")
+        self.assertNotIn("client_hash", payload["events"][0])
+        self.assertFalse(payload["execution_allowed"])
+
+    def test_security_audit_remote_access_requires_trusted_identity(self):
+        with patch.dict("os.environ", {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "true",
+            "CONTROLADOR_TRUSTED_IDENTITY_HEADER": "X-Trusted-User",
+        }, clear=False):
+            status, _, payload = self.request("/api/security/audit")
+        self.assertEqual(status, "401 Unauthorized")
+        self.assertIn("Identidade autenticada", payload["error"])
+
     def test_notifications_endpoint_is_available_and_fail_closed(self):
         status, _, payload = self.request("/api/notifications")
         self.assertEqual(status, "200 OK")

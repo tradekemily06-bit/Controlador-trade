@@ -287,6 +287,36 @@ def application(environ, start_response):
             status = SERVICE.system_status()
             status["real_runtime"] = REAL_RUNTIME.status()
             return _json_response(start_response, HTTPStatus.OK, status, request_id, environ)
+        if path == "/api/security/audit" and method == "GET":
+            remote_required = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "").strip().lower() in {"1", "true", "yes"}
+            client = str(environ.get("REMOTE_ADDR") or "").strip()
+            if remote_required:
+                authorized, reason = _authorize_remote_mutation(environ)
+                if not authorized:
+                    auth_status = HTTPStatus.UNAUTHORIZED if reason == "trusted identity is required" else HTTPStatus.FORBIDDEN
+                    return _json_response(start_response, auth_status, {"error": "Identidade autenticada necessária para consultar a auditoria."}, request_id, environ)
+            elif client not in {"127.0.0.1", "::1"}:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": "Auditoria disponível somente em acesso local ou remoto autenticado."}, request_id, environ)
+            limit = _query_limit(environ, 50, maximum=200)
+            snapshot = AUDIT.snapshot()
+            events = [
+                {
+                    "timestamp": event.get("timestamp"),
+                    "request_id": event.get("request_id"),
+                    "method": event.get("method"),
+                    "path": event.get("path"),
+                    "status": event.get("status"),
+                }
+                for event in reversed(snapshot[-limit:])
+            ]
+            return _json_response(
+                start_response,
+                HTTPStatus.OK,
+                {"events": events, "count": len(snapshot), "returned": len(events),
+                 "retention_limit": AUDIT.max_events, "execution_allowed": False},
+                request_id,
+                environ,
+            )
         if path.startswith("/api/assistant/"):
             authorized, auth_reason = _authorize_remote_mutation(environ)
             if not authorized:
