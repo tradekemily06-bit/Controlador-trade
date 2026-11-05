@@ -208,6 +208,8 @@ class FiscalDomesticPendingQueue:
         registration = required("professional_registration", 100)
         evidence = required("evidence_reference", 500)
         reviewed_on = self._day(payload.get("reviewed_on"))
+        if date.fromisoformat(reviewed_on) > datetime.now(ZoneInfo("America/Sao_Paulo")).date():
+            raise ValueError("reviewed_on não pode estar no futuro")
         raw_notes = payload.get("review_notes", "")
         if not isinstance(raw_notes, str):
             raise ValueError("review_notes deve ser texto")
