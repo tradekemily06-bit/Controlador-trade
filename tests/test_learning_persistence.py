@@ -65,9 +65,13 @@ def test_learning_validation_rejects_truthy_non_boolean_values(tmp_path):
             "statement": "Não deve ser validado por string.",
             "validated": "false",
         })
+    service.add_learning_activity({
+        "activity_id": "activity-2",
+        "prompt": "Atividade para teste de validação.",
+    })
     with pytest.raises(ValueError):
         service.add_learning_attempt({
-            "activity_id": "activity-missing",
+            "activity_id": "activity-2",
             "answer": "resposta",
             "correct": "true",
         })
