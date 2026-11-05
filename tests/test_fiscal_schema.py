@@ -249,5 +249,13 @@ def test_partial_rebuild_refuses_to_reassign_existing_owner(tmp_path, monkeypatc
     assert db.execute(
         "SELECT COUNT(*) FROM fiscal_reserve_entries"
     ).fetchone()[0] == 1
+    # The failed migration must leave the legacy settings table untouched.
+    settings_columns = {
+        row[1] for row in db.execute("PRAGMA table_info(fiscal_reserve_settings)")
+    }
+    assert "owner_id" not in settings_columns
+    assert db.execute(
+        "SELECT rate FROM fiscal_reserve_settings WHERE category='BR_DAY_TRADE'"
+    ).fetchone() == (20.0,)
     db.close()
 
