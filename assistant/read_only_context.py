@@ -135,18 +135,30 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
     # (15%). Never forward that rate to the external assistant as tax guidance.
     categories = fiscal_context.get("categories")
     if isinstance(categories, dict):
-        foreign = categories.get("FOREIGN_FINANCIAL_ASSET")
-        if isinstance(foreign, dict):
-            safe_foreign = {
-                "entries": _count(foreign.get("entries")),
-                "realized_result_brl": 0.0,
-                "reserve_amount_brl": 0.0,
-                "classification_status": "PENDING_CLASSIFICATION",
-                "rate_available": False,
-            }
-            categories = dict(categories)
-            categories["FOREIGN_FINANCIAL_ASSET"] = safe_foreign
-            fiscal_context["categories"] = categories
+        # Forward only aggregate fields needed for planning. Never pass ledger
+        # notes, references, or future free-form fields to the external model.
+        safe_categories: dict[str, dict[str, Any]] = {}
+        for category, item in categories.items():
+            if not isinstance(category, str) or not isinstance(item, dict):
+                continue
+            if category.startswith("FOREIGN_"):
+                # Foreign categories remain classification-only. Legacy rows
+                # are visible as counts, never as taxable results or reserves.
+                safe_categories[category] = {
+                    "entries": _count(item.get("entries")),
+                    "realized_result_brl": 0.0,
+                    "reserve_amount_brl": 0.0,
+                    "classification_status": "PENDING_CLASSIFICATION",
+                    "rate_available": False,
+                }
+                continue
+            safe_item = {"entries": _count(item.get("entries"))}
+            for key in ("rate", "realized_result_brl", "reserve_amount_brl"):
+                value = item.get(key)
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    safe_item[key] = value
+            safe_categories[category] = safe_item
+        fiscal_context["categories"] = safe_categories
     pending_context = {"available": False, "included_in_totals": False}
     if fiscal_pending_queue is not None:
         try:
