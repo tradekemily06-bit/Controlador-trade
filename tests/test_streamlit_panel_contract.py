@@ -1220,6 +1220,15 @@ def test_streamlit_fiscal_pending_page_validation_rejects_malformed_pagination()
     exec(compile(source[start:end], "streamlit_panel/app.py", "exec"), namespace)
     validate_page = namespace["_valid_pending_page"]
     validate_reviews = namespace["_valid_review_history"]
+    recover_offset = namespace["_recovered_pending_offset"]
+    assert recover_offset(0, 50) == 0
+    assert recover_offset(1, 50) == 0
+    assert recover_offset(50, 50) == 0
+    assert recover_offset(51, 50) == 50
+    assert recover_offset(101, 150) == 100
+    assert recover_offset(True, 50) == 0
+    assert recover_offset(10, -1) == 0
+    assert recover_offset(10, 2.5) == 0
     valid_page = {
         "items": [{"pending_id": "pending-1", "reference": "REF", "status": "PENDING_CLASSIFICATION"}],
         "total": 3, "limit": 50, "offset": 0,
@@ -1272,6 +1281,10 @@ def test_streamlit_fiscal_pending_lists_validate_pages_and_review_history_before
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert "if not _valid_pending_page(domestic_data, domestic_offset):" in source
     assert "if not _valid_pending_page(foreign_pending_data, foreign_offset):" in source
+    assert "recovered_domestic_offset = _recovered_pending_offset(domestic_data[\"total\"], domestic_offset)" in source
+    assert "recovered_foreign_offset = _recovered_pending_offset(foreign_pending_data[\"total\"], foreign_offset)" in source
+    assert "del st.session_state.domestic_review_pending_id" in source
+    assert "del st.session_state.foreign_review_pending_id" in source
     assert 'if not _valid_review_history(review_data):' in source
     assert 'if not _valid_review_history(foreign_review_data):' in source
     assert 'int(domestic_data.get("total", 0))' not in source
