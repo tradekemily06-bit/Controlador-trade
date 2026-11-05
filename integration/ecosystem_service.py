@@ -54,6 +54,12 @@ class EcosystemService:
             lifecycle_store=(operational_runtime.automation_lifecycle if operational_runtime is not None else None)
         )
 
+    @staticmethod
+    def _require_learning_bool(value: Any, field: str) -> bool:
+        if not isinstance(value, bool):
+            raise ValueError(f"{field} must be a boolean")
+        return value
+
     def restore_learning_state(self) -> None:
         """Restore educational records from the shared SQLite state store."""
         store = getattr(self, "state_store", None)
@@ -69,9 +75,9 @@ class EcosystemService:
                     source_type=LearningSourceType(item["source_type"]),
                     uri=item["uri"],
                     status=LearningSourceStatus(item["status"]),
-                    content_verified=bool(item.get("content_verified", False)),
-                    security_checked=bool(item.get("security_checked", False)),
-                    knowledge_validated=bool(item.get("knowledge_validated", False)),
+                    content_verified=self._require_learning_bool(item.get("content_verified", False), "content_verified"),
+                    security_checked=self._require_learning_bool(item.get("security_checked", False), "security_checked"),
+                    knowledge_validated=self._require_learning_bool(item.get("knowledge_validated", False), "knowledge_validated"),
                     operation_eligible=False,
                 )
                 for item in saved.get("sources", [])
@@ -89,7 +95,7 @@ class EcosystemService:
                 LearningObservation(
                     resource_id=item["resource_id"], statement=item["statement"],
                     concepts=tuple(item.get("concepts", ())), evidence=item.get("evidence"),
-                    confidence=item.get("confidence"), validated=bool(item.get("validated", False)),
+                    confidence=item.get("confidence"), validated=self._require_learning_bool(item.get("validated", False), "validated"),
                 )
                 for item in saved.get("observations", [])
             ]
@@ -216,12 +222,15 @@ class EcosystemService:
         return source
 
     def validate_learning_source(self, source: LearningSource, *, content_verified: bool, security_checked: bool) -> LearningSource:
+        self._require_learning_bool(content_verified, "content_verified")
+        self._require_learning_bool(security_checked, "security_checked")
         updated = self.learning_source_gate.validate_content(source, content_verified=content_verified, security_checked=security_checked)
         self.learning_sources[updated.source_id] = updated
         self._persist_learning_state()
         return updated
 
     def admit_learning_knowledge(self, source: LearningSource, *, knowledge_validated: bool) -> LearningSource:
+        self._require_learning_bool(knowledge_validated, "knowledge_validated")
         updated = self.learning_source_gate.admit_knowledge(source, knowledge_validated=knowledge_validated)
         self.learning_sources[updated.source_id] = updated
         self._persist_learning_state()
@@ -246,7 +255,7 @@ class EcosystemService:
 
     def add_learning_observation(self, payload: dict[str, Any]) -> LearningObservation:
         resource_id = str(payload.get("resource_id", ""))
-        validated = bool(payload.get("validated", False))
+        validated = self._require_learning_bool(payload.get("validated", False), "validated")
         if resource_id not in self.learning_resources:
             raise ValueError("resource_id não encontrado")
         source = self.learning_sources.get(resource_id)
@@ -283,7 +292,10 @@ class EcosystemService:
         activity_id = str(payload.get("activity_id", ""))
         if activity_id not in self.learning_activities:
             raise ValueError("activity_id não encontrado")
-        attempt = LearningAttempt(activity_id=activity_id, answer=str(payload.get("answer", "")), correct=payload.get("correct"), feedback=str(payload.get("feedback", "")))
+        correct = payload.get("correct")
+        if correct is not None:
+            correct = self._require_learning_bool(correct, "correct")
+        attempt = LearningAttempt(activity_id=activity_id, answer=str(payload.get("answer", "")), correct=correct, feedback=str(payload.get("feedback", "")))
         self.learning_attempts.append(attempt)
         self._persist_learning_state()
         return attempt
