@@ -532,3 +532,23 @@ def test_fiscal_history_csv_exports_only_the_privacy_filtered_display_rows():
     assert 'data="\\ufeff" + csv_buffer.getvalue()' in export_block
     assert "csv_writer.writerows(display_rows)" in export_block
     assert "fiscal_history_display_row(item)" in source
+
+
+
+def test_streamlit_learning_modules_show_distinct_existing_data_without_trade_authority():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    laboratory = source[source.index('if module_name == "Laboratório":'):source.index('if module_name == "Escola / Tutorial / Onboarding":')]
+    assert 'if module_name == "Aprendizado":' in laboratory
+    assert 'if module_name == "Descobertas":' in laboratory
+    assert 'data.get("resources", [])' in laboratory
+    assert 'data.get("learning_sources", [])' in laboratory
+    assert 'data.get("activities", [])' in laboratory
+    assert 'data.get("attempts", [])' in laboratory
+    assert 'data.get("observations", [])' in laboratory
+    assert "Materiais do laboratório" in laboratory
+    assert "Histórico de tentativas" in laboratory
+    assert "Observações" in laboratory
+    assert "Execução permitida: NÃO." in laboratory
+    assert "Descobertas não alteram sinais, filtros ou parâmetros de execução." in laboratory
+    assert '("Laboratório", ("Laboratório de aprendizado", "/api/learning"))' not in source
+    assert '"/api/learning"' in source
