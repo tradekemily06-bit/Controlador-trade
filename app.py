@@ -49,6 +49,9 @@ SERVICE = ConfiguredEcosystemService(
 REAL_RUNTIME = RealRuntimeController(runtime=OPERATIONAL_RUNTIME, root=RUNTIME_DIR, symbol=EXECUTION_SYMBOL)
 ONBOARDING = EcosystemOnboarding()
 FISCAL_RESERVE_DB = Path(os.environ.get("CONTROLADOR_FISCAL_RESERVE_DB", str(RUNTIME_DIR / "fiscal-reserve.sqlite3")))
+# Apply the owner-scoped schema before any fiscal repository creates or queries tables.
+# This fails closed when the configured single-owner identity is absent or mismatched.
+migrate_fiscal_schema(str(FISCAL_RESERVE_DB))
 FISCAL_RESERVE = FiscalReserve(str(FISCAL_RESERVE_DB))
 FISCAL_PENDING_QUEUE = FiscalPendingQueue(str(FISCAL_RESERVE_DB))
 FISCAL_DOMESTIC_PENDING_QUEUE = FiscalDomesticPendingQueue(str(FISCAL_RESERVE_DB))
