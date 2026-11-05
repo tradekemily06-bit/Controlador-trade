@@ -184,6 +184,7 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
     if isinstance(total_reserved, (int, float)) and not isinstance(total_reserved, bool):
         fiscal_context["total_reserved_brl"] = total_reserved
     if isinstance(fiscal, dict):
+        fiscal_context["categories"] = fiscal.get("categories", {}) if isinstance(fiscal.get("categories"), dict) else {}
         fiscal_context["periods"] = _fiscal_periods(fiscal.get("periods"))
         fiscal_context["reserve_semantics"] = _fiscal_reserve_semantics(fiscal.get("reserve_semantics"))
         # Do not send arbitrary service-provided limitation text to the model.
