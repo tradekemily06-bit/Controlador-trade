@@ -516,3 +516,98 @@ def test_domestic_pending_context_validates_dates():
     assert pending["as_of"] == ""
     assert pending["periods"]["day"]["start"] == ""
     assert pending["periods"]["day"]["end"] == "2026-11-05"
+
+
+
+def test_real_pending_queues_reach_assistant_without_entering_fiscal_reserve(tmp_path, monkeypatch):
+    from datetime import date
+    from zoneinfo import ZoneInfo
+    from datetime import datetime
+
+    from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
+    from finance.fiscal_identity import configured_fiscal_owner_id
+    from finance.fiscal_pending_queue import FiscalPendingQueue
+    from finance.fiscal_reserve import FiscalReserve
+    from finance.fiscal_schema import migrate_fiscal_schema
+
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "assistant-pending-e2e-owner")
+    owner_id = configured_fiscal_owner_id()
+    database = tmp_path / "assistant-pending-e2e.sqlite3"
+    reserve = FiscalReserve(str(database))
+    migrate_fiscal_schema(str(database))
+    foreign_queue = FiscalPendingQueue(str(database))
+    domestic_queue = FiscalDomesticPendingQueue(str(database))
+    today = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
+
+    reserve.record_realized_result(owner_id, {
+        "category": "BR_DAY_TRADE",
+        "realized_result_brl": 1000.0,
+        "reference": "E2E-BR-RESERVE",
+        "occurred_on": today.isoformat(),
+    })
+    foreign_queue.add_realized_result(owner_id, {
+        "reference": "E2E-FOREIGN-RESULT",
+        "original_result": 250.0,
+        "original_currency": "USD",
+        "instrument": "ETF",
+        "jurisdiction": "US",
+        "occurred_on": today.isoformat(),
+        "income_nature": "CAPITAL_GAIN",
+        "event_type": "DISPOSAL",
+        "tax_residency_at_event": "BRAZIL",
+    })
+    foreign_queue.add(owner_id, {
+        "reference": "E2E-FOREIGN-ASSET",
+        "original_amount": 5000.0,
+        "original_currency": "EUR",
+        "instrument": "ETF",
+        "jurisdiction": "IE",
+        "occurred_on": today.isoformat(),
+    })
+    domestic_queue.add(owner_id, {
+        "reference": "E2E-DOMESTIC-PENDING",
+        "instrument": "FII",
+        "market_scope": "B3",
+        "occurred_on": today.isoformat(),
+        "realized_result_brl": 700.0,
+        "category_candidate": "BR_FII",
+    })
+
+    class FixedDateFiscalReserve:
+        def summary(self, requested_owner_id):
+            assert requested_owner_id == owner_id
+            return reserve.summary(requested_owner_id, as_of=today)
+
+    context = collect_read_only_context(
+        FakeService(),
+        FixedDateFiscalReserve(),
+        owner_id,
+        fiscal_pending_queue=foreign_queue,
+        fiscal_domestic_pending_queue=domestic_queue,
+    )
+
+    fiscal = context["fiscal_reserve"]
+    assert fiscal["total_reserved_brl"] == 200.0
+    assert fiscal["periods"]["day"]["realized_result_brl"] == 1000.0
+    assert fiscal["foreign_pending"]["total"] == 2
+    assert fiscal["foreign_pending"]["realized_results"] == 1
+    assert fiscal["foreign_pending"]["asset_amounts"] == 1
+    assert fiscal["foreign_pending"]["currencies"] == ["EUR", "USD"]
+    assert fiscal["foreign_pending"]["included_in_totals"] is False
+    assert fiscal["foreign_pending"]["reserve_calculated"] is False
+    assert fiscal["domestic_pending"]["total"] == 1
+    assert fiscal["domestic_pending"]["periods"]["day"]["results"] == 1
+    assert fiscal["domestic_pending"]["included_in_totals"] is False
+    assert fiscal["domestic_pending"]["reserve_calculated"] is False
+
+    serialized = str(fiscal)
+    for private_value in (
+        "E2E-BR-RESERVE",
+        "E2E-FOREIGN-RESULT",
+        "E2E-FOREIGN-ASSET",
+        "E2E-DOMESTIC-PENDING",
+        "250.0",
+        "5000.0",
+        "700.0",
+    ):
+        assert private_value not in serialized
