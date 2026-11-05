@@ -25,7 +25,9 @@ class AssistantConversationStore:
             db.close()
     @staticmethod
     def _owner(identity):
-        value=str(identity or "").strip().casefold()
+        if not isinstance(identity, str):
+            raise ValueError("identidade inválida")
+        value=identity.strip().casefold()
         if not value: raise ValueError("identidade inválida")
         return hashlib.sha256(value.encode()).hexdigest()
     def list(self,identity):
