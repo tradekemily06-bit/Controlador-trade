@@ -286,3 +286,29 @@ def test_owner_scoped_fast_path_rejects_orphaned_foreign_reviews(tmp_path, monke
         assert db.execute(
             "SELECT COUNT(*) FROM fiscal_pending_reviews WHERE review_id='orphan-review'"
         ).fetchone()[0] == 1
+
+def test_application_migrates_owner_schema_before_fiscal_repositories_are_created():
+    import ast
+    from pathlib import Path
+
+    app_path = Path(__file__).resolve().parents[1] / "app.py"
+    tree = ast.parse(app_path.read_text(encoding="utf-8"))
+    migration_index = None
+    repository_indexes = []
+
+    for index, statement in enumerate(tree.body):
+        if not isinstance(statement, ast.Assign):
+            continue
+        value = statement.value
+        if not isinstance(value, ast.Call) or not isinstance(value.func, ast.Name):
+            continue
+        if value.func.id == "migrate_fiscal_schema":
+            migration_index = index
+        elif value.func.id in {"FiscalReserve", "FiscalPendingQueue", "FiscalDomesticPendingQueue"}:
+            repository_indexes.append(index)
+
+    assert migration_index is not None, "app.py must apply the owner-scoped fiscal migration"
+    assert repository_indexes, "app.py must initialize fiscal repositories"
+    assert all(migration_index < index for index in repository_indexes), (
+        "owner-scoped migration must run before any fiscal repository initialization"
+    )
