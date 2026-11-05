@@ -1238,6 +1238,7 @@ def test_streamlit_fiscal_pending_page_validation_rejects_malformed_pagination()
         {**valid_page, "items": [{"pending_id": "", "status": "PENDING_CLASSIFICATION"}]},
         {**valid_page, "items": [{"pending_id": "x" * 81, "status": "PENDING_CLASSIFICATION"}]},
         {**valid_page, "total": 0},
+        {"items": [], "total": 3, "limit": 50, "offset": 50},
         {**valid_page, "items": [{"pending_id": "pending-1", "status": "CLASSIFIED"}]},
         {**valid_page, "items": [{"pending_id": "same", "status": "PENDING_CLASSIFICATION"}, {"pending_id": "same", "status": "PENDING_CLASSIFICATION"}], "total": 2},
     ):
