@@ -1020,59 +1020,45 @@ def show_readonly_module(module_name: str) -> None:
 
         if module_name == "Memória":
             records = data.get("records", []) if isinstance(data, dict) else []
-            records = records if isinstance(records, list) else []
-            st.caption("Histórico dos registros operacionais mais recentes. A memória é consultada sem editar, liquidar ou apagar registros.")
-            total = len(records)
-            wins = sum(str(item.get("result", "")).upper() == "WIN" for item in records if isinstance(item, dict))
-            losses = sum(str(item.get("result", "")).upper() == "LOSS" for item in records if isinstance(item, dict))
-            pending = sum(str(item.get("result", "")).upper() == "PENDENTE" for item in records if isinstance(item, dict))
+            records = [item for item in records if isinstance(item, dict)] if isinstance(records, list) else []
+            st.caption("Histórico de decisões de análise mais recentes. Resultados anotados são registros de estudo manual.")
+            outcomes = [str(item.get("outcome") or "SEM RESULTADO").upper() for item in records]
             cols = st.columns(4)
-            cols[0].metric("Registros carregados", total)
-            cols[1].metric("Vitórias", wins)
-            cols[2].metric("Derrotas", losses)
-            cols[3].metric("Pendentes", pending)
+            cols[0].metric("Registros carregados", len(records))
+            cols[1].metric("Vitórias anotadas", sum(value == "WIN" for value in outcomes))
+            cols[2].metric("Derrotas anotadas", sum(value == "LOSS" for value in outcomes))
+            cols[3].metric("Sem resultado", sum(value == "SEM RESULTADO" for value in outcomes))
             if not records:
-                st.info("Nenhum registro de memória disponível neste runtime.")
+                st.info("Nenhum registro de decisão disponível neste runtime.")
                 st.caption("Histórico somente leitura · execução permitida: NÃO · REAL: DESABILITADO")
                 return
-            valid_records = [item for item in records if isinstance(item, dict)]
-            result_values = sorted({str(item.get("result") or "PENDENTE").upper() for item in valid_records})
-            signal_values = sorted({str(item.get("signal") or "—").upper() for item in valid_records})
+            result_values = sorted(set(outcomes))
+            signal_values = sorted({str(item.get("signal") or "—").upper() for item in records})
             filter_cols = st.columns(2)
-            selected_result = filter_cols[0].selectbox("Filtrar resultado", ["Todos"] + result_values, key="memory_result_filter")
+            selected_result = filter_cols[0].selectbox("Filtrar resultado anotado", ["Todos"] + result_values, key="memory_result_filter")
             selected_signal = filter_cols[1].selectbox("Filtrar sinal", ["Todos"] + signal_values, key="memory_signal_filter")
             filtered = [
-                item for item in valid_records
-                if (selected_result == "Todos" or str(item.get("result") or "PENDENTE").upper() == selected_result)
+                item for item in records
+                if (selected_result == "Todos" or str(item.get("outcome") or "SEM RESULTADO").upper() == selected_result)
                 and (selected_signal == "Todos" or str(item.get("signal") or "—").upper() == selected_signal)
             ]
             rows = [{
-                "Data/hora": item.get("timestamp", "—"),
+                "Data/hora": item.get("created_at", "—"),
                 "Ativo": item.get("symbol") or "—",
                 "Timeframe": item.get("timeframe") or "—",
                 "Sinal": item.get("signal") or "—",
                 "Pontuação": item.get("score", "—"),
-                "Decisão": item.get("decision") or "—",
-                "Resultado": item.get("result") or "PENDENTE",
-                "Qualidade": item.get("quality_level") or "—",
-                "Score de qualidade": item.get("quality_score") if item.get("quality_score") is not None else "—",
+                "Confirmado para análise": "SIM" if item.get("confirmed") is True else "NÃO",
+                "Resultado anotado": item.get("outcome") or "SEM RESULTADO",
+                "Origem do resultado": item.get("outcome_source") or "—",
                 "Motivo": item.get("reason") or "—",
             } for item in filtered]
-            st.caption(f"Exibindo {len(filtered)} de {total} registros carregados; a API fornece até 50 registros recentes nesta tela.")
+            st.caption(f"Exibindo {len(filtered)} de {len(records)} registros carregados; a API fornece até 50 decisões recentes nesta tela.")
             if rows:
                 st.dataframe(rows, use_container_width=True, hide_index=True)
             else:
                 st.info("Nenhum registro corresponde aos filtros selecionados.")
-            with st.expander("Condições de entrada registradas"):
-                for index, item in enumerate(filtered, start=1):
-                    conditions = item.get("entry_conditions") or []
-                    st.markdown(f"**Registro {index} · {item.get('symbol') or 'Ativo não informado'}**")
-                    if conditions:
-                        for condition in conditions:
-                            st.write("• " + str(condition))
-                    else:
-                        st.caption("Nenhuma condição de entrada registrada.")
-            st.caption("A memória registra decisões e resultados; não representa promessa de rentabilidade nem autorização de operação.")
+            st.caption("WIN/LOSS/DRAW são anotações de estudo manual, não resultados financeiros confirmados pela corretora.")
             st.caption("Somente leitura · execução permitida: NÃO · REAL: DESABILITADO")
             return
 
