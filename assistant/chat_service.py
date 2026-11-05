@@ -121,10 +121,20 @@ class EcosystemAssistant:
     def ask(self,identity,message,fiscal_owner_id,cid=None):
         if not isinstance(message,str) or not message.strip() or len(message)>4000: raise ValueError("Mensagem deve ter de 1 a 4.000 caracteres.")
         context=collect_read_only_context(self.service,self.fiscal,fiscal_owner_id,self.fiscal_pending_queue,self.fiscal_domestic_pending_queue)
+        # The sanitizer must return JSON-native values. Never stringify an
+        # unexpected object into the external prompt, and fail before saving
+        # the user's message if the context is malformed or non-finite.
+        try:
+            context_payload = json.dumps(
+                context, ensure_ascii=False, allow_nan=False
+            )[:MAX_CONTEXT_CHARS]
+        except (TypeError, ValueError) as exc:
+            raise AssistantUnavailableError(
+                "Contexto do ecossistema indisponível; mensagem não foi enviada."
+            ) from exc
         cid=self.store.append(identity,cid,"user",message)
         history=self.store.history(identity,cid,12)
         messages=[{"role":"system","content":SYSTEM_PROMPT}]
-        context_payload = json.dumps(context, ensure_ascii=False, default=str)[:MAX_CONTEXT_CHARS]
         messages.append({
             "role": "user",
             "content": (
