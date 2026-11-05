@@ -1701,6 +1701,73 @@ def show_readonly_module(module_name: str) -> None:
                         st.dataframe(items, use_container_width=True, hide_index=True)
                 else:
                     st.info(f"Nenhum item disponível em: {label.lower()}.")
+            if sources:
+                st.subheader("Revisão manual de procedência")
+                st.warning(
+                    "Esta etapa registra sua declaração de revisão. O sistema não baixa, "
+                    "analisa nem verifica automaticamente o conteúdo externo; isto não é "
+                    "uma varredura antivírus nem uma auditoria independente."
+                )
+                for source_index, source in enumerate(sources):
+                    if not isinstance(source, dict):
+                        continue
+                    source_id = str(source.get("source_id") or "").strip()
+                    source_status = str(source.get("status") or "").upper()
+                    if not source_id:
+                        continue
+                    with st.expander(
+                        f"{source.get('source_type', 'FONTE')} · {source_id} · {source_status}",
+                        expanded=source_status == "QUARANTINED",
+                    ):
+                        st.write(f"**Referência:** {source.get('uri') or 'não informada'}")
+                        if source_status == "QUARANTINED":
+                            with st.form(f"learning_source_review_{source_index}"):
+                                content_reviewed = st.checkbox(
+                                    "Li e conferi o conteúdo desta fonte.",
+                                    key=f"learning_content_reviewed_{source_index}",
+                                )
+                                security_reviewed = st.checkbox(
+                                    "Conferi a origem e os riscos antes de abrir/usar o material.",
+                                    key=f"learning_security_reviewed_{source_index}",
+                                )
+                                review_submit = st.form_submit_button("Registrar revisão da fonte")
+                            if review_submit:
+                                if not content_reviewed or not security_reviewed:
+                                    st.error("Marque as duas confirmações somente depois de realizar a revisão.")
+                                else:
+                                    try:
+                                        api("/api/learning/sources/validate", "POST", {
+                                            "source_id": source_id,
+                                            "content_verified": True,
+                                            "security_checked": True,
+                                        })
+                                        st.success("Revisão manual registrada. O conhecimento ainda não foi admitido.")
+                                        st.rerun()
+                                    except Exception as exc:
+                                        st.error(f"Não foi possível registrar a revisão: {exc}")
+                        elif source_status == "VALIDATED" and not source.get("knowledge_validated", False):
+                            st.caption("A fonte passou pela revisão manual. A admissão do conhecimento é uma etapa separada.")
+                            with st.form(f"learning_source_admit_{source_index}"):
+                                knowledge_reviewed = st.checkbox(
+                                    "Revisei a informação e considero o conhecimento adequado para estudo.",
+                                    key=f"learning_knowledge_reviewed_{source_index}",
+                                )
+                                admit_submit = st.form_submit_button("Admitir conhecimento para estudo")
+                            if admit_submit:
+                                if not knowledge_reviewed:
+                                    st.error("Confirme a revisão do conhecimento antes de admitir.")
+                                else:
+                                    try:
+                                        api("/api/learning/sources/admit", "POST", {
+                                            "source_id": source_id,
+                                            "knowledge_validated": True,
+                                        })
+                                        st.success("Conhecimento admitido para uso educacional.")
+                                        st.rerun()
+                                    except Exception as exc:
+                                        st.error(f"Não foi possível admitir o conhecimento: {exc}")
+                        elif source.get("knowledge_validated", False):
+                            st.success("Conhecimento validado para uso educacional. Isso não autoriza operações.")
             with st.expander("Adicionar material de estudo"):
                 with st.form("learning_resource_create_form"):
                     resource_id = st.text_input("Identificador do material", max_chars=80)
