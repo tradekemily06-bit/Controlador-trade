@@ -223,11 +223,11 @@ class FiscalPendingQueue:
         if currency not in CURRENCIES:
             raise ValueError("moeda não suportada")
         raw_result = payload.get("original_result")
-        if isinstance(raw_result, bool):
+        if isinstance(raw_result, bool) or not isinstance(raw_result, (int, float)):
             raise ValueError("original_result deve ser numérico")
         try:
             result = float(raw_result)
-        except (TypeError, ValueError) as exc:
+        except (OverflowError, TypeError, ValueError) as exc:
             raise ValueError("original_result deve ser numérico") from exc
         if result != result or result in (float("inf"), float("-inf")) or abs(result) > 1e12:
             raise ValueError("original_result deve ser finito e estar dentro do limite")
