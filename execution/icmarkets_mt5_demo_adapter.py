@@ -606,7 +606,7 @@ class ICMarketsMT5DemoAdapter:
         *,
         expected_account_fingerprint: str | None = None,
     ) -> ExecutionResult:
-        """Close only the confirmed DEMO position identified by this adapter's order ticket."""
+        """Close only the position identified by this adapter's order ticket and account fingerprint."""
         if not isinstance(external_id, str) or not external_id.strip():
             return ExecutionResult(False, "external_id inválido; fechamento bloqueado.")
         mt5 = self._module()
@@ -664,7 +664,7 @@ class ICMarketsMT5DemoAdapter:
                 and int(getattr(p, "magic", -1)) == self.config.magic
             )
             if len(matches) != 1:
-                return ExecutionResult(False, "posição DEMO do Controlador não encontrada de forma única; fechamento bloqueado.")
+                return ExecutionResult(False, "posição MT5 do Controlador não encontrada de forma única; fechamento bloqueado.")
             position = matches[0]
             symbol = str(getattr(position, "symbol", "")).strip()
             volume = float(getattr(position, "volume", 0.0))
@@ -708,7 +708,7 @@ class ICMarketsMT5DemoAdapter:
             )
             if any(int(getattr(p, "ticket", -1)) == int(position.ticket) for p in remaining):
                 return ExecutionResult(False, "MT5 confirmou o fechamento, mas a posição Controlador ainda permanece aberta.")
-            return ExecutionResult(True, "posição DEMO fechada e confirmada pelo MT5.", str(close_external_id))
+            return ExecutionResult(True, "posição MT5 do Controlador fechada e confirmada pelo MT5.", str(close_external_id))
         finally:
             mt5.shutdown()
 
