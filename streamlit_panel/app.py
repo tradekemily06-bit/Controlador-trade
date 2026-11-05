@@ -1157,23 +1157,82 @@ def show_readonly_module(module_name: str) -> None:
             return
 
         if module_name == "Operação":
-            if "latest_operation_analysis" not in st.session_state:
-                try:
-                    st.session_state.latest_operation_analysis = api("/api/runtime/analysis/latest")
-                    st.session_state.latest_operation_analysis_error = ""
-                except Exception as exc:
-                    st.session_state.latest_operation_analysis = None
-                    st.session_state.latest_operation_analysis_error = str(exc)
-            if st.button("Atualizar último sinal", key="refresh_latest_operation_signal"):
-                try:
-                    st.session_state.latest_operation_analysis = api("/api/runtime/analysis/latest")
-                    st.session_state.latest_operation_analysis_error = ""
-                except Exception as exc:
-                    st.session_state.latest_operation_analysis = None
-                    st.session_state.latest_operation_analysis_error = str(exc)
+            st.markdown("#### Estado operacional · leitura em tempo real")
+            if st.button("Atualizar painel de operação", key="refresh_operation_overview"):
+                for cache_key in ("operation_health", "operation_connections", "operation_risk", "latest_operation_analysis"):
+                    st.session_state.pop(cache_key, None)
+            read_models = (
+                ("operation_health", "/api/health"),
+                ("operation_connections", "/api/connections"),
+                ("operation_risk", "/api/risk"),
+                ("latest_operation_analysis", "/api/runtime/analysis/latest"),
+            )
+            for cache_key, route in read_models:
+                if cache_key not in st.session_state:
+                    try:
+                        st.session_state[cache_key] = api(route)
+                        st.session_state[cache_key + "_error"] = ""
+                    except Exception as exc:
+                        st.session_state[cache_key] = None
+                        st.session_state[cache_key + "_error"] = str(exc)
+            health = st.session_state.get("operation_health") or {}
+            connections = st.session_state.get("operation_connections") or {}
+            risk = st.session_state.get("operation_risk") or {}
             latest_payload = st.session_state.get("latest_operation_analysis")
+            observability = health.get("operational_observability") or {}
+            market_data = observability.get("market_data") or {}
+            execution = observability.get("execution") or {}
+            recovery = observability.get("recovery") or {}
+            reconciliation = observability.get("reconciliation") or {}
+            kill_switch = observability.get("kill_switch") or {}
+            runtime_health = observability.get("runtime_health") or {}
+            status_cols = st.columns(4)
+            status_cols[0].metric("Modo", health.get("mode", "—"))
+            status_cols[1].metric("Saúde geral", health.get("health", "—"))
+            status_cols[2].metric("MT5 DEMO", health.get("mt5_demo", "—"))
+            status_cols[3].metric("Execução REAL", health.get("real", "DESABILITADO"))
+            st.caption("Execução permitida: NÃO · este painel apresenta telemetria; não envia ordens.")
+            if not health:
+                st.warning("Estado do runtime indisponível: " + str(st.session_state.get("operation_health_error") or "sem resposta"))
+            st.markdown("#### Segurança e continuidade")
+            safety_cols = st.columns(4)
+            safety_cols[0].metric("Kill Switch", "ATIVO" if kill_switch.get("enabled") is True else str(kill_switch.get("state") or "DESCONHECIDO"))
+            safety_cols[1].metric("Recuperação", recovery.get("state", "DESCONHECIDA"))
+            safety_cols[2].metric("Reconciliação", reconciliation.get("state", "DESCONHECIDA"))
+            safety_cols[3].metric("Saúde operacional", runtime_health.get("state", "DESCONHECIDA"))
+            if kill_switch.get("reason"):
+                st.warning("Motivo do Kill Switch: " + str(kill_switch["reason"]))
+            if recovery.get("message"):
+                st.caption("Recuperação: " + str(recovery["message"]))
+            pending_ids = reconciliation.get("pending_request_ids") or []
+            unknown_ids = reconciliation.get("unknown_request_ids") or []
+            if pending_ids or unknown_ids:
+                st.warning(f"Reconciliação necessária · {len(pending_ids)} solicitação(ões) pendente(s) · {len(unknown_ids)} estado(s) desconhecido(s). Não retome operações sem reconciliar.")
+            st.markdown("#### Mercado e conexão")
+            market_cols = st.columns(4)
+            market_cols[0].metric("Dados de mercado", market_data.get("health", "DESCONHECIDOS"))
+            market_cols[1].metric("Ativo observado", market_data.get("symbol") or "—")
+            market_cols[2].metric("Timeframe", market_data.get("timeframe") or "—")
+            market_cols[3].metric("Candles", market_data.get("candle_count") if market_data.get("candle_count") is not None else "—")
+            st.caption(str(market_data.get("message") or "Estado reportado pelo runtime; não é confirmação independente da corretora."))
+            if market_data.get("stale") is True or market_data.get("gap_count", 0):
+                st.warning(f"Dados podem estar desatualizados ou com lacunas · lacunas: {market_data.get('gap_count', '—')}")
+            connection_rows = [{"Componente": key, "Estado": value} for key, value in connections.items() if isinstance(value, (str, int, float, bool))]
+            if connection_rows:
+                st.dataframe(connection_rows, use_container_width=True, hide_index=True)
+            st.markdown("#### Limites de risco configurados")
+            configured_limits = risk.get("configured_limits") or {}
+            risk_cols = st.columns(3)
+            risk_cols[0].metric("Limite de perda diária", money(configured_limits.get("daily_loss_limit")))
+            risk_cols[1].metric("Máximo de operações", configured_limits.get("max_operations", "—"))
+            risk_cols[2].metric("Perdas consecutivas", configured_limits.get("max_consecutive_losses", "—"))
+            st.caption("São parâmetros configurados, não P&L atual nem prova de que todos os limites foram aplicados a uma execução.")
+            if risk.get("allowed") is not True:
+                st.warning("Barreira de risco não liberou a operação: " + str(risk.get("reason") or "motivo não informado"))
+            elif risk:
+                st.info("A avaliação da barreira de risco está positiva, mas isso não autoriza execução neste painel.")
+            st.markdown("#### Último sinal recebido")
             latest_error = st.session_state.get("latest_operation_analysis_error", "")
-            st.markdown("#### Última análise recebida do MT5 DEMO")
             if latest_error:
                 st.warning("Último sinal indisponível: " + latest_error)
             elif not isinstance(latest_payload, dict) or latest_payload.get("available") is not True:
@@ -1191,8 +1250,11 @@ def show_readonly_module(module_name: str) -> None:
                 signal_cols[3].metric("Período", details.get("timeframe", cycle.get("timeframe", "—")))
                 st.caption("Horário da análise: " + str(cycle.get("timestamp") or "não informado"))
                 st.write(latest.get("reason") or details.get("reason") or "Sem justificativa fornecida pelo motor.")
-                st.caption("Somente leitura · execução permitida: NÃO · REAL: DESABILITADO")
-                st.caption("Este sinal é o último armazenado na memória do processo. Reiniciar o runtime limpa o cache; atualize manualmente para consultar novamente.")
+                st.caption("Sinal informativo · não é ordem, recomendação garantida ou autorização de execução.")
+            for cache_key, _route in read_models:
+                error = st.session_state.get(cache_key + "_error", "")
+                if error:
+                    st.caption(f"Consulta {cache_key.replace('operation_', '').replace('_', ' ')}: {error}")
         if module_name in {"Memória", "Replay"}:
             records = data.get("records", []) if isinstance(data, dict) else []
             if records:
