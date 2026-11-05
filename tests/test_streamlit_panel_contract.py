@@ -693,6 +693,9 @@ def test_streamlit_notifications_screen_reads_full_history_without_mutations():
     assert 'st.selectbox("Filtrar gravidade"' in view
     assert '"Atenção necessária": bool(item.get("requires_attention", False))' in view
     assert '"Bloqueante": bool(item.get("blocking", False))' in view
+    assert "notification_history_csv_download" in view
+    assert "Exportar notificações filtradas · CSV" in view
+    assert "notification_writer.writerows(display_rows)" in view
     assert "somente leitura" in view.lower()
     assert 'api("/api/notifications/all", "POST"' not in view
     assert "execução permitida: não · real: desabilitado" in view.lower()
