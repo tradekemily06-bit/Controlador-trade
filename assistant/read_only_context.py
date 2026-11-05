@@ -6,6 +6,7 @@ This module does not execute trades, change settings, move funds, or infer tax o
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from math import isfinite
 import re
 from typing import Any
 
@@ -32,7 +33,13 @@ def _safe_currency_codes(value: Any) -> list[str]:
     })[:10]
 
 
+def _is_finite_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and isfinite(value)
+
+
 def _count(value: Any) -> int:
+    if isinstance(value, bool):
+        return 0
     try:
         return max(0, int(value))
     except (TypeError, ValueError, OverflowError):
@@ -58,7 +65,7 @@ def _risk_summary(value: Any) -> dict[str, Any]:
     if isinstance(limits, dict):
         for key in ("daily_loss_limit", "max_operations", "max_consecutive_losses"):
             item = limits.get(key)
-            if isinstance(item, (int, float)) and not isinstance(item, bool):
+            if _is_finite_number(item):
                 safe_limits[key] = item
     return {
         "available": True,
@@ -121,7 +128,7 @@ def _statistics_summary(value: Any) -> dict[str, Any]:
     safe = {}
     for key in ("total", "total_decisions", "actionable", "wins", "losses", "draws", "open", "win_rate"):
         item = value.get(key)
-        if isinstance(item, (int, float)) and not isinstance(item, bool):
+        if _is_finite_number(item):
             safe[key] = item
     periods = value.get("periods")
     if isinstance(periods, dict):
@@ -131,7 +138,7 @@ def _statistics_summary(value: Any) -> dict[str, Any]:
             if isinstance(row, dict):
                 safe["periods"][period] = {
                     key: row[key] for key in ("total", "actionable", "wins", "losses", "draws", "open", "win_rate")
-                    if key in row and isinstance(row[key], (int, float)) and not isinstance(row[key], bool)
+                    if key in row and _is_finite_number(row[key])
                 }
     safe["available"] = True
     return safe
@@ -156,7 +163,7 @@ def _fiscal_periods(value: Any) -> dict[str, dict[str, Any]]:
             item["entries"] = _count(row.get("entries"))
         for key in ("realized_result_brl", "reserve_amount_brl"):
             raw = row.get(key)
-            if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+            if _is_finite_number(raw):
                 item[key] = raw
         safe[period] = item
     return safe
@@ -196,7 +203,7 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
     if safe_as_of:
         fiscal_context["as_of"] = safe_as_of
     total_reserved = fiscal.get("total_reserved_brl") if isinstance(fiscal, dict) else None
-    if isinstance(total_reserved, (int, float)) and not isinstance(total_reserved, bool):
+    if _is_finite_number(total_reserved):
         fiscal_context["total_reserved_brl"] = total_reserved
     if isinstance(fiscal, dict):
         fiscal_context["categories"] = fiscal.get("categories", {}) if isinstance(fiscal.get("categories"), dict) else {}
@@ -234,7 +241,7 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
             safe_item = {"entries": _count(item.get("entries"))}
             for key in ("rate", "realized_result_brl", "reserve_amount_brl"):
                 value = item.get(key)
-                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                if _is_finite_number(value):
                     safe_item[key] = value
             safe_categories[category] = safe_item
         fiscal_context["categories"] = safe_categories
@@ -326,3 +333,44 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
             "unknown_data_must_be_reported_as_unavailable": True,
         },
     }
+
+
+def test_assistant_context_rejects_non_finite_numbers_and_boolean_counts():
+    class MalformedFiscal:
+        def summary(self, owner_id):
+            return {
+                "total_reserved_brl": float("nan"),
+                "categories": {
+                    "BR_DAY_TRADE": {
+                        "entries": True,
+                        "rate": float("inf"),
+                        "realized_result_brl": float("-inf"),
+                        "reserve_amount_brl": 12.5,
+                    }
+                },
+                "periods": {
+                    "day": {
+                        "entries": True,
+                        "realized_result_brl": float("nan"),
+                        "reserve_amount_brl": 5.0,
+                    }
+                },
+            }
+
+    class MalformedQueue:
+        def summary(self, owner_id):
+            return {"total": True, "realized_results": float("inf"), "asset_amounts": 2}
+
+    context = collect_read_only_context(
+        FakeService(), MalformedFiscal(), "test-owner", fiscal_pending_queue=MalformedQueue()
+    )
+    fiscal = context["fiscal_reserve"]
+    assert "total_reserved_brl" not in fiscal
+    assert fiscal["categories"]["BR_DAY_TRADE"] == {
+        "entries": 0,
+        "reserve_amount_brl": 12.5,
+    }
+    assert fiscal["periods"]["day"] == {"entries": 0, "reserve_amount_brl": 5.0}
+    assert fiscal["foreign_pending"]["total"] == 0
+    assert fiscal["foreign_pending"]["realized_results"] == 0
+    assert fiscal["foreign_pending"]["asset_amounts"] == 2
