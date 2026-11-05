@@ -22,6 +22,14 @@ def test_open_observation_allows_a_new_explicit_close_attempt(tmp_path):
 
     next_attempt = store.begin("req-2", "ticket-2")
     assert next_attempt.state is PositionCloseState.REQUESTED
+    assert next_attempt.attempt == 2
+    history = store.history("req-2")
+    assert [record.state for record in history] == [
+        PositionCloseState.OPEN,
+        PositionCloseState.REQUESTED,
+    ]
+    reloaded = PositionCloseStore(tmp_path / "closes.json")
+    assert [record.attempt for record in reloaded.history("req-2")] == [1, 2]
 
 
 def test_closed_observation_is_terminal_and_cannot_be_retried(tmp_path):
