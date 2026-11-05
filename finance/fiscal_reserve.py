@@ -137,11 +137,11 @@ class FiscalReserve:
 
     @staticmethod
     def _money(value: Any, field: str) -> float:
-        if isinstance(value, bool):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ValueError(f"{field} deve ser numérico")
         try:
             amount = float(value)
-        except (TypeError, ValueError) as exc:
+        except (OverflowError, TypeError, ValueError) as exc:
             raise ValueError(f"{field} deve ser numérico") from exc
         if amount != amount or amount in (float("inf"), float("-inf")):
             raise ValueError(f"{field} deve ser finito")
