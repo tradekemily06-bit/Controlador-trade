@@ -179,7 +179,7 @@ def test_streamlit_disables_assistant_chat_when_provider_is_unavailable():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert "assistant_available = False" in source
     assert "assistant_available = readiness.get(\"available\") is True" in source
-    assert "disabled=not assistant_available" in source
+    assert "disabled=(not assistant_available) or (not consent_to_openai)" in source
 
 
 def test_streamlit_foreign_pending_forms_capture_structured_evidence_and_display_it():
@@ -212,7 +212,7 @@ def test_streamlit_assistant_distinguishes_configured_credentials_from_tested_co
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert 'readiness.get("message")' in source
     assert "Credenciais configuradas; conexão com a API ainda não testada." in source
-    assert "disabled=not assistant_available" in source
+    assert "disabled=(not assistant_available) or (not consent_to_openai)" in source
 
 
 def test_streamlit_foreign_pending_queue_exposes_auditable_professional_review():
