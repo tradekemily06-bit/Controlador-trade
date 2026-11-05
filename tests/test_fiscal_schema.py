@@ -286,3 +286,26 @@ def test_partial_rebuild_refuses_rows_with_unknown_owner(tmp_path, monkeypatch):
         "SELECT owner_id FROM fiscal_reserve_entries WHERE entry_id='unknown-owner'"
     ).fetchone() == (None,)
     db.close()
+
+
+def test_migration_refuses_ownerless_domestic_pending_rows(tmp_path, monkeypatch):
+    from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
+    from finance.fiscal_identity import configured_fiscal_owner_id
+
+    path = str(tmp_path / "domestic-null-owner.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner-a")
+    owner = configured_fiscal_owner_id()
+    queue = FiscalDomesticPendingQueue(path)
+    item = queue.add(owner, {
+        "reference": "BR-UNKNOWN-OWNER",
+        "instrument": "ETF",
+        "occurred_on": "2026-11-04",
+    })
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "UPDATE fiscal_reserve_pending_domestic SET owner_id=NULL WHERE pending_id=?",
+            (item["pending_id"],),
+        )
+
+    with pytest.raises(RuntimeError, match="sem proprietário"):
+        migrate_fiscal_schema(path)
