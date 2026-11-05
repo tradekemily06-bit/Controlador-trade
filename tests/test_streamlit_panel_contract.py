@@ -930,7 +930,13 @@ def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid
             "BR_DAY_TRADE": {**valid["categories"]["BR_DAY_TRADE"], "entries": True},
         },
     })
-    invalid_cases.append({**valid, "categories": {"BR_DAY_TRADE": {"rate": True}}})
+    invalid_cases.append({
+        **valid,
+        "categories": {
+            **valid["categories"],
+            "BR_DAY_TRADE": {**valid["categories"]["BR_DAY_TRADE"], "rate": True},
+        },
+    })
     invalid_cases.append({
         **valid,
         "categories": {
@@ -1018,7 +1024,7 @@ def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid
             **valid,
             "categories": {
                 **valid["categories"],
-                "BR_DAY_TRADE": {"rate": oversized},
+                "BR_DAY_TRADE": {**valid["categories"]["BR_DAY_TRADE"], "rate": oversized},
             },
         },
         {
