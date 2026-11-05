@@ -55,6 +55,14 @@ class RealExecutionGateway:
             return False
         return True
 
+    @staticmethod
+    def _valid_account_fingerprint(value: object) -> bool:
+        return (
+            isinstance(value, str)
+            and len(value) == 32
+            and all(char in "0123456789abcdef" for char in value)
+        )
+
     def execute(self, *, broker: str, request_id: str, request: ExecutionRequest,
                 authorization: RealExecutionAuthorization, admission: RealAdmission,
                 safety: RealSafetyReport, confirmation: RealManualConfirmation | None = None) -> RealGatewayResult:
@@ -145,6 +153,31 @@ class RealExecutionGateway:
             except (OSError, ValueError) as exc:
                 return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"aceite REAL sem external_id e persistência falhou: {exc}", result.execution)
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id; reconciliação explícita necessária.", result.execution)
+
+        if not self._valid_account_fingerprint(result.execution.account_fingerprint):
+            try:
+                self._ledger.bind_external_id(request_id, result.execution.external_id)
+                self._ledger.mark_unknown(request_id)
+                if self._lifecycle is not None:
+                    self._lifecycle.put(
+                        ExecutionLifecycleRecord(
+                            request_id,
+                            ExecutionLifecycleState.UNKNOWN,
+                            datetime.now(timezone.utc),
+                            "aceite REAL sem impressão digital da conta; reconciliação de fechamento bloqueada.",
+                        )
+                    )
+            except (OSError, ValueError) as exc:
+                return RealGatewayResult(
+                    RealGatewayStatus.UNKNOWN,
+                    f"aceite REAL sem impressão digital e persistência falhou: {exc}",
+                    result.execution,
+                )
+            return RealGatewayResult(
+                RealGatewayStatus.UNKNOWN,
+                "aceite REAL sem impressão digital verificável da conta MT5; fechamento e reconciliação bloqueados.",
+                result.execution,
+            )
 
         try:
             self._ledger.bind_external_id(
