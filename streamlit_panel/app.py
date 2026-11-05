@@ -332,6 +332,50 @@ def _valid_pending_queue_summary(summary: Any, result_field: str) -> bool:
     return True
 
 
+def _valid_pending_page(data: Any, expected_offset: int) -> bool:
+    """Validate pending-page shape before rendering rows or pagination controls."""
+    if not isinstance(data, dict):
+        return False
+    total, limit, offset, items = (
+        data.get("total"), data.get("limit"), data.get("offset"), data.get("items")
+    )
+    if isinstance(total, bool) or not isinstance(total, int) or not 0 <= total <= 1_000_000_000:
+        return False
+    if isinstance(limit, bool) or limit != 50 or isinstance(offset, bool) or offset != expected_offset:
+        return False
+    if not isinstance(items, list) or len(items) > limit or offset > total:
+        return False
+    if offset + len(items) > total:
+        return False
+    for item in items:
+        if not isinstance(item, dict):
+            return False
+        pending_id = item.get("pending_id")
+        if not isinstance(pending_id, str) or not pending_id.strip() or len(pending_id) > 80:
+            return False
+    return True
+
+
+def _valid_review_history(data: Any) -> bool:
+    """Only render a well-formed review history returned for the selected pending item."""
+    if not isinstance(data, dict) or not isinstance(data.get("reviews"), list):
+        return False
+    for item in data["reviews"]:
+        if not isinstance(item, dict):
+            return False
+        for field in ("candidate_classification", "confirmed_jurisdiction", "reviewer_name",
+                      "reviewer_role", "professional_registration", "evidence_reference",
+                      "reviewed_on"):
+            value = item.get(field)
+            if not isinstance(value, str) or not value.strip():
+                return False
+        if item.get("reviewer_identity_status") != "DECLARED_NOT_VERIFIED":
+            return False
+        if item.get("professional_registration_verified") is not False:
+            return False
+    return True
+
+
 def _valid_fiscal_summary(summary: Any) -> bool:
     """Enable fiscal writes only when every required aggregate is structurally valid."""
     if not isinstance(summary, dict):
@@ -631,9 +675,14 @@ def show_fiscal() -> None:
     try:
         if "domestic_pending_offset" not in st.session_state:
             st.session_state.domestic_pending_offset = 0
-        domestic_offset = int(st.session_state.domestic_pending_offset)
+        domestic_offset = st.session_state.domestic_pending_offset
+        if isinstance(domestic_offset, bool) or not isinstance(domestic_offset, int) or domestic_offset < 0:
+            domestic_offset = 0
+            st.session_state.domestic_pending_offset = 0
         domestic_data = api(f"/api/fiscal-reserve/domestic-pending?limit=50&offset={domestic_offset}")
-        domestic_items = domestic_data.get("items", [])
+        if not _valid_pending_page(domestic_data, domestic_offset):
+            raise ValueError("Resposta de paginação brasileira inválida; registros ocultados.")
+        domestic_items = domestic_data["items"]
         domestic_summary = api("/api/fiscal-reserve/domestic-pending/summary")
         if _valid_pending_queue_summary(domestic_summary, "results"):
             domestic_cols = st.columns(4)
@@ -654,7 +703,7 @@ def show_fiscal() -> None:
                 if st.button("Próximas pendências brasileiras →", key="domestic_pending_next", disabled=domestic_offset + len(domestic_items) >= int(domestic_data.get("total", 0))):
                     st.session_state.domestic_pending_offset = domestic_offset + 50
                     st.rerun()
-            st.caption(f"Exibindo {domestic_offset + 1}–{domestic_offset + len(domestic_items)} de {int(domestic_data.get('total', 0))} pendências brasileiras.")
+            st.caption(f"Exibindo {domestic_offset + 1}–{domestic_offset + len(domestic_items)} de {domestic_data['total']} pendências brasileiras.")
             st.markdown("##### Revisão documental · Brasil")
             st.caption("A revisão registra evidências declaradas. O sistema não verifica identidade ou registro profissional, não muda a classificação e não calcula reserva.")
             review_options = {
@@ -705,7 +754,9 @@ def show_fiscal() -> None:
                     review_data = api(
                         "/api/fiscal-reserve/domestic-pending/" + urllib.parse.quote(selected_pending_id) + "/reviews"
                     )
-                    if review_data.get("reviews"):
+                    if not _valid_review_history(review_data):
+                        raise ValueError("Histórico de revisão brasileiro inválido; conteúdo ocultado.")
+                    if review_data["reviews"]:
                         st.dataframe([{
                             "Revisor declarado": item.get("reviewer_name"),
                             "Atuação": item.get("reviewer_role"),
@@ -804,9 +855,14 @@ def show_fiscal() -> None:
     try:
         if "foreign_pending_offset" not in st.session_state:
             st.session_state.foreign_pending_offset = 0
-        foreign_offset = int(st.session_state.foreign_pending_offset)
+        foreign_offset = st.session_state.foreign_pending_offset
+        if isinstance(foreign_offset, bool) or not isinstance(foreign_offset, int) or foreign_offset < 0:
+            foreign_offset = 0
+            st.session_state.foreign_pending_offset = 0
         foreign_pending_data = api(f"/api/fiscal-reserve/pending?limit=50&offset={foreign_offset}")
-        foreign_items = foreign_pending_data.get("items", [])
+        if not _valid_pending_page(foreign_pending_data, foreign_offset):
+            raise ValueError("Resposta de paginação estrangeira inválida; registros ocultados.")
+        foreign_items = foreign_pending_data["items"]
         if foreign_items:
             st.dataframe([{
                 "Data": item.get("occurred_on"),
@@ -832,7 +888,7 @@ def show_fiscal() -> None:
                 if st.button("Próximas pendências do exterior →", key="foreign_pending_next", disabled=foreign_offset + len(foreign_items) >= int(foreign_pending_data.get("total", 0))):
                     st.session_state.foreign_pending_offset = foreign_offset + 50
                     st.rerun()
-            st.caption(f"Exibindo {foreign_offset + 1}–{foreign_offset + len(foreign_items)} de {int(foreign_pending_data.get('total', 0))} pendências do exterior.")
+            st.caption(f"Exibindo {foreign_offset + 1}–{foreign_offset + len(foreign_items)} de {foreign_pending_data['total']} pendências do exterior.")
             foreign_review_options = {
                 item["pending_id"]: f"{item.get('occurred_on')} · {item.get('instrument')} · {item.get('reference')}"
                 for item in foreign_items if item.get("pending_id")
@@ -893,7 +949,9 @@ def show_fiscal() -> None:
                     foreign_review_data = api(
                         "/api/fiscal-reserve/pending/" + urllib.parse.quote(selected_foreign_pending_id) + "/reviews"
                     )
-                    if foreign_review_data.get("reviews"):
+                    if not _valid_review_history(foreign_review_data):
+                        raise ValueError("Histórico de revisão estrangeiro inválido; conteúdo ocultado.")
+                    if foreign_review_data["reviews"]:
                         st.dataframe([{
                             "Classificação candidata": item.get("candidate_classification"),
                             "Jurisdição": item.get("confirmed_jurisdiction"),
