@@ -363,14 +363,14 @@ def test_streamlit_market_analysis_requires_demo_confirmation_and_never_enables_
 def test_streamlit_preferences_never_submit_execution_authority_fields():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     start = source.index('if module_name == "Configurações":')
-    end = source.index('if module_name in {"Motor de Decisão", "Estatísticas", "Relatórios"}:', start)
+    end = source.index('if module_name == "Motor de Decisão":', start)
     preferences_screen = source[start:end]
-    assert '"real_execution_enabled"' not in preferences_screen
-    assert '"autonomous_operation_enabled"' not in preferences_screen
-    assert '"selected_mode"' not in preferences_screen
-    assert '"execution_allowed"' not in preferences_screen
-    assert '"require_closed_candle": require_closed' in preferences_screen
-    assert '"require_filters": require_filters' in preferences_screen
+    assert 'api("/api/preferences", "POST"' not in preferences_screen
+    assert "st.checkbox(" not in preferences_screen
+    assert "st.form(" not in preferences_screen
+    assert 'safety_cols[1].metric("Execução REAL", "DESABILITADA")' in preferences_screen
+    assert 'safety_cols[2].metric("Execução permitida", "NÃO")' in preferences_screen
+    assert "Somente leitura" in preferences_screen
 
 
 def test_streamlit_operational_screens_render_human_readable_summaries_without_raw_json_dump():
@@ -648,6 +648,21 @@ def test_streamlit_notifications_screen_reads_full_history_without_mutations():
     assert "somente leitura" in view.lower()
     assert 'api("/api/notifications/all", "POST"' not in view
     assert "execução permitida: não · real: desabilitado" in view.lower()
+
+
+def test_streamlit_settings_view_reads_preferences_without_mutations():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert '"Configurações": ("Preferências do Ecossistema", "/api/preferences")' in source
+    start = source.index('if module_name == "Configurações":')
+    end = source.index('if module_name == "Motor de Decisão":', start)
+    view = source[start:end]
+    assert 'data.get("preferences", {})' in view
+    assert 'prefs.get("default_symbol", "—")' in view
+    assert 'prefs.get("default_timeframe", "—")' in view
+    assert 'prefs.get("leverage_enabled", False)' in view
+    assert 'safety_cols[1].metric("Execução REAL", "DESABILITADA")' in view
+    assert "execução permitida: não · real: desabilitado" in view.lower()
+    assert 'api("/api/preferences", "POST"' not in view
 
 
 def test_streamlit_decision_engine_uses_latest_read_only_analysis_snapshot():
