@@ -932,7 +932,7 @@ def show_readonly_module(module_name: str) -> None:
     """Render existing runtime capabilities as clear, read-only Streamlit screens."""
     views = {
         "Operação": ("Estado operacional", "/api/health"),
-        "Motor de Decisão": ("Motor de Decisão", "/api/statistics"),
+        "Motor de Decisão": ("Motor de Decisão · última análise", "/api/runtime/analysis/latest"),
         "Gestão de Risco": ("Gestão de Risco", "/api/risk"),
         "Notificações": ("Central de Notificações", "/api/notifications"),
         "MT5 DEMO / Simulação": ("Conexões e ambiente", "/api/connections"),
@@ -970,6 +970,29 @@ def show_readonly_module(module_name: str) -> None:
 
     try:
         data = api(endpoint)
+        if module_name == "Motor de Decisão":
+            st.caption("Leitura da última análise calculada pelo runtime. Esta tela não solicita uma nova análise nem envia ordens.")
+            if data.get("available") is not True:
+                st.info("Ainda não existe uma análise recente disponível neste runtime. Abra Análise de Mercado e solicite uma análise em DEMO/SIMULAÇÃO.")
+                st.caption("REAL: DESABILITADO · execução permitida: NÃO")
+                return
+            latest = data.get("analysis") or {}
+            details = latest.get("analysis") or {}
+            cycle = latest.get("analysis_cycle") or {}
+            signal = str(latest.get("signal") or "AGUARDAR").upper()
+            candidate = str(latest.get("candidate_signal") or details.get("candidate_signal") or "—").upper()
+            score = latest.get("score", details.get("score", "—"))
+            cols = st.columns(4)
+            cols[0].metric("Decisão efetiva", signal)
+            cols[1].metric("Pontuação", f"{score}/100" if score != "—" else "—")
+            cols[2].metric("Ativo", details.get("symbol", cycle.get("symbol", "—")))
+            cols[3].metric("Timeframe", details.get("timeframe", cycle.get("timeframe", "—")))
+            st.write("Justificativa: " + str(latest.get("reason") or details.get("reason") or "Não informada."))
+            st.caption("Sinal candidato do motor: " + candidate + " · candidato não significa autorização de operação.")
+            st.caption("Horário: " + str(cycle.get("timestamp") or "não informado"))
+            st.caption("Somente leitura · execução permitida: NÃO · REAL: DESABILITADO")
+            return
+
         if module_name == "Operação":
             if "latest_operation_analysis" not in st.session_state:
                 try:
