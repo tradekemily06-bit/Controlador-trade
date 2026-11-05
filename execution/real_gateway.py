@@ -157,6 +157,8 @@ class RealExecutionGateway:
 
     def reconcile_unknown(self, request_id: str, *, executed: bool) -> None:
         """Explicitly reconcile UNKNOWN/RESERVED; never resubmits the order."""
+        if not isinstance(executed, bool):
+            raise ValueError("executed deve ser booleano verdadeiro ou falso.")
         if self._ledger.status(request_id) not in (
             ExecutionLedgerStatus.UNKNOWN,
             ExecutionLedgerStatus.RESERVED,
