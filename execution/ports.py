@@ -29,6 +29,18 @@ class ExecutionResult:
     external_id: str | None = None
 
 
+class PositionCloseObservationStatus(str, Enum):
+    CLOSED = "CLOSED"
+    OPEN = "OPEN"
+    UNKNOWN = "UNKNOWN"
+
+
+@dataclass(frozen=True)
+class PositionCloseObservation:
+    status: PositionCloseObservationStatus
+    message: str
+
+
 class ExecutionPort(Protocol):
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
         ...
@@ -36,6 +48,9 @@ class ExecutionPort(Protocol):
 
 class BrokerAdapter(Protocol):
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
+        ...
+
+    def reconcile_position_close(self, external_id: str) -> PositionCloseObservation:
         ...
 
     def is_available(self) -> bool:
