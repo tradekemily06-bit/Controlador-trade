@@ -303,6 +303,29 @@ class FiscalReserve:
                     "realized_result_brl": round(float(row["realized_result_brl"]), 2),
                     "reserve_amount_brl": round(float(row["reserve_amount_brl"]), 2),
                 }
+            year_start = date(reference_day.year, 1, 1)
+            next_year_start = date(reference_day.year + 1, 1, 1)
+            monthly_rows = db.execute(
+                """SELECT substr(occurred_on, 6, 2) AS month,
+                COUNT(*) AS count,
+                COALESCE(SUM(realized_result_brl), 0) AS realized_result_brl,
+                COALESCE(SUM(reserve_amount_brl), 0) AS reserve_amount_brl
+                FROM fiscal_reserve_entries
+                WHERE owner_id = ? AND category = 'BR_DAY_TRADE'
+                AND notes NOT LIKE ? AND occurred_on >= ? AND occurred_on < ?
+                GROUP BY substr(occurred_on, 6, 2)""",
+                (owner_id, "%USER_DECLARED_PENDING_REVIEW%", year_start.isoformat(), next_year_start.isoformat()),
+            ).fetchall()
+            monthly_by_number = {int(row["month"]): row for row in monthly_rows}
+            monthly_planning = []
+            for month_number in range(1, 13):
+                row = monthly_by_number.get(month_number)
+                monthly_planning.append({
+                    "month": f"{reference_day.year:04d}-{month_number:02d}",
+                    "entries": int(row["count"]) if row else 0,
+                    "realized_result_brl": round(float(row["realized_result_brl"]), 2) if row else 0.0,
+                    "reserve_amount_brl": round(float(row["reserve_amount_brl"]), 2) if row else 0.0,
+                })
             for category in sorted(VALID_CATEGORIES):
                 row = db.execute(
                     """SELECT COUNT(*) AS count,
@@ -351,6 +374,12 @@ class FiscalReserve:
             "categories": categories,
             "total_reserved_brl": round(float(total["total"]), 2),
             "periods": period_totals,
+            "monthly_planning": {
+                "year": reference_day.year,
+                "months": monthly_planning,
+                "kind": "PLANNING_ESTIMATE_ONLY",
+                "tax_assessment": False,
+            },
             "as_of": reference_day.isoformat(),
             "history": [{key: value for key, value in dict(item).items() if key != "owner_id"} for item in history],
             "history_page": {

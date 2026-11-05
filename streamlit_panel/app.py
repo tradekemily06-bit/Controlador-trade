@@ -356,6 +356,19 @@ def show_fiscal() -> None:
             item = periods.get(period, {})
             col.metric(label, money(item.get("reserve_amount_brl")))
             col.caption("Resultado: " + money(item.get("realized_result_brl")))
+        monthly = summary.get("monthly_planning", {})
+        monthly_rows = monthly.get("months", [])
+        st.markdown(f"#### Histórico mensal de planejamento · {monthly.get('year', '—')}")
+        st.caption("Consolidação por mês dos lançamentos elegíveis já registrados. Não compensa prejuízos, não desconta IRRF e não representa apuração tributária.")
+        if monthly_rows:
+            st.dataframe([{
+                "Competência": item.get("month"),
+                "Lançamentos": int(item.get("entries", 0)),
+                "Resultado registrado": money(item.get("realized_result_brl")),
+                "Reserva estimada": money(item.get("reserve_amount_brl")),
+            } for item in monthly_rows], use_container_width=True, hide_index=True)
+        else:
+            st.caption("Histórico mensal indisponível nesta resposta.")
     except Exception as exc:
         st.error(str(exc))
         summary = {}

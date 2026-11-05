@@ -380,3 +380,47 @@ def test_every_public_reserve_operation_rejects_missing_or_invalid_owner(tmp_pat
                 assert "identidade proprietária" in str(exc)
             else:
                 raise AssertionError("fiscal reserve operation must reject invalid owner identity")
+
+
+def test_summary_exposes_all_twelve_months_as_planning_only_and_excludes_unverified_entries(tmp_path):
+    from datetime import date
+    import json
+
+    reserve = make_reserve(tmp_path / "monthly-planning.sqlite3")
+    for reference, amount, occurred_on in (
+        ("MONTH-JAN-1", 100, "2026-01-12"),
+        ("MONTH-FEB-1", 200, "2026-02-03"),
+        ("MONTH-FEB-2", -50, "2026-02-18"),
+        ("MONTH-MAR-UNVERIFIED", 900, "2026-03-01"),
+    ):
+        notes = ""
+        if "UNVERIFIED" in reference:
+            notes = json.dumps({"tax_classification_status": "USER_DECLARED_PENDING_REVIEW"})
+        reserve.record_realized_result(OWNER, {
+            "category": "BR_DAY_TRADE",
+            "realized_result_brl": amount,
+            "reference": reference,
+            "occurred_on": occurred_on,
+            "notes": notes,
+        })
+
+    summary = reserve.summary(OWNER, as_of=date(2026, 11, 5))
+    monthly = summary["monthly_planning"]
+    assert monthly["year"] == 2026
+    assert monthly["kind"] == "PLANNING_ESTIMATE_ONLY"
+    assert monthly["tax_assessment"] is False
+    assert len(monthly["months"]) == 12
+    by_month = {item["month"]: item for item in monthly["months"]}
+    assert by_month["2026-01"] == {
+        "month": "2026-01", "entries": 1,
+        "realized_result_brl": 100.0, "reserve_amount_brl": 20.0,
+    }
+    assert by_month["2026-02"] == {
+        "month": "2026-02", "entries": 2,
+        "realized_result_brl": 150.0, "reserve_amount_brl": 40.0,
+    }
+    assert by_month["2026-03"] == {
+        "month": "2026-03", "entries": 0,
+        "realized_result_brl": 0.0, "reserve_amount_brl": 0.0,
+    }
+    assert sum(item["reserve_amount_brl"] for item in monthly["months"]) == 60.0
