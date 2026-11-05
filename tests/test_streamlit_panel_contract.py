@@ -904,6 +904,34 @@ def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid
     }
     assert validate(valid) is True
 
+    valid_with_pending = {
+        **valid,
+        "foreign_pending": {
+            "available": True,
+            "classification_status": "PENDING_CLASSIFICATION",
+            "included_in_totals": False,
+            "reserve_calculated": False,
+            "total": 3,
+            "realized_results": 1,
+            "asset_amounts": 2,
+            "periods": {
+                key: {"total": 1, "realized_results": 1, "asset_amounts": 0}
+                for key in ("day", "week", "month", "year")
+            },
+        },
+    }
+    assert validate(valid_with_pending) is True
+    invalid_pending = {
+        **valid_with_pending,
+        "foreign_pending": {**valid_with_pending["foreign_pending"], "total": True},
+    }
+    assert validate(invalid_pending) is False
+    invalid_pending_flags = {
+        **valid_with_pending,
+        "foreign_pending": {**valid_with_pending["foreign_pending"], "included_in_totals": True},
+    }
+    assert validate(invalid_pending_flags) is False
+
     invalid_cases = []
     missing_period = {**valid, "periods": {key: value for key, value in valid["periods"].items() if key != "year"}}
     invalid_cases.append(missing_period)
