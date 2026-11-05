@@ -27,6 +27,7 @@ class ExecutionResult:
     accepted: bool
     message: str
     external_id: str | None = None
+    account_fingerprint: str | None = None
 
 
 class PositionCloseObservationStatus(str, Enum):
