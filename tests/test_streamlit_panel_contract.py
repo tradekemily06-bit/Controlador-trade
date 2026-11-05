@@ -397,6 +397,7 @@ def test_streamlit_market_analysis_shows_asset_session_and_news_readiness_withou
 
 def test_streamlit_preferences_never_submit_execution_authority_fields():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert source.count('if module_name == "Configurações":') == 1
     start = source.index('if module_name == "Configurações":')
     end = source.index('if module_name == "Escola / Tutorial / Onboarding":', start)
     preferences_screen = source[start:end]
