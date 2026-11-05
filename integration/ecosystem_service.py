@@ -48,10 +48,85 @@ class EcosystemService:
         self.learning_observations: list[LearningObservation] = []
         self.learning_activities: dict[str, LearningActivity] = {}
         self.learning_attempts: list[LearningAttempt] = []
+        self.state_store = None
         self.senior_context = SeniorContextOrchestrator()
         self.automation = ControlledAutomationService(
             lifecycle_store=(operational_runtime.automation_lifecycle if operational_runtime is not None else None)
         )
+
+    def restore_learning_state(self) -> None:
+        """Restore educational records from the shared SQLite state store."""
+        store = getattr(self, "state_store", None)
+        if store is None:
+            return
+        saved = store.load_learning()
+        if not isinstance(saved, dict):
+            return
+        try:
+            self.learning_sources = {
+                item["source_id"]: LearningSource(
+                    source_id=item["source_id"],
+                    source_type=LearningSourceType(item["source_type"]),
+                    uri=item["uri"],
+                    status=LearningSourceStatus(item["status"]),
+                    content_verified=bool(item.get("content_verified", False)),
+                    security_checked=bool(item.get("security_checked", False)),
+                    knowledge_validated=bool(item.get("knowledge_validated", False)),
+                    operation_eligible=False,
+                )
+                for item in saved.get("sources", [])
+            }
+            self.learning_resources = {
+                item["resource_id"]: LearningResource(
+                    resource_id=item["resource_id"], title=item["title"],
+                    content_type=ContentType(item["content_type"]),
+                    source_url=item.get("source_url"), source_name=item.get("source_name"),
+                    status=LearningStatus(item["status"]), tags=tuple(item.get("tags", ())),
+                )
+                for item in saved.get("resources", [])
+            }
+            self.learning_observations = [
+                LearningObservation(
+                    resource_id=item["resource_id"], statement=item["statement"],
+                    concepts=tuple(item.get("concepts", ())), evidence=item.get("evidence"),
+                    confidence=item.get("confidence"), validated=bool(item.get("validated", False)),
+                )
+                for item in saved.get("observations", [])
+            ]
+            self.learning_activities = {
+                item["activity_id"]: LearningActivity(
+                    activity_id=item["activity_id"], prompt=item["prompt"],
+                    expected_concepts=tuple(item.get("expected_concepts", ())),
+                    difficulty=item.get("difficulty", "UNSPECIFIED"),
+                )
+                for item in saved.get("activities", [])
+            }
+            self.learning_attempts = [
+                LearningAttempt(
+                    activity_id=item["activity_id"], answer=item["answer"],
+                    correct=item.get("correct"), feedback=item.get("feedback", ""),
+                )
+                for item in saved.get("attempts", [])
+            ]
+        except (KeyError, TypeError, ValueError):
+            # Corrupt or incompatible learning data must not be partially trusted.
+            self.learning_sources = {}
+            self.learning_resources = {}
+            self.learning_observations = []
+            self.learning_activities = {}
+            self.learning_attempts = []
+
+    def _persist_learning_state(self) -> None:
+        store = getattr(self, "state_store", None)
+        if store is None:
+            return
+        store.save_learning({
+            "sources": [asdict(item) for item in self.learning_sources.values()],
+            "resources": [asdict(item) for item in self.learning_resources.values()],
+            "observations": [asdict(item) for item in self.learning_observations],
+            "activities": [asdict(item) for item in self.learning_activities.values()],
+            "attempts": [asdict(item) for item in self.learning_attempts],
+        })
 
     def require_production_context(self, *, subject_id: str | None, tenant_id: str | None) -> ProductionRequestContext:
         return require_production_context(subject_id=subject_id, tenant_id=tenant_id)
@@ -137,11 +212,13 @@ class EcosystemService:
         if source.source_id in self.learning_sources:
             raise ValueError("source_id já cadastrado")
         self.learning_sources[source.source_id] = source
+        self._persist_learning_state()
         return source
 
     def validate_learning_source(self, source: LearningSource, *, content_verified: bool, security_checked: bool) -> LearningSource:
         updated = self.learning_source_gate.validate_content(source, content_verified=content_verified, security_checked=security_checked)
         self.learning_sources[updated.source_id] = updated
+        self._persist_learning_state()
         return updated
 
     def admit_learning_knowledge(self, source: LearningSource, *, knowledge_validated: bool) -> LearningSource:
@@ -160,6 +237,7 @@ class EcosystemService:
             source_type = {ContentType.VIDEO: LearningSourceType.VIDEO, ContentType.DOCUMENT: LearningSourceType.DOCUMENT}.get(resource.content_type, LearningSourceType.LINK)
             self.screen_learning_source({"source_id": resource.resource_id, "source_type": source_type.value, "uri": resource.source_url})
         self.learning_resources[resource.resource_id] = resource
+        self._persist_learning_state()
         return resource
 
     def learning_resources_view(self) -> list[dict[str, Any]]:
@@ -175,6 +253,7 @@ class EcosystemService:
             raise ValueError("external learning knowledge must pass source and knowledge validation first")
         observation = LearningObservation(resource_id=resource_id, statement=str(payload.get("statement", "")), concepts=normalize_tags(tuple(payload.get("concepts", ()) or ())), evidence=payload.get("evidence"), confidence=payload.get("confidence"), validated=validated)
         self.learning_observations.append(observation)
+        self._persist_learning_state()
         return observation
 
     def learning_observations_view(self) -> list[dict[str, Any]]:
@@ -185,6 +264,7 @@ class EcosystemService:
         if activity.activity_id in self.learning_activities:
             raise ValueError("activity_id já cadastrado")
         self.learning_activities[activity.activity_id] = activity
+        self._persist_learning_state()
         return activity
 
     def generate_professor_activity(self, payload: dict[str, Any]) -> LearningActivity:
@@ -203,6 +283,7 @@ class EcosystemService:
             raise ValueError("activity_id não encontrado")
         attempt = LearningAttempt(activity_id=activity_id, answer=str(payload.get("answer", "")), correct=payload.get("correct"), feedback=str(payload.get("feedback", "")))
         self.learning_attempts.append(attempt)
+        self._persist_learning_state()
         return attempt
 
     def learning_summary(self) -> dict[str, Any]:
