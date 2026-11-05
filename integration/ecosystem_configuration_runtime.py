@@ -55,6 +55,7 @@ class ConfiguredEcosystemService(EcosystemService):
             # belongs to the real operational runtime and is only used there.
             state_path = Path(tempfile.mkdtemp(prefix="controlador-ecosystem-state-")) / "ecosystem-state.sqlite"
         self.state_store = EcosystemStateStore(state_path)
+        self.restore_learning_state()
         persisted_preferences = self.state_store.load_preferences()
         self.preferences = EcosystemPreferencesStore.from_dict(persisted_preferences) if persisted_preferences else EcosystemPreferencesStore()
         self.notifications = EcosystemNotificationCenter()
