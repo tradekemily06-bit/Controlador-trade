@@ -1503,11 +1503,11 @@ def test_every_reference_navigation_module_has_an_explicit_streamlit_handler():
         for module in modules
     }
     explicit_handlers = set(
-        re.findall(r"(?:if|elif)\\s+module_name\\s*==\\s*[\"']([^\"']+)[\"']", source)
+        re.findall(r"(?:if|elif)\s+module_name\s*==\s*[\"']([^\"']+)[\"']", source)
     )
     grouped_handlers = {
         module
-        for group in re.findall(r"if module_name in \\{([^}]+)\\}:", source)
+        for group in re.findall(r"if module_name in \{([^}]+)\\}:", source)
         for module in re.findall(r"[\"']([^\"']+)[\"']", group)
     }
     # Financeiro is intentionally routed by the top-level panel dispatcher to
@@ -1516,7 +1516,7 @@ def test_every_reference_navigation_module_has_an_explicit_streamlit_handler():
     missing = configured_modules - explicitly_routed
 
     assert not missing, f"Navigation modules without an explicit Streamlit handler: {sorted(missing)}"
-    assert 'elif module_name == "Simulador":\\n        show_simulator()\\n        return' in source
+    assert 'elif module_name == "Simulador":\n        show_simulator()\n        return' in source
     assert 'if module_name == "Escola / Tutorial / Onboarding":' in source
     assert '"Escola / Tutorial / Onboarding": ("Primeiros passos", "/api/onboarding")' in source
 
