@@ -98,7 +98,9 @@ class FiscalDomesticPendingQueue:
 
     @staticmethod
     def _day(value: Any) -> str:
-        raw = str(value or "").strip()
+        if not isinstance(value, str):
+            raise ValueError("occurred_on deve ser texto no formato YYYY-MM-DD")
+        raw = value.strip()
         try:
             parsed = date.fromisoformat(raw)
         except ValueError as exc:
@@ -107,12 +109,26 @@ class FiscalDomesticPendingQueue:
             raise ValueError("occurred_on deve usar YYYY-MM-DD")
         return raw
 
+    @staticmethod
+    def _text(payload: dict[str, Any], field: str, maximum: int, *, required: bool = False) -> str:
+        raw = payload.get(field, "")
+        if raw is None and not required:
+            raw = ""
+        if not isinstance(raw, str):
+            raise ValueError(f"{field} deve ser texto")
+        value = raw.strip()
+        if required and not value:
+            raise ValueError(f"{field} é obrigatório e deve ter até {maximum} caracteres")
+        if len(value) > maximum:
+            raise ValueError(f"{field} deve ter até {maximum} caracteres")
+        return value
+
     def add(self, owner_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         owner_id = self._require_owner(owner_id)
         if not isinstance(payload, dict):
             raise ValueError("identidade proprietária e payload são obrigatórios")
-        reference = str(payload.get("reference") or "").strip()
-        instrument = str(payload.get("instrument") or "").strip()
+        reference = self._text(payload, "reference", 160, required=True)
+        instrument = self._text(payload, "instrument", 80, required=True)
         if not reference or len(reference) > 160:
             raise ValueError("reference é obrigatório e deve ter até 160 caracteres")
         if not instrument or len(instrument) > 80:
@@ -129,7 +145,7 @@ class FiscalDomesticPendingQueue:
             if result != result or result in (float("inf"), float("-inf")) or abs(result) > 1e12:
                 raise ValueError("realized_result_brl deve ser finito e estar dentro do limite")
             result = round(result, 2)
-        category_candidate = str(payload.get("category_candidate") or "").strip()
+        category_candidate = self._text(payload, "category_candidate", 120)
         if category_candidate and category_candidate not in BRAZIL_CATEGORIES:
             raise ValueError("category_candidate não pertence ao catálogo brasileiro permitido")
         item = {
@@ -138,10 +154,10 @@ class FiscalDomesticPendingQueue:
             "reference": reference,
             "category_candidate": category_candidate,
             "instrument": instrument,
-            "market_scope": str(payload.get("market_scope") or "").strip()[:80],
+            "market_scope": self._text(payload, "market_scope", 80),
             "occurred_on": self._day(payload.get("occurred_on")),
             "realized_result_brl": result,
-            "notes": str(payload.get("notes") or "").strip()[:1000],
+            "notes": self._text(payload, "notes", 1000),
             "status": "PENDING_CLASSIFICATION",
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
