@@ -43,12 +43,12 @@ def _is_finite_number(value: Any) -> bool:
 
 
 def _count(value: Any) -> int:
-    if isinstance(value, bool):
+    # Counts come from trusted service aggregates and must be actual integers.
+    # Coercing strings or fractional floats can silently turn malformed data
+    # into plausible-looking totals in the assistant context.
+    if isinstance(value, bool) or not isinstance(value, int):
         return 0
-    try:
-        return max(0, int(value))
-    except (TypeError, ValueError, OverflowError):
-        return 0
+    return max(0, value)
 
 
 def _decision_summary(item: Any) -> dict[str, Any]:
