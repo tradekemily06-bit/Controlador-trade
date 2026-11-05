@@ -876,6 +876,24 @@ def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid
             "week": {**valid["periods"]["week"], "start": "2026-02-30"},
         },
     })
+    invalid_cases.append({
+        **valid,
+        "periods": {
+            **valid["periods"],
+            "day": {**valid["periods"]["day"], "reserve_amount_brl": -0.01},
+        },
+    })
+    invalid_cases.append({
+        **valid,
+        "periods": {
+            **valid["periods"],
+            "year": {
+                **valid["periods"]["year"],
+                "start": "2026-11-05",
+                "end": "2026-11-01",
+            },
+        },
+    })
     assert all(validate(candidate) is False for candidate in invalid_cases)
 
 
