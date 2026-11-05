@@ -919,9 +919,9 @@ def show_fiscal() -> None:
         event_signed = st.selectbox("Tipo de evento", list(event_options), format_func=lambda value: event_options[value], key="signed_event_type")
         fx_signed = st.number_input("Cotação documentada (opcional)", min_value=0.0, max_value=1_000_000_000_000.0, format="%.8f")
         fx_date_signed = st.date_input("Data da cotação", key="signed_foreign_fx_date")
-        fx_source_signed = st.text_input("Fonte da cotação")
+        fx_source_signed = st.text_input("Fonte da cotação", max_chars=200)
         fx_method_signed = st.selectbox("Método de conversão cambial", list(fx_method_options), format_func=lambda value: fx_method_options[value], key="signed_fx_method")
-        notes_signed = st.text_area("Observações")
+        notes_signed = st.text_area("Observações", max_chars=1000)
         submit_signed = st.form_submit_button("Guardar como pendente")
     if submit_signed:
         try:
