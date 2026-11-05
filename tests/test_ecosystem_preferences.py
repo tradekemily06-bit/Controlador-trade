@@ -105,3 +105,22 @@ def test_invalid_saved_boolean_text_uses_default():
     assert restored.require_filters is True
     assert restored.candle.show_wicks is True
     assert restored.notifications.risk_enabled is True
+
+
+def test_invalid_saved_chart_values_fall_back_to_safe_defaults():
+    restored = EcosystemPreferencesStore.from_dict({
+        "chart_theme": "NEON",
+        "candle": {
+            "style": "UNKNOWN",
+            "color_mode": "RAINBOW",
+            "bullish_color": "not-a-color",
+            "bearish_color": "#GGGGGG",
+            "wick_color": None,
+        },
+    }).preferences
+    assert restored.chart_theme.value == "DARK"
+    assert restored.candle.style.value == "CANDLESTICK"
+    assert restored.candle.color_mode.value == "DEFAULT"
+    assert restored.candle.bullish_color == "#58d68d"
+    assert restored.candle.bearish_color == "#ff7676"
+    assert restored.candle.wick_color == "#aab5c8"
