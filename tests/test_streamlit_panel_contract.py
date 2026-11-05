@@ -609,3 +609,20 @@ def test_streamlit_mt5_demo_connections_and_multibroker_views_are_distinct():
     assert "não confirma que o terminal MT5 esteja aberto" in views
     assert "Não há evidência nesta resposta de uma segunda corretora conectada e validada." in views
     assert "REAL permanece DESABILITADO." in views
+
+
+
+def test_streamlit_statistics_and_reports_render_periods_and_grouped_breakdowns():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index('if module_name in {"Estatísticas", "Relatórios"}:')
+    end = source.index('except Exception as exc:', start)
+    views = source[start:end]
+    for label in ("Registros", "Acionáveis", "WIN", "LOSS", "Taxa de WIN"):
+        assert label in views
+    for period in ('"daily"', '"weekly"', '"monthly"'):
+        assert period in views
+    assert 'if module_name == "Relatórios":' in views
+    for group in ("symbols", "timeframes", "signals", "score_bands"):
+        assert f'breakdowns.get("{group}"' in views
+    assert "não representam lucro financeiro, resultado fiscal ou garantia de desempenho futuro" in views
+    assert "if module_name == \"Motor de Decisão\":" in source
