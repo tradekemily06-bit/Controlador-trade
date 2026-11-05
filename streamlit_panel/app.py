@@ -454,17 +454,55 @@ def _valid_fiscal_summary(summary: Any) -> bool:
                 count = foreign_pending.get(field)
                 if isinstance(count, bool) or not isinstance(count, int) or not 0 <= count <= 1_000_000_000:
                     return False
+            pending_as_of_raw = foreign_pending.get("as_of")
+            if not isinstance(pending_as_of_raw, str) or len(pending_as_of_raw) != 10:
+                return False
+            try:
+                pending_as_of = date.fromisoformat(pending_as_of_raw)
+                if pending_as_of.isoformat() != pending_as_of_raw:
+                    return False
+            except ValueError:
+                return False
+            if foreign_pending["total"] != (
+                foreign_pending["realized_results"] + foreign_pending["asset_amounts"]
+            ):
+                return False
             pending_periods = foreign_pending.get("periods")
             if not isinstance(pending_periods, dict):
                 return False
-            for period in ("day", "week", "month", "year"):
+            pending_bounds = {
+                "day": (pending_as_of, pending_as_of),
+                "week": (
+                    date.fromordinal(pending_as_of.toordinal() - pending_as_of.weekday()),
+                    pending_as_of,
+                ),
+                "month": (pending_as_of.replace(day=1), pending_as_of),
+                "year": (pending_as_of.replace(month=1, day=1), pending_as_of),
+            }
+            for period, (expected_start, expected_end) in pending_bounds.items():
                 row = pending_periods.get(period)
                 if not isinstance(row, dict):
+                    return False
+                dates = []
+                for field in ("start", "end"):
+                    raw_date = row.get(field)
+                    if not isinstance(raw_date, str) or len(raw_date) != 10:
+                        return False
+                    try:
+                        parsed = date.fromisoformat(raw_date)
+                        if parsed.isoformat() != raw_date:
+                            return False
+                        dates.append(parsed)
+                    except ValueError:
+                        return False
+                if dates != [expected_start, expected_end]:
                     return False
                 for field in ("total", "realized_results", "asset_amounts"):
                     count = row.get(field)
                     if isinstance(count, bool) or not isinstance(count, int) or not 0 <= count <= 1_000_000_000:
                         return False
+                if row["total"] != row["realized_results"] + row["asset_amounts"]:
+                    return False
         elif foreign_pending.get("available") is not False:
             return False
         elif foreign_pending.get("included_in_totals") is not False or foreign_pending.get("reserve_calculated") is not False:
