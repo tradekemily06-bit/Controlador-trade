@@ -1,11 +1,12 @@
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Event
 
+import pytest
+
+from core.kill_switch import KillSwitch
 from core.real_runtime_controller import RealRuntimeController
-
-
-class FakeKillSwitch:
-    def allows_execution(self):
-        return True
+from execution.ports import ExecutionResult
 
 
 class FakeRecovery:
@@ -19,7 +20,7 @@ class FakeRuntime:
         from execution.execution_ledger import ExecutionLedger
         from execution.execution_lifecycle import ExecutionLifecycleStore
         self.execution_lifecycle = ExecutionLifecycleStore(Path(tmp_path) / "lifecycle.json")
-        self.kill_switch = FakeKillSwitch()
+        self.kill_switch = KillSwitch()
         self.market_data = type("MarketData", (), {"report": type("Report", (), {"safe_for_analysis": True})()})()
         self.recovery = FakeRecovery()
         self.execution_ledger = ExecutionLedger(Path(tmp_path) / "ledger.json")
@@ -92,3 +93,70 @@ def test_real_reconcile_rejects_non_boolean_outcome_before_gateway_call():
     assert method.index(validation) < method.index("self.gateway.reconcile_unknown")
     assert "executed=executed" in method
     assert "executed=bool(executed)" not in method
+
+
+class FakeCloseAdapter:
+    def __init__(self):
+        self.calls = 0
+        self.started = Event()
+        self.release = Event()
+
+    def close_position(self, external_id):
+        self.calls += 1
+        self.started.set()
+        self.release.wait(timeout=2)
+        return ExecutionResult(True, "posição encerrada pelo adaptador de teste.", "close-1")
+
+
+class FakeRegistry:
+    def __init__(self, adapter):
+        self.adapter = adapter
+
+    def get(self, broker_id):
+        return self.adapter
+
+
+def test_real_close_serializes_concurrent_requests_and_prevents_duplicate_adapter_call(tmp_path):
+    from datetime import datetime, timezone
+
+    from execution.execution_ledger import ExecutionLedgerStatus
+    from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState
+
+    runtime = FakeRuntime(tmp_path)
+    runtime.execution_ledger.reserve("req-close", cycle_id="cycle-close")
+    runtime.execution_ledger.bind_external_id("req-close", "ticket-123")
+    runtime.execution_ledger.mark_accepted("req-close")
+    runtime.execution_lifecycle.put(
+        ExecutionLifecycleRecord(
+            "req-close",
+            ExecutionLifecycleState.ACCEPTED,
+            datetime.now(timezone.utc),
+            "ordem aceita",
+        )
+    )
+
+    adapter = FakeCloseAdapter()
+    controller = RealRuntimeController(runtime=runtime, root=tmp_path)
+    controller.registry = FakeRegistry(adapter)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(
+            controller.close_and_reconcile,
+            request_id="req-close",
+            external_id="ticket-123",
+        )
+        assert adapter.started.wait(timeout=1)
+        second = pool.submit(
+            controller.close_and_reconcile,
+            request_id="req-close",
+            external_id="ticket-123",
+        )
+        adapter.release.set()
+        result = first.result(timeout=2)
+        with pytest.raises(ValueError, match="somente uma execução REAL ACCEPTED"):
+            second.result(timeout=2)
+
+    assert result.accepted is True
+    assert adapter.calls == 1
+    assert runtime.execution_ledger.status("req-close") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert runtime.execution_lifecycle.get("req-close").state is ExecutionLifecycleState.ACCEPTED
