@@ -869,7 +869,12 @@ def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid
 
     valid = {
         "categories": {
-            "BR_DAY_TRADE": {"rate": 20.0},
+            "BR_DAY_TRADE": {
+                "entries": 2,
+                "rate": 20.0,
+                "realized_result_brl": 1000.0,
+                "reserve_amount_brl": 200.0,
+            },
             "FOREIGN_FINANCIAL_ASSET": {
                 "entries": 2,
                 "realized_result_brl": 0.0,
@@ -890,6 +895,7 @@ def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid
             key: {
                 "start": "2026-11-01",
                 "end": "2026-11-05",
+                "entries": 2,
                 "realized_result_brl": 1000.0,
                 "reserve_amount_brl": 200.0,
             }
@@ -902,6 +908,28 @@ def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid
     missing_period = {**valid, "periods": {key: value for key, value in valid["periods"].items() if key != "year"}}
     invalid_cases.append(missing_period)
     invalid_cases.append({**valid, "total_reserved_brl": float("inf")})
+    invalid_cases.append({**valid, "total_reserved_brl": 1e100})
+    invalid_cases.append({
+        **valid,
+        "categories": {
+            **valid["categories"],
+            "BR_DAY_TRADE": {**valid["categories"]["BR_DAY_TRADE"], "reserve_amount_brl": -0.01},
+        },
+    })
+    invalid_cases.append({
+        **valid,
+        "categories": {
+            **valid["categories"],
+            "BR_DAY_TRADE": {**valid["categories"]["BR_DAY_TRADE"], "realized_result_brl": 1e100},
+        },
+    })
+    invalid_cases.append({
+        **valid,
+        "categories": {
+            **valid["categories"],
+            "BR_DAY_TRADE": {**valid["categories"]["BR_DAY_TRADE"], "entries": True},
+        },
+    })
     invalid_cases.append({**valid, "categories": {"BR_DAY_TRADE": {"rate": True}}})
     invalid_cases.append({
         **valid,
@@ -967,6 +995,20 @@ def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid
                 "start": "2026-11-05",
                 "end": "2026-11-01",
             },
+        },
+    })
+    invalid_cases.append({
+        **valid,
+        "periods": {
+            **valid["periods"],
+            "year": {**valid["periods"]["year"], "realized_result_brl": 1e100},
+        },
+    })
+    invalid_cases.append({
+        **valid,
+        "periods": {
+            **valid["periods"],
+            "day": {**valid["periods"]["day"], "entries": 10**1000},
         },
     })
     oversized = 10**1000
