@@ -689,12 +689,14 @@ def test_streamlit_memory_view_displays_recent_records_with_read_only_filters():
     end = source.index('if module_name == "Motor de Decisão":', start)
     view = source[start:end]
     assert 'data.get("records", [])' in view
-    assert 'item.get("timestamp", "—")' in view
-    assert 'item.get("result")' in view
-    assert 'st.selectbox("Filtrar resultado"' in view
+    assert 'item.get("created_at", "—")' in view
+    assert 'item.get("outcome")' in view
+    assert 'item.get("outcome_source")' in view
+    assert 'st.selectbox("Filtrar resultado anotado"' in view
     assert 'st.selectbox("Filtrar sinal"' in view
-    assert 'item.get("entry_conditions")' in view
-    assert "até 50 registros recentes" in view
+    assert 'item.get("confirmed") is True' in view
+    assert "até 50 decisões recentes" in view
+    assert "estudo manual" in view.lower()
     assert "Somente leitura" in view
     assert "execução permitida: não · real: desabilitado" in view.lower()
     assert 'api("/api/memory?limit=50", "POST"' not in view
