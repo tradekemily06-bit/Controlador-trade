@@ -28,7 +28,7 @@ class FakeAdapter:
 
     def execute(self, request):
         self.calls += 1
-        return ExecutionResult(True, "fake real execution accepted", "external-1")
+        return ExecutionResult(True, "fake real execution accepted", "external-1", "a" * 32)
 
 
 class NoExternalIdAdapter:
