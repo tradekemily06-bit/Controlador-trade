@@ -175,6 +175,22 @@ class RealRuntimeController:
             "real_dispatch": "MANUAL_CONFIRMATION_REQUIRED",
             "position_close_recovery_required": self._position_close_recovery_required(),
             "unresolved_position_closes": unresolved_close_count,
+            "position_close_recovery_items": (
+                [
+                    {
+                        "request_id": record.request_id,
+                        "external_id": record.external_id,
+                        "state": record.state.value,
+                        "attempt": record.attempt,
+                        "updated_at": record.updated_at.isoformat(),
+                        "message": record.message,
+                    }
+                    for record in close_records
+                    if record.state in (PositionCloseState.REQUESTED, PositionCloseState.UNKNOWN)
+                ]
+                if unresolved_close_count is not None
+                else []
+            ),
         }
 
     @staticmethod
