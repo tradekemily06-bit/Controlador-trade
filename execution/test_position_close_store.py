@@ -27,7 +27,7 @@ def test_open_observation_allows_a_new_explicit_close_attempt(tmp_path):
 def test_closed_observation_is_terminal_and_cannot_be_retried(tmp_path):
     store = PositionCloseStore(tmp_path / "closes.json")
     store.begin("req-3", "ticket-3")
-    store.reconcile("req-3", PositionCloseState.ACCEPTED, message="close deal verified")
+    store.reconcile("req-3", PositionCloseState.CLOSED, message="close deal verified")
 
     try:
         store.begin("req-3", "ticket-3")
