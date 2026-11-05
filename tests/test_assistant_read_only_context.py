@@ -663,3 +663,26 @@ def test_assistant_context_rejects_non_finite_numbers_and_boolean_counts():
     assert fractional["total"] == 0
     assert fractional["realized_results"] == 0
     assert fractional["asset_amounts"] == 0
+
+def test_pending_currency_sanitizer_never_stringifies_non_string_values():
+    class ExplosiveString:
+        def __str__(self):
+            raise AssertionError("currency sanitizer must not stringify arbitrary objects")
+
+    class UntrustedQueue:
+        def summary(self, owner_id):
+            return {
+                "total": 4,
+                "realized_results": 1,
+                "asset_amounts": 3,
+                "currencies": ["USD", "eur", 123, True, None, ExplosiveString(), "TOO-LONG-CURRENCY"],
+                "included_in_totals": False,
+                "reserve_calculated": False,
+            }
+
+    pending = collect_read_only_context(
+        FakeService(), FakeFiscalReserve(), "test-owner", UntrustedQueue()
+    )["fiscal_reserve"]["foreign_pending"]
+
+    assert pending["currencies"] == ["EUR", "USD"]
+
