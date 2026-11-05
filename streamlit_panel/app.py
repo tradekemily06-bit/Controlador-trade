@@ -278,6 +278,30 @@ def _safe_fiscal_count(value: Any) -> int:
         return 0
     return value
 
+def _valid_pending_queue_summary(summary: Any, result_field: str) -> bool:
+    if not isinstance(summary, dict) or summary.get("available") is not True:
+        return False
+    if summary.get("classification_status") != "PENDING_CLASSIFICATION":
+        return False
+    if summary.get("included_in_totals") is not False or summary.get("reserve_calculated") is not False:
+        return False
+    total = summary.get("total")
+    if isinstance(total, bool) or not isinstance(total, int) or not 0 <= total <= 1_000_000_000:
+        return False
+    periods = summary.get("periods")
+    if not isinstance(periods, dict):
+        return False
+    for name in ("day", "week", "month", "year"):
+        row = periods.get(name)
+        if not isinstance(row, dict):
+            return False
+        for field in ("total", result_field):
+            value = row.get(field)
+            if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 1_000_000_000:
+                return False
+    return True
+
+
 def _valid_fiscal_summary(summary: Any) -> bool:
     """Enable fiscal writes only when every required aggregate is structurally valid."""
     if not isinstance(summary, dict):
@@ -581,11 +605,14 @@ def show_fiscal() -> None:
         domestic_data = api(f"/api/fiscal-reserve/domestic-pending?limit=50&offset={domestic_offset}")
         domestic_items = domestic_data.get("items", [])
         domestic_summary = api("/api/fiscal-reserve/domestic-pending/summary")
-        domestic_cols = st.columns(4)
-        for col, period, label in zip(domestic_cols, ("day", "week", "month", "year"), ("Dia", "Semana", "Mês", "Ano")):
-            period_data = domestic_summary.get("periods", {}).get(period, {})
-            col.metric(f"Brasil pendente · {label}", int(period_data.get("total", 0)))
-            col.caption(f"{int(period_data.get('results', 0))} resultado(s) · sem cálculo")
+        if _valid_pending_queue_summary(domestic_summary, "results"):
+            domestic_cols = st.columns(4)
+            for col, period, label in zip(domestic_cols, ("day", "week", "month", "year"), ("Dia", "Semana", "Mês", "Ano")):
+                period_data = domestic_summary.get("periods", {}).get(period, {})
+                col.metric(f"Brasil pendente · {label}", _safe_fiscal_count(period_data.get("total", 0)))
+                col.caption(f"{_safe_fiscal_count(period_data.get('results', 0))} resultado(s) · sem cálculo")
+        else:
+            st.warning("Resumo de pendências brasileiras inválido ou indisponível; contagens ocultadas. Os registros continuam fora dos totais.")
         if domestic_items:
             st.dataframe([{"Data": item.get("occurred_on"), "Ativo": item.get("instrument"), "Categoria candidata": item.get("category_candidate") or "Não informada", "Mercado declarado · não verificado": item.get("market_scope"), "Resultado (R$)": item.get("realized_result_brl") if item.get("realized_result_brl") is not None else "—", "Status": "PENDENTE DE CLASSIFICAÇÃO"} for item in domestic_items], use_container_width=True, hide_index=True)
             domestic_page_cols = st.columns(2)
