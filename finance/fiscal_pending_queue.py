@@ -288,7 +288,10 @@ class FiscalPendingQueue:
         registration = required("professional_registration", 100)
         evidence = required("evidence_reference", 500)
         reviewed_on = self._date(payload.get("reviewed_on"), "reviewed_on")
-        notes = str(payload.get("review_notes") or "").strip()
+        raw_notes = payload.get("review_notes", "")
+        if not isinstance(raw_notes, str):
+            raise ValueError("review_notes deve ser texto")
+        notes = raw_notes.strip()
         if len(notes) > 2000:
             raise ValueError("review_notes deve ter até 2000 caracteres")
 
@@ -330,7 +333,11 @@ class FiscalPendingQueue:
 
     def list_reviews(self, owner_id: str, pending_id: str) -> list[dict[str, Any]]:
         owner_id = self._require_owner(owner_id)
-        pending_id = str(pending_id or "").strip()
+        if not isinstance(pending_id, str):
+            raise ValueError("pending_id inválido")
+        pending_id = pending_id.strip()
+        if not pending_id or len(pending_id) > 80:
+            raise ValueError("pending_id inválido")
         with self._connect() as db:
             if not db.execute(
                 "SELECT 1 FROM fiscal_reserve_pending_foreign WHERE owner_id = ? AND pending_id = ?",
