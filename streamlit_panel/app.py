@@ -329,7 +329,7 @@ def show_fiscal() -> None:
             csv_writer.writerows(display_rows)
             st.download_button(
                 "Exportar página exibida · CSV",
-                data="\\ufeff" + csv_buffer.getvalue(),
+                data="\ufeff" + csv_buffer.getvalue(),
                 file_name="reserva-fiscal-historico.csv",
                 mime="text/csv; charset=utf-8",
                 key="fiscal_history_csv_download",
