@@ -130,6 +130,8 @@ def test_chat_api_rejects_missing_or_false_openai_consent_before_assistant_call(
         {"message": "Explique minha Reserva Fiscal"},
         {"message": "Explique minha Reserva Fiscal", "consent_to_openai": False},
         {"message": "Explique minha Reserva Fiscal", "consent_to_openai": "true"},
+        {"message": "Explique minha Reserva Fiscal", "consent_to_openai": 1},
+        {"message": "Explique minha Reserva Fiscal", "consent_to_openai": None},
     ):
         status, response = _request(
             "/api/assistant/chat",
