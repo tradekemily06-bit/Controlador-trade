@@ -1694,13 +1694,39 @@ def show_readonly_module(module_name: str) -> None:
             cols = st.columns(2)
             cols[0].metric("Materiais cadastrados", len(resources))
             cols[1].metric("Fontes em avaliação", len(sources))
-            st.caption("Espaço para consultar materiais de estudo e verificar a procedência das fontes.")
+            st.caption("Cadastre materiais de estudo. Links externos entram em triagem; o conteúdo não é considerado validado automaticamente.")
             for label, items in (("Materiais do laboratório", resources), ("Procedência e validação das fontes", sources)):
                 if items:
                     with st.expander(f"{label} ({len(items)})", expanded=True):
                         st.dataframe(items, use_container_width=True, hide_index=True)
                 else:
                     st.info(f"Nenhum item disponível em: {label.lower()}.")
+            with st.expander("Adicionar material de estudo"):
+                with st.form("learning_resource_create_form"):
+                    resource_id = st.text_input("Identificador do material", max_chars=80)
+                    resource_title = st.text_input("Título", max_chars=200)
+                    content_type = st.selectbox("Tipo de material", ["VIDEO", "ARTICLE", "DOCUMENT", "IMAGE", "NOTE", "OTHER"])
+                    source_url = st.text_input("Link da fonte (opcional)", max_chars=1000)
+                    source_name = st.text_input("Nome da fonte (opcional)", max_chars=160)
+                    tags_text = st.text_input("Etiquetas separadas por vírgula", max_chars=300)
+                    resource_submit = st.form_submit_button("Adicionar material")
+                if resource_submit:
+                    if not resource_id.strip() or not resource_title.strip():
+                        st.error("Informe o identificador e o título do material.")
+                    else:
+                        try:
+                            api("/api/learning/resources", "POST", {
+                                "resource_id": resource_id.strip(),
+                                "title": resource_title.strip(),
+                                "content_type": content_type,
+                                "source_url": source_url.strip() or None,
+                                "source_name": source_name.strip() or None,
+                                "tags": [tag.strip() for tag in tags_text.split(",") if tag.strip()],
+                            })
+                            st.success("Material cadastrado. A fonte externa permanece em triagem até validação.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Não foi possível cadastrar o material: {exc}")
             st.caption("Fontes externas exigem validação antes de seu conhecimento ser considerado validado.")
             st.caption("Execução permitida: NÃO.")
             return
@@ -1711,29 +1737,112 @@ def show_readonly_module(module_name: str) -> None:
             cols = st.columns(2)
             cols[0].metric("Atividades", len(activities))
             cols[1].metric("Tentativas registradas", len(attempts))
-            st.caption("Acompanhe atividades de aprendizagem e tentativas registradas, sem transformar progresso em autorização operacional.")
+            st.caption("Crie exercícios e registre suas respostas. O resultado é educacional e não altera sinais nem parâmetros de execução.")
             for label, items in (("Atividades de aprendizagem", activities), ("Histórico de tentativas", attempts)):
                 if items:
                     with st.expander(f"{label} ({len(items)})", expanded=True):
                         st.dataframe(items, use_container_width=True, hide_index=True)
                 else:
                     st.info(f"Nenhum item disponível em: {label.lower()}.")
+            with st.expander("Criar atividade de estudo"):
+                with st.form("learning_activity_create_form"):
+                    activity_id = st.text_input("Identificador da atividade", max_chars=80)
+                    activity_prompt = st.text_area("Enunciado / exercício", max_chars=3000)
+                    expected_concepts = st.text_input("Conceitos esperados (separados por vírgula)", max_chars=300)
+                    difficulty = st.selectbox("Dificuldade", ["INICIANTE", "BÁSICA", "INTERMEDIÁRIA", "AVANÇADA"])
+                    activity_submit = st.form_submit_button("Criar atividade")
+                if activity_submit:
+                    if not activity_id.strip() or not activity_prompt.strip():
+                        st.error("Informe o identificador e o enunciado da atividade.")
+                    else:
+                        try:
+                            api("/api/learning/activities", "POST", {
+                                "activity_id": activity_id.strip(),
+                                "prompt": activity_prompt.strip(),
+                                "expected_concepts": [item.strip() for item in expected_concepts.split(",") if item.strip()],
+                                "difficulty": difficulty,
+                            })
+                            st.success("Atividade criada.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Não foi possível criar a atividade: {exc}")
+            activity_options = {
+                str(item.get("activity_id")): str(item.get("prompt") or item.get("activity_id"))
+                for item in activities if isinstance(item, dict) and item.get("activity_id")
+            }
+            with st.expander("Registrar tentativa"):
+                with st.form("learning_attempt_create_form"):
+                    selected_activity = st.selectbox(
+                        "Atividade",
+                        options=list(activity_options),
+                        format_func=lambda value: activity_options[value],
+                        disabled=not activity_options,
+                    )
+                    answer = st.text_area("Sua resposta", max_chars=3000, disabled=not activity_options)
+                    correctness = st.selectbox("Autoavaliação", ["Não informada", "Correta", "Incorreta"], disabled=not activity_options)
+                    feedback = st.text_area("Observações / feedback", max_chars=1500, disabled=not activity_options)
+                    attempt_submit = st.form_submit_button("Guardar tentativa", disabled=not activity_options)
+                if attempt_submit and selected_activity:
+                    try:
+                        api("/api/learning/attempts", "POST", {
+                            "activity_id": selected_activity,
+                            "answer": answer,
+                            "correct": True if correctness == "Correta" else False if correctness == "Incorreta" else None,
+                            "feedback": feedback,
+                        })
+                        st.success("Tentativa registrada.")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"Não foi possível registrar a tentativa: {exc}")
             st.caption("Aprendizado não autoriza operações: execução permitida = NÃO.")
             return
 
         if module_name == "Descobertas":
             observations = data.get("observations", [])
             sources = data.get("learning_sources", [])
+            resources = data.get("resources", [])
             cols = st.columns(2)
             cols[0].metric("Observações registradas", len(observations))
             cols[1].metric("Fontes relacionadas", len(sources))
-            st.caption("Consulte observações registradas e a situação das fontes relacionadas. Uma observação não é uma regra de trading validada.")
+            st.caption("Registre observações vinculadas a materiais de estudo. Elas permanecem não validadas e não se tornam regras de trading.")
             for label, items in (("Observações", observations), ("Fontes relacionadas", sources)):
                 if items:
                     with st.expander(f"{label} ({len(items)})", expanded=True):
                         st.dataframe(items, use_container_width=True, hide_index=True)
                 else:
                     st.info(f"Nenhum item disponível em: {label.lower()}.")
+            resource_options = {
+                str(item.get("resource_id")): str(item.get("title") or item.get("resource_id"))
+                for item in resources if isinstance(item, dict) and item.get("resource_id")
+            }
+            with st.expander("Registrar descoberta / observação"):
+                with st.form("learning_observation_create_form"):
+                    selected_resource = st.selectbox(
+                        "Material relacionado",
+                        options=list(resource_options),
+                        format_func=lambda value: resource_options[value],
+                        disabled=not resource_options,
+                    )
+                    observation_statement = st.text_area("Observação", max_chars=3000, disabled=not resource_options)
+                    observation_concepts = st.text_input("Conceitos (separados por vírgula)", max_chars=300, disabled=not resource_options)
+                    observation_evidence = st.text_input("Evidência / trecho de referência (opcional)", max_chars=1000, disabled=not resource_options)
+                    observation_submit = st.form_submit_button("Guardar observação", disabled=not resource_options)
+                if observation_submit and selected_resource:
+                    if not observation_statement.strip():
+                        st.error("Escreva a observação antes de salvar.")
+                    else:
+                        try:
+                            api("/api/learning/observations", "POST", {
+                                "resource_id": selected_resource,
+                                "statement": observation_statement.strip(),
+                                "concepts": [item.strip() for item in observation_concepts.split(",") if item.strip()],
+                                "evidence": observation_evidence.strip() or None,
+                                "validated": False,
+                            })
+                            st.success("Observação guardada como não validada.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Não foi possível guardar a observação: {exc}")
             st.caption("Descobertas não alteram sinais, filtros ou parâmetros de execução.")
             st.caption("Execução permitida: NÃO.")
             return
