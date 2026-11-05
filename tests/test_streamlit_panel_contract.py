@@ -650,6 +650,21 @@ def test_streamlit_notifications_screen_reads_full_history_without_mutations():
     assert "execução permitida: não · real: desabilitado" in view.lower()
 
 
+def test_streamlit_settings_view_reads_preferences_without_mutations():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert '"Configurações": ("Preferências do Ecossistema", "/api/preferences")' in source
+    start = source.index('if module_name == "Configurações":')
+    end = source.index('if module_name == "Motor de Decisão":', start)
+    view = source[start:end]
+    assert 'data.get("preferences", {})' in view
+    assert 'prefs.get("default_symbol", "—")' in view
+    assert 'prefs.get("default_timeframe", "—")' in view
+    assert 'prefs.get("leverage_enabled", False)' in view
+    assert 'prefs.get("real_execution_enabled") is not True' in view
+    assert "execução permitida: não · real: desabilitado" in view.lower()
+    assert 'api("/api/preferences", "POST"' not in view
+
+
 def test_streamlit_decision_engine_uses_latest_read_only_analysis_snapshot():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert '"Motor de Decisão": ("Motor de Decisão · última análise", "/api/runtime/analysis/latest")' in source
@@ -660,5 +675,5 @@ def test_streamlit_decision_engine_uses_latest_read_only_analysis_snapshot():
     assert 'latest.get("signal") or "AGUARDAR"' in view
     assert 'latest.get("candidate_signal")' in view
     assert "candidato não significa autorização de operação" in view
-    assert "Execução permitida: NÃO · REAL: DESABILITADO" in view
+    assert "execução permitida: não · real: desabilitado" in view.lower()
     assert 'api("/api/runtime/analysis/latest", "POST"' not in view
