@@ -1247,13 +1247,14 @@ def test_streamlit_fiscal_pending_page_validation_rejects_malformed_pagination()
         {**valid_page, "items": [{"pending_id": "", "status": "PENDING_CLASSIFICATION"}]},
         {**valid_page, "items": [{"pending_id": "x" * 81, "status": "PENDING_CLASSIFICATION"}]},
         {**valid_page, "total": 0},
-        {"items": [], "total": 3, "limit": 50, "offset": 50},
         {**valid_page, "items": [{"pending_id": "pending-1", "status": "CLASSIFIED"}]},
         {**valid_page, "items": [{"pending_id": "same", "status": "PENDING_CLASSIFICATION"}, {"pending_id": "same", "status": "PENDING_CLASSIFICATION"}], "total": 2},
     ):
         assert validate_page(invalid, 0) is False
     assert validate_page({"items": [], "total": 0, "limit": 50, "offset": 0}, 0) is True
     assert validate_page({"items": [], "total": 3, "limit": 50, "offset": 3}, 3) is True
+    assert validate_page({"items": [], "total": 3, "limit": 50, "offset": 50}, 50) is True
+    assert recover_offset(3, 50) == 0
 
     valid_review = {
         "candidate_classification": "BR_DAY_TRADE",
