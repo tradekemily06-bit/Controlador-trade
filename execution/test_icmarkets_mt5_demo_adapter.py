@@ -27,9 +27,14 @@ class FakeMT5:
         self.send_result = send_result
         self.calls = []
 
-    def initialize(self):
-        self.calls.append("initialize")
+    def initialize(self, path=None):
+        self.calls.append(("initialize", path))
+        self.active_path = path
         return True
+
+    def terminal_info(self):
+        from pathlib import Path
+        return SimpleNamespace(path=str(Path(self.active_path).parent) if self.active_path else "")
 
     def shutdown(self):
         self.calls.append("shutdown")
@@ -377,3 +382,41 @@ def test_daily_loss_budget_sums_losing_positions_without_offsetting_winners():
 
     assert state.realized_pnl == 1.0
     assert state.realized_loss_today == 7.0
+
+    
+def test_configured_terminal_path_is_pinned_before_demo_order():
+    from pathlib import Path
+    from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoConfig
+
+    terminal = str(Path("C:/Program Files/MetaTrader 5/terminal64.exe"))
+    fake = FakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(
+        ICMarketsMT5DemoConfig(terminal_path=terminal),
+        mt5_module=fake,
+    )
+
+    result = adapter.execute(request())
+
+    assert result.success is True
+    assert ("initialize", terminal) in fake.calls
+
+
+def test_configured_terminal_path_mismatch_blocks_demo_order():
+    from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoConfig
+
+    class WrongTerminal(FakeMT5):
+        def terminal_info(self):
+            return SimpleNamespace(path="C:/Other/Terminal")
+
+    terminal = "C:/Program Files/MetaTrader 5/terminal64.exe"
+    fake = WrongTerminal()
+    adapter = ICMarketsMT5DemoAdapter(
+        ICMarketsMT5DemoConfig(terminal_path=terminal),
+        mt5_module=fake,
+    )
+
+    result = adapter.execute(request())
+
+    assert result.success is False
+    assert not any(isinstance(call, tuple) and call[0] == "order_send" for call in fake.calls)
+    assert "shutdown" in fake.calls
