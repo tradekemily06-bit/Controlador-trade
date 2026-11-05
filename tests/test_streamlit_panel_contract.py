@@ -677,6 +677,7 @@ def test_streamlit_statistics_and_reports_have_distinct_aggregated_views():
     assert "operational_report_csv_download" in reports_view
     assert 'delimiter=";"' in reports_view
     assert "report_buffer.getvalue()" in reports_view
+    assert r'data="\ufeff" + report_buffer.getvalue()' in reports_view
     assert "controlador-trading-relatorio-operacional.csv" in reports_view
     assert "não inclui credenciais, dados bancários ou ordens" in reports_view
     assert "Execução permitida: NÃO · REAL: DESABILITADO" in statistics_view
@@ -696,6 +697,7 @@ def test_streamlit_notifications_screen_reads_full_history_without_mutations():
     assert "notification_history_csv_download" in view
     assert "Exportar notificações filtradas · CSV" in view
     assert "notification_writer.writerows(display_rows)" in view
+    assert r'data="\ufeff" + notification_csv.getvalue()' in view
     assert "somente leitura" in view.lower()
     assert 'api("/api/notifications/all", "POST"' not in view
     assert "execução permitida: não · real: desabilitado" in view.lower()
@@ -733,6 +735,7 @@ def test_streamlit_settings_view_has_working_safe_save_actions():
     assert "Salvar preferências gerais" in view
     assert "Salvar aparência dos candles" in view
     assert "Salvar notificações" in view
+    assert 'st.selectbox("Tema do gráfico"' in view
     assert 'safety_cols[1].metric("Execução REAL", "DESABILITADA")' in view
     assert 'safety_cols[2].metric("Execução permitida", "NÃO")' in view
     assert "Estas configurações não alteram limites de risco" in view
