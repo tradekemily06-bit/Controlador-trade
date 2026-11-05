@@ -70,28 +70,32 @@ class ICMarketsMT5DemoAdapter:
     def _initialize(self, mt5: Any) -> bool:
         """Initialize only the configured terminal; reject a different MT5 instance."""
         terminal_path = self.config.terminal_path or os.environ.get("CONTROLADOR_MT5_TERMINAL_PATH") or None
-        if not terminal_path:
-            return bool(mt5.initialize())
-        if not mt5.initialize(path=terminal_path):
-            return False
-        terminal = mt5.terminal_info()
-        expected = os.path.normcase(os.path.realpath(terminal_path))
-        actual = (
-            os.path.normcase(
-                os.path.realpath(
-                    os.path.join(getattr(terminal, "path", ""), os.path.basename(terminal_path))
+        try:
+            if not terminal_path:
+                return bool(mt5.initialize())
+            if not mt5.initialize(path=terminal_path):
+                return False
+            terminal = mt5.terminal_info()
+            expected = os.path.normcase(os.path.realpath(terminal_path))
+            actual = (
+                os.path.normcase(
+                    os.path.realpath(
+                        os.path.join(getattr(terminal, "path", ""), os.path.basename(terminal_path))
+                    )
                 )
+                if terminal is not None
+                else ""
             )
-            if terminal is not None
-            else ""
-        )
-        if actual != expected:
+            if actual != expected:
+                mt5.shutdown()
+                return False
+            return True
+        except Exception:
             try:
                 mt5.shutdown()
             except Exception:
                 pass
             return False
-        return True
 
     def is_available(self) -> bool:
         mt5 = None
