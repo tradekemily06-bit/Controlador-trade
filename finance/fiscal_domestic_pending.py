@@ -129,11 +129,14 @@ class FiscalDomesticPendingQueue:
             if result != result or result in (float("inf"), float("-inf")) or abs(result) > 1e12:
                 raise ValueError("realized_result_brl deve ser finito e estar dentro do limite")
             result = round(result, 2)
+        category_candidate = str(payload.get("category_candidate") or "").strip()
+        if category_candidate and category_candidate not in BRAZIL_CATEGORIES:
+            raise ValueError("category_candidate não pertence ao catálogo brasileiro permitido")
         item = {
             "pending_id": str(uuid.uuid4()),
             "owner_id": owner_id,
             "reference": reference,
-            "category_candidate": str(payload.get("category_candidate") or "").strip()[:120],
+            "category_candidate": category_candidate,
             "instrument": instrument,
             "market_scope": str(payload.get("market_scope") or "").strip()[:80],
             "occurred_on": self._day(payload.get("occurred_on")),
