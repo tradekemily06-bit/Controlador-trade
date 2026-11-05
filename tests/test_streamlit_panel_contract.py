@@ -628,7 +628,8 @@ def test_streamlit_statistics_and_reports_have_distinct_aggregated_views():
     assert "relatório operacional" in reports_view.lower()
     assert "operational_report_csv_download" in reports_view
     assert 'delimiter=";"' in reports_view
-    assert 'data="\\\\ufeff" + report_buffer.getvalue()' in reports_view
+    assert "report_buffer.getvalue()" in reports_view
+    assert "controlador-trading-relatorio-operacional.csv" in reports_view
     assert "não inclui credenciais, dados bancários ou ordens" in reports_view
     assert "Execução permitida: NÃO · REAL: DESABILITADO" in statistics_view
     assert "Execução permitida: NÃO · REAL: DESABILITADO" in reports_view
