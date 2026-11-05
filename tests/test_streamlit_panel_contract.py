@@ -196,7 +196,7 @@ def test_streamlit_foreign_pending_forms_capture_structured_evidence_and_display
     assert "Tipo de evento" in source
     assert "Método de conversão cambial" in source
     assert "Residência declarada" in source
-    assert "Método cambial" in source
+    assert "Método cambial declarado" in source
     assert "NOT_INFORMED" in source
 
 
