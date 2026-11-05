@@ -346,6 +346,33 @@ def test_streamlit_readme_identifies_the_streamlit_panel_as_user_facing_and_figm
 
 
 
+def test_streamlit_module_dispatch_has_no_unreachable_duplicate_handlers():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    function = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "show_readonly_module"
+    )
+    handlers = [
+        node.test
+        for node in ast.walk(function)
+        if isinstance(node, ast.If)
+    ]
+    rendered = [ast.unparse(node) for node in handlers]
+    for expression in (
+        'module_name == "Escola / Tutorial / Onboarding"',
+        'module_name == "Estatísticas"',
+        'module_name == "Relatórios"',
+        'module_name == "MT5 DEMO / Simulação"',
+        'module_name == "Conexões"',
+        'module_name == "Multi-Broker"',
+    ):
+        assert rendered.count(expression) == 1
+    assert 'module_name in {"Memória", "Replay"}' not in rendered
+    assert 'module_name in {"Motor de Decisão", "Estatísticas", "Relatórios"}' not in rendered
+    assert 'module_name in {"MT5 DEMO / Simulação", "Conexões", "Multi-Broker"}' not in rendered
+
+
 def test_streamlit_local_quickstart_configures_the_required_fiscal_owner_identity():
     readme = (PANEL_DIR / "README.md").read_text(encoding="utf-8")
     command = '$env:CONTROLADOR_SINGLE_USER_IDENTITY="local-dev-owner"'
