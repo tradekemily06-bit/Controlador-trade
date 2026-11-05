@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import io
 import json
 import os
 import urllib.error
@@ -310,11 +312,30 @@ def show_fiscal() -> None:
         fiscal_history = summary.get("history", [])
         st.markdown("#### Histórico da Reserva Fiscal")
         if fiscal_history:
+            display_rows = [fiscal_history_display_row(item) for item in fiscal_history]
             st.dataframe(
-                [fiscal_history_display_row(item) for item in fiscal_history],
+                display_rows,
                 use_container_width=True,
                 hide_index=True,
             )
+            csv_buffer = io.StringIO(newline="")
+            csv_writer = csv.DictWriter(
+                csv_buffer,
+                fieldnames=list(display_rows[0].keys()),
+                delimiter=";",
+                extrasaction="ignore",
+            )
+            csv_writer.writeheader()
+            csv_writer.writerows(display_rows)
+            st.download_button(
+                "Exportar página exibida · CSV",
+                data="\ufeff" + csv_buffer.getvalue(),
+                file_name="reserva-fiscal-historico.csv",
+                mime="text/csv; charset=utf-8",
+                key="fiscal_history_csv_download",
+                help="Exporta somente os registros desta página, respeitando os campos ocultados para itens pendentes ou não classificados.",
+            )
+            st.caption("O arquivo é gerado nesta sessão do painel; exporta apenas a página atual do histórico.")
             page = summary.get("history_page", {})
             st.caption(f"Exibindo {page.get('returned', len(fiscal_history))} de {page.get('total', len(fiscal_history))} registros.")
             previous_col, next_col = st.columns(2)
