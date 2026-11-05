@@ -332,6 +332,21 @@ def _valid_pending_queue_summary(summary: Any, result_field: str) -> bool:
     return True
 
 
+def _recovered_pending_offset(total: Any, requested_offset: Any, page_size: int = 50) -> int:
+    """Move stale page positions to the last page that can still contain records."""
+    if isinstance(total, bool) or not isinstance(total, int) or total < 0:
+        return 0
+    if isinstance(requested_offset, bool) or not isinstance(requested_offset, int) or requested_offset < 0:
+        return 0
+    if isinstance(page_size, bool) or not isinstance(page_size, int) or page_size < 1:
+        return 0
+    if total == 0:
+        return 0
+    if requested_offset >= total:
+        return ((total - 1) // page_size) * page_size
+    return requested_offset
+
+
 def _valid_pending_page(data: Any, expected_offset: int) -> bool:
     """Validate pending-page shape before rendering rows or pagination controls."""
     if not isinstance(data, dict):
@@ -691,6 +706,10 @@ def show_fiscal() -> None:
         domestic_data = api(f"/api/fiscal-reserve/domestic-pending?limit=50&offset={domestic_offset}")
         if not _valid_pending_page(domestic_data, domestic_offset):
             raise ValueError("Resposta de paginação brasileira inválida; registros ocultados.")
+        recovered_domestic_offset = _recovered_pending_offset(domestic_data["total"], domestic_offset)
+        if recovered_domestic_offset != domestic_offset:
+            st.session_state.domestic_pending_offset = recovered_domestic_offset
+            st.rerun()
         domestic_items = domestic_data["items"]
         domestic_summary = api("/api/fiscal-reserve/domestic-pending/summary")
         if _valid_pending_queue_summary(domestic_summary, "results"):
@@ -719,6 +738,8 @@ def show_fiscal() -> None:
                 item["pending_id"]: f"{item.get('occurred_on')} · {item.get('instrument')} · {item.get('reference')}"
                 for item in domestic_items if item.get("pending_id")
             }
+            if "domestic_review_pending_id" in st.session_state and st.session_state.domestic_review_pending_id not in review_options:
+                del st.session_state.domestic_review_pending_id
             if review_options:
                 selected_pending_id = st.selectbox(
                     "Pendência para revisão",
@@ -871,6 +892,10 @@ def show_fiscal() -> None:
         foreign_pending_data = api(f"/api/fiscal-reserve/pending?limit=50&offset={foreign_offset}")
         if not _valid_pending_page(foreign_pending_data, foreign_offset):
             raise ValueError("Resposta de paginação estrangeira inválida; registros ocultados.")
+        recovered_foreign_offset = _recovered_pending_offset(foreign_pending_data["total"], foreign_offset)
+        if recovered_foreign_offset != foreign_offset:
+            st.session_state.foreign_pending_offset = recovered_foreign_offset
+            st.rerun()
         foreign_items = foreign_pending_data["items"]
         if foreign_items:
             st.dataframe([{
@@ -902,6 +927,8 @@ def show_fiscal() -> None:
                 item["pending_id"]: f"{item.get('occurred_on')} · {item.get('instrument')} · {item.get('reference')}"
                 for item in foreign_items if item.get("pending_id")
             }
+            if "foreign_review_pending_id" in st.session_state and st.session_state.foreign_review_pending_id not in foreign_review_options:
+                del st.session_state.foreign_review_pending_id
             if foreign_review_options:
                 selected_foreign_pending_id = st.selectbox(
                     "Pendência estrangeira para revisão",
