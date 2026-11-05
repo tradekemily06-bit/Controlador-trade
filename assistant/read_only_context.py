@@ -272,7 +272,11 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
                     "rate_available": False,
                 }
                 continue
-            safe_item = {"entries": _count(item.get("entries"))}
+            safe_item = {
+                "entries": _count(item.get("entries")),
+                "rate_kind": "USER_CONFIGURED_PLANNING_RATE",
+                "tax_rate_verified": False,
+            }
             for key in ("rate", "realized_result_brl", "reserve_amount_brl"):
                 value = item.get(key)
                 if _is_finite_number(value):
