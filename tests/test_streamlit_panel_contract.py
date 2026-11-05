@@ -428,12 +428,14 @@ def test_streamlit_operational_screens_render_human_readable_summaries_without_r
     settings_start = source.index('if module_name == "Configurações":')
     settings_end = source.index('if module_name == "Escola / Tutorial / Onboarding":', settings_start)
     settings_screen = source[settings_start:settings_end]
-    assert "Preferências sincronizadas do Ecossistema" in settings_screen
-    assert "Somente leitura" in settings_screen
-    assert "Salvar preferências" not in settings_screen
-    assert "Salvar aparência" not in settings_screen
-    assert "Salvar notificações" not in settings_screen
-    assert 'api("/api/preferences", "POST"' not in settings_screen
+    assert "Preferências de apresentação e conveniência" in settings_screen
+    assert "Salvar preferências gerais" in settings_screen
+    assert "Salvar aparência dos candles" in settings_screen
+    assert "Salvar notificações" in settings_screen
+    assert 'api("/api/preferences", "POST"' in settings_screen
+    assert 'api("/api/preferences/candles", "POST"' in settings_screen
+    assert 'api("/api/preferences/notifications", "POST"' in settings_screen
+    assert "Execução REAL" in settings_screen
     assert "st.json(data)" not in source
 
 
