@@ -246,7 +246,7 @@ class PositionCloseStore:
                     "message": record.message,
                     "attempt": record.attempt,
                 }
-                for record in self.history()
+                for record in sorted(self._records.values(), key=lambda item: (item.request_id, item.attempt))
             ], ensure_ascii=False, indent=2, sort_keys=True),
             encoding="utf-8",
         )
