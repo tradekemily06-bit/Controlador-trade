@@ -248,6 +248,16 @@ class RealRuntimeController:
         )
 
     def close_and_reconcile(self, *, request_id: str, external_id: str):
+        # Serialize close requests with REAL dispatch and Kill Switch activation.
+        # The lock does not call guard(): risk-reducing closes remain available
+        # while new execution is blocked by the Kill Switch.
+        with self.runtime.kill_switch.execution_lock():
+            return self._close_and_reconcile_locked(
+                request_id=request_id,
+                external_id=external_id,
+            )
+
+    def _close_and_reconcile_locked(self, *, request_id: str, external_id: str):
         if not isinstance(external_id, str) or not external_id.strip():
             raise ValueError("external_id REAL inválido.")
         record = self.runtime.execution_ledger.record_for(request_id)
