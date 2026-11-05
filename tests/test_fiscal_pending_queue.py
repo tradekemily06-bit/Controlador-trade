@@ -157,6 +157,19 @@ def test_review_requires_professional_identity_and_evidence(tmp_path):
             raise AssertionError(f"{key} must be required")
 
 
+def test_review_rejects_non_text_identity_and_evidence_fields(tmp_path):
+    queue = FiscalPendingQueue(str(tmp_path / "review-types.sqlite3"))
+    item = queue.add("owner-a", sample_pending())
+    for field in ("confirmed_jurisdiction", "reviewer_name", "reviewer_role",
+                  "professional_registration", "evidence_reference"):
+        payload = review_payload()
+        payload[field] = ["texto", "indevido"]
+        with pytest.raises(ValueError, match="deve ser texto"):
+            queue.record_review("owner-a", item["pending_id"], payload)
+
+    with pytest.raises(ValueError, match="pending_id inválido"):
+        queue.record_review("owner-a", 123, review_payload())
+
 def test_review_rejects_unqualified_role_and_invalid_date(tmp_path):
     queue = make_queue(tmp_path / "fiscal.sqlite3")
     pending = queue.add(OWNER, sample())
