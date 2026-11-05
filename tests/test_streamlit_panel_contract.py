@@ -880,7 +880,7 @@ def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid
         if isinstance(node, ast.FunctionDef) and node.name == "_valid_fiscal_summary"
     )
     isolated = ast.Module(body=[finite_helper, function], type_ignores=[])
-    namespace = {"Any": Any, "isfinite": isfinite}
+    namespace = {"Any": Any, "isfinite": isfinite, "date": date}
     exec(compile(isolated, str(PANEL_DIR / "app.py"), "exec"), namespace)
     validate = namespace["_valid_fiscal_summary"]
 
@@ -928,16 +928,47 @@ def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid
             "classification_status": "PENDING_CLASSIFICATION",
             "included_in_totals": False,
             "reserve_calculated": False,
+            "as_of": "2026-11-05",
             "total": 3,
             "realized_results": 1,
             "asset_amounts": 2,
             "periods": {
-                key: {"total": 1, "realized_results": 1, "asset_amounts": 0}
-                for key in ("day", "week", "month", "year")
+                "day": {"start": "2026-11-05", "end": "2026-11-05", "total": 1, "realized_results": 1, "asset_amounts": 0},
+                "week": {"start": "2026-11-02", "end": "2026-11-05", "total": 1, "realized_results": 1, "asset_amounts": 0},
+                "month": {"start": "2026-11-01", "end": "2026-11-05", "total": 1, "realized_results": 1, "asset_amounts": 0},
+                "year": {"start": "2026-01-01", "end": "2026-11-05", "total": 1, "realized_results": 1, "asset_amounts": 0},
             },
         },
     }
     assert validate(valid_with_pending) is True
+    invalid_pending_period = {
+        **valid_with_pending,
+        "foreign_pending": {
+            **valid_with_pending["foreign_pending"],
+            "periods": {
+                **valid_with_pending["foreign_pending"]["periods"],
+                "week": {
+                    **valid_with_pending["foreign_pending"]["periods"]["week"],
+                    "start": "2026-11-01",
+                },
+            },
+        },
+    }
+    assert validate(invalid_pending_period) is False
+    invalid_pending_counts = {
+        **valid_with_pending,
+        "foreign_pending": {
+            **valid_with_pending["foreign_pending"],
+            "periods": {
+                **valid_with_pending["foreign_pending"]["periods"],
+                "day": {
+                    **valid_with_pending["foreign_pending"]["periods"]["day"],
+                    "total": 2,
+                },
+            },
+        },
+    }
+    assert validate(invalid_pending_counts) is False
     invalid_pending = {
         **valid_with_pending,
         "foreign_pending": {**valid_with_pending["foreign_pending"], "total": True},
