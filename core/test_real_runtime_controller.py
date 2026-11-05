@@ -103,11 +103,13 @@ class FakeCloseAdapter:
         self.started = Event()
         self.release = Event()
 
-    def reconcile_position_close(self, external_id):
+    def reconcile_position_close(self, external_id, *, expected_account_fingerprint=None):
         self.observation_calls += 1
+        self.last_expected_account_fingerprint = expected_account_fingerprint
         return self.observation
 
-    def close_position(self, external_id):
+    def close_position(self, external_id, *, expected_account_fingerprint=None):
+        self.last_expected_account_fingerprint = expected_account_fingerprint
         self.calls += 1
         self.started.set()
         self.release.wait(timeout=2)
@@ -131,7 +133,7 @@ def test_real_close_serializes_concurrent_requests_and_prevents_duplicate_adapte
 
     runtime = FakeRuntime(tmp_path)
     runtime.execution_ledger.reserve("req-close", cycle_id="cycle-close")
-    runtime.execution_ledger.bind_external_id("req-close", "ticket-123")
+    runtime.execution_ledger.bind_external_id("req-close", "ticket-123", account_fingerprint="a" * 32)
     runtime.execution_ledger.mark_accepted("req-close")
     runtime.execution_lifecycle.put(
         ExecutionLifecycleRecord(
@@ -178,7 +180,7 @@ def test_real_close_persists_intent_and_blocks_retry_after_controller_restart(tm
 
     runtime = FakeRuntime(tmp_path)
     runtime.execution_ledger.reserve("req-restart", cycle_id="cycle-restart")
-    runtime.execution_ledger.bind_external_id("req-restart", "ticket-456")
+    runtime.execution_ledger.bind_external_id("req-restart", "ticket-456", account_fingerprint="a" * 32)
     runtime.execution_ledger.mark_accepted("req-restart")
     runtime.execution_lifecycle.put(
         ExecutionLifecycleRecord(
@@ -227,7 +229,7 @@ def test_real_close_records_unknown_and_blocks_retry_after_adapter_exception(tmp
 
     runtime = FakeRuntime(tmp_path)
     runtime.execution_ledger.reserve("req-timeout", cycle_id="cycle-timeout")
-    runtime.execution_ledger.bind_external_id("req-timeout", "ticket-789")
+    runtime.execution_ledger.bind_external_id("req-timeout", "ticket-789", account_fingerprint="a" * 32)
     runtime.execution_ledger.mark_accepted("req-timeout")
     runtime.execution_lifecycle.put(
         ExecutionLifecycleRecord(
@@ -267,7 +269,7 @@ def test_real_controller_reports_unresolved_close_and_fails_closed_for_new_entri
 
     runtime = FakeRuntime(tmp_path)
     runtime.execution_ledger.reserve("req-unknown-close", cycle_id="cycle-unknown-close")
-    runtime.execution_ledger.bind_external_id("req-unknown-close", "ticket-999")
+    runtime.execution_ledger.bind_external_id("req-unknown-close", "ticket-999", account_fingerprint="a" * 32)
     runtime.execution_ledger.mark_accepted("req-unknown-close")
     runtime.execution_lifecycle.put(
         ExecutionLifecycleRecord(
@@ -310,7 +312,7 @@ def test_real_close_reconciliation_uses_read_only_broker_evidence(tmp_path):
 
     runtime = FakeRuntime(tmp_path)
     runtime.execution_ledger.reserve("req-reconcile", cycle_id="cycle-reconcile")
-    runtime.execution_ledger.bind_external_id("req-reconcile", "ticket-321")
+    runtime.execution_ledger.bind_external_id("req-reconcile", "ticket-321", account_fingerprint="a" * 32)
     runtime.execution_ledger.mark_accepted("req-reconcile")
     runtime.execution_lifecycle.put(
         ExecutionLifecycleRecord(
@@ -358,7 +360,7 @@ def test_open_position_reconciliation_allows_only_a_new_explicit_close_request(t
 
     runtime = FakeRuntime(tmp_path)
     runtime.execution_ledger.reserve("req-open", cycle_id="cycle-open")
-    runtime.execution_ledger.bind_external_id("req-open", "ticket-654")
+    runtime.execution_ledger.bind_external_id("req-open", "ticket-654", account_fingerprint="a" * 32)
     runtime.execution_ledger.mark_accepted("req-open")
     runtime.execution_lifecycle.put(
         ExecutionLifecycleRecord(
