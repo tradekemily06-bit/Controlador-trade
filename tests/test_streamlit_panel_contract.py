@@ -1214,9 +1214,9 @@ def test_streamlit_laboratorio_has_separate_manual_source_review_and_knowledge_a
 
 def test_streamlit_fiscal_pending_page_validation_rejects_malformed_pagination():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
-    start = source.index("def _valid_pending_page")
+    start = source.index("def _recovered_pending_offset")
     end = source.index("def _valid_fiscal_summary", start)
-    namespace = {"date": date}
+    namespace = {"date": date, "Any": Any}
     exec(compile(source[start:end], "streamlit_panel/app.py", "exec"), namespace)
     validate_page = namespace["_valid_pending_page"]
     validate_reviews = namespace["_valid_review_history"]
