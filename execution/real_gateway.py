@@ -147,7 +147,11 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id; reconciliação explícita necessária.", result.execution)
 
         try:
-            self._ledger.bind_external_id(request_id, result.execution.external_id)
+            self._ledger.bind_external_id(
+                request_id,
+                result.execution.external_id,
+                account_fingerprint=result.execution.account_fingerprint,
+            )
             self._ledger.mark_accepted(request_id)
             if self._lifecycle is not None:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.ACCEPTED, datetime.now(timezone.utc), result.execution.message))
