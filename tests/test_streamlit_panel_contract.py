@@ -816,6 +816,69 @@ def test_every_reference_navigation_module_has_a_functional_streamlit_route():
 
 
 
+
+def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid_summary():
+    from math import isfinite
+
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    function = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_valid_fiscal_summary"
+    )
+    isolated = ast.Module(body=[function], type_ignores=[])
+    namespace = {"Any": Any, "isfinite": isfinite}
+    exec(compile(isolated, str(PANEL_DIR / "app.py"), "exec"), namespace)
+    validate = namespace["_valid_fiscal_summary"]
+
+    valid = {
+        "categories": {"BR_DAY_TRADE": {"rate": 20.0}},
+        "total_reserved_brl": 200.0,
+        "reserve_semantics": {
+            "kind": "PLANNING_ESTIMATE_ONLY",
+            "tax_liability_confirmed": False,
+            "monthly_tax_assessment": False,
+            "monthly_loss_offsets_calculated": False,
+            "irrf_credits_calculated": False,
+        },
+        "periods": {
+            key: {
+                "start": "2026-11-01",
+                "end": "2026-11-05",
+                "realized_result_brl": 1000.0,
+                "reserve_amount_brl": 200.0,
+            }
+            for key in ("day", "week", "month", "year")
+        },
+    }
+    assert validate(valid) is True
+
+    invalid_cases = []
+    missing_period = {**valid, "periods": {key: value for key, value in valid["periods"].items() if key != "year"}}
+    invalid_cases.append(missing_period)
+    invalid_cases.append({**valid, "total_reserved_brl": float("inf")})
+    invalid_cases.append({**valid, "categories": {"BR_DAY_TRADE": {"rate": True}}})
+    invalid_cases.append({
+        **valid,
+        "reserve_semantics": {**valid["reserve_semantics"], "tax_liability_confirmed": True},
+    })
+    invalid_cases.append({
+        **valid,
+        "periods": {
+            **valid["periods"],
+            "month": {**valid["periods"]["month"], "reserve_amount_brl": float("nan")},
+        },
+    })
+    invalid_cases.append({
+        **valid,
+        "periods": {
+            **valid["periods"],
+            "week": {**valid["periods"]["week"], "start": "2026-02-30"},
+        },
+    })
+    assert all(validate(candidate) is False for candidate in invalid_cases)
+
+
 def test_fiscal_reserve_writes_are_disabled_when_summary_read_fails_or_is_incomplete():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     fiscal_start = source.index("def show_fiscal()")
