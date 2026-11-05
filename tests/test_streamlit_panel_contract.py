@@ -346,6 +346,15 @@ def test_streamlit_readme_identifies_the_streamlit_panel_as_user_facing_and_figm
 
 
 
+def test_streamlit_local_quickstart_configures_the_required_fiscal_owner_identity():
+    readme = (PANEL_DIR / "README.md").read_text(encoding="utf-8")
+    command = '$env:CONTROLADOR_SINGLE_USER_IDENTITY="local-dev-owner"'
+    runtime_start = 'py -3.12 app.py'
+    assert command in readme
+    assert readme.index(command) < readme.index(runtime_start)
+    assert "produção deve usar a identidade exata autenticada pelo Cloudflare Access" in readme
+
+
 def test_streamlit_operational_modules_use_live_read_only_runtime_endpoints():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     for route in (
