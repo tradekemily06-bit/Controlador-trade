@@ -338,3 +338,57 @@ def test_real_fiscal_reserve_period_totals_reach_assistant_context(tmp_path, mon
     assert "history" not in fiscal
     assert "ASSISTANT-PERIOD-DAY" not in str(fiscal)
     assert context["assistant_safety"]["tax_estimates_are_not_tax_assessments"] is True
+
+
+def test_assistant_fiscal_categories_forward_only_approved_aggregate_fields():
+    class FiscalWithUnexpectedCategoryMetadata:
+        def summary(self, owner_id):
+            return {
+                "name": "Reserva Fiscal",
+                "categories": {
+                    "BR_DAY_TRADE": {
+                        "rate": 20.0,
+                        "entries": 2,
+                        "realized_result_brl": 100.0,
+                        "reserve_amount_brl": 20.0,
+                        "notes": "PRIVATE-BRAZIL-NOTE",
+                        "reference": "PRIVATE-BRAZIL-REFERENCE",
+                        "unexpected_future_field": "PRIVATE-FUTURE-FIELD",
+                    },
+                    "FOREIGN_FINANCIAL_ASSET": {
+                        "entries": 3,
+                        "rate": 15.0,
+                        "realized_result_brl": 900.0,
+                        "reserve_amount_brl": 135.0,
+                        "notes": "PRIVATE-FOREIGN-NOTE",
+                    },
+                },
+                "periods": {},
+            }
+
+    import json
+    context = collect_read_only_context(
+        FakeService(), FiscalWithUnexpectedCategoryMetadata(), "test-owner"
+    )
+    categories = context["fiscal_reserve"]["categories"]
+    assert categories["BR_DAY_TRADE"] == {
+        "entries": 2,
+        "rate": 20.0,
+        "realized_result_brl": 100.0,
+        "reserve_amount_brl": 20.0,
+    }
+    assert categories["FOREIGN_FINANCIAL_ASSET"] == {
+        "entries": 3,
+        "realized_result_brl": 0.0,
+        "reserve_amount_brl": 0.0,
+        "classification_status": "PENDING_CLASSIFICATION",
+        "rate_available": False,
+    }
+    serialized = json.dumps(categories, ensure_ascii=False)
+    for private_value in (
+        "PRIVATE-BRAZIL-NOTE",
+        "PRIVATE-BRAZIL-REFERENCE",
+        "PRIVATE-FUTURE-FIELD",
+        "PRIVATE-FOREIGN-NOTE",
+    ):
+        assert private_value not in serialized
