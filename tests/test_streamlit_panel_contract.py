@@ -901,6 +901,7 @@ def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid
             },
         },
         "total_reserved_brl": 200.0,
+        "as_of": "2026-11-05",
         "reserve_semantics": {
             "kind": "PLANNING_ESTIMATE_ONLY",
             "tax_liability_confirmed": False,
@@ -909,17 +910,22 @@ def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid
             "irrf_credits_calculated": False,
         },
         "periods": {
-            key: {
-                "start": "2026-11-01",
-                "end": "2026-11-05",
-                "entries": 2,
-                "realized_result_brl": 1000.0,
-                "reserve_amount_brl": 200.0,
-            }
-            for key in ("day", "week", "month", "year")
+            "day": {"start": "2026-11-05", "end": "2026-11-05", "entries": 2, "realized_result_brl": 1000.0, "reserve_amount_brl": 200.0},
+            "week": {"start": "2026-11-02", "end": "2026-11-05", "entries": 2, "realized_result_brl": 1000.0, "reserve_amount_brl": 200.0},
+            "month": {"start": "2026-11-01", "end": "2026-11-05", "entries": 2, "realized_result_brl": 1000.0, "reserve_amount_brl": 200.0},
+            "year": {"start": "2026-01-01", "end": "2026-11-05", "entries": 2, "realized_result_brl": 1000.0, "reserve_amount_brl": 200.0},
         },
     }
     assert validate(valid) is True
+    invalid_main_period = {
+        **valid,
+        "periods": {
+            **valid["periods"],
+            "week": {**valid["periods"]["week"], "start": "2026-11-01"},
+        },
+    }
+    assert validate(invalid_main_period) is False
+    assert validate({**valid, "as_of": "2026-11-06"}) is False
 
     valid_with_pending = {
         **valid,
