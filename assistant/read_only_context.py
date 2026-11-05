@@ -106,6 +106,11 @@ def _decision_summary(item: Any) -> dict[str, Any]:
     return safe
 
 
+def _safe_bool(value: Any) -> bool:
+    """Accept only actual booleans; strings such as \"false\" are not truthy evidence."""
+    return value if isinstance(value, bool) else False
+
+
 def _risk_summary(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {"available": False}
@@ -118,7 +123,7 @@ def _risk_summary(value: Any) -> dict[str, Any]:
                 safe_limits[key] = item
     return {
         "available": True,
-        "allowed": bool(value.get("allowed", False)),
+        "allowed": _safe_bool(value.get("allowed")),
         "configured_limits": safe_limits,
     }
 
@@ -149,11 +154,11 @@ def _operations_summary(value: Any) -> dict[str, Any]:
         },
         "recovery": {
             "state": str(recovery.get("state", "UNKNOWN"))[:32],
-            "can_resume": bool(recovery.get("can_resume", False)),
+            "can_resume": _safe_bool(recovery.get("can_resume")),
         },
         "kill_switch": {
             "state": str(kill.get("state", "UNKNOWN"))[:24],
-            "enabled": bool(kill.get("enabled", False)),
+            "enabled": _safe_bool(kill.get("enabled")),
         },
         "runtime_health": {
             "state": str(health.get("state", "UNKNOWN"))[:24],
@@ -163,7 +168,7 @@ def _operations_summary(value: Any) -> dict[str, Any]:
         },
         "market_data": {
             "health": str(market.get("health", "UNKNOWN"))[:24],
-            "safe_for_analysis": bool(market.get("safe_for_analysis", False)),
+            "safe_for_analysis": _safe_bool(market.get("safe_for_analysis")),
             "candle_count": _count(market.get("candle_count")),
             "gap_count": _count(market.get("gap_count")),
             "stale": market.get("stale") if isinstance(market.get("stale"), bool) else None,
