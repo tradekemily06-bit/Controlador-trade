@@ -130,7 +130,9 @@ class FiscalReserve:
 
     @staticmethod
     def _category(value: Any) -> str:
-        category = str(value or "").strip().upper()
+        if not isinstance(value, str):
+            raise ValueError("categoria deve ser texto")
+        category = value.strip().upper()
         if category not in VALID_CATEGORIES:
             raise ValueError("categoria deve ser BR_DAY_TRADE ou FOREIGN_FINANCIAL_ASSET")
         return category
@@ -212,17 +214,31 @@ class FiscalReserve:
                 "mantenha-o pendente até classificação tributária e conversão cambial validadas"
             )
         result = self._money(payload.get("realized_result_brl"), "realized_result_brl")
-        reference = str(payload.get("reference") or "").strip()
-        if not reference:
-            raise ValueError("reference é obrigatório para rastreabilidade")
-        occurred_on = str(payload.get("occurred_on") or datetime.now(ZoneInfo("America/Sao_Paulo")).date().isoformat())
+        raw_reference = payload.get("reference")
+        if not isinstance(raw_reference, str):
+            raise ValueError("reference deve ser texto")
+        reference = raw_reference.strip()
+        if not reference or len(reference) > 160:
+            raise ValueError("reference é obrigatório e deve ter até 160 caracteres")
+        raw_occurred_on = payload.get("occurred_on")
+        if raw_occurred_on is None:
+            occurred_on = datetime.now(ZoneInfo("America/Sao_Paulo")).date().isoformat()
+        elif isinstance(raw_occurred_on, str):
+            occurred_on = raw_occurred_on.strip()
+        else:
+            raise ValueError("occurred_on deve ser texto no formato YYYY-MM-DD")
         try:
             parsed_date = datetime.strptime(occurred_on, "%Y-%m-%d").date()
             if parsed_date.isoformat() != occurred_on:
                 raise ValueError
         except ValueError as exc:
             raise ValueError("occurred_on deve usar YYYY-MM-DD") from exc
-        notes = str(payload.get("notes") or "").strip()[:1000]
+        raw_notes = payload.get("notes", "")
+        if not isinstance(raw_notes, str):
+            raise ValueError("notes deve ser texto")
+        notes = raw_notes.strip()
+        if len(notes) > 1000:
+            raise ValueError("notes deve ter até 1000 caracteres")
         with self._connect() as db:
             # Serialize writers before checking the idempotency key. The unique
             # index remains the final guard if multiple workers race.
