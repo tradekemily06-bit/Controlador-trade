@@ -441,6 +441,21 @@ def _valid_fiscal_summary(summary: Any) -> bool:
     total = summary.get("total_reserved_brl")
     if not _is_finite_number(total) or not 0 <= total <= 1_000_000_000_000:
         return False
+    as_of_raw = summary.get("as_of")
+    if not isinstance(as_of_raw, str) or len(as_of_raw) != 10:
+        return False
+    try:
+        as_of = date.fromisoformat(as_of_raw)
+        if as_of.isoformat() != as_of_raw:
+            return False
+    except ValueError:
+        return False
+    expected_periods = {
+        "day": (as_of, as_of),
+        "week": (date.fromordinal(as_of.toordinal() - as_of.weekday()), as_of),
+        "month": (as_of.replace(day=1), as_of),
+        "year": (as_of.replace(month=1, day=1), as_of),
+    }
     foreign_pending = summary.get("foreign_pending")
     if foreign_pending is not None:
         if not isinstance(foreign_pending, dict):
@@ -512,7 +527,7 @@ def _valid_fiscal_summary(summary: Any) -> bool:
     for flag in ("tax_liability_confirmed", "monthly_tax_assessment", "monthly_loss_offsets_calculated", "irrf_credits_calculated"):
         if semantics.get(flag) is not False:
             return False
-    for period in ("day", "week", "month", "year"):
+    for period, (expected_start, expected_end) in expected_periods.items():
         row = periods.get(period)
         if not isinstance(row, dict):
             return False
@@ -538,7 +553,7 @@ def _valid_fiscal_summary(summary: Any) -> bool:
                 dates.append(parsed_date)
             except ValueError:
                 return False
-        if dates[0] > dates[1]:
+        if dates != [expected_start, expected_end]:
             return False
     return True
 
