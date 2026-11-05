@@ -12,7 +12,7 @@ from finance.fiscal_taxonomy import fiscal_classification_catalog
 
 
 def _iso_date(value: Any) -> str:
-    if not isinstance(value, str) or len(value) < 10:
+    if not isinstance(value, str) or len(value) != 10:
         return ""
     candidate = value[:10]
     try:
