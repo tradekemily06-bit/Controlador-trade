@@ -1012,7 +1012,7 @@ def show_readonly_module(module_name: str) -> None:
             st.markdown("#### Limites de autorização")
             safety_cols = st.columns(3)
             safety_cols[0].metric("Operação autônoma", "DESABILITADA" if prefs.get("autonomous_operation_enabled") is not True else "REVISAR")
-            safety_cols[1].metric("Execução REAL", "DESABILITADA" if prefs.get("real_execution_enabled") is not True else "REVISAR")
+            safety_cols[1].metric("Execução REAL", "DESABILITADA")
             safety_cols[2].metric("Execução permitida", "NÃO")
             st.caption("O modo selecionado e a preferência de alavancagem não autorizam operações, não alteram margem e não liberam REAL.")
             st.caption("Somente leitura · execução permitida: NÃO · REAL: DESABILITADO")
