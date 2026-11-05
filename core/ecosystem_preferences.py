@@ -74,6 +74,23 @@ class EcosystemPreferences:
 class EcosystemPreferencesStore:
     """Validated preferences; security-critical permissions are immutable here."""
 
+    @staticmethod
+    def _stored_enum(enum_type, payload: dict, field: str, default):
+        value = payload.get(field, default.value)
+        try:
+            return enum_type(value)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _stored_color(payload: dict, field: str, default: str) -> str:
+        value = payload.get(field, default)
+        if not isinstance(value, str) or len(value) not in (4, 7) or not value.startswith("#"):
+            return default
+        if any(char not in "0123456789abcdefABCDEF" for char in value[1:]):
+            return default
+        return value
+
     def __init__(self, preferences: EcosystemPreferences | None = None) -> None:
         self._preferences = preferences or EcosystemPreferences()
         self._validate(self._preferences)
@@ -113,11 +130,11 @@ class EcosystemPreferencesStore:
         notification_data = payload.get("notifications") if isinstance(payload.get("notifications"), dict) else {}
         defaults = NotificationPreferences()
         candle = CandleAppearance(
-            style=CandleStyle(str(candle_data.get("style", CandleStyle.CANDLESTICK.value))),
-            color_mode=CandleColorMode(str(candle_data.get("color_mode", CandleColorMode.DEFAULT.value))),
-            bullish_color=str(candle_data.get("bullish_color", CandleAppearance.bullish_color)),
-            bearish_color=str(candle_data.get("bearish_color", CandleAppearance.bearish_color)),
-            wick_color=str(candle_data.get("wick_color", CandleAppearance.wick_color)),
+            style=cls._stored_enum(CandleStyle, candle_data, "style", CandleStyle.CANDLESTICK),
+            color_mode=cls._stored_enum(CandleColorMode, candle_data, "color_mode", CandleColorMode.DEFAULT),
+            bullish_color=cls._stored_color(candle_data, "bullish_color", CandleAppearance.bullish_color),
+            bearish_color=cls._stored_color(candle_data, "bearish_color", CandleAppearance.bearish_color),
+            wick_color=cls._stored_color(candle_data, "wick_color", CandleAppearance.wick_color),
             border_enabled=candle_data.get("border_enabled") if isinstance(candle_data.get("border_enabled"), bool) else True,
             show_wicks=candle_data.get("show_wicks") if isinstance(candle_data.get("show_wicks"), bool) else True,
             show_bodies=candle_data.get("show_bodies") if isinstance(candle_data.get("show_bodies"), bool) else True,
@@ -130,7 +147,7 @@ class EcosystemPreferencesStore:
             default_timeframe=str(payload.get("default_timeframe", "5m")),
             require_closed_candle=payload.get("require_closed_candle") if isinstance(payload.get("require_closed_candle"), bool) else True,
             require_filters=payload.get("require_filters") if isinstance(payload.get("require_filters"), bool) else True,
-            chart_theme=ChartTheme(str(payload.get("chart_theme", ChartTheme.DARK.value))),
+            chart_theme=cls._stored_enum(ChartTheme, payload, "chart_theme", ChartTheme.DARK),
             candle=candle,
             notifications=notifications,
             show_technical_details_by_default=payload.get("show_technical_details_by_default") if isinstance(payload.get("show_technical_details_by_default"), bool) else False,
