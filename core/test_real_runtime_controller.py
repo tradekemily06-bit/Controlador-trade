@@ -154,7 +154,7 @@ def test_real_close_serializes_concurrent_requests_and_prevents_duplicate_adapte
         )
         adapter.release.set()
         result = first.result(timeout=2)
-        with pytest.raises(ValueError, match="somente uma execução REAL ACCEPTED"):
+        with pytest.raises(ValueError, match="fechamento já solicitado ou concluído"):
             second.result(timeout=2)
 
     assert result.accepted is True
