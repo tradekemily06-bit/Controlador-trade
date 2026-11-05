@@ -1356,6 +1356,116 @@ def show_readonly_module(module_name: str) -> None:
                     st.error(f"Não foi possível salvar as notificações: {exc}")
             return
 
+        if module_name == "Estatísticas":
+            periods = data.get("periods", {})
+            breakdowns = data.get("breakdowns", {})
+            st.caption("Indicadores calculados sobre os registros disponíveis na memória do runtime. Os períodos usam UTC.")
+            totals = [
+                ("Registros", data.get("total", 0)),
+                ("Acionáveis", data.get("actionable", 0)),
+                ("Vitórias", data.get("wins", 0)),
+                ("Derrotas", data.get("losses", 0)),
+                ("Empates", data.get("draws", 0)),
+                ("Abertos", data.get("open", 0)),
+            ]
+            metric_cols = st.columns(3)
+            for index, (label, value) in enumerate(totals):
+                metric_cols[index % 3].metric(label, str(value))
+            st.metric("Taxa de vitória · operações encerradas", f"{float(data.get('win_rate', 0.0)):.1f}%")
+            st.markdown("#### Evolução por período")
+            period_rows = []
+            for key, label in (("daily", "Hoje · UTC"), ("weekly", "Semana · UTC"), ("monthly", "Mês · UTC")):
+                item = periods.get(key, {})
+                period_rows.append({
+                    "Período": label,
+                    "Registros": item.get("total", 0),
+                    "Acionáveis": item.get("actionable", 0),
+                    "Vitórias": item.get("wins", 0),
+                    "Derrotas": item.get("losses", 0),
+                    "Abertos": item.get("open", 0),
+                    "Taxa de vitória (%)": round(float(item.get("win_rate", 0.0)), 2),
+                })
+            st.dataframe(period_rows, use_container_width=True, hide_index=True)
+            for key, label in (
+                ("by_symbol", "Por ativo"),
+                ("by_timeframe", "Por timeframe"),
+                ("by_signal", "Por sinal"),
+                ("by_score_band", "Por faixa de pontuação"),
+            ):
+                groups = breakdowns.get(key, {})
+                st.markdown("#### " + label)
+                if groups:
+                    rows = [{"Grupo": name, **summary} for name, summary in groups.items()]
+                    st.dataframe(rows, use_container_width=True, hide_index=True)
+                else:
+                    st.caption("Sem registros suficientes para este agrupamento.")
+            st.caption("A taxa de vitória considera somente vitórias e derrotas; empates e operações abertas ficam fora do denominador.")
+            st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
+            return
+
+        if module_name == "Relatórios":
+            periods = data.get("periods", {})
+            breakdowns = data.get("breakdowns", {})
+            st.caption("Relatório consolidado dos registros disponíveis no runtime. Não representa extrato financeiro, apuração fiscal ou garantia de resultado.")
+            st.markdown("#### Resumo executivo")
+            st.write(
+                f"Base analisada: {data.get('total', 0)} registro(s), "
+                f"{data.get('actionable', 0)} acionável(is), "
+                f"{data.get('wins', 0)} vitória(s), {data.get('losses', 0)} derrota(s) "
+                f"e {data.get('draws', 0)} empate(s)."
+            )
+            st.metric("Taxa de vitória · operações encerradas", f"{float(data.get('win_rate', 0.0)):.1f}%")
+            report_rows = []
+            for key, label in (("daily", "Hoje · UTC"), ("weekly", "Semana · UTC"), ("monthly", "Mês · UTC")):
+                item = periods.get(key, {})
+                report_rows.append({
+                    "Seção": "Período",
+                    "Grupo": label,
+                    "Registros": item.get("total", 0),
+                    "Acionáveis": item.get("actionable", 0),
+                    "Vitórias": item.get("wins", 0),
+                    "Derrotas": item.get("losses", 0),
+                    "Empates": item.get("draws", 0),
+                    "Abertos": item.get("open", 0),
+                    "Taxa de vitória (%)": round(float(item.get("win_rate", 0.0)), 2),
+                })
+            for key, label in (
+                ("by_symbol", "Ativo"),
+                ("by_timeframe", "Timeframe"),
+                ("by_signal", "Sinal"),
+                ("by_score_band", "Faixa de pontuação"),
+            ):
+                for group, item in breakdowns.get(key, {}).items():
+                    report_rows.append({
+                        "Seção": label,
+                        "Grupo": group,
+                        "Registros": item.get("total", 0),
+                        "Acionáveis": item.get("actionable", 0),
+                        "Vitórias": item.get("wins", 0),
+                        "Derrotas": item.get("losses", 0),
+                        "Empates": item.get("draws", 0),
+                        "Abertos": item.get("open", 0),
+                        "Taxa de vitória (%)": round(float(item.get("win_rate", 0.0)), 2),
+                    })
+            if report_rows:
+                st.dataframe(report_rows, use_container_width=True, hide_index=True)
+                report_buffer = io.StringIO(newline="")
+                report_writer = csv.DictWriter(report_buffer, fieldnames=list(report_rows[0].keys()), delimiter=";")
+                report_writer.writeheader()
+                report_writer.writerows(report_rows)
+                st.download_button(
+                    "Exportar relatório operacional · CSV",
+                    data="\\ufeff" + report_buffer.getvalue(),
+                    file_name="controlador-trading-relatorio-operacional.csv",
+                    mime="text/csv; charset=utf-8",
+                    key="operational_report_csv_download",
+                )
+            else:
+                st.info("Ainda não há dados para compor o relatório.")
+            st.caption("O relatório usa somente estatísticas agregadas; não inclui credenciais, dados bancários ou ordens.")
+            st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
+            return
+
         if module_name in {"Motor de Decisão", "Estatísticas", "Relatórios"}:
             scalar_values = [(key, value) for key, value in data.items() if isinstance(value, (str, int, float, bool)) or value is None]
             if scalar_values:

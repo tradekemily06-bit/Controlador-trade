@@ -609,3 +609,27 @@ def test_streamlit_mt5_demo_connections_and_multibroker_views_are_distinct():
     assert "não confirma que o terminal MT5 esteja aberto" in views
     assert "Não há evidência nesta resposta de uma segunda corretora conectada e validada." in views
     assert "REAL permanece DESABILITADO." in views
+
+
+def test_streamlit_statistics_and_reports_have_distinct_aggregated_views():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    statistics_start = source.index('if module_name == "Estatísticas":')
+    reports_start = source.index('if module_name == "Relatórios":', statistics_start)
+    generic_start = source.index('if module_name in {"Motor de Decisão", "Estatísticas", "Relatórios"}:', reports_start)
+    statistics_view = source[statistics_start:reports_start]
+    reports_view = source[reports_start:generic_start]
+    assert 'data.get("breakdowns", {})' in statistics_view
+    assert '("by_symbol", "Por ativo")' in statistics_view
+    assert '("by_timeframe", "Por timeframe")' in statistics_view
+    assert '("by_signal", "Por sinal")' in statistics_view
+    assert '("by_score_band", "Por faixa de pontuação")' in statistics_view
+    assert 'data.get("periods", {})' in statistics_view
+    assert "Taxa de vitória · operações encerradas" in statistics_view
+    assert "relatório operacional" in reports_view.lower()
+    assert "operational_report_csv_download" in reports_view
+    assert 'delimiter=";"' in reports_view
+    assert "report_buffer.getvalue()" in reports_view
+    assert "controlador-trading-relatorio-operacional.csv" in reports_view
+    assert "não inclui credenciais, dados bancários ou ordens" in reports_view
+    assert "Execução permitida: NÃO · REAL: DESABILITADO" in statistics_view
+    assert "Execução permitida: NÃO · REAL: DESABILITADO" in reports_view
