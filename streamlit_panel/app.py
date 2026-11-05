@@ -343,22 +343,29 @@ def _valid_pending_page(data: Any, expected_offset: int) -> bool:
         return False
     if isinstance(limit, bool) or limit != 50 or isinstance(offset, bool) or offset != expected_offset:
         return False
-    if not isinstance(items, list) or len(items) > limit or offset > total:
+    if not isinstance(items, list) or len(items) > limit:
         return False
     if offset + len(items) > total:
         return False
+    seen_ids = set()
     for item in items:
-        if not isinstance(item, dict):
+        if not isinstance(item, dict) or item.get("status") != "PENDING_CLASSIFICATION":
             return False
         pending_id = item.get("pending_id")
         if not isinstance(pending_id, str) or not pending_id.strip() or len(pending_id) > 80:
             return False
+        if pending_id in seen_ids:
+            return False
+        seen_ids.add(pending_id)
     return True
 
 
 def _valid_review_history(data: Any) -> bool:
     """Only render a well-formed review history returned for the selected pending item."""
-    if not isinstance(data, dict) or not isinstance(data.get("reviews"), list):
+    if (not isinstance(data, dict)
+            or data.get("status_unchanged") != "PENDING_CLASSIFICATION"
+            or data.get("reserve_calculated") is not False
+            or not isinstance(data.get("reviews"), list)):
         return False
     for item in data["reviews"]:
         if not isinstance(item, dict):
