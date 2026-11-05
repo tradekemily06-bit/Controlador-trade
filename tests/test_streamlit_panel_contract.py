@@ -779,3 +779,34 @@ def test_streamlit_fiscal_reserve_displays_day_week_month_year_estimates():
     assert 'col.metric(label, money(item.get("reserve_amount_brl")))' in source
     assert 'col.caption("Resultado: " + money(item.get("realized_result_brl")))' in source
     assert "ESTIMATIVA DE PLANEJAMENTO — não é imposto apurado ou devido." in source
+
+
+
+def test_every_reference_navigation_module_has_a_functional_streamlit_route():
+    config = json.loads((PANEL_DIR / "controlador_trader_referencia_visual.json").read_text(encoding="utf-8"))
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+
+    configured_modules = {
+        module
+        for modules in config["open_state"]["tabs"].values()
+        for module in modules
+    }
+    readonly_modules = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "show_readonly_module":
+            for child in ast.walk(node):
+                if isinstance(child, ast.Assign):
+                    for target in child.targets:
+                        if isinstance(target, ast.Name) and target.id == "views" and isinstance(child.value, ast.Dict):
+                            readonly_modules.update(
+                                key.value for key in child.value.keys
+                                if isinstance(key, ast.Constant) and isinstance(key.value, str)
+                            )
+    dedicated_routes = {"Análise de Mercado", "Replay", "Simulador"}
+    special_routes = {"Financeiro"}
+    assert configured_modules <= (readonly_modules | dedicated_routes | special_routes)
+    assert 'if module == "Assistente do Ecossistema":' in source
+    assert 'show_assistant()' in source
+    assert 'elif module in {"Financeiro", "Reserva Fiscal"}:' in source
+    assert "show_fiscal()" in source
