@@ -224,7 +224,8 @@ def test_real_close_records_unknown_and_blocks_retry_after_adapter_exception(tmp
     from execution.position_close_store import PositionCloseState
 
     class RaisingAdapter:
-        def close_position(self, external_id):
+        def close_position(self, external_id, *, expected_account_fingerprint=None):
+            assert expected_account_fingerprint == "a" * 32
             raise TimeoutError("broker response timed out")
 
     runtime = FakeRuntime(tmp_path)
