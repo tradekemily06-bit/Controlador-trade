@@ -262,6 +262,16 @@ def show_assistant() -> None:
 
 
 
+def _is_finite_number(value: Any) -> bool:
+    """Reject booleans and numbers that cannot be safely checked for finiteness."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return isfinite(value)
+    except (OverflowError, TypeError, ValueError):
+        return False
+
+
 def _valid_fiscal_summary(summary: Any) -> bool:
     """Enable fiscal writes only when every required aggregate is structurally valid."""
     if not isinstance(summary, dict):
@@ -284,13 +294,13 @@ def _valid_fiscal_summary(summary: Any) -> bool:
         return False
     for field in ("realized_result_brl", "reserve_amount_brl"):
         value = foreign.get(field)
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or not isfinite(value) or value != 0:
+        if not _is_finite_number(value) or value != 0:
             return False
     rate = brazil.get("rate")
-    if isinstance(rate, bool) or not isinstance(rate, (int, float)) or not isfinite(rate) or not 0 <= rate <= 100:
+    if not _is_finite_number(rate) or not 0 <= rate <= 100:
         return False
     total = summary.get("total_reserved_brl")
-    if isinstance(total, bool) or not isinstance(total, (int, float)) or not isfinite(total) or total < 0:
+    if not _is_finite_number(total) or total < 0:
         return False
     if semantics.get("kind") != "PLANNING_ESTIMATE_ONLY":
         return False
@@ -303,7 +313,7 @@ def _valid_fiscal_summary(summary: Any) -> bool:
             return False
         for field in ("realized_result_brl", "reserve_amount_brl"):
             value = row.get(field)
-            if isinstance(value, bool) or not isinstance(value, (int, float)) or not isfinite(value):
+            if not _is_finite_number(value):
                 return False
         reserve_amount = row.get("reserve_amount_brl")
         if reserve_amount < 0:
