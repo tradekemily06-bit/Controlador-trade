@@ -103,7 +103,9 @@ class FiscalPendingQueue:
 
     @staticmethod
     def _date(value: Any, field: str) -> str:
-        raw = str(value or "").strip()
+        if not isinstance(value, str):
+            raise ValueError(f"{field} deve ser texto no formato YYYY-MM-DD")
+        raw = value.strip()
         try:
             parsed = date.fromisoformat(raw)
         except ValueError as exc:
@@ -125,8 +127,27 @@ class FiscalPendingQueue:
         return round(number, 8)
 
     @staticmethod
+    def _text(payload: dict[str, Any], field: str, maximum: int, *, required: bool = False) -> str:
+        raw = payload.get(field, "")
+        if raw is None and not required:
+            raw = ""
+        if not isinstance(raw, str):
+            raise ValueError(f"{field} deve ser texto")
+        value = raw.strip()
+        if required and not value:
+            raise ValueError(f"{field} é obrigatório e deve ter até {maximum} caracteres")
+        if len(value) > maximum:
+            raise ValueError(f"{field} deve ter até {maximum} caracteres")
+        return value
+
+    @staticmethod
     def _declared_field(payload: dict[str, Any], field: str) -> str:
-        value = str(payload.get(field) or "NOT_INFORMED").strip().upper()
+        raw = payload.get(field, "NOT_INFORMED")
+        if raw is None or raw == "":
+            raw = "NOT_INFORMED"
+        if not isinstance(raw, str):
+            raise ValueError(f"{field} deve ser texto")
+        value = raw.strip().upper()
         if value not in FIELD_OPTIONS[field]:
             raise ValueError(f"{field} possui opção inválida")
         return value
@@ -135,10 +156,10 @@ class FiscalPendingQueue:
         owner_id = self._require_owner(owner_id)
         if not isinstance(payload, dict):
             raise ValueError("payload deve ser um objeto")
-        reference = str(payload.get("reference") or "").strip()
-        instrument = str(payload.get("instrument") or "").strip()
-        jurisdiction = str(payload.get("jurisdiction") or "").strip()
-        currency = str(payload.get("original_currency") or "").strip().upper()
+        reference = self._text(payload, "reference", 160, required=True)
+        instrument = self._text(payload, "instrument", 80, required=True)
+        jurisdiction = self._text(payload, "jurisdiction", 80, required=True)
+        currency = self._text(payload, "original_currency", 3, required=True).upper()
         if not reference or len(reference) > 160:
             raise ValueError("reference é obrigatório e deve ter até 160 caracteres")
         if not instrument or len(instrument) > 80:
@@ -151,7 +172,7 @@ class FiscalPendingQueue:
         occurred_on = self._date(payload.get("occurred_on"), "occurred_on")
         fx_rate = payload.get("fx_rate")
         fx_date = payload.get("fx_date")
-        fx_source = str(payload.get("fx_source") or "").strip()
+        fx_source = self._text(payload, "fx_source", 200)
         if fx_rate is not None:
             fx_rate = self._positive(fx_rate, "fx_rate")
             if not fx_date or not fx_source:
@@ -164,7 +185,7 @@ class FiscalPendingQueue:
         declared = {field: self._declared_field(payload, field) for field in FIELD_OPTIONS}
         if fx_rate is not None and declared["fx_conversion_method"] == "NOT_CONVERTED":
             raise ValueError("fx_conversion_method não pode ser NOT_CONVERTED quando houver cotação")
-        notes = str(payload.get("notes") or "").strip()[:1000]
+        notes = self._text(payload, "notes", 1000)
         item = {
             "pending_id": str(uuid.uuid4()), "owner_id": owner_id, "reference": reference,
             "original_amount": amount, "original_currency": currency,
@@ -232,7 +253,7 @@ class FiscalPendingQueue:
             "original_amount": abs(result), "original_result": result, "record_kind": "REALIZED_RESULT",
             "original_currency": currency, "instrument": instrument, "jurisdiction": jurisdiction,
             "occurred_on": occurred_on, "fx_rate": fx_rate, "fx_date": fx_date,
-            "fx_source": fx_source or None, **declared, "notes": str(payload.get("notes") or "").strip()[:1000],
+            "fx_source": fx_source or None, **declared, "notes": self._text(payload, "notes", 1000),
             "status": "PENDING_CLASSIFICATION", "created_at": datetime.now(timezone.utc).isoformat(),
         }
         with self._connect() as db:
