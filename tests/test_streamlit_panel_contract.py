@@ -566,3 +566,30 @@ def test_streamlit_audit_module_uses_redacted_security_event_feed():
     assert "Hashes de cliente, endereços IP, credenciais e corpos de requisição não são exibidos." in audit_view
     assert "não substitui armazenamento centralizado nem auditoria externa" in audit_view
     assert "Execução permitida: NÃO" in audit_view
+
+
+
+def test_streamlit_kill_switch_view_is_dedicated_and_read_only():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index('if module_name == "Kill Switch":')
+    end = source.index('if module_name == "Segurança":', start)
+    view = source[start:end]
+    assert 'data.get("operational_observability", {})' in view
+    assert 'obs.get("kill_switch", {})' in view
+    assert 'obs.get("recovery", {})' in view
+    assert 'obs.get("reconciliation", {})' in view
+    assert 'reconciliation.get("unknown_request_ids", [])' in view
+    assert "Não altera o Kill Switch nem retoma operações." in view
+    assert "Execução permitida: NÃO" in view
+
+
+def test_streamlit_security_view_discloses_deployment_boundaries():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index('if module_name == "Segurança":')
+    end = source.index('if module_name in {"Operação"}:', start)
+    view = source[start:end]
+    assert 'data.get("production_storage", {})' in view
+    assert 'data.get("production_operation_gate", {})' in view
+    assert 'data.get("identity", {})' in view
+    assert "não comprova implantação remota, backup externo ou isolamento multiusuário em produção" in view
+    assert "Execução permitida: NÃO" in view
