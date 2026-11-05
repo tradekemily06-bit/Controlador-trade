@@ -813,3 +813,16 @@ def test_every_reference_navigation_module_has_a_functional_streamlit_route():
     assert 'show_assistant()' in source
     assert 'elif module in {"Financeiro", "Reserva Fiscal"}:' in source
     assert "show_fiscal()" in source
+
+
+def test_streamlit_fiscal_reserve_displays_month_by_month_planning_history():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'monthly = summary.get("monthly_planning", {})' in source
+    assert 'monthly.get("months", [])' in source
+    assert 'monthly.get("year", "—")' in source
+    assert "Histórico mensal de planejamento" in source
+    assert '"Competência"' in source
+    assert '"Lançamentos"' in source
+    assert '"Resultado registrado"' in source
+    assert '"Reserva estimada"' in source
+    assert "Não compensa prejuízos, não desconta IRRF e não representa apuração tributária." in source
