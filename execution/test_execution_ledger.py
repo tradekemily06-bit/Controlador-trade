@@ -147,6 +147,8 @@ def test_account_fingerprint_is_persisted_and_preserved_across_transitions(tmp_p
     record = restored.record_for("req-account")
     assert record is not None
     assert record.account_fingerprint == fingerprint
+    restored.reconcile("req-account", executed=True)
+    assert ExecutionLedger(path).record_for("req-account").account_fingerprint == fingerprint
 
     with pytest.raises(ValueError, match="não corresponde à conta previamente registrada"):
         restored.bind_external_id(
