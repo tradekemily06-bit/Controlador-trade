@@ -1363,3 +1363,18 @@ def test_streamlit_static_api_actions_have_matching_runtime_routes():
         and not any(endpoint.startswith(prefix) for prefix in prefixes)
     )
     assert not missing, f"Streamlit calls without a matching runtime route: {missing}"
+
+
+def test_streamlit_foreign_fiscal_inputs_match_api_limits():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    api_source = (PANEL_DIR.parent / "finance" / "fiscal_pending_queue.py").read_text(encoding="utf-8")
+
+    assert 'max_value=1_000_000_000_000.0' in source
+    assert 'placeholder="ETF, ação, Forex, CFD, cripto", max_chars=80' in source
+    assert 'placeholder="EUA, Brasil, outro", max_chars=80' in source
+    assert 'instrument_signed = st.text_input("Instrumento", max_chars=80)' in source
+    assert 'jurisdiction_signed = st.text_input("Jurisdição", max_chars=80)' in source
+    assert '_text(payload, "instrument", 80, required=True)' in api_source
+    assert '_text(payload, "jurisdiction", 80, required=True)' in api_source
+    assert '_positive(payload.get("original_amount"), "original_amount")' in api_source
+    assert 'number > 1e12' in api_source
