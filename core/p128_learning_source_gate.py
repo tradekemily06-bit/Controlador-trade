@@ -77,6 +77,8 @@ class LearningSourceGate:
         if not isinstance(source, LearningSource):
             raise ValueError("invalid learning source")
         if source.status is not LearningSourceStatus.VALIDATED:
+            if knowledge_validated:
+                raise ValueError("source must be validated before knowledge admission")
             return source
         if not source.content_verified or not source.security_checked:
             raise ValueError("source review evidence is required before knowledge admission")
