@@ -198,3 +198,13 @@ def test_domestic_review_rejects_future_review_date(tmp_path):
     with pytest.raises(ValueError, match="reviewed_on não pode estar no futuro"):
         queue.record_review("owner-a", item["pending_id"], payload)
     assert queue.list_reviews("owner-a", item["pending_id"]) == []
+
+
+def test_domestic_pending_rejects_non_text_intake_fields(tmp_path):
+    queue = FiscalDomesticPendingQueue(str(tmp_path / "strict-domestic-intake.sqlite3"))
+    for field in ("reference", "instrument", "category_candidate", "market_scope", "occurred_on", "notes"):
+        payload = sample("BR-STRICT-" + field.upper())
+        payload[field] = ["valor", "indevido"]
+        with pytest.raises(ValueError, match="deve ser texto"):
+            queue.add("owner-a", payload)
+    assert queue.list_pending("owner-a")["total"] == 0
