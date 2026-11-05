@@ -134,6 +134,11 @@ def migrate_fiscal_schema(database_path: str) -> str:
                        VALUES (?, 'BR_DAY_TRADE', 20.0)""",
                     (owner_id,),
                 )
+                violations = db.execute("PRAGMA foreign_key_check").fetchall()
+                if violations:
+                    raise RuntimeError(
+                        "Migração fiscal interrompida: integridade referencial inválida no esquema existente"
+                    )
                 db.commit()
                 return owner_id
 
