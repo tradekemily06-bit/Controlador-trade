@@ -154,7 +154,11 @@ class ExecutionGateway:
 
         if self._ledger is not None:
             try:
-                self._ledger.bind_external_id(request_id, result.external_id or "")
+                self._ledger.bind_external_id(
+                    request_id,
+                    result.external_id or "",
+                    account_fingerprint=result.account_fingerprint,
+                )
                 self._ledger.mark_accepted(request_id)
             except (OSError, ValueError) as exc:
                 # RESERVED remains durable, so a restart cannot replay the order.
