@@ -103,3 +103,20 @@ def test_learning_source_api_rejects_string_booleans():
     )
     assert status.startswith("400")
     assert payload["error"] == "Entrada inválida"
+
+
+
+def test_professor_api_rejects_client_claim_of_unregistered_validated_knowledge():
+    status, payload = request(
+        "/api/learning/professor/activity",
+        "POST",
+        {
+            "activity_id": "api-untrusted-professor-activity",
+            "knowledge_id": "not-registered-on-server",
+            "statement": "Afirmação fornecida pelo navegador.",
+            "concept": "contexto",
+            "knowledge_validated": True,
+        },
+    )
+    assert status.startswith("400")
+    assert payload["error"] == "Entrada inválida"
