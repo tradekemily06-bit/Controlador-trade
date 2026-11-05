@@ -1221,7 +1221,7 @@ def test_streamlit_fiscal_pending_page_validation_rejects_malformed_pagination()
     validate_page = namespace["_valid_pending_page"]
     validate_reviews = namespace["_valid_review_history"]
     valid_page = {
-        "items": [{"pending_id": "pending-1", "reference": "REF"}],
+        "items": [{"pending_id": "pending-1", "reference": "REF", "status": "PENDING_CLASSIFICATION"}],
         "total": 3, "limit": 50, "offset": 0,
     }
     assert validate_page(valid_page, 0) is True
@@ -1232,10 +1232,12 @@ def test_streamlit_fiscal_pending_page_validation_rejects_malformed_pagination()
         {**valid_page, "offset": 50},
         {**valid_page, "items": "not-a-list"},
         {**valid_page, "items": [None]},
-        {**valid_page, "items": [{"pending_id": 123}]},
-        {**valid_page, "items": [{"pending_id": ""}]},
-        {**valid_page, "items": [{"pending_id": "x" * 81}]},
+        {**valid_page, "items": [{"pending_id": 123, "status": "PENDING_CLASSIFICATION"}]},
+        {**valid_page, "items": [{"pending_id": "", "status": "PENDING_CLASSIFICATION"}]},
+        {**valid_page, "items": [{"pending_id": "x" * 81, "status": "PENDING_CLASSIFICATION"}]},
         {**valid_page, "total": 0},
+        {**valid_page, "items": [{"pending_id": "pending-1", "status": "CLASSIFIED"}]},
+        {**valid_page, "items": [{"pending_id": "same", "status": "PENDING_CLASSIFICATION"}, {"pending_id": "same", "status": "PENDING_CLASSIFICATION"}], "total": 2},
     ):
         assert validate_page(invalid, 0) is False
     assert validate_page({"items": [], "total": 0, "limit": 50, "offset": 0}, 0) is True
@@ -1252,13 +1254,15 @@ def test_streamlit_fiscal_pending_page_validation_rejects_malformed_pagination()
         "reviewer_identity_status": "DECLARED_NOT_VERIFIED",
         "professional_registration_verified": False,
     }
-    assert validate_reviews({"reviews": [valid_review]}) is True
-    assert validate_reviews({"reviews": []}) is True
-    assert validate_reviews({"reviews": [None]}) is False
-    assert validate_reviews({"reviews": [{**valid_review, "reviewer_identity_status": "VERIFIED"}]}) is False
-    assert validate_reviews({"reviews": [{**valid_review, "professional_registration_verified": True}]}) is False
-    assert validate_reviews({"reviews": [{**valid_review, "reviewer_name": ["nome"]}]}) is False
-    assert validate_reviews({"reviews": "not-a-list"}) is False
+    valid_history = {"reviews": [valid_review], "status_unchanged": "PENDING_CLASSIFICATION", "reserve_calculated": False}
+    assert validate_reviews(valid_history) is True
+    assert validate_reviews({"reviews": [], "status_unchanged": "PENDING_CLASSIFICATION", "reserve_calculated": False}) is True
+    assert validate_reviews({**valid_history, "reviews": [None]}) is False
+    assert validate_reviews({**valid_history, "reviews": [{**valid_review, "reviewer_identity_status": "VERIFIED"}]}) is False
+    assert validate_reviews({**valid_history, "reviews": [{**valid_review, "professional_registration_verified": True}]}) is False
+    assert validate_reviews({**valid_history, "reviews": [{**valid_review, "reviewer_name": ["nome"]}]}) is False
+    assert validate_reviews({**valid_history, "reviews": "not-a-list"}) is False
+    assert validate_reviews({**valid_history, "reserve_calculated": True}) is False
 
 
 def test_streamlit_fiscal_pending_lists_validate_pages_and_review_history_before_rendering():
