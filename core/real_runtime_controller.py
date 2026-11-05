@@ -310,7 +310,7 @@ class RealRuntimeController:
             )
             raise
 
-        state = PositionCloseState.ACCEPTED if close.accepted else PositionCloseState.UNKNOWN
+        state = PositionCloseState.CLOSED if close.accepted else PositionCloseState.UNKNOWN
         self.position_closes.finish(
             request_id,
             state,
@@ -343,7 +343,7 @@ class RealRuntimeController:
             if not isinstance(observation, PositionCloseObservation):
                 raise RuntimeError("adaptador retornou observação de fechamento inválida.")
             mapping = {
-                PositionCloseObservationStatus.CLOSED: PositionCloseState.ACCEPTED,
+                PositionCloseObservationStatus.CLOSED: PositionCloseState.CLOSED,
                 PositionCloseObservationStatus.OPEN: PositionCloseState.OPEN,
                 PositionCloseObservationStatus.UNKNOWN: PositionCloseState.UNKNOWN,
             }
