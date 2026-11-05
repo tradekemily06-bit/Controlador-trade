@@ -283,3 +283,54 @@ def test_assistant_receives_fiscal_reserve_totals_for_day_week_month_and_year():
     assert "history" not in fiscal
     assert "PRIVATE-ENTRY-REF" not in str(context)
     assert "não enviar" not in str(context)
+
+
+
+def test_real_fiscal_reserve_period_totals_reach_assistant_context(tmp_path, monkeypatch):
+    from datetime import date
+    from finance.fiscal_identity import configured_fiscal_owner_id
+    from finance.fiscal_reserve import FiscalReserve
+    from finance.fiscal_schema import migrate_fiscal_schema
+
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "assistant-fiscal-integration-owner")
+    owner_id = configured_fiscal_owner_id()
+    database = tmp_path / "assistant-fiscal-integration.sqlite3"
+    reserve = FiscalReserve(str(database))
+    migrate_fiscal_schema(str(database))
+
+    for occurred_on, amount, reference in (
+        ("2026-11-05", 200.0, "ASSISTANT-PERIOD-DAY"),
+        ("2026-11-04", 300.0, "ASSISTANT-PERIOD-WEEK"),
+        ("2026-11-01", 400.0, "ASSISTANT-PERIOD-MONTH"),
+        ("2026-01-01", 500.0, "ASSISTANT-PERIOD-YEAR"),
+    ):
+        reserve.record_realized_result(owner_id, {
+            "category": "BR_DAY_TRADE",
+            "realized_result_brl": amount,
+            "reference": reference,
+            "occurred_on": occurred_on,
+        })
+
+    class FixedDateFiscalReserve:
+        def summary(self, requested_owner_id):
+            assert requested_owner_id == owner_id
+            return reserve.summary(requested_owner_id, as_of=date(2026, 11, 5))
+
+    context = collect_read_only_context(
+        FakeService(), FixedDateFiscalReserve(), owner_id
+    )
+    fiscal = context["fiscal_reserve"]
+
+    assert fiscal["as_of"] == "2026-11-05"
+    assert fiscal["periods"]["day"]["realized_result_brl"] == 200.0
+    assert fiscal["periods"]["day"]["reserve_amount_brl"] == 40.0
+    assert fiscal["periods"]["week"]["realized_result_brl"] == 500.0
+    assert fiscal["periods"]["week"]["reserve_amount_brl"] == 100.0
+    assert fiscal["periods"]["month"]["realized_result_brl"] == 900.0
+    assert fiscal["periods"]["month"]["reserve_amount_brl"] == 180.0
+    assert fiscal["periods"]["year"]["realized_result_brl"] == 1400.0
+    assert fiscal["periods"]["year"]["reserve_amount_brl"] == 280.0
+    assert fiscal["total_reserved_brl"] == 280.0
+    assert "history" not in fiscal
+    assert "ASSISTANT-PERIOD-DAY" not in str(fiscal)
+    assert context["assistant_safety"]["tax_estimates_are_not_tax_assessments"] is True
