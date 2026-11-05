@@ -341,7 +341,9 @@ def _valid_pending_page(data: Any, expected_offset: int) -> bool:
     )
     if isinstance(total, bool) or not isinstance(total, int) or not 0 <= total <= 1_000_000_000:
         return False
-    if isinstance(limit, bool) or limit != 50 or isinstance(offset, bool) or offset != expected_offset:
+    if (isinstance(limit, bool) or not isinstance(limit, int) or limit != 50
+            or isinstance(offset, bool) or not isinstance(offset, int)
+            or offset < 0 or offset != expected_offset):
         return False
     if not isinstance(items, list) or len(items) > limit:
         return False
