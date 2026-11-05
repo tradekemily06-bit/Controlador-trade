@@ -1478,39 +1478,6 @@ def show_readonly_module(module_name: str) -> None:
             st.caption("Estas configurações não alteram limites de risco, não ativam autonomia, não enviam ordens e não liberam REAL.")
             return
 
-        if module_name == "Escola / Tutorial / Onboarding":
-            guide = data.get("guide", {}) if isinstance(data, dict) else {}
-            steps = guide.get("steps", []) if isinstance(guide, dict) else []
-            steps = [step for step in steps if isinstance(step, dict)] if isinstance(steps, list) else []
-            st.caption("Roteiro guiado para localizar e compreender os módulos do Ecossistema. A marcação de etapas fica apenas nesta sessão do Streamlit.")
-            st.subheader(str(guide.get("title") or "Primeiros passos no Ecossistema"))
-            if not steps:
-                st.warning("O roteiro de onboarding não está disponível no runtime.")
-                st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
-                return
-            completed = 0
-            for index, step in enumerate(steps, start=1):
-                step_id = str(step.get("step_id") or f"step-{index}")
-                title = str(step.get("title") or f"Etapa {index}")
-                purpose = str(step.get("purpose") or "Objetivo não informado.")
-                location = str(step.get("location") or "—").replace("_", " ").title()
-                with st.expander(f"{index}. {title} · {location}", expanded=(index == 1)):
-                    st.write(purpose)
-                    st.caption("Próximo passo: " + str(step.get("action_hint") or "Consulte o módulo correspondente."))
-                    if step.get("technical_details_hidden") is True:
-                        st.caption("Detalhes técnicos ficam ocultos nesta orientação inicial.")
-                    done = st.checkbox("Marcar etapa como revisada", key=f"onboarding_reviewed_{step_id}")
-                    if done:
-                        completed += 1
-            st.progress(completed / len(steps))
-            st.caption(f"Etapas revisadas nesta sessão: {completed}/{len(steps)}")
-            st.success(str(guide.get("completion_message") or "Roteiro concluído.")) if completed == len(steps) else st.info("Você pode continuar o roteiro em qualquer ordem; a marcação não altera o runtime.")
-            if guide.get("execution_authorized") is not False:
-                st.error("O roteiro não confirmou explicitamente o bloqueio de execução. Não use esta tela como autorização.")
-            else:
-                st.caption("Este roteiro é educativo. Execução autorizada: NÃO · REAL: DESABILITADO")
-            return
-
         if module_name == "Memória":
             records = data.get("records", []) if isinstance(data, dict) else []
             records = [item for item in records if isinstance(item, dict)] if isinstance(records, list) else []
@@ -1677,14 +1644,6 @@ def show_readonly_module(module_name: str) -> None:
                 error = st.session_state.get(cache_key + "_error", "")
                 if error:
                     st.caption(f"Consulta {cache_key.replace('operation_', '').replace('_', ' ')}: {error}")
-        if module_name in {"Memória", "Replay"}:
-            records = data.get("records", []) if isinstance(data, dict) else []
-            if records:
-                st.dataframe(records, use_container_width=True, hide_index=True)
-            else:
-                st.caption("Ainda não há decisões registradas na memória.")
-            return
-
         if module_name == "Notificações":
             try:
                 all_payload = api("/api/notifications/all")
@@ -1776,17 +1735,6 @@ def show_readonly_module(module_name: str) -> None:
             st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
             return
 
-        if module_name == "Simulador":
-            limits = data.get("configured_limits", {})
-            cols = st.columns(3)
-            cols[0].metric("Limite de perda diária", str(limits.get("daily_loss_limit", "—")))
-            cols[1].metric("Máximo de operações", str(limits.get("max_operations", "—")))
-            cols[2].metric("Perdas consecutivas", str(limits.get("max_consecutive_losses", "—")))
-            st.write("Gate de risco: " + ("LIBERADO" if data.get("allowed") else "BLOQUEADO"))
-            st.caption(str(data.get("reason") or "O motor não forneceu uma justificativa."))
-            st.caption("Os limites são informativos nesta tela; nenhum controle de execução é acionado.")
-            return
-
         if module_name == "Auditoria":
             events = data.get("events", [])
             cols = st.columns(3)
@@ -1800,42 +1748,6 @@ def show_readonly_module(module_name: str) -> None:
             st.caption("Registro de segurança somente leitura. Hashes de cliente, endereços IP, credenciais e corpos de requisição não são exibidos.")
             st.caption("A trilha é limitada à retenção configurada no runtime; não substitui armazenamento centralizado nem auditoria externa.")
             st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
-            return
-
-        if module_name == "MT5 DEMO / Simulação":
-            st.markdown("#### Ambiente de operação conectado")
-            st.metric("IC Markets · MT5 DEMO", str(data.get("ic_markets_mt5_demo", "NÃO CONFIRMADO")))
-            cols = st.columns(2)
-            cols[0].metric("Núcleo de decisão", str(data.get("decision_core", "NÃO CONFIRMADO")))
-            cols[1].metric("Gateway de execução", str(data.get("execution_gateway", "NÃO CONFIRMADO")))
-            st.metric("Execução REAL", str(data.get("real", "DESABILITADO")))
-            st.caption("Esta tela informa o estado reportado pelo runtime. Ela não confirma que o terminal MT5 esteja aberto neste computador nem que o EA esteja instalado.")
-            st.caption("Modo permitido: DEMO/SIMULAÇÃO · Execução automática: NÃO")
-            return
-
-        if module_name == "Conexões":
-            st.markdown("#### Estado dos serviços e integrações")
-            components = [
-                ("Núcleo de decisão", data.get("decision_core", "NÃO CONFIRMADO")),
-                ("Gateway de execução", data.get("execution_gateway", "NÃO CONFIRMADO")),
-                ("IC Markets · MT5 DEMO", data.get("ic_markets_mt5_demo", "NÃO CONFIRMADO")),
-                ("cTrader", data.get("cTrader", "NÃO CONFIGURADO")),
-                ("SaaS", data.get("saas", "NÃO CONFIRMADO")),
-                ("REAL", data.get("real", "DESABILITADO")),
-            ]
-            for label, state in components:
-                st.write(f"**{label}:** {state}")
-            st.caption("Estado de disponibilidade reportado pelo runtime; não equivale a teste de conectividade de cada corretora.")
-            st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
-            return
-
-        if module_name == "Multi-Broker":
-            st.markdown("#### Disponibilidade multi-corretora")
-            st.metric("Integração MT5 DEMO", str(data.get("ic_markets_mt5_demo", "NÃO CONFIRMADO")))
-            st.metric("cTrader", str(data.get("cTrader", "FUTURO_NAO_BLOQUEANTE")))
-            st.warning("Não há evidência nesta resposta de uma segunda corretora conectada e validada. Não trate a arquitetura multi-broker como integração concluída.")
-            st.caption("A conexão com outras corretoras exige adaptador próprio, credenciais configuradas com segurança e testes DEMO por corretora.")
-            st.caption("Nenhuma ordem é enviada por esta tela. REAL permanece DESABILITADO.")
             return
 
         if module_name == "Kill Switch":
@@ -2015,53 +1927,6 @@ def show_readonly_module(module_name: str) -> None:
             st.caption("A identidade remota e o isolamento dependem da configuração real do proxy/provedor confiável.")
             st.caption("Esta tela não comprova implantação remota, backup externo ou isolamento multiusuário em produção.")
             st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
-            return
-
-        if module_name in {"Operação"}:
-            obs = data.get("operational_observability", {})
-            health = str(data.get("health") or "NÃO CONFIRMADA").upper()
-            st.metric("Saúde do Ecossistema", health)
-            st.metric("Execução REAL", "BLOQUEADA" if data.get("real") == "DESABILITADO" else "NÃO CONFIRMADA")
-            st.metric("Modo", str(data.get("mode") or "NÃO CONFIRMADO"))
-            if obs:
-                kill = obs.get("kill_switch", {})
-                recovery = obs.get("recovery", {})
-                market = obs.get("market_data", {})
-                cols = st.columns(3)
-                cols[0].metric("Kill Switch", "ATIVO" if kill.get("enabled") else str(kill.get("state", "NÃO CONFIRMADO")))
-                cols[1].metric("Recuperação", str(recovery.get("state", "NÃO CONFIRMADA")))
-                cols[2].metric("Dados de mercado", str(market.get("health", "NÃO CONFIRMADOS")))
-                if recovery.get("message"):
-                    st.caption(str(recovery["message"]))
-            alerts = data.get("alerts", [])
-            if alerts:
-                st.markdown("#### Alertas que exigem atenção")
-                for alert in alerts:
-                    message = f"{alert.get('component', 'Sistema')} — {alert.get('message', 'Verificar')}"
-                    if str(alert.get("severity", "")).upper() == "CRITICAL":
-                        st.error(message)
-                    else:
-                        st.warning(message)
-            else:
-                st.caption("Nenhum alerta foi retornado pelo runtime.")
-            return
-
-        if module_name in {"MT5 DEMO / Simulação", "Conexões", "Multi-Broker"}:
-            labels = {
-                "decision_core": "Motor de decisão",
-                "execution_gateway": "Gateway de execução",
-                "ic_markets_mt5_demo": "IC Markets MT5 DEMO",
-                "cTrader": "cTrader",
-                "saas": "Serviços do Ecossistema",
-                "real": "Execução REAL",
-            }
-            for key, label in labels.items():
-                if key in data:
-                    value = str(data[key])
-                    if key == "real":
-                        value = "DESABILITADO" if value in {"DESABILITADO", "DISABLED"} else "NÃO CONFIRMADO"
-                    st.write(f"**{label}:** {value}")
-            st.caption("Conexões futuras não são apresentadas como disponíveis. REAL permanece desabilitado.")
             return
 
         if module_name == "Laboratório":
@@ -2300,133 +2165,6 @@ def show_readonly_module(module_name: str) -> None:
             if guide.get("completion_message"):
                 st.success(str(guide["completion_message"]))
             st.caption("Concluir o guia não autoriza execução.")
-            return
-
-        if module_name == "Estatísticas":
-            periods = data.get("periods", {})
-            breakdowns = data.get("breakdowns", {})
-            st.caption("Indicadores calculados sobre os registros disponíveis na memória do runtime. Os períodos usam UTC.")
-            totals = [
-                ("Registros", data.get("total", 0)),
-                ("Acionáveis", data.get("actionable", 0)),
-                ("Vitórias", data.get("wins", 0)),
-                ("Derrotas", data.get("losses", 0)),
-                ("Empates", data.get("draws", 0)),
-                ("Abertos", data.get("open", 0)),
-            ]
-            metric_cols = st.columns(3)
-            for index, (label, value) in enumerate(totals):
-                metric_cols[index % 3].metric(label, str(value))
-            st.metric("Taxa de vitória · operações encerradas", f"{float(data.get('win_rate', 0.0)):.1f}%")
-            st.markdown("#### Evolução por período")
-            period_rows = []
-            for key, label in (("daily", "Hoje · UTC"), ("weekly", "Semana · UTC"), ("monthly", "Mês · UTC")):
-                item = periods.get(key, {})
-                period_rows.append({
-                    "Período": label,
-                    "Registros": item.get("total", 0),
-                    "Acionáveis": item.get("actionable", 0),
-                    "Vitórias": item.get("wins", 0),
-                    "Derrotas": item.get("losses", 0),
-                    "Abertos": item.get("open", 0),
-                    "Taxa de vitória (%)": round(float(item.get("win_rate", 0.0)), 2),
-                })
-            st.dataframe(period_rows, use_container_width=True, hide_index=True)
-            for key, label in (
-                ("by_symbol", "Por ativo"),
-                ("by_timeframe", "Por timeframe"),
-                ("by_signal", "Por sinal"),
-                ("by_score_band", "Por faixa de pontuação"),
-            ):
-                groups = breakdowns.get(key, {})
-                st.markdown("#### " + label)
-                if groups:
-                    rows = [{"Grupo": name, **summary} for name, summary in groups.items()]
-                    st.dataframe(rows, use_container_width=True, hide_index=True)
-                else:
-                    st.caption("Sem registros suficientes para este agrupamento.")
-            st.caption("A taxa de vitória considera somente vitórias e derrotas; empates e operações abertas ficam fora do denominador.")
-            st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
-            return
-
-        if module_name == "Relatórios":
-            periods = data.get("periods", {})
-            breakdowns = data.get("breakdowns", {})
-            st.caption("Relatório consolidado dos registros disponíveis no runtime. Não representa extrato financeiro, apuração fiscal ou garantia de resultado.")
-            st.markdown("#### Resumo executivo")
-            st.write(
-                f"Base analisada: {data.get('total', 0)} registro(s), "
-                f"{data.get('actionable', 0)} acionável(is), "
-                f"{data.get('wins', 0)} vitória(s), {data.get('losses', 0)} derrota(s) "
-                f"e {data.get('draws', 0)} empate(s)."
-            )
-            st.metric("Taxa de vitória · operações encerradas", f"{float(data.get('win_rate', 0.0)):.1f}%")
-            report_rows = []
-            for key, label in (("daily", "Hoje · UTC"), ("weekly", "Semana · UTC"), ("monthly", "Mês · UTC")):
-                item = periods.get(key, {})
-                report_rows.append({
-                    "Seção": "Período",
-                    "Grupo": label,
-                    "Registros": item.get("total", 0),
-                    "Acionáveis": item.get("actionable", 0),
-                    "Vitórias": item.get("wins", 0),
-                    "Derrotas": item.get("losses", 0),
-                    "Empates": item.get("draws", 0),
-                    "Abertos": item.get("open", 0),
-                    "Taxa de vitória (%)": round(float(item.get("win_rate", 0.0)), 2),
-                })
-            for key, label in (
-                ("by_symbol", "Ativo"),
-                ("by_timeframe", "Timeframe"),
-                ("by_signal", "Sinal"),
-                ("by_score_band", "Faixa de pontuação"),
-            ):
-                for group, item in breakdowns.get(key, {}).items():
-                    report_rows.append({
-                        "Seção": label,
-                        "Grupo": group,
-                        "Registros": item.get("total", 0),
-                        "Acionáveis": item.get("actionable", 0),
-                        "Vitórias": item.get("wins", 0),
-                        "Derrotas": item.get("losses", 0),
-                        "Empates": item.get("draws", 0),
-                        "Abertos": item.get("open", 0),
-                        "Taxa de vitória (%)": round(float(item.get("win_rate", 0.0)), 2),
-                    })
-            if report_rows:
-                st.dataframe(report_rows, use_container_width=True, hide_index=True)
-                report_buffer = io.StringIO(newline="")
-                report_writer = csv.DictWriter(report_buffer, fieldnames=list(report_rows[0].keys()), delimiter=";")
-                report_writer.writeheader()
-                report_writer.writerows(report_rows)
-                st.download_button(
-                    "Exportar relatório operacional · CSV",
-                    data="\ufeff" + report_buffer.getvalue(),
-                    file_name="controlador-trading-relatorio-operacional.csv",
-                    mime="text/csv; charset=utf-8",
-                    key="operational_report_csv_download",
-                )
-            else:
-                st.info("Ainda não há dados para compor o relatório.")
-            st.caption("O relatório usa somente estatísticas agregadas; não inclui credenciais, dados bancários ou ordens.")
-            st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
-            return
-
-        if module_name in {"Motor de Decisão", "Estatísticas", "Relatórios"}:
-            scalar_values = [(key, value) for key, value in data.items() if isinstance(value, (str, int, float, bool)) or value is None]
-            if scalar_values:
-                cols = st.columns(min(4, len(scalar_values)))
-                for index, (key, value) in enumerate(scalar_values[:12]):
-                    label = key.replace("_", " ").capitalize()
-                    cols[index % len(cols)].metric(label, "—" if value is None else str(value))
-            periods = data.get("periods")
-            if isinstance(periods, dict) and periods:
-                with st.expander("Resultados por período"):
-                    for period, summary in periods.items():
-                        st.markdown(f"**{str(period).capitalize()}**")
-                        if isinstance(summary, dict):
-                            st.write(" · ".join(f"{key.replace('_', ' ')}: {value}" for key, value in summary.items() if isinstance(value, (str, int, float))))
-            st.caption("Os números refletem apenas os registros disponíveis na memória do runtime.")
             return
 
     except Exception as exc:
