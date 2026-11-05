@@ -73,3 +73,24 @@ def test_leverage_toggle_survives_preferences_round_trip_without_authority():
     assert value.selected_mode == "REAL"
     assert value.real_execution_enabled is False
     assert value.autonomous_operation_enabled is False
+
+
+def test_notification_preferences_reject_non_boolean_values_without_mutation():
+    store = EcosystemPreferencesStore()
+    with pytest.raises(ValueError, match="notifications.critical_enabled must be a boolean"):
+        store.update_notifications(critical_enabled="false")
+    assert store.preferences.notifications.critical_enabled is True
+
+
+def test_candle_preferences_reject_non_boolean_values_without_mutation():
+    store = EcosystemPreferencesStore()
+    with pytest.raises(ValueError, match="candle.show_wicks must be a boolean"):
+        store.update_candle(show_wicks="false")
+    assert store.preferences.candle.show_wicks is True
+
+
+def test_general_boolean_preferences_reject_non_boolean_values():
+    store = EcosystemPreferencesStore()
+    with pytest.raises(ValueError, match="require_filters must be a boolean"):
+        store.update(require_filters="false")
+    assert store.preferences.require_filters is True
