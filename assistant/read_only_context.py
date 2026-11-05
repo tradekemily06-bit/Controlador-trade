@@ -395,10 +395,10 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
         "as_of": datetime.now(timezone.utc).isoformat(),
         "sources": ["system_status", "risk_status", "operational_observability", "statistics", "fiscal_reserve", "fiscal_pending_queue_summary", "fiscal_domestic_pending_queue_summary", "recent_decisions"],
         "system": {
-            "mode": str(status.get("mode", "UNKNOWN"))[:24],
+            "mode": _safe_state_token(status.get("mode"), 24),
             "execution_allowed": False,
             "real": "DESABILITADO",
-            "health": str(status.get("health", "UNKNOWN"))[:24],
+            "health": _safe_state_token(status.get("health"), 24),
             "components": safe_components,
         },
         "risk": _risk_summary(risk),
