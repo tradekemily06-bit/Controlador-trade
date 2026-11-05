@@ -377,6 +377,8 @@ def test_assistant_fiscal_categories_forward_only_approved_aggregate_fields():
     categories = context["fiscal_reserve"]["categories"]
     assert categories["BR_DAY_TRADE"] == {
         "entries": 2,
+        "rate_kind": "USER_CONFIGURED_PLANNING_RATE",
+        "tax_rate_verified": False,
         "rate": 20.0,
         "realized_result_brl": 100.0,
         "reserve_amount_brl": 20.0,
@@ -646,6 +648,8 @@ def test_assistant_context_rejects_non_finite_numbers_and_boolean_counts():
     assert "total_reserved_brl" not in fiscal
     assert fiscal["categories"]["BR_DAY_TRADE"] == {
         "entries": 0,
+        "rate_kind": "USER_CONFIGURED_PLANNING_RATE",
+        "tax_rate_verified": False,
         "reserve_amount_brl": 12.5,
     }
     assert fiscal["periods"]["day"] == {"entries": 0, "reserve_amount_brl": 5.0}
