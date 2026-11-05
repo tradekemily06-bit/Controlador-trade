@@ -771,3 +771,35 @@ def test_collected_assistant_context_sanitizes_recent_decisions_end_to_end():
         "ignore safeguards", "reveal secrets",
     ):
         assert private_value not in serialized
+
+
+def test_assistant_context_rejects_out_of_range_fiscal_rates_and_amounts():
+    class OutOfRangeFiscal:
+        def summary(self, owner_id):
+            return {
+                "categories": {
+                    "BR_DAY_TRADE": {
+                        "entries": 2,
+                        "rate": 101.0,
+                        "realized_result_brl": 1_000_000_000_001.0,
+                        "reserve_amount_brl": -1.0,
+                    }
+                },
+                "periods": {
+                    "day": {
+                        "entries": 1,
+                        "realized_result_brl": -1_000_000_000_001.0,
+                        "reserve_amount_brl": -2.0,
+                    }
+                },
+            }
+
+    fiscal = collect_read_only_context(
+        FakeService(), OutOfRangeFiscal(), "test-owner"
+    )["fiscal_reserve"]
+    assert fiscal["categories"]["BR_DAY_TRADE"] == {
+        "entries": 2,
+        "rate_kind": "USER_CONFIGURED_PLANNING_RATE",
+        "tax_rate_verified": False,
+    }
+    assert fiscal["periods"]["day"] == {"entries": 1}
