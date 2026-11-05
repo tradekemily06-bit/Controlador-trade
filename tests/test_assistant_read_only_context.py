@@ -279,7 +279,11 @@ def test_assistant_receives_fiscal_reserve_totals_for_day_week_month_and_year():
     assert fiscal["periods"]["week"]["realized_result_brl"] == 500.0
     assert fiscal["periods"]["month"]["reserve_amount_brl"] == 180.0
     assert fiscal["periods"]["year"]["realized_result_brl"] == 1200.0
-    assert fiscal["limitations"] == ["Estimativa de planejamento; não é imposto apurado."]
+    assert fiscal["limitations"] == [
+        "Estimativa de planejamento; não representa imposto apurado ou devido.",
+        "Compensações fiscais e créditos de IRRF não são calculados.",
+        "Categorias sem regra validada permanecem pendentes e fora dos totais.",
+    ]
     assert "history" not in fiscal
     assert "PRIVATE-ENTRY-REF" not in str(context)
     assert "não enviar" not in str(context)
@@ -338,3 +342,108 @@ def test_real_fiscal_reserve_period_totals_reach_assistant_context(tmp_path, mon
     assert "history" not in fiscal
     assert "ASSISTANT-PERIOD-DAY" not in str(fiscal)
     assert context["assistant_safety"]["tax_estimates_are_not_tax_assessments"] is True
+
+
+def test_assistant_fiscal_categories_forward_only_approved_aggregate_fields():
+    class FiscalWithUnexpectedCategoryMetadata:
+        def summary(self, owner_id):
+            return {
+                "name": "Reserva Fiscal",
+                "categories": {
+                    "BR_DAY_TRADE": {
+                        "rate": 20.0,
+                        "entries": 2,
+                        "realized_result_brl": 100.0,
+                        "reserve_amount_brl": 20.0,
+                        "notes": "PRIVATE-BRAZIL-NOTE",
+                        "reference": "PRIVATE-BRAZIL-REFERENCE",
+                        "unexpected_future_field": "PRIVATE-FUTURE-FIELD",
+                    },
+                    "FOREIGN_FINANCIAL_ASSET": {
+                        "entries": 3,
+                        "rate": 15.0,
+                        "realized_result_brl": 900.0,
+                        "reserve_amount_brl": 135.0,
+                        "notes": "PRIVATE-FOREIGN-NOTE",
+                    },
+                },
+                "periods": {},
+            }
+
+    import json
+    context = collect_read_only_context(
+        FakeService(), FiscalWithUnexpectedCategoryMetadata(), "test-owner"
+    )
+    categories = context["fiscal_reserve"]["categories"]
+    assert categories["BR_DAY_TRADE"] == {
+        "entries": 2,
+        "rate": 20.0,
+        "realized_result_brl": 100.0,
+        "reserve_amount_brl": 20.0,
+    }
+    assert categories["FOREIGN_FINANCIAL_ASSET"] == {
+        "entries": 3,
+        "realized_result_brl": 0.0,
+        "reserve_amount_brl": 0.0,
+        "classification_status": "PENDING_CLASSIFICATION",
+        "rate_available": False,
+    }
+    serialized = json.dumps(categories, ensure_ascii=False)
+    for private_value in (
+        "PRIVATE-BRAZIL-NOTE",
+        "PRIVATE-BRAZIL-REFERENCE",
+        "PRIVATE-FUTURE-FIELD",
+        "PRIVATE-FOREIGN-NOTE",
+    ):
+        assert private_value not in serialized
+
+
+def test_assistant_fiscal_context_filters_nested_periods_limitations_and_semantics():
+    class FiscalWithUntrustedNestedFields:
+        def summary(self, owner_id):
+            return {
+                "name": "forged name",
+                "currency": "USD",
+                "as_of": "2026-11-05-private-suffix",
+                "total_reserved_brl": 25.0,
+                "categories": {
+                    "BR_DAY_TRADE": {"entries": 1, "rate": 20.0, "realized_result_brl": 125.0, "reserve_amount_brl": 25.0},
+                    "BR_CRYPTO": {"entries": 99, "rate": 99.0, "notes": "PRIVATE-UNKNOWN-CATEGORY"},
+                },
+                "periods": {
+                    "day": {"start": "2026-11-05", "end": "2026-11-05", "entries": 1, "realized_result_brl": 125.0, "reserve_amount_brl": 25.0, "notes": "PRIVATE-PERIOD-NOTE"},
+                    "week": {"start": "not-a-date", "end": "2026-11-05", "entries": 1, "unexpected": "PRIVATE-PERIOD-FIELD"},
+                    "private_period": {"notes": "PRIVATE-PERIOD-KEY"},
+                },
+                "limitations": ["PRIVATE-LIMITATION"],
+                "reserve_semantics": {
+                    "kind": "FORGED_KIND",
+                    "tax_liability_confirmed": True,
+                    "description": "PRIVATE-SEMANTIC-DESCRIPTION",
+                    "unexpected": "PRIVATE-SEMANTIC-FIELD",
+                },
+            }
+
+    import json
+    context = collect_read_only_context(FakeService(), FiscalWithUntrustedNestedFields(), "test-owner")
+    fiscal = context["fiscal_reserve"]
+    serialized = json.dumps(fiscal, ensure_ascii=False)
+    assert fiscal["name"] == "Reserva Fiscal"
+    assert fiscal["currency"] == "BRL"
+    assert fiscal["as_of"] == "2026-11-05"
+    assert fiscal["periods"]["day"] == {
+        "start": "2026-11-05", "end": "2026-11-05", "entries": 1,
+        "realized_result_brl": 125.0, "reserve_amount_brl": 25.0,
+    }
+    assert fiscal["periods"]["week"] == {"end": "2026-11-05", "entries": 1}
+    assert "private_period" not in fiscal["periods"]
+    assert "BR_CRYPTO" not in fiscal["categories"]
+    assert fiscal["reserve_semantics"]["kind"] == "PLANNING_ESTIMATE_ONLY"
+    assert fiscal["reserve_semantics"]["tax_liability_confirmed"] is False
+    for private_value in (
+        "PRIVATE-UNKNOWN-CATEGORY", "PRIVATE-PERIOD-NOTE", "PRIVATE-PERIOD-FIELD",
+        "PRIVATE-PERIOD-KEY", "PRIVATE-LIMITATION", "PRIVATE-SEMANTIC-DESCRIPTION",
+        "PRIVATE-SEMANTIC-FIELD", "FORGED_KIND", "forged name", "USD",
+    ):
+        assert private_value not in serialized
+
