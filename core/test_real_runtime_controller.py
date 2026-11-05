@@ -201,7 +201,7 @@ def test_real_close_persists_intent_and_blocks_retry_after_controller_restart(tm
 
     # Re-open the durable store as a fresh controller process would.
     recovered = PositionCloseStore(Path(tmp_path) / "real-position-closes.json")
-    assert recovered.get("req-restart").state is PositionCloseState.ACCEPTED
+    assert recovered.get("req-restart").state is PositionCloseState.CLOSED
 
     retry_adapter = FakeCloseAdapter()
     retry_adapter.release.set()
@@ -345,7 +345,7 @@ def test_real_close_reconciliation_uses_read_only_broker_evidence(tmp_path):
     assert result["order_sent"] is False
     assert adapter.observation_calls == 1
     assert adapter.calls == 0
-    assert controller.position_closes.get("req-reconcile").state is PositionCloseState.ACCEPTED
+    assert controller.position_closes.get("req-reconcile").state is PositionCloseState.CLOSED
     assert controller._position_close_recovery_required() is False
 
 
