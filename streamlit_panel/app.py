@@ -1793,6 +1793,7 @@ def show_readonly_module(module_name: str) -> None:
 # functional module requested by the user and lives inside the Streamlit panel,
 # without changing the reference JSON or creating a fifth navigation area.
 AREAS = {name: list(modules) for name, modules in CONFIG["open_state"]["tabs"].items()}
+AREAS["MAIS / ADMIN"].append("Reserva Fiscal")
 AREAS["MAIS / ADMIN"].append("Assistente do Ecossistema")
 if "panel_open" not in st.session_state:
     st.session_state.panel_open = True
