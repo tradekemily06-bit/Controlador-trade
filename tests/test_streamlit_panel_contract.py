@@ -1020,3 +1020,23 @@ def test_fiscal_reserve_writes_are_disabled_when_summary_read_fails_or_is_incomp
     assert 'st.form_submit_button("Salvar percentual", disabled=not summary_available)' in fiscal
     assert 'st.form_submit_button("Registrar estimativa de planejamento", disabled=not summary_available)' in fiscal
     assert "lançamentos e alterações de percentual ficam bloqueados" in fiscal
+
+
+
+def test_streamlit_laboratorio_has_separate_manual_source_review_and_knowledge_admission():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index('if module_name == "Laboratório":')
+    end = source.index('if module_name == "Aprendizado":', start)
+    laboratory = source[start:end]
+
+    assert "Revisão manual de procedência" in laboratory
+    assert "não baixa" in laboratory
+    assert "não é uma varredura antivírus" in laboratory
+    assert 'api("/api/learning/sources/validate", "POST"' in laboratory
+    assert '"content_verified": True' in laboratory
+    assert '"security_checked": True' in laboratory
+    assert 'api("/api/learning/sources/admit", "POST"' in laboratory
+    assert '"knowledge_validated": True' in laboratory
+    assert 'source_status == "QUARANTINED"' in laboratory
+    assert 'source_status == "VALIDATED" and not source.get("knowledge_validated", False)' in laboratory
+    assert "Isso não autoriza operações" in laboratory
