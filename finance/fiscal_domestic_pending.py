@@ -253,7 +253,11 @@ class FiscalDomesticPendingQueue:
 
     def list_reviews(self, owner_id: str, pending_id: str) -> list[dict[str, Any]]:
         owner_id = self._require_owner(owner_id)
-        pending_id = str(pending_id or "").strip()
+        if not isinstance(pending_id, str):
+            raise ValueError("pending_id inválido")
+        pending_id = pending_id.strip()
+        if not pending_id or len(pending_id) > 80:
+            raise ValueError("pending_id inválido")
         with self._connect() as db:
             if not db.execute(
                 "SELECT 1 FROM fiscal_reserve_pending_domestic WHERE owner_id = ? AND pending_id = ?",
