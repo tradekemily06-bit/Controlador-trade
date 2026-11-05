@@ -78,6 +78,8 @@ class LearningSourceGate:
             raise ValueError("invalid learning source")
         if source.status is not LearningSourceStatus.VALIDATED:
             return source
+        if not source.content_verified or not source.security_checked:
+            raise ValueError("source review evidence is required before knowledge admission")
         return LearningSource(
             source.source_id, source.source_type, source.uri,
             source.status,
