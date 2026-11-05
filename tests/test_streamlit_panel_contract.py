@@ -1469,3 +1469,25 @@ def test_kill_switch_activation_api_is_confirmed_persisted_and_never_auto_resume
     assert 'if method == "POST" and path != "/api/updates":' in runtime_source
     assert '_authorize_remote_mutation(environ)' in runtime_source
     assert 'deactivate' not in route
+
+
+def test_streamlit_kill_switch_exposes_read_only_position_close_reconciliation():
+    panel_source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    runtime_source = (PANEL_DIR.parent / "app.py").read_text(encoding="utf-8")
+    controller_source = (PANEL_DIR.parent / "core" / "real_runtime_controller.py").read_text(encoding="utf-8")
+    start = panel_source.index('if module_name == "Kill Switch":')
+    end = panel_source.index('if module_name == "Segurança":', start)
+    view = panel_source[start:end]
+    route_start = runtime_source.index('if path == "/api/runtime/real/close/reconcile" and method == "POST":')
+    route_end = runtime_source.index('if path == "/api/runtime/real/close" and method == "POST":', route_start)
+    route = runtime_source[route_start:route_end]
+
+    assert 'api("/api/runtime/real/status")' in view
+    assert '"/api/runtime/real/close/reconcile"' in view
+    assert 'CONSULTAR E RECONCILIAR' in view
+    assert 'confirm_read = st.checkbox(' in view
+    assert '"request_id": selected_request' in view
+    assert '"external_id": selected_item["external_id"]' in view
+    assert 'REAL_RUNTIME.reconcile_position_close(' in route
+    assert 'REAL_RUNTIME.close_and_reconcile' not in route
+    assert '"position_close_recovery_items"' in controller_source
