@@ -822,11 +822,15 @@ def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid
 
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
+    finite_helper = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_is_finite_number"
+    )
     function = next(
         node for node in tree.body
         if isinstance(node, ast.FunctionDef) and node.name == "_valid_fiscal_summary"
     )
-    isolated = ast.Module(body=[function], type_ignores=[])
+    isolated = ast.Module(body=[finite_helper, function], type_ignores=[])
     namespace = {"Any": Any, "isfinite": isfinite}
     exec(compile(isolated, str(PANEL_DIR / "app.py"), "exec"), namespace)
     validate = namespace["_valid_fiscal_summary"]
@@ -933,6 +937,37 @@ def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid
             },
         },
     })
+    oversized = 10**1000
+    invalid_cases.extend([
+        {**valid, "total_reserved_brl": oversized},
+        {
+            **valid,
+            "categories": {
+                **valid["categories"],
+                "BR_DAY_TRADE": {"rate": oversized},
+            },
+        },
+        {
+            **valid,
+            "categories": {
+                **valid["categories"],
+                "FOREIGN_FINANCIAL_ASSET": {
+                    **valid["categories"]["FOREIGN_FINANCIAL_ASSET"],
+                    "realized_result_brl": oversized,
+                },
+            },
+        },
+        {
+            **valid,
+            "periods": {
+                **valid["periods"],
+                "month": {
+                    **valid["periods"]["month"],
+                    "reserve_amount_brl": oversized,
+                },
+            },
+        },
+    ])
     assert all(validate(candidate) is False for candidate in invalid_cases)
 
 
