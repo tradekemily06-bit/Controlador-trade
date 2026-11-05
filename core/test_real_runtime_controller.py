@@ -57,3 +57,27 @@ def test_real_controller_prepare_requires_all_explicit_prerequisites(monkeypatch
     status = controller.status()
     assert status["authorization_active"] is True
     assert status["safety_ready"] is False or status["admitted"] is False
+
+
+def test_real_close_requires_accepted_ledger_state_before_adapter_access():
+    source = (Path(__file__).parent / "real_runtime_controller.py").read_text(encoding="utf-8")
+    method = source.split("    def close_and_reconcile(", 1)[1].split(
+        "    def reconcile(", 1
+    )[0]
+
+    state_guard = "record.status is not ExecutionLedgerStatus.ACCEPTED"
+    assert state_guard in method
+    assert method.index(state_guard) < method.index("self.registry.get(self.broker_id)")
+
+
+def test_real_close_rejects_blank_external_id_before_ledger_access():
+    source = (Path(__file__).parent / "real_runtime_controller.py").read_text(encoding="utf-8")
+    method = source.split("    def close_and_reconcile(", 1)[1].split(
+        "    def reconcile(", 1
+    )[0]
+
+    validation = "not isinstance(external_id, str) or not external_id.strip()"
+    assert validation in method
+    assert method.index(validation) < method.index(
+        "self.runtime.execution_ledger.record_for(request_id)"
+    )
