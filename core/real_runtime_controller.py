@@ -15,6 +15,7 @@ from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState
 from execution.ports import ExecutionMode, ExecutionRequest
+from execution.position_close_store import PositionCloseState, PositionCloseStore
 from execution.real_gateway import RealExecutionGateway, RealGatewayResult
 from execution.default_registry import IC_MARKETS_MT5_REAL, build_real_registry
 
@@ -31,6 +32,8 @@ class RealRuntimeController:
             raise ValueError("runtime operacional é obrigatório.")
         self.runtime = runtime
         self.root = Path(root)
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.position_closes = PositionCloseStore(self.root / "real-position-closes.json")
         self.symbol = symbol
         self.broker_id = os.environ.get("CONTROLADOR_REAL_BROKER_ID", IC_MARKETS_MT5_REAL).strip().lower() or IC_MARKETS_MT5_REAL
         self.registry: BrokerRegistry = build_real_registry(symbol=symbol)
@@ -248,9 +251,8 @@ class RealRuntimeController:
         )
 
     def close_and_reconcile(self, *, request_id: str, external_id: str):
-        # Serialize close requests with REAL dispatch and Kill Switch activation.
-        # The lock does not call guard(): risk-reducing closes remain available
-        # while new execution is blocked by the Kill Switch.
+        # Serialize with REAL dispatch and Kill Switch activation. Closing is
+        # risk-reducing, so do not call guard() here.
         with self.runtime.kill_switch.execution_lock():
             return self._close_and_reconcile_locked(
                 request_id=request_id,
@@ -258,6 +260,8 @@ class RealRuntimeController:
             )
 
     def _close_and_reconcile_locked(self, *, request_id: str, external_id: str):
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("request_id REAL inválido.")
         if not isinstance(external_id, str) or not external_id.strip():
             raise ValueError("external_id REAL inválido.")
         record = self.runtime.execution_ledger.record_for(request_id)
@@ -267,19 +271,30 @@ class RealRuntimeController:
             raise ValueError("somente uma execução REAL ACCEPTED pode ser fechada.")
         if record.external_id != external_id.strip():
             raise ValueError("external_id não corresponde à identidade persistida do request REAL.")
+
+        # Persist the intent before touching the broker. A crash or ambiguous
+        # adapter result remains blocked from automatic retry until reconciled.
+        self.position_closes.begin(request_id, external_id.strip())
         adapter = self.registry.get(self.broker_id)
-        close = adapter.close_position(external_id.strip())
-        if not close.accepted:
-            return close
-        self.runtime.execution_ledger.reconcile(request_id, executed=True)
-        self.runtime.execution_lifecycle.put(
-            ExecutionLifecycleRecord(
+        try:
+            close = adapter.close_position(external_id.strip())
+        except Exception as exc:
+            self.position_closes.finish(
                 request_id,
-                ExecutionLifecycleState.ACCEPTED,
-                datetime.now(timezone.utc),
-                close.message,
+                PositionCloseState.UNKNOWN,
+                message=f"resultado do fechamento incerto após erro do adaptador: {type(exc).__name__}",
             )
+            raise
+
+        state = PositionCloseState.ACCEPTED if close.accepted else PositionCloseState.UNKNOWN
+        self.position_closes.finish(
+            request_id,
+            state,
+            message=close.message,
+            close_external_id=close.external_id if close.accepted else None,
         )
+        # The opening execution ledger/lifecycle remain unchanged: closing a
+        # position is a separate lifecycle and must not rewrite order opening.
         return close
 
     def reconcile(self, *, request_id: str, executed: bool) -> None:
