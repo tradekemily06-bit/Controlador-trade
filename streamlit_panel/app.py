@@ -1868,7 +1868,32 @@ def show_readonly_module(module_name: str) -> None:
                     st.write("Solicitações desconhecidas:", unknown)
             if recovery.get("message"):
                 st.write(str(recovery["message"]))
-            st.caption("Tela somente de consulta. Não altera o Kill Switch nem retoma operações.")
+            if state != "ACTIVE":
+                st.warning("Ativar o Kill Switch bloqueia novas execuções. Não cancela ordens já encaminhadas nem substitui a reconciliação.")
+                with st.form("activate_kill_switch_form"):
+                    emergency_reason = st.text_input("Motivo obrigatório da parada", max_chars=240)
+                    emergency_confirm = st.checkbox("Confirmo ativar a parada de emergência e bloquear novas execuções.")
+                    emergency_submit = st.form_submit_button("ATIVAR KILL SWITCH", type="primary")
+                if emergency_submit:
+                    if not emergency_reason.strip() or not emergency_confirm:
+                        st.error("Informe o motivo e marque a confirmação explícita.")
+                    else:
+                        try:
+                            result = api(
+                                "/api/runtime/kill-switch/activate",
+                                "POST",
+                                {"reason": emergency_reason.strip(), "confirmed": True},
+                            )
+                            st.success("Kill Switch ativado e estado persistido pelo runtime.")
+                            if result.get("pending_request_ids") or result.get("unknown_request_ids"):
+                                st.warning("Há solicitações que exigem reconciliação. A ativação não as cancela.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Não foi possível confirmar a ativação: {exc}")
+            else:
+                st.success("Kill Switch ativo. A desativação não está disponível nesta interface.")
+            st.caption("A ativação bloqueia novas execuções. Ordens já encaminhadas exigem reconciliação manual; não há cancelamento automático.")
+            st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
             st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
             return
 
