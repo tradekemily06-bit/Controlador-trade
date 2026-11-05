@@ -57,6 +57,13 @@ class EcosystemStateStore:
                 (key, encoded),
             )
 
+    def load_learning(self) -> dict[str, Any] | None:
+        value = self.load("learning")
+        return value if isinstance(value, dict) else None
+
+    def save_learning(self, learning: dict[str, Any]) -> None:
+        self.save("learning", learning)
+
     def load_preferences(self) -> dict[str, Any] | None:
         value = self.load("preferences")
         return value if isinstance(value, dict) else None
