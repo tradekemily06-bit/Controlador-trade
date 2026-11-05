@@ -823,9 +823,12 @@ def test_fiscal_reserve_writes_are_disabled_when_summary_read_fails_or_is_incomp
     fiscal = source[fiscal_start:fiscal_end]
 
     assert "summary_available = False" in fiscal
-    assert 'isinstance(summary.get("categories"), dict)' in fiscal
-    assert 'isinstance(summary.get("periods"), dict)' in fiscal
-    assert 'isinstance(summary.get("reserve_semantics"), dict)' in fiscal
+    assert "summary_available = _valid_fiscal_summary(summary)" in fiscal
+    assert "def _valid_fiscal_summary(summary: Any) -> bool:" in source
+    assert 'categories.get("BR_DAY_TRADE")' in source
+    assert 'semantics.get("kind") != "PLANNING_ESTIMATE_ONLY"' in source
+    assert '("day", "week", "month", "year")' in source
+    assert 'not isfinite(value)' in source
     assert 'st.form_submit_button("Salvar percentual", disabled=not summary_available)' in fiscal
     assert 'st.form_submit_button("Registrar estimativa de planejamento", disabled=not summary_available)' in fiscal
     assert "lançamentos e alterações de percentual ficam bloqueados" in fiscal
