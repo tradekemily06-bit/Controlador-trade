@@ -586,7 +586,7 @@ def show_fiscal() -> None:
                 "Cotação informada (não aplicada)": item.get("fx_rate"),
                 "Data da cotação": item.get("fx_date"),
                 "Fonte da cotação": item.get("fx_source"),
-                "Método declarado": item.get("fx_conversion_method"),
+                "Método cambial declarado": item.get("fx_conversion_method"),
                 "Status": "PENDENTE DE CLASSIFICAÇÃO",
             } for item in foreign_items], use_container_width=True, hide_index=True)
             foreign_page_cols = st.columns(2)
