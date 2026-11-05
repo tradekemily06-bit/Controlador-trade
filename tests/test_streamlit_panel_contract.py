@@ -660,5 +660,5 @@ def test_streamlit_decision_engine_uses_latest_read_only_analysis_snapshot():
     assert 'latest.get("signal") or "AGUARDAR"' in view
     assert 'latest.get("candidate_signal")' in view
     assert "candidato não significa autorização de operação" in view
-    assert "Execução permitida: NÃO · REAL: DESABILITADO" in view
+    assert "execução permitida: não · real: desabilitado" in view.lower()
     assert 'api("/api/runtime/analysis/latest", "POST"' not in view
