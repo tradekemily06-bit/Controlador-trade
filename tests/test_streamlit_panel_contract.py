@@ -552,3 +552,17 @@ def test_streamlit_learning_modules_show_distinct_existing_data_without_trade_au
     assert "Descobertas não alteram sinais, filtros ou parâmetros de execução." in laboratory
     assert '("Laboratório", ("Laboratório de aprendizado", "/api/learning"))' not in source
     assert '"/api/learning"' in source
+
+
+
+def test_streamlit_audit_module_uses_redacted_security_event_feed():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert '"Auditoria": ("Auditoria operacional", "/api/security/audit")' in source
+    start = source.index('if module_name == "Auditoria":')
+    end = source.index('if module_name in {"Operação", "Kill Switch", "Segurança"}:', start)
+    audit_view = source[start:end]
+    assert 'data.get("events", [])' in audit_view
+    assert 'data.get("retention_limit", "—")' in audit_view
+    assert "Hashes de cliente, endereços IP, credenciais e corpos de requisição não são exibidos." in audit_view
+    assert "não substitui armazenamento centralizado nem auditoria externa" in audit_view
+    assert "Execução permitida: NÃO" in audit_view
