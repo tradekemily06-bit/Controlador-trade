@@ -273,7 +273,7 @@ def test_assistant_receives_fiscal_reserve_totals_for_day_week_month_and_year():
     )
 
     fiscal = context["fiscal_reserve"]
-    assert "as_of" not in fiscal
+    assert fiscal["as_of"] == "2026-11-05"
     assert fiscal["total_reserved_brl"] == 240.0
     assert fiscal["periods"]["day"]["reserve_amount_brl"] == 40.0
     assert fiscal["periods"]["week"]["realized_result_brl"] == 500.0
@@ -430,7 +430,7 @@ def test_assistant_fiscal_context_filters_nested_periods_limitations_and_semanti
     serialized = json.dumps(fiscal, ensure_ascii=False)
     assert fiscal["name"] == "Reserva Fiscal"
     assert fiscal["currency"] == "BRL"
-    assert fiscal["as_of"] == "2026-11-05"
+    assert "as_of" not in fiscal
     assert fiscal["periods"]["day"] == {
         "start": "2026-11-05", "end": "2026-11-05", "entries": 1,
         "realized_result_brl": 125.0, "reserve_amount_brl": 25.0,
