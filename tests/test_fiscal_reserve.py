@@ -404,3 +404,29 @@ def test_reserve_rejects_coerced_numeric_values(tmp_path):
         else:
             raise AssertionError("reserve rate must reject coerced or non-finite values")
     assert reserve.summary(OWNER)["total_reserved_brl"] == 0
+
+
+def test_reserve_rejects_coerced_category_reference_date_and_notes(tmp_path):
+    reserve = make_reserve(tmp_path / "strict-reserve-metadata.sqlite3")
+    base = {
+        "category": "BR_DAY_TRADE",
+        "realized_result_brl": 100,
+        "reference": "STRICT-METADATA-001",
+        "occurred_on": "2026-11-04",
+        "notes": "evidência",
+    }
+    for field, value in (
+        ("category", ["BR_DAY_TRADE"]),
+        ("reference", ["STRICT-METADATA-001"]),
+        ("occurred_on", ["2026-11-04"]),
+        ("notes", {"text": "evidência"}),
+    ):
+        try:
+            reserve.record_realized_result(
+                OWNER, {**base, field: value, "reference": "STRICT-" + field.upper()}
+            )
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"{field} must reject non-text values")
+    assert reserve.summary(OWNER)["total_reserved_brl"] == 0
