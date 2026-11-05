@@ -834,3 +834,31 @@ def test_assistant_context_caps_unreasonably_large_aggregate_counts():
     assert context["foreign_pending"]["total"] == 1_000_000_000
     assert context["foreign_pending"]["realized_results"] == 1_000_000_000
     assert context["foreign_pending"]["asset_amounts"] == 1_000_000_000
+
+
+
+def test_assistant_operational_context_accepts_only_real_boolean_flags():
+    from assistant.read_only_context import _operations_summary, _risk_summary
+
+    risk = _risk_summary({"allowed": "false", "configured_limits": {}})
+    assert risk["allowed"] is False
+    assert _risk_summary({"allowed": True})["allowed"] is True
+    assert _risk_summary({"allowed": 1})["allowed"] is False
+
+    operations = _operations_summary({
+        "recovery": {"can_resume": "false"},
+        "kill_switch": {"enabled": "false"},
+        "market_data": {"safe_for_analysis": "true"},
+    })
+    assert operations["recovery"]["can_resume"] is False
+    assert operations["kill_switch"]["enabled"] is False
+    assert operations["market_data"]["safe_for_analysis"] is False
+
+    valid = _operations_summary({
+        "recovery": {"can_resume": True},
+        "kill_switch": {"enabled": True},
+        "market_data": {"safe_for_analysis": True},
+    })
+    assert valid["recovery"]["can_resume"] is True
+    assert valid["kill_switch"]["enabled"] is True
+    assert valid["market_data"]["safe_for_analysis"] is True
