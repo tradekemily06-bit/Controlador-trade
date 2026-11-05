@@ -1356,21 +1356,83 @@ def show_readonly_module(module_name: str) -> None:
                     st.error(f"Não foi possível salvar as notificações: {exc}")
             return
 
-        if module_name in {"Motor de Decisão", "Estatísticas", "Relatórios"}:
+        if module_name == "Motor de Decisão":
             scalar_values = [(key, value) for key, value in data.items() if isinstance(value, (str, int, float, bool)) or value is None]
             if scalar_values:
                 cols = st.columns(min(4, len(scalar_values)))
                 for index, (key, value) in enumerate(scalar_values[:12]):
                     label = key.replace("_", " ").capitalize()
                     cols[index % len(cols)].metric(label, "—" if value is None else str(value))
-            periods = data.get("periods")
+            st.caption("Leitura informativa do motor. Nenhum comando de execução é disponibilizado nesta tela.")
+            return
+
+        if module_name in {"Estatísticas", "Relatórios"}:
+            summary_keys = ("total", "actionable", "wins", "losses", "draws", "open", "win_rate")
+            summary_labels = {
+                "total": "Registros", "actionable": "Acionáveis", "wins": "WIN",
+                "losses": "LOSS", "draws": "Empates", "open": "Em aberto",
+                "win_rate": "Taxa de WIN",
+            }
+            metrics = [(key, data.get(key)) for key in summary_keys if data.get(key) is not None]
+            if metrics:
+                cols = st.columns(min(4, len(metrics)))
+                for index, (key, value) in enumerate(metrics):
+                    shown = f"{float(value):.1f}%" if key == "win_rate" else str(value)
+                    cols[index % len(cols)].metric(summary_labels[key], shown)
+            else:
+                st.info("Ainda não há estatísticas disponíveis para os registros carregados.")
+
+            periods = data.get("periods", {})
             if isinstance(periods, dict) and periods:
-                with st.expander("Resultados por período"):
-                    for period, summary in periods.items():
-                        st.markdown(f"**{str(period).capitalize()}**")
-                        if isinstance(summary, dict):
-                            st.write(" · ".join(f"{key.replace('_', ' ')}: {value}" for key, value in summary.items() if isinstance(value, (str, int, float))))
-            st.caption("Os números refletem apenas os registros disponíveis na memória do runtime.")
+                st.markdown("#### Desempenho por período")
+                period_labels = {"daily": "Hoje", "weekly": "Esta semana", "monthly": "Este mês"}
+                period_rows = []
+                for period in ("daily", "weekly", "monthly"):
+                    bucket = periods.get(period)
+                    if not isinstance(bucket, dict):
+                        continue
+                    period_rows.append({
+                        "Período": period_labels[period],
+                        "Registros": bucket.get("total", 0),
+                        "WIN": bucket.get("wins", 0),
+                        "LOSS": bucket.get("losses", 0),
+                        "Empates": bucket.get("draws", 0),
+                        "Em aberto": bucket.get("open", 0),
+                        "Taxa de WIN (%)": round(float(bucket.get("win_rate", 0.0)), 1),
+                    })
+                if period_rows:
+                    st.dataframe(period_rows, use_container_width=True, hide_index=True)
+            if module_name == "Relatórios":
+                breakdowns = data.get("breakdowns", {})
+                if isinstance(breakdowns, dict):
+                    report_groups = (
+                        ("Ativos", breakdowns.get("symbols", breakdowns.get("by_symbol", {}))),
+                        ("Períodos gráficos", breakdowns.get("timeframes", breakdowns.get("by_timeframe", {}))),
+                        ("Sinais", breakdowns.get("signals", breakdowns.get("by_signal", {}))),
+                        ("Faixas de score", breakdowns.get("score_bands", breakdowns.get("by_score_band", {}))),
+                    )
+                    st.markdown("#### Detalhamento dos resultados")
+                    for label, grouped in report_groups:
+                        if not isinstance(grouped, dict) or not grouped:
+                            continue
+                        st.markdown(f"**{label}**")
+                        rows = []
+                        for group_name, values in sorted(grouped.items()):
+                            if not isinstance(values, dict):
+                                continue
+                            rows.append({
+                                "Grupo": str(group_name),
+                                "Registros": values.get("total", 0),
+                                "WIN": values.get("wins", 0),
+                                "LOSS": values.get("losses", 0),
+                                "Empates": values.get("draws", 0),
+                                "Taxa de WIN (%)": round(float(values.get("win_rate", 0.0)), 1),
+                            })
+                        if rows:
+                            st.dataframe(rows, use_container_width=True, hide_index=True)
+                    if not any(isinstance(grouped, dict) and grouped for _, grouped in report_groups):
+                        st.info("Ainda não existem grupos suficientes para detalhar o relatório.")
+            st.caption("Estatísticas calculadas somente sobre os registros disponíveis na memória do runtime; não representam lucro financeiro, resultado fiscal ou garantia de desempenho futuro.")
             return
 
     except Exception as exc:
