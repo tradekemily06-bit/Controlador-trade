@@ -21,13 +21,23 @@ def build_demo_execution_port(provider: str = "paper", *, symbol: str | None = N
         return PaperExecutor()
     if normalized == "ic_markets_mt5_demo":
         risk_day_timezone = os.environ.get("CONTROLADOR_RISK_DAY_TIMEZONE", "UTC").strip() or "UTC"
+        terminal_path = os.environ.get("CONTROLADOR_MT5_TERMINAL_PATH") or None
         return ICMarketsMT5DemoAdapter(
-            ICMarketsMT5DemoConfig(symbol=symbol, risk_day_timezone=risk_day_timezone)
+            ICMarketsMT5DemoConfig(
+                symbol=symbol,
+                risk_day_timezone=risk_day_timezone,
+                terminal_path=terminal_path,
+            )
         )
     if normalized == "ic_markets_mt5_real":
         risk_day_timezone = os.environ.get("CONTROLADOR_RISK_DAY_TIMEZONE", "UTC").strip() or "UTC"
+        terminal_path = os.environ.get("CONTROLADOR_MT5_TERMINAL_PATH") or None
         return ICMarketsMT5RealAdapter(
-            ICMarketsMT5DemoConfig(symbol=symbol, risk_day_timezone=risk_day_timezone)
+            ICMarketsMT5DemoConfig(
+                symbol=symbol,
+                risk_day_timezone=risk_day_timezone,
+                terminal_path=terminal_path,
+            )
         )
     raise ExecutionProviderConfigurationError(
         f"provedor de execução não suportado: {provider!r}"
