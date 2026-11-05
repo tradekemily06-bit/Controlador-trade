@@ -132,7 +132,7 @@ class FakeAdapter:
     def execute(self, request):
         from execution.ports import ExecutionResult
         self.calls += 1
-        return ExecutionResult(True, "real fake accepted", "external-001")
+        return ExecutionResult(True, "real fake accepted", "external-001", "a" * 32)
 
 
 def test_valid_confirmation_reaches_real_gateway_only_once(tmp_path):
