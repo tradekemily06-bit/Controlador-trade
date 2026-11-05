@@ -113,3 +113,19 @@ def test_manual_day_trade_entry_rejects_missing_confirmation_and_incomplete_crit
 
     owner_id = migrate_fiscal_schema(str(database))
     assert reserve.summary(owner_id)["total_reserved_brl"] == 0.0
+
+
+def test_manual_day_trade_api_rejects_coerced_metadata_and_numeric_strings(tmp_path, monkeypatch):
+    database, reserve = _configure(tmp_path, monkeypatch)
+    for field, value in (
+        ("instrument", ["PETR4"]),
+        ("institution", {"name": "corretora"}),
+        ("market_label", 123),
+        ("notes", ["não é texto"]),
+        ("realized_result_brl", "250.00"),
+    ):
+        payload = {**valid_payload(), field: value}
+        status, _body = _request(payload)
+        assert status.startswith("400"), field
+    owner_id = migrate_fiscal_schema(str(database))
+    assert reserve.summary(owner_id)["total_reserved_brl"] == 0.0
