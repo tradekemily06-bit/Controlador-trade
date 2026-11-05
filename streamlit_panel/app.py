@@ -1129,7 +1129,7 @@ def show_readonly_module(module_name: str) -> None:
                     default_timeframe = st.selectbox("Período padrão", timeframe_options, index=timeframe_options.index(current_timeframe) if current_timeframe in timeframe_options else 1)
                     theme_options = ["DARK", "LIGHT", "SYSTEM"]
                     current_theme = str(prefs.get("chart_theme", "DARK")).upper()
-                    chart_theme = st.selectbox("Tema do painel", theme_options, index=theme_options.index(current_theme) if current_theme in theme_options else 0)
+                    chart_theme = st.selectbox("Tema do gráfico", theme_options, index=theme_options.index(current_theme) if current_theme in theme_options else 0)
                     require_closed_candle = st.checkbox("Exigir candle fechado nas análises", value=prefs.get("require_closed_candle") is True)
                     require_filters = st.checkbox("Exigir filtros de confirmação", value=prefs.get("require_filters") is True)
                     show_technical_details = st.checkbox("Mostrar detalhes técnicos por padrão", value=prefs.get("show_technical_details_by_default") is True)
@@ -1479,7 +1479,7 @@ def show_readonly_module(module_name: str) -> None:
                 notification_writer.writerows(display_rows)
                 st.download_button(
                     "Exportar notificações filtradas · CSV",
-                    data="\\ufeff" + notification_csv.getvalue(),
+                    data="\ufeff" + notification_csv.getvalue(),
                     file_name="controlador-trading-notificacoes.csv",
                     mime="text/csv; charset=utf-8",
                     key="notification_history_csv_download",
@@ -1852,7 +1852,7 @@ def show_readonly_module(module_name: str) -> None:
                 report_writer.writerows(report_rows)
                 st.download_button(
                     "Exportar relatório operacional · CSV",
-                    data="\\ufeff" + report_buffer.getvalue(),
+                    data="\ufeff" + report_buffer.getvalue(),
                     file_name="controlador-trading-relatorio-operacional.csv",
                     mime="text/csv; charset=utf-8",
                     key="operational_report_csv_download",
