@@ -1119,7 +1119,7 @@ def test_pending_queue_summary_validation_rejects_bad_counts_and_flags():
         "included_in_totals": False, "reserve_calculated": False, "total": 2,
         "periods": {
             key: {
-                "start": "2026-11-01" if key in ("month", "year") else "2026-11-02",
+                "start": "2026-11-05" if key == "day" else ("2026-11-01" if key in ("month", "year") else "2026-11-02"),
                 "end": "2026-11-05", "total": 1, "results": 1,
             }
             for key in ("day", "week", "month", "year")
