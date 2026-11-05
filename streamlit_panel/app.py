@@ -1466,6 +1466,24 @@ def show_readonly_module(module_name: str) -> None:
                         "Bloqueante": bool(item.get("blocking", False)),
                     })
                 st.dataframe(display_rows, use_container_width=True, hide_index=True)
+                notification_csv = io.StringIO(newline="")
+                notification_writer = csv.DictWriter(
+                    notification_csv,
+                    fieldnames=list(display_rows[0].keys()) if display_rows else [
+                        "Horário", "Gravidade", "Categoria", "Título", "Mensagem",
+                        "Atenção necessária", "Bloqueante",
+                    ],
+                    delimiter=";",
+                )
+                notification_writer.writeheader()
+                notification_writer.writerows(display_rows)
+                st.download_button(
+                    "Exportar notificações filtradas · CSV",
+                    data="\\ufeff" + notification_csv.getvalue(),
+                    file_name="controlador-trading-notificacoes.csv",
+                    mime="text/csv; charset=utf-8",
+                    key="notification_history_csv_download",
+                )
                 st.caption(f"Exibindo {len(display_rows)} de {len(all_items)} notificação(ões) retornada(s) pelo runtime.")
             else:
                 st.info("Não foi possível obter o histórico completo; abaixo estão os alertas ativos disponíveis.")
