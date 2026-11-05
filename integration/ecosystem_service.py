@@ -224,6 +224,7 @@ class EcosystemService:
     def admit_learning_knowledge(self, source: LearningSource, *, knowledge_validated: bool) -> LearningSource:
         updated = self.learning_source_gate.admit_knowledge(source, knowledge_validated=knowledge_validated)
         self.learning_sources[updated.source_id] = updated
+        self._persist_learning_state()
         return updated
 
     def learning_sources_view(self) -> list[dict[str, Any]]:
@@ -272,6 +273,7 @@ class EcosystemService:
         if activity.activity_id in self.learning_activities:
             raise ValueError("activity_id já cadastrado")
         self.learning_activities[activity.activity_id] = activity
+        self._persist_learning_state()
         return activity
 
     def learning_activities_view(self) -> list[dict[str, Any]]:
