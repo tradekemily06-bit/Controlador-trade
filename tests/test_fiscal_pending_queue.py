@@ -514,3 +514,23 @@ def test_not_converted_method_rejects_fx_quote_for_assets_and_realized_results(t
             raise AssertionError("NOT_CONVERTED must reject a supplied FX quote")
 
     assert queue.list_pending(OWNER)["total"] == 0
+
+
+def test_foreign_review_rejects_non_text_notes_and_list_id(tmp_path):
+    queue = make_queue(tmp_path / "strict-foreign-review.sqlite3")
+    item = queue.add(OWNER, sample("FOREIGN-STRICT-REVIEW"))
+    payload = review_sample()
+    payload["review_notes"] = ["texto", "indevido"]
+    try:
+        queue.record_review(OWNER, item["pending_id"], payload)
+    except ValueError as exc:
+        assert "review_notes deve ser texto" in str(exc)
+    else:
+        raise AssertionError("review_notes must reject non-text values")
+
+    try:
+        queue.list_reviews(OWNER, 123)
+    except ValueError as exc:
+        assert "pending_id inválido" in str(exc)
+    else:
+        raise AssertionError("list_reviews must reject non-text pending_id")
