@@ -454,8 +454,8 @@ def show_fiscal() -> None:
                 pending_period = pending_periods.get(period, {})
                 col.metric(f"Exterior pendente · {label}", _safe_fiscal_count(pending_period.get("total", 0)))
                 col.caption(
-                    f"{int(pending_period.get('realized_results', 0))} resultado(s) · "
-                    f"{int(pending_period.get('asset_amounts', 0))} ativo(s) · sem cálculo"
+                    f"{_safe_fiscal_count(pending_period.get('realized_results', 0))} resultado(s) · "
+                    f"{_safe_fiscal_count(pending_period.get('asset_amounts', 0))} ativo(s) · sem cálculo"
                 )
         fiscal_history = summary.get("history", [])
         st.markdown("#### Histórico da Reserva Fiscal")
