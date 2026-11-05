@@ -81,3 +81,14 @@ def test_real_close_rejects_blank_external_id_before_ledger_access():
     assert method.index(validation) < method.index(
         "self.runtime.execution_ledger.record_for(request_id)"
     )
+
+
+def test_real_reconcile_rejects_non_boolean_outcome_before_gateway_call():
+    source = (Path(__file__).parent / "real_runtime_controller.py").read_text(encoding="utf-8")
+    method = source.split("    def reconcile(", 1)[1]
+
+    validation = "if not isinstance(executed, bool):"
+    assert validation in method
+    assert method.index(validation) < method.index("self.gateway.reconcile_unknown")
+    assert "executed=executed" in method
+    assert "executed=bool(executed)" not in method
