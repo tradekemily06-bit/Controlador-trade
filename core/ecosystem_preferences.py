@@ -143,6 +143,27 @@ class EcosystemPreferencesStore:
 
     @staticmethod
     def _validate(value: EcosystemPreferences) -> None:
+        boolean_preferences = (
+            "require_closed_candle",
+            "require_filters",
+            "show_technical_details_by_default",
+            "autonomous_operation_enabled",
+            "real_execution_enabled",
+            "leverage_enabled",
+        )
+        for field in boolean_preferences:
+            if not isinstance(getattr(value, field), bool):
+                raise ValueError(f"{field} must be a boolean")
+
+        boolean_candle_preferences = ("border_enabled", "show_wicks", "show_bodies")
+        for field in boolean_candle_preferences:
+            if not isinstance(getattr(value.candle, field), bool):
+                raise ValueError(f"candle.{field} must be a boolean")
+
+        for field in NotificationPreferences.__dataclass_fields__:
+            if not isinstance(getattr(value.notifications, field), bool):
+                raise ValueError(f"notifications.{field} must be a boolean")
+
         if not value.default_symbol.strip():
             raise ValueError("default_symbol is required")
         if not value.default_timeframe.strip():
