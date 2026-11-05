@@ -1060,7 +1060,67 @@ def show_readonly_module(module_name: str) -> None:
             st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
             return
 
-        if module_name in {"Operação", "Kill Switch", "Segurança"}:
+        if module_name == "Kill Switch":
+            obs = data.get("operational_observability", {})
+            kill = obs.get("kill_switch", {})
+            recovery = obs.get("recovery", {})
+            reconciliation = obs.get("reconciliation", {})
+            runtime_health = obs.get("runtime_health", {})
+            state = str(kill.get("state", "NOT_CONFIRMED")).upper()
+            st.metric("Estado do Kill Switch", {
+                "ACTIVE": "ATIVO",
+                "CLEAR": "LIVRE",
+                "NOT_CONNECTED": "NÃO CONECTADO",
+            }.get(state, state))
+            if kill.get("reason"):
+                st.warning("Motivo registrado: " + str(kill["reason"]))
+            else:
+                st.caption("Motivo: nenhum foi informado pelo runtime.")
+            cols = st.columns(3)
+            cols[0].metric("Recuperação", str(recovery.get("state", "NÃO CONFIRMADA")))
+            cols[1].metric("Reconciliação", str(reconciliation.get("state", "NÃO CONFIRMADA")))
+            cols[2].metric("Saúde operacional", str(runtime_health.get("state", "NÃO CONFIRMADA")))
+            pending = reconciliation.get("pending_request_ids", [])
+            unknown = reconciliation.get("unknown_request_ids", [])
+            if pending or unknown:
+                st.warning("Existem solicitações pendentes ou de estado desconhecido. Não retome operações.")
+                if pending:
+                    st.write("Solicitações pendentes:", pending)
+                if unknown:
+                    st.write("Solicitações desconhecidas:", unknown)
+            if recovery.get("message"):
+                st.write(str(recovery["message"]))
+            st.caption("Tela somente de consulta. Não altera o Kill Switch nem retoma operações.")
+            st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
+            return
+
+        if module_name == "Segurança":
+            storage = data.get("production_storage", {})
+            gate = data.get("production_operation_gate", {})
+            identity = data.get("identity", data)
+            cols = st.columns(3)
+            cols[0].metric("Armazenamento", str(storage.get("state", "NÃO CONFIRMADO")))
+            cols[1].metric("Gate operacional", str(gate.get("storage_state", "NÃO CONFIRMADO")))
+            cols[2].metric("Provedor de identidade", str(identity.get("trusted_identity_provider", "NÃO CONFIGURADO")))
+            st.write("Isolamento de usuário/tenant:", str(identity.get("tenant_isolation", "NÃO CONFIRMADO")))
+            st.write("Execução REAL:", str(data.get("real", "DESABILITADO")))
+            alerts = data.get("alerts", [])
+            if alerts:
+                st.markdown("#### Alertas de segurança e integridade")
+                for alert in alerts:
+                    message = f"{alert.get('component', 'Sistema')} — {alert.get('message', 'Verificar')}"
+                    if str(alert.get("severity", "")).upper() == "CRITICAL":
+                        st.error(message)
+                    else:
+                        st.warning(message)
+            else:
+                st.info("O runtime não retornou alertas de saúde nesta consulta.")
+            st.caption("A identidade remota e o isolamento dependem da configuração real do proxy/provedor confiável.")
+            st.caption("Esta tela não comprova implantação remota, backup externo ou isolamento multiusuário em produção.")
+            st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
+            return
+
+        if module_name in {"Operação"}:
             obs = data.get("operational_observability", {})
             health = str(data.get("health") or "NÃO CONFIRMADA").upper()
             st.metric("Saúde do Ecossistema", health)
