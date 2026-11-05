@@ -660,7 +660,7 @@ def test_streamlit_settings_view_reads_preferences_without_mutations():
     assert 'prefs.get("default_symbol", "—")' in view
     assert 'prefs.get("default_timeframe", "—")' in view
     assert 'prefs.get("leverage_enabled", False)' in view
-    assert 'prefs.get("real_execution_enabled") is not True' in view
+    assert 'safety_cols[1].metric("Execução REAL", "DESABILITADA")' in view
     assert "execução permitida: não · real: desabilitado" in view.lower()
     assert 'api("/api/preferences", "POST"' not in view
 
