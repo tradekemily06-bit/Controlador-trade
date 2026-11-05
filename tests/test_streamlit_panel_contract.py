@@ -1,5 +1,7 @@
+import ast
 import json
 from pathlib import Path
+from typing import Any
 
 
 PANEL_DIR = Path(__file__).resolve().parents[1] / "streamlit_panel"
@@ -484,3 +486,49 @@ def test_streamlit_foreign_pending_queue_has_one_review_flow_without_legacy_dupl
     assert 'st.markdown("#### Pendências registradas")' not in source
     assert 'foreign_pending_data = api(f"/api/fiscal-reserve/pending?limit=50&offset={foreign_offset}")' in source
     assert '"/api/fiscal-reserve/pending/" + urllib.parse.quote(selected_foreign_pending_id)' in source
+
+
+
+def test_fiscal_history_csv_exports_only_the_privacy_filtered_display_rows():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    helper = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "fiscal_history_display_row"
+    )
+    module = ast.Module(body=[helper], type_ignores=[])
+    namespace = {"Any": Any, "json": json}
+    exec(compile(module, "streamlit_panel/app.py", "exec"), namespace)
+    display_row = namespace["fiscal_history_display_row"]
+
+    foreign = display_row({
+        "occurred_on": "2026-11-04",
+        "category": "FOREIGN_FINANCIAL_INVESTMENT",
+        "realized_result_brl": 9000,
+        "reserve_rate": 20,
+        "reserve_amount_brl": 1800,
+        "reference": "foreign-1",
+    })
+    pending_brazilian = display_row({
+        "occurred_on": "2026-11-04",
+        "category": "BR_DAY_TRADE",
+        "realized_result_brl": 500,
+        "reserve_rate": 20,
+        "reserve_amount_brl": 100,
+        "reference": "br-pending-1",
+        "notes": json.dumps({"tax_classification_status": "USER_DECLARED_PENDING_REVIEW"}),
+    })
+
+    assert foreign["Resultado (R$)"] == "—"
+    assert foreign["Percentual de planejamento (%)"] == "—"
+    assert foreign["Reserva estimada (R$)"] == "—"
+    assert pending_brazilian["Resultado (R$)"] == 500
+    assert pending_brazilian["Percentual de planejamento (%)"] == "—"
+    assert pending_brazilian["Reserva estimada (R$)"] == "—"
+
+    export_block = source[source.index('csv_buffer = io.StringIO'):source.index('st.caption("O arquivo é gerado nesta sessão')]
+    assert "csv.DictWriter(" in export_block
+    assert 'delimiter=";"' in export_block
+    assert 'data="\\ufeff" + csv_buffer.getvalue()' in export_block
+    assert "csv_writer.writerows(display_rows)" in export_block
+    assert "fiscal_history_display_row(item)" in source
