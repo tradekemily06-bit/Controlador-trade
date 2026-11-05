@@ -59,12 +59,36 @@ def _count(value: Any) -> int:
 def _decision_summary(item: Any) -> dict[str, Any]:
     if not isinstance(item, dict):
         return {}
-    # Exclude decision IDs, symbols, reasons and any free-form/user-provided text.
-    return {
-        key: item[key]
-        for key in ("created_at", "signal", "score", "confirmed", "outcome")
-        if key in item and isinstance(item[key], (str, int, float, bool, type(None)))
-    }
+    # Only forward controlled enum values and validated primitives. A string
+    # type check alone is insufficient: free-form text can carry prompt
+    # injection or private notes into the external assistant context.
+    safe: dict[str, Any] = {}
+    signal = item.get("signal")
+    if isinstance(signal, str) and signal in {
+        "COMPRA", "COMPRAR", "VENDA", "VENDER", "AGUARDAR",
+        "BUY", "SELL", "WAIT",
+    }:
+        safe["signal"] = signal
+    score = item.get("score")
+    if _is_finite_number(score):
+        safe["score"] = score
+    confirmed = item.get("confirmed")
+    if isinstance(confirmed, bool):
+        safe["confirmed"] = confirmed
+    outcome = item.get("outcome")
+    if isinstance(outcome, str) and outcome in {
+        "WIN", "LOSS", "DRAW", "OPEN", "VOID", "UNKNOWN",
+    }:
+        safe["outcome"] = outcome
+    created_at = item.get("created_at")
+    if isinstance(created_at, str) and len(created_at) <= 40:
+        try:
+            datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+        except ValueError:
+            pass
+        else:
+            safe["created_at"] = created_at
+    return safe
 
 
 def _risk_summary(value: Any) -> dict[str, Any]:
