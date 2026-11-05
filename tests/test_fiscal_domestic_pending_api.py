@@ -1,5 +1,7 @@
 import io
 import json
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import app as app_module
 from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
@@ -51,7 +53,7 @@ def test_domestic_pending_api_is_owner_scoped_and_ignores_forged_owner(
         "category_candidate": "BR_COMMON_EXCHANGE",
         "instrument": "ETF",
         "market_scope": "B3",
-        "occurred_on": "2026-11-04",
+        "occurred_on": datetime.now(ZoneInfo("America/Sao_Paulo")).date().isoformat(),
         "realized_result_brl": -75.25,
     }
     status, created = _request(

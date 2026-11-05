@@ -744,50 +744,6 @@ def show_fiscal() -> None:
             else:
                 st.caption("Nenhuma posição elegível encontrada. Se houver posições retidas, consulte o motivo antes de qualquer lançamento.")
 
-    try:
-        pending_data = api("/api/fiscal-reserve/pending?limit=50&offset=0")
-        items = pending_data.get("items", [])
-        st.markdown("#### Pendências registradas")
-        if items:
-            st.dataframe([{"Data": item.get("occurred_on"), "Instrumento": item.get("instrument"), "Jurisdição": item.get("jurisdiction"), "Residência declarada": residency_options.get(item.get("tax_residency_at_event", "NOT_INFORMED"), "Não informado"), "Natureza": income_options.get(item.get("income_nature", "NOT_INFORMED"), "Não informado"), "Evento": event_options.get(item.get("event_type", "NOT_INFORMED"), "Não informado"), "Método cambial": fx_method_options.get(item.get("fx_conversion_method", "NOT_INFORMED"), "Não informado"), "Valor original": item.get("original_result") if item.get("record_kind") == "REALIZED_RESULT" else item.get("original_amount"), "Tipo": item.get("record_kind", "ASSET_AMOUNT"), "Moeda": item.get("original_currency"), "Status": "PENDENTE DE CLASSIFICAÇÃO"} for item in items], use_container_width=True, hide_index=True)
-            pending_ids = [item.get("pending_id") for item in items]
-            selected_id = st.selectbox("Selecionar pendência para revisão", pending_ids, format_func=lambda value: next((f"{x.get('instrument')} · {x.get('jurisdiction')} · {x.get('original_result') if x.get('record_kind') == 'REALIZED_RESULT' else x.get('original_amount')} {x.get('original_currency')}" for x in items if x.get("pending_id") == value), value))
-            with st.expander("Registrar evidência de revisão profissional"):
-                st.warning("Identidade e registro profissional são declarados pelo usuário; o sistema não verifica credenciais. A revisão é evidência documental, não validação fiscal automática.")
-                with st.form("professional_review_form"):
-                    classification = st.selectbox("Classificação candidata", ["FOREIGN_FINANCIAL_INVESTMENT", "FOREIGN_ENTITY_CONTROLLED", "FOREIGN_CRYPTO"])
-                    confirmed_jurisdiction = st.text_input("Jurisdição indicada na revisão")
-                    reviewer_name = st.text_input("Nome do profissional")
-                    role = st.selectbox("Qualificação", ["contador", "consultor tributário", "profissional tributário"])
-                    registration = st.text_input("Registro profissional declarado")
-                    reviewed_on = st.date_input("Data da revisão", key="review_date")
-                    evidence = st.text_input("Parecer ou referência da evidência")
-                    review_notes = st.text_area("Observações da revisão")
-                    review_submit = st.form_submit_button("Guardar revisão")
-                if review_submit:
-                    try:
-                        review = {"candidate_classification": classification, "confirmed_jurisdiction": confirmed_jurisdiction, "reviewer_name": reviewer_name, "reviewer_role": role, "professional_registration": registration, "reviewed_on": reviewed_on.isoformat(), "evidence_reference": evidence, "review_notes": review_notes}
-                        api(f"/api/fiscal-reserve/pending/{urllib.parse.quote(selected_id)}/reviews", "POST", review)
-                        st.success("Revisão registrada. A pendência continua fora dos cálculos.")
-                        st.rerun()
-                    except Exception as exc:
-                        st.error(str(exc))
-            try:
-                history = api(f"/api/fiscal-reserve/pending/{urllib.parse.quote(selected_id)}/reviews").get("reviews", [])
-                with st.expander("Histórico de revisões"):
-                    if history:
-                        for item in history:
-                            st.write(f"{item.get('reviewed_on')} · {item.get('reviewer_name')} · {item.get('candidate_classification')} · {item.get('confirmed_jurisdiction')}")
-                            st.caption(f"Registro declarado (não verificado): {item.get('professional_registration')} · Evidência: {item.get('evidence_reference')} · Situação: {item.get('reviewer_identity_status', 'DECLARED_NOT_VERIFIED')}")
-                    else:
-                        st.caption("Nenhuma revisão registrada.")
-            except Exception as exc:
-                st.warning(str(exc))
-        else:
-            st.caption("Nenhuma pendência cadastrada.")
-    except Exception as exc:
-        st.warning(str(exc))
-
 
 def show_market_analysis() -> None:
     st.subheader("Análise de Mercado")
