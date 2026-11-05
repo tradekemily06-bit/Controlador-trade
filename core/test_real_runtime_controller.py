@@ -340,7 +340,7 @@ def test_real_close_reconciliation_uses_read_only_broker_evidence(tmp_path):
         external_id="ticket-321",
     )
 
-    assert result["state"] == "ACCEPTED"
+    assert result["state"] == "CLOSED"
     assert result["read_only"] is True
     assert result["order_sent"] is False
     assert adapter.observation_calls == 1
@@ -402,3 +402,35 @@ def test_open_position_reconciliation_allows_only_a_new_explicit_close_request(t
     assert close_result.accepted is True
     assert close_adapter.calls == 1
     assert adapter.calls == 0
+
+
+def test_real_controller_status_exposes_only_unresolved_close_records(tmp_path):
+    from execution.position_close_store import PositionCloseState
+
+    runtime = FakeRuntime(tmp_path)
+    controller = RealRuntimeController(runtime=runtime, root=tmp_path)
+    controller.position_closes.begin("req-visible", "ticket-visible")
+    controller.position_closes.finish(
+        "req-visible",
+        PositionCloseState.UNKNOWN,
+        message="ambiguous",
+    )
+    controller.position_closes.begin("req-open-resolved", "ticket-open")
+    controller.position_closes.reconcile(
+        "req-open-resolved",
+        PositionCloseState.OPEN,
+        message="still open",
+    )
+
+    status = controller.status()
+    assert status["unresolved_position_closes"] == 1
+    assert status["position_close_recovery_items"] == [
+        {
+            "request_id": "req-visible",
+            "external_id": "ticket-visible",
+            "state": "UNKNOWN",
+            "attempt": 1,
+            "updated_at": controller.position_closes.get("req-visible").updated_at.isoformat(),
+            "message": "ambiguous",
+        }
+    ]
