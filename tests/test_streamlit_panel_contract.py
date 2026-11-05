@@ -1061,6 +1061,19 @@ def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid
     assert all(validate(candidate) is False for candidate in invalid_cases)
 
 
+def test_fiscal_pending_count_rendering_rejects_invalid_values():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index("def _safe_fiscal_count")
+    end = source.index("def _valid_fiscal_summary", start)
+    namespace = {}
+    exec(compile(source[start:end], "streamlit_panel/app.py", "exec"), namespace)
+    safe_count = namespace["_safe_fiscal_count"]
+    assert safe_count(4) == 4
+    assert safe_count(True) == 0
+    assert safe_count(4.0) == 0
+    assert safe_count(-1) == 0
+    assert safe_count(10**100) == 0
+
 def test_fiscal_reserve_writes_are_disabled_when_summary_read_fails_or_is_incomplete():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     fiscal_start = source.index("def show_fiscal()")
