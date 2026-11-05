@@ -647,7 +647,7 @@ def test_streamlit_notifications_screen_reads_full_history_without_mutations():
     assert '"Bloqueante": bool(item.get("blocking", False))' in view
     assert "somente leitura" in view.lower()
     assert 'api("/api/notifications/all", "POST"' not in view
-    assert "Execução permitida: NÃO · REAL: DESABILITADO" in view
+    assert "execução permitida: não · real: desabilitado" in view.lower()
 
 
 def test_streamlit_decision_engine_uses_latest_read_only_analysis_snapshot():
