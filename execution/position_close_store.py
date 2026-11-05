@@ -19,7 +19,8 @@ except ImportError:  # pragma: no cover - POSIX fallback
 
 class PositionCloseState(str, Enum):
     REQUESTED = "REQUESTED"
-    ACCEPTED = "ACCEPTED"
+    ACCEPTED = "ACCEPTED"  # Legacy persisted value; new reconciliations use CLOSED.
+    CLOSED = "CLOSED"
     OPEN = "OPEN"
     UNKNOWN = "UNKNOWN"
 
@@ -125,7 +126,7 @@ class PositionCloseStore:
         message: str,
         close_external_id: str | None = None,
     ) -> PositionCloseRecord:
-        if state not in (PositionCloseState.ACCEPTED, PositionCloseState.UNKNOWN):
+        if state not in (PositionCloseState.CLOSED, PositionCloseState.UNKNOWN):
             raise ValueError("resultado de fechamento inválido.")
         if not isinstance(message, str):
             raise ValueError("mensagem de fechamento inválida.")
@@ -160,7 +161,7 @@ class PositionCloseStore:
         *,
         message: str,
     ) -> PositionCloseRecord:
-        if state not in (PositionCloseState.ACCEPTED, PositionCloseState.OPEN, PositionCloseState.UNKNOWN):
+        if state not in (PositionCloseState.CLOSED, PositionCloseState.OPEN, PositionCloseState.UNKNOWN):
             raise ValueError("estado de reconciliação de fechamento inválido.")
         if not isinstance(message, str):
             raise ValueError("mensagem de reconciliação inválida.")
