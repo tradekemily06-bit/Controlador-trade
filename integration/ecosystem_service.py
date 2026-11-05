@@ -278,7 +278,22 @@ class EcosystemService:
         return activity
 
     def generate_professor_activity(self, payload: dict[str, Any]) -> LearningActivity:
-        activity = self.learning_professor.build_activity(ProfessorActivitySpec(activity_id=str(payload.get("activity_id", "")), knowledge_id=str(payload.get("knowledge_id", "")), statement=str(payload.get("statement", "")), concept=str(payload.get("concept", "")), difficulty=str(payload.get("difficulty", "INTERMEDIATE"))), knowledge_validated=bool(payload.get("knowledge_validated", False)))
+        # Never trust a browser-supplied "knowledge_validated" flag. Resolve the
+        # knowledge ID against the server-side source registry and its review state.
+        knowledge_id = str(payload.get("knowledge_id", "")).strip()
+        source = self.learning_sources.get(knowledge_id)
+        if source is None or source.status is not LearningSourceStatus.VALIDATED or not source.knowledge_validated:
+            raise ValueError("only server-validated knowledge can generate professor activities")
+        activity = self.learning_professor.build_activity(
+            ProfessorActivitySpec(
+                activity_id=str(payload.get("activity_id", "")),
+                knowledge_id=knowledge_id,
+                statement=str(payload.get("statement", "")),
+                concept=str(payload.get("concept", "")),
+                difficulty=str(payload.get("difficulty", "INTERMEDIATE")),
+            ),
+            knowledge_validated=True,
+        )
         if activity.activity_id in self.learning_activities:
             raise ValueError("activity_id já cadastrado")
         self.learning_activities[activity.activity_id] = activity
