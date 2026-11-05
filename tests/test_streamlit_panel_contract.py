@@ -1144,6 +1144,20 @@ def test_pending_queue_summary_validation_rejects_bad_counts_and_flags():
             "month": {**valid["periods"]["month"], "end": "2026-11-06"},
         },
     }, "results") is False
+    assert validate({
+        **valid,
+        "periods": {
+            **valid["periods"],
+            "day": {**valid["periods"]["day"], "start": "2026-11-04"},
+        },
+    }, "results") is False
+    assert validate({
+        **valid,
+        "periods": {
+            **valid["periods"],
+            "week": {**valid["periods"]["week"], "start": "2026-11-03"},
+        },
+    }, "results") is False
 
 
 def test_fiscal_pending_count_rendering_rejects_invalid_values():
