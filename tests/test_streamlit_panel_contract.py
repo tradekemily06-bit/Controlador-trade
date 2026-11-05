@@ -363,7 +363,7 @@ def test_streamlit_market_analysis_requires_demo_confirmation_and_never_enables_
 def test_streamlit_preferences_never_submit_execution_authority_fields():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     start = source.index('if module_name == "Configurações":')
-    end = source.index('if module_name == "Motor de Decisão":', start)
+    end = source.index('if module_name == "Escola / Tutorial / Onboarding":', start)
     preferences_screen = source[start:end]
     assert 'api("/api/preferences", "POST"' not in preferences_screen
     assert "st.checkbox(" not in preferences_screen
@@ -537,7 +537,9 @@ def test_fiscal_history_csv_exports_only_the_privacy_filtered_display_rows():
 
 def test_streamlit_learning_modules_show_distinct_existing_data_without_trade_authority():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
-    laboratory = source[source.index('if module_name == "Laboratório":'):source.index('if module_name == "Escola / Tutorial / Onboarding":')]
+    learning_start = source.index('if module_name == "Laboratório":')
+    onboarding_start = source.index('if module_name == "Escola / Tutorial / Onboarding":', learning_start)
+    laboratory = source[learning_start:onboarding_start]
     assert 'if module_name == "Aprendizado":' in laboratory
     assert 'if module_name == "Descobertas":' in laboratory
     assert 'data.get("resources", [])' in laboratory
