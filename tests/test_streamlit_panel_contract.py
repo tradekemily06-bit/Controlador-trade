@@ -1,5 +1,6 @@
 import ast
 import json
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -1109,18 +1110,40 @@ def test_pending_queue_summary_validation_rejects_bad_counts_and_flags():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     start = source.index("def _valid_pending_queue_summary")
     end = source.index("def _valid_fiscal_summary", start)
-    namespace = {}
+    namespace = {"date": date}
     exec(compile(source[start:end], "streamlit_panel/app.py", "exec"), namespace)
     validate = namespace["_valid_pending_queue_summary"]
     valid = {
-        "available": True, "classification_status": "PENDING_CLASSIFICATION",
+        "available": True, "as_of": "2026-11-05",
+        "classification_status": "PENDING_CLASSIFICATION",
         "included_in_totals": False, "reserve_calculated": False, "total": 2,
-        "periods": {key: {"total": 1, "results": 1} for key in ("day", "week", "month", "year")},
+        "periods": {
+            key: {
+                "start": "2026-11-01" if key in ("month", "year") else "2026-11-02",
+                "end": "2026-11-05", "total": 1, "results": 1,
+            }
+            for key in ("day", "week", "month", "year")
+        },
     }
     assert validate(valid, "results") is True
     assert validate({**valid, "total": True}, "results") is False
     assert validate({**valid, "included_in_totals": True}, "results") is False
-    assert validate({**valid, "periods": {**valid["periods"], "month": {"total": 1, "results": 1.0}}}, "results") is False
+    assert validate({**valid, "periods": {**valid["periods"], "month": {**valid["periods"]["month"], "results": 1.0}}}, "results") is False
+    assert validate({**valid, "as_of": "2026-02-30"}, "results") is False
+    assert validate({
+        **valid,
+        "periods": {
+            **valid["periods"],
+            "week": {**valid["periods"]["week"], "start": "2026-11-06"},
+        },
+    }, "results") is False
+    assert validate({
+        **valid,
+        "periods": {
+            **valid["periods"],
+            "month": {**valid["periods"]["month"], "end": "2026-11-06"},
+        },
+    }, "results") is False
 
 
 def test_fiscal_pending_count_rendering_rejects_invalid_values():
