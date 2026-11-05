@@ -286,7 +286,7 @@ def _valid_fiscal_summary(summary: Any) -> bool:
     if not isinstance(brazil, dict) or not isinstance(foreign, dict):
         return False
     foreign_entries = foreign.get("entries")
-    if isinstance(foreign_entries, bool) or not isinstance(foreign_entries, int) or foreign_entries < 0:
+    if isinstance(foreign_entries, bool) or not isinstance(foreign_entries, int) or not 0 <= foreign_entries <= 1_000_000_000:
         return False
     if foreign.get("classification_status") != "PENDING_CLASSIFICATION":
         return False
