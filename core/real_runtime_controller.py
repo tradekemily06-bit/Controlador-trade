@@ -12,7 +12,7 @@ from core.p117_real_admission import RealAdmissionBoundary
 from core.real_manual_confirmation import RealManualConfirmationGate
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
-from execution.execution_ledger import ExecutionLedger
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState
 from execution.ports import ExecutionMode, ExecutionRequest
 from execution.real_gateway import RealExecutionGateway, RealGatewayResult
@@ -248,9 +248,13 @@ class RealRuntimeController:
         )
 
     def close_and_reconcile(self, *, request_id: str, external_id: str):
+        if not isinstance(external_id, str) or not external_id.strip():
+            raise ValueError("external_id REAL inválido.")
         record = self.runtime.execution_ledger.record_for(request_id)
         if record is None:
             raise ValueError("request_id REAL não encontrado no ledger.")
+        if record.status is not ExecutionLedgerStatus.ACCEPTED:
+            raise ValueError("somente uma execução REAL ACCEPTED pode ser fechada.")
         if record.external_id != external_id.strip():
             raise ValueError("external_id não corresponde à identidade persistida do request REAL.")
         adapter = self.registry.get(self.broker_id)
