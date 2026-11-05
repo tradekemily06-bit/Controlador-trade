@@ -220,3 +220,69 @@ def test_migration_refuses_a_different_owner_for_domestic_pending_queue(tmp_path
     with pytest.raises(RuntimeError, match="proprietário da fila brasileira"):
         migrate_fiscal_schema(path)
     assert queue.list_pending(owner)["total"] == 1
+
+
+def test_partial_rebuild_refuses_to_reassign_existing_owner(tmp_path, monkeypatch):
+    path = str(tmp_path / "partial-owner-mismatch.sqlite3")
+    _legacy_db(path)
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner-a")
+    owner_a = migrate_fiscal_schema(path)
+
+    # Force the rebuild path while leaving other tables with owner-a records.
+    db = sqlite3.connect(path)
+    db.execute("DROP TABLE fiscal_reserve_settings")
+    db.execute(
+        "CREATE TABLE fiscal_reserve_settings(category TEXT PRIMARY KEY, rate REAL NOT NULL)"
+    )
+    db.execute("INSERT INTO fiscal_reserve_settings VALUES('BR_DAY_TRADE', 20)")
+    db.commit()
+    db.close()
+
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner-b")
+    with pytest.raises(RuntimeError, match="proprietário já gravado"):
+        migrate_fiscal_schema(path)
+
+    db = sqlite3.connect(path)
+    assert db.execute(
+        "SELECT DISTINCT owner_id FROM fiscal_reserve_entries"
+    ).fetchall() == [(owner_a,)]
+    assert db.execute(
+        "SELECT COUNT(*) FROM fiscal_reserve_entries"
+    ).fetchone()[0] == 1
+    db.close()
+
+
+def test_partial_rebuild_refuses_rows_with_unknown_owner(tmp_path, monkeypatch):
+    path = str(tmp_path / "partial-null-owner.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner-a")
+    owner = migrate_fiscal_schema(path)
+
+    db = sqlite3.connect(path)
+    db.execute("DROP TABLE fiscal_reserve_settings")
+    db.execute(
+        "CREATE TABLE fiscal_reserve_settings(category TEXT PRIMARY KEY, rate REAL NOT NULL)"
+    )
+    db.execute("INSERT INTO fiscal_reserve_settings VALUES('BR_DAY_TRADE', 20)")
+    db.execute(
+        "UPDATE fiscal_reserve_entries SET owner_id = NULL WHERE entry_id = ?",
+        ("missing-row",),
+    )
+    db.execute(
+        "INSERT INTO fiscal_reserve_entries "
+        "(entry_id,owner_id,category,entry_type,realized_result_brl,reserve_rate,"
+        "reserve_amount_brl,reference,occurred_on,created_at,notes) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        ("unknown-owner", None, "BR_DAY_TRADE", "REALIZED_RESULT", 10, 20, 2,
+         "unknown-owner-ref", "2026-11-04", "now", ""),
+    )
+    db.commit()
+    db.close()
+
+    with pytest.raises(RuntimeError, match="sem proprietário"):
+        migrate_fiscal_schema(path)
+
+    db = sqlite3.connect(path)
+    assert db.execute(
+        "SELECT owner_id FROM fiscal_reserve_entries WHERE entry_id='unknown-owner'"
+    ).fetchone() == (None,)
+    db.close()
