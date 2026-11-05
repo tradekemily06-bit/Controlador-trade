@@ -14,7 +14,7 @@ from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState
-from execution.ports import ExecutionMode, ExecutionRequest
+from execution.ports import (\n    ExecutionMode, ExecutionRequest, PositionCloseObservation,\n    PositionCloseObservationStatus,\n)
 from execution.position_close_store import PositionCloseState, PositionCloseStore
 from execution.real_gateway import RealExecutionGateway, RealGatewayResult
 from execution.default_registry import IC_MARKETS_MT5_REAL, build_real_registry
@@ -320,6 +320,45 @@ class RealRuntimeController:
         # The opening execution ledger/lifecycle remain unchanged: closing a
         # position is a separate lifecycle and must not rewrite order opening.
         return close
+
+    def reconcile_position_close(self, *, request_id: str, external_id: str) -> dict[str, Any]:
+        """Read broker evidence and resolve a pending/unknown close without sending an order."""
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("request_id de fechamento inválido.")
+        if not isinstance(external_id, str) or not external_id.strip():
+            raise ValueError("external_id de fechamento inválido.")
+        with self.runtime.kill_switch.execution_lock():
+            record = self.position_closes.get(request_id)
+            if record is None:
+                raise ValueError("solicitação de fechamento não encontrada.")
+            if record.external_id != external_id.strip():
+                raise ValueError("external_id não corresponde ao fechamento persistido.")
+            if record.state not in (PositionCloseState.REQUESTED, PositionCloseState.UNKNOWN):
+                raise ValueError("somente fechamento REQUESTED ou UNKNOWN pode ser reconciliado.")
+            adapter = self.registry.get(self.broker_id)
+            observe = getattr(adapter, "reconcile_position_close", None)
+            if not callable(observe):
+                raise RuntimeError("adaptador não oferece reconciliação somente leitura de fechamento.")
+            observation = observe(external_id.strip())
+            if not isinstance(observation, PositionCloseObservation):
+                raise RuntimeError("adaptador retornou observação de fechamento inválida.")
+            mapping = {
+                PositionCloseObservationStatus.CLOSED: PositionCloseState.ACCEPTED,
+                PositionCloseObservationStatus.OPEN: PositionCloseState.OPEN,
+                PositionCloseObservationStatus.UNKNOWN: PositionCloseState.UNKNOWN,
+            }
+            resolved = self.position_closes.reconcile(
+                request_id,
+                mapping[observation.status],
+                message=observation.message,
+            )
+            return {
+                "request_id": resolved.request_id,
+                "state": resolved.state.value,
+                "message": resolved.message,
+                "read_only": True,
+                "order_sent": False,
+            }
 
     def reconcile(self, *, request_id: str, executed: bool) -> None:
         if not isinstance(executed, bool):
