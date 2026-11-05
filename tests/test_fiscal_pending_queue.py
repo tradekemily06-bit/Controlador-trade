@@ -158,17 +158,25 @@ def test_review_requires_professional_identity_and_evidence(tmp_path):
 
 
 def test_review_rejects_non_text_identity_and_evidence_fields(tmp_path):
-    queue = FiscalPendingQueue(str(tmp_path / "review-types.sqlite3"))
-    item = queue.add("owner-a", sample_pending())
+    queue = make_queue(tmp_path / "review-types.sqlite3")
+    item = queue.add(OWNER, sample())
     for field in ("confirmed_jurisdiction", "reviewer_name", "reviewer_role",
                   "professional_registration", "evidence_reference"):
-        payload = review_payload()
+        payload = review_sample()
         payload[field] = ["texto", "indevido"]
-        with pytest.raises(ValueError, match="deve ser texto"):
-            queue.record_review("owner-a", item["pending_id"], payload)
+        try:
+            queue.record_review(OWNER, item["pending_id"], payload)
+        except ValueError as exc:
+            assert "deve ser texto" in str(exc)
+        else:
+            raise AssertionError(f"{field} must reject non-text values")
 
-    with pytest.raises(ValueError, match="pending_id inválido"):
-        queue.record_review("owner-a", 123, review_payload())
+    try:
+        queue.record_review(OWNER, 123, review_sample())
+    except ValueError as exc:
+        assert "pending_id inválido" in str(exc)
+    else:
+        raise AssertionError("non-text pending_id must be rejected")
 
 def test_review_rejects_unqualified_role_and_invalid_date(tmp_path):
     queue = make_queue(tmp_path / "fiscal.sqlite3")
