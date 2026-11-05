@@ -100,3 +100,44 @@ def test_corrupt_learning_snapshot_with_string_boolean_is_discarded(tmp_path):
     assert service.learning_sources == {}
     assert service.learning_resources == {}
     assert service.learning_observations == []
+
+
+
+def test_professor_ignores_client_claim_and_requires_server_validated_knowledge(tmp_path):
+    store = EcosystemStateStore(tmp_path / "ecosystem-state.sqlite")
+    service = EcosystemService()
+    service.state_store = store
+
+    import pytest
+
+    with pytest.raises(ValueError):
+        service.generate_professor_activity({
+            "activity_id": "untrusted-activity",
+            "knowledge_id": "not-in-server-registry",
+            "statement": "Afirmação enviada pelo navegador.",
+            "concept": "contexto",
+            "knowledge_validated": True,
+        })
+
+    source = service.screen_learning_source({
+        "source_id": "verified-knowledge",
+        "source_type": "LINK",
+        "uri": "https://example.com/verified",
+    })
+    source = service.validate_learning_source(
+        source, content_verified=True, security_checked=True
+    )
+    source = service.admit_learning_knowledge(
+        source, knowledge_validated=True
+    )
+    assert source.knowledge_validated is True
+
+    activity = service.generate_professor_activity({
+        "activity_id": "trusted-activity",
+        "knowledge_id": "verified-knowledge",
+        "statement": "Afirmação revisada manualmente.",
+        "concept": "contexto",
+        "knowledge_validated": False,
+    })
+    assert activity.activity_id == "trusted-activity"
+    assert "verified-knowledge" in activity.expected_concepts
