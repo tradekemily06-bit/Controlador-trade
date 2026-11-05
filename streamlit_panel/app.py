@@ -1060,6 +1060,42 @@ def show_readonly_module(module_name: str) -> None:
             st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
             return
 
+        if module_name == "MT5 DEMO / Simulação":
+            st.markdown("#### Ambiente de operação conectado")
+            st.metric("IC Markets · MT5 DEMO", str(data.get("ic_markets_mt5_demo", "NÃO CONFIRMADO")))
+            cols = st.columns(2)
+            cols[0].metric("Núcleo de decisão", str(data.get("decision_core", "NÃO CONFIRMADO")))
+            cols[1].metric("Gateway de execução", str(data.get("execution_gateway", "NÃO CONFIRMADO")))
+            st.metric("Execução REAL", str(data.get("real", "DESABILITADO")))
+            st.caption("Esta tela informa o estado reportado pelo runtime. Ela não confirma que o terminal MT5 esteja aberto neste computador nem que o EA esteja instalado.")
+            st.caption("Modo permitido: DEMO/SIMULAÇÃO · Execução automática: NÃO")
+            return
+
+        if module_name == "Conexões":
+            st.markdown("#### Estado dos serviços e integrações")
+            components = [
+                ("Núcleo de decisão", data.get("decision_core", "NÃO CONFIRMADO")),
+                ("Gateway de execução", data.get("execution_gateway", "NÃO CONFIRMADO")),
+                ("IC Markets · MT5 DEMO", data.get("ic_markets_mt5_demo", "NÃO CONFIRMADO")),
+                ("cTrader", data.get("cTrader", "NÃO CONFIGURADO")),
+                ("SaaS", data.get("saas", "NÃO CONFIRMADO")),
+                ("REAL", data.get("real", "DESABILITADO")),
+            ]
+            for label, state in components:
+                st.write(f"**{label}:** {state}")
+            st.caption("Estado de disponibilidade reportado pelo runtime; não equivale a teste de conectividade de cada corretora.")
+            st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
+            return
+
+        if module_name == "Multi-Broker":
+            st.markdown("#### Disponibilidade multi-corretora")
+            st.metric("Integração MT5 DEMO", str(data.get("ic_markets_mt5_demo", "NÃO CONFIRMADO")))
+            st.metric("cTrader", str(data.get("cTrader", "FUTURO_NAO_BLOQUEANTE")))
+            st.warning("Não há evidência nesta resposta de uma segunda corretora conectada e validada. Não trate a arquitetura multi-broker como integração concluída.")
+            st.caption("A conexão com outras corretoras exige adaptador próprio, credenciais configuradas com segurança e testes DEMO por corretora.")
+            st.caption("Nenhuma ordem é enviada por esta tela. REAL permanece DESABILITADO.")
+            return
+
         if module_name == "Kill Switch":
             obs = data.get("operational_observability", {})
             kill = obs.get("kill_switch", {})

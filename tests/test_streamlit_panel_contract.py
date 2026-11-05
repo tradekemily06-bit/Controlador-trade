@@ -593,3 +593,19 @@ def test_streamlit_security_view_discloses_deployment_boundaries():
     assert 'data.get("identity", data)' in view
     assert "não comprova implantação remota, backup externo ou isolamento multiusuário em produção" in view
     assert "Execução permitida: NÃO" in view
+
+
+
+def test_streamlit_mt5_demo_connections_and_multibroker_views_are_distinct():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index('if module_name == "MT5 DEMO / Simulação":')
+    end = source.index('if module_name == "Kill Switch":', start)
+    views = source[start:end]
+    assert 'if module_name == "Conexões":' in views
+    assert 'if module_name == "Multi-Broker":' in views
+    assert 'data.get("ic_markets_mt5_demo", "NÃO CONFIRMADO")' in views
+    assert 'data.get("execution_gateway", "NÃO CONFIRMADO")' in views
+    assert 'data.get("cTrader", "FUTURO_NAO_BLOQUEANTE")' in views
+    assert "não confirma que o terminal MT5 esteja aberto" in views
+    assert "Não há evidência nesta resposta de uma segunda corretora conectada e validada." in views
+    assert "REAL permanece DESABILITADO." in views
