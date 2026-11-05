@@ -297,9 +297,11 @@ def test_application_migrates_owner_schema_before_fiscal_repositories_are_create
     repository_indexes = []
 
     for index, statement in enumerate(tree.body):
-        if not isinstance(statement, ast.Assign):
-            continue
-        value = statement.value
+        value = None
+        if isinstance(statement, ast.Assign):
+            value = statement.value
+        elif isinstance(statement, ast.Expr):
+            value = statement.value
         if not isinstance(value, ast.Call) or not isinstance(value.func, ast.Name):
             continue
         if value.func.id == "migrate_fiscal_schema":
