@@ -22,7 +22,7 @@ No diretório raiz do repositório:
 
 4. Inicie o runtime do Ecossistema em um primeiro PowerShell:
 
-   `$env:CONTROLADOR_REMOTE_ACCESS_REQUIRED="false"; $env:CONTROLADOR_LOCAL_MUTATIONS_ALLOWED="true"; py -3.12 app.py`
+   `$env:CONTROLADOR_SINGLE_USER_IDENTITY="local-dev-owner"; $env:CONTROLADOR_REMOTE_ACCESS_REQUIRED="false"; $env:CONTROLADOR_LOCAL_MUTATIONS_ALLOWED="true"; py -3.12 app.py`
 
 5. Em um segundo PowerShell, na mesma pasta do projeto, inicie o painel:
 
