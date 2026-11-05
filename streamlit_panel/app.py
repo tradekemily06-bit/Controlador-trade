@@ -940,6 +940,43 @@ def show_readonly_module(module_name: str) -> None:
 
     try:
         data = api(endpoint)
+        if module_name == "Operação":
+            if "latest_operation_analysis" not in st.session_state:
+                try:
+                    st.session_state.latest_operation_analysis = api("/api/runtime/analysis/latest")
+                    st.session_state.latest_operation_analysis_error = ""
+                except Exception as exc:
+                    st.session_state.latest_operation_analysis = None
+                    st.session_state.latest_operation_analysis_error = str(exc)
+            if st.button("Atualizar último sinal", key="refresh_latest_operation_signal"):
+                try:
+                    st.session_state.latest_operation_analysis = api("/api/runtime/analysis/latest")
+                    st.session_state.latest_operation_analysis_error = ""
+                except Exception as exc:
+                    st.session_state.latest_operation_analysis = None
+                    st.session_state.latest_operation_analysis_error = str(exc)
+            latest_payload = st.session_state.get("latest_operation_analysis")
+            latest_error = st.session_state.get("latest_operation_analysis_error", "")
+            st.markdown("#### Última análise recebida do MT5 DEMO")
+            if latest_error:
+                st.warning("Último sinal indisponível: " + latest_error)
+            elif not isinstance(latest_payload, dict) or latest_payload.get("available") is not True:
+                st.info("Ainda não há análise disponível neste runtime. Abra Análise de Mercado e solicite uma análise em DEMO/SIMULAÇÃO.")
+            else:
+                latest = latest_payload.get("analysis") or {}
+                details = latest.get("analysis") or {}
+                cycle = latest.get("analysis_cycle") or {}
+                signal = str(latest.get("signal") or "AGUARDAR").upper()
+                score = latest.get("score", details.get("score", "—"))
+                signal_cols = st.columns(4)
+                signal_cols[0].metric("Sinal", signal)
+                signal_cols[1].metric("Pontuação", f"{score}/100" if score != "—" else "—")
+                signal_cols[2].metric("Ativo", details.get("symbol", cycle.get("symbol", "—")))
+                signal_cols[3].metric("Período", details.get("timeframe", cycle.get("timeframe", "—")))
+                st.caption("Horário da análise: " + str(cycle.get("timestamp") or "não informado"))
+                st.write(latest.get("reason") or details.get("reason") or "Sem justificativa fornecida pelo motor.")
+                st.caption("Somente leitura · execução permitida: NÃO · REAL: DESABILITADO")
+                st.caption("Este sinal é o último armazenado na memória do processo. Reiniciar o runtime limpa o cache; atualize manualmente para consultar novamente.")
         if module_name in {"Memória", "Replay"}:
             records = data.get("records", []) if isinstance(data, dict) else []
             if records:
