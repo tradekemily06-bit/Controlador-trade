@@ -290,3 +290,6 @@ def test_real_controller_treats_corrupt_close_history_as_recovery_required(tmp_p
     controller = RealRuntimeController(runtime=runtime, root=tmp_path)
     controller.position_closes.path.write_text("{invalid", encoding="utf-8")
     assert controller._position_close_recovery_required() is True
+    status = controller.status()
+    assert status["position_close_recovery_required"] is True
+    assert status["unresolved_position_closes"] is None
