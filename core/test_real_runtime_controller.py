@@ -346,6 +346,7 @@ def test_real_close_reconciliation_uses_read_only_broker_evidence(tmp_path):
     assert result["read_only"] is True
     assert result["order_sent"] is False
     assert adapter.observation_calls == 1
+    assert adapter.last_expected_account_fingerprint == "a" * 32
     assert adapter.calls == 0
     assert controller.position_closes.get("req-reconcile").state is PositionCloseState.CLOSED
     assert controller._position_close_recovery_required() is False
@@ -436,3 +437,33 @@ def test_real_controller_status_exposes_only_unresolved_close_records(tmp_path):
             "message": "ambiguous",
         }
     ]
+
+
+def test_real_close_blocks_when_opening_account_fingerprint_is_missing(tmp_path):
+    from datetime import datetime, timezone
+    from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState
+
+    runtime = FakeRuntime(tmp_path)
+    runtime.execution_ledger.reserve("req-no-fingerprint", cycle_id="cycle-no-fingerprint")
+    runtime.execution_ledger.bind_external_id("req-no-fingerprint", "ticket-no-fingerprint")
+    runtime.execution_ledger.mark_accepted("req-no-fingerprint")
+    runtime.execution_lifecycle.put(
+        ExecutionLifecycleRecord(
+            "req-no-fingerprint",
+            ExecutionLifecycleState.ACCEPTED,
+            datetime.now(timezone.utc),
+            "accepted without account fingerprint",
+        )
+    )
+    controller = RealRuntimeController(runtime=runtime, root=tmp_path)
+    adapter = FakeCloseAdapter()
+    adapter.release.set()
+    controller.registry = FakeRegistry(adapter)
+
+    with pytest.raises(ValueError, match="impressão digital confiável"):
+        controller.close_and_reconcile(
+            request_id="req-no-fingerprint",
+            external_id="ticket-no-fingerprint",
+        )
+    assert adapter.calls == 0
+    assert controller.position_closes.get("req-no-fingerprint") is None
