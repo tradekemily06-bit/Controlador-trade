@@ -14,11 +14,19 @@ def _bounded_history(history, max_chars=MAX_HISTORY_CHARS, max_messages=MAX_HIST
     selected = []
     remaining = max_chars
     for item in reversed(history[-max_messages:]):
+        if not isinstance(item, dict):
+            continue
+        role = item.get("role")
         content = item.get("content", "")
+        # Persisted history is data, not authority: only conversational roles
+        # may be replayed. In particular, never let stored content add a
+        # system/developer/tool message to the provider request.
+        if role not in {"user", "assistant"}:
+            continue
         if not isinstance(content, str) or not content or remaining <= 0:
             continue
         content = content[-remaining:]
-        selected.append({"role": item["role"], "content": content})
+        selected.append({"role": role, "content": content})
         remaining -= len(content)
     return list(reversed(selected))
 
