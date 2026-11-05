@@ -1130,8 +1130,7 @@ def show_readonly_module(module_name: str) -> None:
                     theme_options = ["DARK", "LIGHT", "SYSTEM"]
                     current_theme = str(prefs.get("chart_theme", "DARK")).upper()
                     chart_theme = st.selectbox("Tema do gráfico", theme_options, index=theme_options.index(current_theme) if current_theme in theme_options else 0)
-                    require_closed_candle = st.checkbox("Exigir candle fechado nas análises", value=prefs.get("require_closed_candle") is True)
-                    require_filters = st.checkbox("Exigir filtros de confirmação", value=prefs.get("require_filters") is True)
+                    st.info("Proteções obrigatórias: candle fechado e filtros de confirmação permanecem ativos e não podem ser desligados por esta tela.")
                     show_technical_details = st.checkbox("Mostrar detalhes técnicos por padrão", value=prefs.get("show_technical_details_by_default") is True)
                     general_submit = st.form_submit_button("Salvar preferências gerais")
                 if general_submit:
@@ -1143,8 +1142,6 @@ def show_readonly_module(module_name: str) -> None:
                                 "default_symbol": default_symbol.strip().upper(),
                                 "default_timeframe": default_timeframe,
                                 "chart_theme": chart_theme,
-                                "require_closed_candle": require_closed_candle,
-                                "require_filters": require_filters,
                                 "show_technical_details_by_default": show_technical_details,
                             })
                             st.success("Preferências gerais salvas.")
