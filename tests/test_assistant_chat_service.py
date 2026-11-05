@@ -261,3 +261,31 @@ def test_non_finite_context_is_rejected_before_user_message_is_persisted(monkeyp
 
     assert store.messages == []
     assert completion.calls == []
+
+def test_oversized_context_is_rejected_without_truncating_json_or_persisting_message(monkeypatch):
+    store = FakeStore()
+    completion = FakeCompletion()
+    assistant = _assistant(store, completion, monkeypatch)
+
+    monkeypatch.setattr(
+        chat_module,
+        "collect_read_only_context",
+        lambda *args, **kwargs: {"large_but_json_safe": "x" * chat_module.MAX_CONTEXT_CHARS},
+    )
+
+    try:
+        assistant.ask(
+            identity="single:owner",
+            message="Pergunta privada",
+            fiscal_owner_id="single:owner",
+        )
+    except AssistantUnavailableError as exc:
+        assert str(exc) == (
+            "Contexto do ecossistema indisponível; mensagem não foi enviada."
+        )
+    else:
+        raise AssertionError("oversized context must fail closed")
+
+    assert store.messages == []
+    assert completion.calls == []
+
