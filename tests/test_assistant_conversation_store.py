@@ -43,3 +43,37 @@ def test_owner_identity_must_be_nonempty_text(tmp_path, identity):
 
     with pytest.raises(ValueError, match="identidade inválida"):
         store.list(identity)
+
+
+@pytest.mark.parametrize("conversation_id", [123, True, [], {}, " " , "x" * 81])
+def test_conversation_store_rejects_invalid_conversation_ids(tmp_path, conversation_id):
+    store = AssistantConversationStore(tmp_path / "assistant.sqlite3")
+    with pytest.raises(ValueError, match="identificador de conversa inválido"):
+        store.history("owner-a", conversation_id)
+    with pytest.raises(ValueError, match="identificador de conversa inválido"):
+        store.delete("owner-a", conversation_id)
+
+
+@pytest.mark.parametrize("limit", [0, 51, True, 2.5, "10", None])
+def test_conversation_history_rejects_coerced_or_out_of_range_limits(tmp_path, limit):
+    store = AssistantConversationStore(tmp_path / "assistant.sqlite3")
+    conversation_id = store.append("owner-a", None, "user", "Mensagem")
+    with pytest.raises(ValueError, match="limite de histórico inválido"):
+        store.history("owner-a", conversation_id, limit=limit)
+
+
+@pytest.mark.parametrize(
+    ("role", "content"),
+    [
+        (["user"], "Mensagem"),
+        ("system", "Mensagem"),
+        ("user", ["Mensagem"]),
+        ("assistant", ""),
+        ("assistant", None),
+    ],
+)
+def test_conversation_store_rejects_invalid_message_types(tmp_path, role, content):
+    store = AssistantConversationStore(tmp_path / "assistant.sqlite3")
+    with pytest.raises(ValueError, match="mensagem inválida"):
+        store.append("owner-a", None, role, content)
+    assert store.list("owner-a") == []
