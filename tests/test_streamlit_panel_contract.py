@@ -1110,7 +1110,7 @@ def test_pending_queue_summary_validation_rejects_bad_counts_and_flags():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     start = source.index("def _valid_pending_queue_summary")
     end = source.index("def _valid_fiscal_summary", start)
-    namespace = {"date": date}
+    namespace = {"date": date, "Any": Any}
     exec(compile(source[start:end], "streamlit_panel/app.py", "exec"), namespace)
     validate = namespace["_valid_pending_queue_summary"]
     valid = {
@@ -1164,7 +1164,7 @@ def test_fiscal_pending_count_rendering_rejects_invalid_values():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     start = source.index("def _safe_fiscal_count")
     end = source.index("def _valid_fiscal_summary", start)
-    namespace = {}
+    namespace = {"Any": Any}
     exec(compile(source[start:end], "streamlit_panel/app.py", "exec"), namespace)
     safe_count = namespace["_safe_fiscal_count"]
     assert safe_count(4) == 4
