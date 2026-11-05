@@ -832,7 +832,16 @@ def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid
     validate = namespace["_valid_fiscal_summary"]
 
     valid = {
-        "categories": {"BR_DAY_TRADE": {"rate": 20.0}},
+        "categories": {
+            "BR_DAY_TRADE": {"rate": 20.0},
+            "FOREIGN_FINANCIAL_ASSET": {
+                "entries": 2,
+                "realized_result_brl": 0.0,
+                "reserve_amount_brl": 0.0,
+                "classification_status": "PENDING_CLASSIFICATION",
+                "rate_available": False,
+            },
+        },
         "total_reserved_brl": 200.0,
         "reserve_semantics": {
             "kind": "PLANNING_ESTIMATE_ONLY",
@@ -858,6 +867,36 @@ def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid
     invalid_cases.append(missing_period)
     invalid_cases.append({**valid, "total_reserved_brl": float("inf")})
     invalid_cases.append({**valid, "categories": {"BR_DAY_TRADE": {"rate": True}}})
+    invalid_cases.append({
+        **valid,
+        "categories": {
+            **valid["categories"],
+            "FOREIGN_FINANCIAL_ASSET": {
+                **valid["categories"]["FOREIGN_FINANCIAL_ASSET"],
+                "rate_available": True,
+            },
+        },
+    })
+    invalid_cases.append({
+        **valid,
+        "categories": {
+            **valid["categories"],
+            "FOREIGN_FINANCIAL_ASSET": {
+                **valid["categories"]["FOREIGN_FINANCIAL_ASSET"],
+                "reserve_amount_brl": 1.0,
+            },
+        },
+    })
+    invalid_cases.append({
+        **valid,
+        "categories": {
+            **valid["categories"],
+            "FOREIGN_FINANCIAL_ASSET": {
+                **valid["categories"]["FOREIGN_FINANCIAL_ASSET"],
+                "entries": 1.5,
+            },
+        },
+    })
     invalid_cases.append({
         **valid,
         "reserve_semantics": {**valid["reserve_semantics"], "tax_liability_confirmed": True},
