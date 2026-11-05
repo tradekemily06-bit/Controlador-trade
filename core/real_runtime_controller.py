@@ -343,7 +343,11 @@ class RealRuntimeController:
             if not callable(observe):
                 raise RuntimeError("adaptador não oferece reconciliação somente leitura de fechamento.")
             observation = observe(external_id.strip())
-            if not isinstance(observation, PositionCloseObservation):
+            if (
+                not isinstance(observation, PositionCloseObservation)
+                or not isinstance(observation.status, PositionCloseObservationStatus)
+                or not isinstance(observation.message, str)
+            ):
                 raise RuntimeError("adaptador retornou observação de fechamento inválida.")
             mapping = {
                 PositionCloseObservationStatus.CLOSED: PositionCloseState.CLOSED,
