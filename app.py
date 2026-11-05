@@ -901,8 +901,8 @@ def application(environ, start_response):
         if path == "/api/runtime/real/close/reconcile" and method == "POST":
             data = _read_json(environ)
             result = REAL_RUNTIME.reconcile_position_close(
-                request_id=str(data.get("request_id", "")),
-                external_id=str(data.get("external_id", "")),
+                request_id=data.get("request_id"),
+                external_id=data.get("external_id"),
             )
             return _json_response(
                 start_response,
