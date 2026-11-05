@@ -1114,48 +1114,114 @@ def show_readonly_module(module_name: str) -> None:
             prefs = data.get("preferences", {}) if isinstance(data, dict) else {}
             candle = prefs.get("candle", {}) if isinstance(prefs.get("candle"), dict) else {}
             notifications = prefs.get("notifications", {}) if isinstance(prefs.get("notifications"), dict) else {}
-            st.caption("Preferências sincronizadas do Ecossistema. Esta tela é somente leitura; alterações de configuração não são feitas aqui.")
+            st.caption("Preferências de apresentação e conveniência. Salvar aqui não autoriza ordens, autonomia, alteração de risco ou execução REAL.")
             cols = st.columns(4)
             cols[0].metric("Ativo padrão", str(prefs.get("default_symbol", "—")))
             cols[1].metric("Período padrão", str(prefs.get("default_timeframe", "—")))
             cols[2].metric("Tema", str(prefs.get("chart_theme", "—")))
-            cols[3].metric("Modo selecionado", str(prefs.get("selected_mode", "DEMO")).upper())
-            st.markdown("#### Gráfico e candles")
-            st.write({
-                "Estilo": candle.get("style", "—"),
-                "Cores": candle.get("color_mode", "—"),
-                "Exigir candle fechado": bool(prefs.get("require_closed_candle", True)),
-                "Exigir filtros": bool(prefs.get("require_filters", True)),
-                "Mostrar detalhes técnicos": bool(prefs.get("show_technical_details_by_default", False)),
-                "Alavancagem (preferência)": bool(prefs.get("leverage_enabled", False)),
-            })
-            st.markdown("#### Preferências de notificações")
-            notification_labels = {
-                "important_enabled": "Alertas importantes",
-                "critical_enabled": "Alertas críticos",
-                "system_updates_enabled": "Atualizações do sistema",
-                "security_enabled": "Segurança",
-                "market_enabled": "Mercado",
-                "risk_enabled": "Risco",
-                "connection_enabled": "Conexões",
-                "execution_enabled": "Execução",
-                "learning_enabled": "Aprendizado",
-                "recovery_enabled": "Recuperação",
-                "info_enabled": "Informativos",
-            }
-            st.dataframe(
-                [{"Categoria": label, "Ativo": bool(notifications.get(key, False))}
-                 for key, label in notification_labels.items()],
-                use_container_width=True,
-                hide_index=True,
-            )
+            cols[3].metric("Modo selecionado", "DEMO · REAL bloqueado")
+
+            with st.expander("Preferências gerais e de análise", expanded=True):
+                with st.form("safe_general_preferences_form"):
+                    default_symbol = st.text_input("Ativo padrão", value=str(prefs.get("default_symbol", "EURUSD")), max_chars=32)
+                    timeframe_options = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"]
+                    current_timeframe = str(prefs.get("default_timeframe", "5m"))
+                    default_timeframe = st.selectbox("Período padrão", timeframe_options, index=timeframe_options.index(current_timeframe) if current_timeframe in timeframe_options else 1)
+                    theme_options = ["DARK", "LIGHT", "SYSTEM"]
+                    current_theme = str(prefs.get("chart_theme", "DARK")).upper()
+                    chart_theme = st.selectbox("Tema do painel", theme_options, index=theme_options.index(current_theme) if current_theme in theme_options else 0)
+                    require_closed_candle = st.checkbox("Exigir candle fechado nas análises", value=prefs.get("require_closed_candle") is True)
+                    require_filters = st.checkbox("Exigir filtros de confirmação", value=prefs.get("require_filters") is True)
+                    show_technical_details = st.checkbox("Mostrar detalhes técnicos por padrão", value=prefs.get("show_technical_details_by_default") is True)
+                    general_submit = st.form_submit_button("Salvar preferências gerais")
+                if general_submit:
+                    if not default_symbol.strip():
+                        st.error("Informe um ativo padrão.")
+                    else:
+                        try:
+                            api("/api/preferences", "POST", {
+                                "default_symbol": default_symbol.strip().upper(),
+                                "default_timeframe": default_timeframe,
+                                "chart_theme": chart_theme,
+                                "require_closed_candle": require_closed_candle,
+                                "require_filters": require_filters,
+                                "show_technical_details_by_default": show_technical_details,
+                            })
+                            st.success("Preferências gerais salvas.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Não foi possível salvar as preferências gerais: {exc}")
+
+            with st.expander("Aparência dos candles"):
+                with st.form("safe_candle_preferences_form"):
+                    style_options = ["CANDLESTICK", "HOLLOW", "OHLC", "LINE"]
+                    current_style = str(candle.get("style", "CANDLESTICK")).upper()
+                    candle_style = st.selectbox("Estilo", style_options, index=style_options.index(current_style) if current_style in style_options else 0)
+                    color_options = ["DEFAULT", "CUSTOM", "MONOCHROME"]
+                    current_color_mode = str(candle.get("color_mode", "DEFAULT")).upper()
+                    candle_color_mode = st.selectbox("Modo de cores", color_options, index=color_options.index(current_color_mode) if current_color_mode in color_options else 0)
+                    bullish_color = st.text_input("Cor de alta (HEX)", value=str(candle.get("bullish_color", "#58d68d")), max_chars=7)
+                    bearish_color = st.text_input("Cor de baixa (HEX)", value=str(candle.get("bearish_color", "#ff7676")), max_chars=7)
+                    wick_color = st.text_input("Cor do pavio (HEX)", value=str(candle.get("wick_color", "#aab5c8")), max_chars=7)
+                    border_enabled = st.checkbox("Exibir bordas", value=candle.get("border_enabled") is not False)
+                    show_wicks = st.checkbox("Exibir pavios", value=candle.get("show_wicks") is not False)
+                    show_bodies = st.checkbox("Exibir corpos", value=candle.get("show_bodies") is not False)
+                    candle_submit = st.form_submit_button("Salvar aparência dos candles")
+                if candle_submit:
+                    colors = (bullish_color, bearish_color, wick_color)
+                    if any(len(color) not in (4, 7) or not color.startswith("#") for color in colors):
+                        st.error("Use cores HEX válidas, como #58d68d.")
+                    else:
+                        try:
+                            api("/api/preferences/candles", "POST", {
+                                "style": candle_style,
+                                "color_mode": candle_color_mode,
+                                "bullish_color": bullish_color,
+                                "bearish_color": bearish_color,
+                                "wick_color": wick_color,
+                                "border_enabled": border_enabled,
+                                "show_wicks": show_wicks,
+                                "show_bodies": show_bodies,
+                            })
+                            st.success("Aparência dos candles salva.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Não foi possível salvar a aparência dos candles: {exc}")
+
+            with st.expander("Preferências de notificações"):
+                notification_labels = {
+                    "important_enabled": "Alertas importantes",
+                    "system_updates_enabled": "Atualizações do sistema",
+                    "security_enabled": "Segurança",
+                    "market_enabled": "Mercado",
+                    "risk_enabled": "Risco",
+                    "connection_enabled": "Conexões",
+                    "execution_enabled": "Execução",
+                    "learning_enabled": "Aprendizado",
+                    "recovery_enabled": "Recuperação",
+                    "info_enabled": "Informativos",
+                }
+                with st.form("safe_notification_preferences_form"):
+                    notification_values = {
+                        key: st.checkbox(label, value=notifications.get(key) is True, key="notification_pref_" + key)
+                        for key, label in notification_labels.items()
+                    }
+                    st.checkbox("Alertas críticos (sempre ativos)", value=True, disabled=True)
+                    notification_submit = st.form_submit_button("Salvar notificações")
+                if notification_submit:
+                    try:
+                        api("/api/preferences/notifications", "POST", notification_values)
+                        st.success("Preferências de notificações salvas. Alertas críticos continuam ativos.")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"Não foi possível salvar as notificações: {exc}")
+
             st.markdown("#### Limites de autorização")
             safety_cols = st.columns(3)
-            safety_cols[0].metric("Operação autônoma", "DESABILITADA" if prefs.get("autonomous_operation_enabled") is not True else "REVISAR")
+            safety_cols[0].metric("Operação autônoma", "DESABILITADA")
             safety_cols[1].metric("Execução REAL", "DESABILITADA")
             safety_cols[2].metric("Execução permitida", "NÃO")
-            st.caption("O modo selecionado e a preferência de alavancagem não autorizam operações, não alteram margem e não liberam REAL.")
-            st.caption("Somente leitura · execução permitida: NÃO · REAL: DESABILITADO")
+            st.caption("Estas configurações não alteram limites de risco, não ativam autonomia, não enviam ordens e não liberam REAL.")
             return
 
         if module_name == "Escola / Tutorial / Onboarding":
