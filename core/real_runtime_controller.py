@@ -145,6 +145,14 @@ class RealRuntimeController:
     def status(self) -> dict[str, Any]:
         authorization, safety, admission = self._dependencies()
         broker_available = self._broker_available()
+        try:
+            close_records = self.position_closes.records()
+            unresolved_close_count = sum(
+                record.state in (PositionCloseState.REQUESTED, PositionCloseState.UNKNOWN)
+                for record in close_records
+            )
+        except Exception:
+            unresolved_close_count = None
         return {
             "provider": self.broker_id,
             "explicitly_enabled": authorization.explicitly_enabled,
@@ -163,10 +171,7 @@ class RealRuntimeController:
             "pending_confirmations": len(self.confirmation._pending),
             "real_dispatch": "MANUAL_CONFIRMATION_REQUIRED",
             "position_close_recovery_required": self._position_close_recovery_required(),
-            "unresolved_position_closes": sum(
-                record.state in (PositionCloseState.REQUESTED, PositionCloseState.UNKNOWN)
-                for record in self.position_closes.records()
-            ),
+            "unresolved_position_closes": unresolved_close_count,
         }
 
     @staticmethod
