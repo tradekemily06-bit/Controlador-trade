@@ -99,6 +99,16 @@ class RealRuntimeController:
         except Exception:
             return False
 
+    def _position_close_recovery_required(self) -> bool:
+        try:
+            return any(
+                record.state in (PositionCloseState.REQUESTED, PositionCloseState.UNKNOWN)
+                for record in self.position_closes.records()
+            )
+        except Exception:
+            # Missing/corrupt close history must fail closed for new REAL entries.
+            return True
+
     def _risk_approved(self) -> bool:
         # Risk approval is an explicit deployment control. It defaults to
         # blocked rather than assuming that a stale or missing risk policy is OK.
@@ -152,6 +162,11 @@ class RealRuntimeController:
             "confirmation_ttl_seconds": int(self.confirmation._ttl.total_seconds()),
             "pending_confirmations": len(self.confirmation._pending),
             "real_dispatch": "MANUAL_CONFIRMATION_REQUIRED",
+            "position_close_recovery_required": self._position_close_recovery_required(),
+            "unresolved_position_closes": sum(
+                record.state in (PositionCloseState.REQUESTED, PositionCloseState.UNKNOWN)
+                for record in self.position_closes.records()
+            ),
         }
 
     @staticmethod
@@ -176,6 +191,8 @@ class RealRuntimeController:
 
     def prepare(self, *, request_id: str, symbol: str, signal: str, amount: float, duration_seconds: int):
         authorization, safety, admission = self._dependencies()
+        if self._position_close_recovery_required():
+            raise PermissionError("REAL bloqueado: existe fechamento de posição sem reconciliação.")
         if not authorization.active:
             raise PermissionError("REAL não está explicitamente habilitado.")
         if not safety.ready:
@@ -233,6 +250,8 @@ class RealRuntimeController:
         duration_seconds: int,
     ) -> RealGatewayResult:
         authorization, safety, admission = self._dependencies()
+        if self._position_close_recovery_required():
+            raise PermissionError("REAL bloqueado: existe fechamento de posição sem reconciliação.")
         request = self._request(
             request_id=request_id,
             symbol=symbol,
