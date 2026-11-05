@@ -983,7 +983,8 @@ def test_fiscal_reserve_writes_are_disabled_when_summary_read_fails_or_is_incomp
     assert 'categories.get("BR_DAY_TRADE")' in source
     assert 'semantics.get("kind") != "PLANNING_ESTIMATE_ONLY"' in source
     assert '("day", "week", "month", "year")' in source
-    assert 'not isfinite(value)' in source
+    assert 'def _is_finite_number(value: Any) -> bool:' in source
+    assert 'if not _is_finite_number(value):' in source
     assert 'st.form_submit_button("Salvar percentual", disabled=not summary_available)' in fiscal
     assert 'st.form_submit_button("Registrar estimativa de planejamento", disabled=not summary_available)' in fiscal
     assert "lançamentos e alterações de percentual ficam bloqueados" in fiscal
