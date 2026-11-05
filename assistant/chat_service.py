@@ -127,7 +127,12 @@ class EcosystemAssistant:
         try:
             context_payload = json.dumps(
                 context, ensure_ascii=False, allow_nan=False
-            )[:MAX_CONTEXT_CHARS]
+            )
+            # Never slice serialized JSON: doing so can create malformed data
+            # and silently send a partial fiscal/operational snapshot. Fail
+            # closed before persisting the user message or calling the provider.
+            if len(context_payload) > MAX_CONTEXT_CHARS:
+                raise ValueError("context exceeds the configured size limit")
         except (TypeError, ValueError) as exc:
             raise AssistantUnavailableError(
                 "Contexto do ecossistema indisponível; mensagem não foi enviada."
