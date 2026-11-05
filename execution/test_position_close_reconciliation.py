@@ -22,7 +22,14 @@ class FakeMT5:
         return True
 
     def account_info(self):
-        return SimpleNamespace(trade_mode=self.account_mode)
+        return SimpleNamespace(
+            trade_mode=self.account_mode,
+            login=123456,
+            server="ICMarkets-Live",
+        )
+
+    def account_fingerprint(self):
+        return ICMarketsMT5RealAdapter._account_fingerprint(self.account_info())
 
     def history_deals_get(self, **kwargs):
         if "ticket" in kwargs:
@@ -55,7 +62,10 @@ def test_real_close_reconciliation_reports_open_owned_position_without_sending_o
     mt5 = FakeMT5(positions=(
         SimpleNamespace(ticket=42, magic=2609001),
     ))
-    result = adapter_for(mt5).reconcile_position_close("101")
+    result = adapter_for(mt5).reconcile_position_close(
+        "101",
+        expected_account_fingerprint=mt5.account_fingerprint(),
+    )
     assert result.status is PositionCloseObservationStatus.OPEN
     assert mt5.shutdown_calls == 1
 
@@ -74,7 +84,10 @@ def test_real_close_reconciliation_requires_closing_deal_when_position_is_absent
 
 def test_real_close_reconciliation_returns_unknown_without_broker_evidence():
     mt5 = FakeMT5(positions=(), closing_deals=())
-    result = adapter_for(mt5).reconcile_position_close("101")
+    result = adapter_for(mt5).reconcile_position_close(
+        "101",
+        expected_account_fingerprint="0" * 32,
+    )
     assert result.status is PositionCloseObservationStatus.UNKNOWN
     assert mt5.shutdown_calls == 1
 
