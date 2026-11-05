@@ -76,10 +76,16 @@ class PositionCloseStore:
             for item in payload:
                 if not isinstance(item, dict):
                     raise ValueError
+                persisted_state = PositionCloseState(item["state"])
+                # Older versions used ACCEPTED for a broker response without
+                # the current broker-evidence reconciliation contract. Do not
+                # assume that such a position is closed: recover it as UNKNOWN.
+                if persisted_state is PositionCloseState.ACCEPTED:
+                    persisted_state = PositionCloseState.UNKNOWN
                 record = PositionCloseRecord(
                     request_id=item["request_id"],
                     external_id=item["external_id"],
-                    state=PositionCloseState(item["state"]),
+                    state=persisted_state,
                     updated_at=datetime.fromisoformat(item["updated_at"]),
                     close_external_id=item.get("close_external_id"),
                     message=item.get("message", ""),
