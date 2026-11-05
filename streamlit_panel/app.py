@@ -441,6 +441,8 @@ def _valid_fiscal_summary(summary: Any) -> bool:
     total = summary.get("total_reserved_brl")
     if not _is_finite_number(total) or not 0 <= total <= 1_000_000_000_000:
         return False
+    if total != brazil.get("reserve_amount_brl"):
+        return False
     as_of_raw = summary.get("as_of")
     if not isinstance(as_of_raw, str) or len(as_of_raw) != 10:
         return False
