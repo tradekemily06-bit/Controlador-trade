@@ -273,4 +273,6 @@ class RealRuntimeController:
         return close
 
     def reconcile(self, *, request_id: str, executed: bool) -> None:
-        self.gateway.reconcile_unknown(request_id, executed=bool(executed))
+        if not isinstance(executed, bool):
+            raise ValueError("executed deve ser booleano verdadeiro ou falso.")
+        self.gateway.reconcile_unknown(request_id, executed=executed)
