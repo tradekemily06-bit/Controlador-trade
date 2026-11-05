@@ -210,10 +210,10 @@ class FiscalPendingQueue:
         owner_id = self._require_owner(owner_id)
         if not isinstance(payload, dict):
             raise ValueError("payload deve ser um objeto")
-        reference = str(payload.get("reference") or "").strip()
-        instrument = str(payload.get("instrument") or "").strip()
-        jurisdiction = str(payload.get("jurisdiction") or "").strip()
-        currency = str(payload.get("original_currency") or "").strip().upper()
+        reference = self._text(payload, "reference", 160, required=True)
+        instrument = self._text(payload, "instrument", 80, required=True)
+        jurisdiction = self._text(payload, "jurisdiction", 80, required=True)
+        currency = self._text(payload, "original_currency", 3, required=True).upper()
         if not reference or len(reference) > 160:
             raise ValueError("reference é obrigatório e deve ter até 160 caracteres")
         if not instrument or len(instrument) > 80:
@@ -235,7 +235,7 @@ class FiscalPendingQueue:
         occurred_on = self._date(payload.get("occurred_on"), "occurred_on")
         fx_rate = payload.get("fx_rate")
         fx_date = payload.get("fx_date")
-        fx_source = str(payload.get("fx_source") or "").strip()
+        fx_source = self._text(payload, "fx_source", 200)
         if fx_rate is not None:
             fx_rate = self._positive(fx_rate, "fx_rate")
             if not fx_date or not fx_source:
