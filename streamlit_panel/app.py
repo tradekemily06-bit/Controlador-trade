@@ -296,11 +296,20 @@ def _valid_fiscal_summary(summary: Any) -> bool:
         value = foreign.get(field)
         if not _is_finite_number(value) or value != 0:
             return False
+    brazil_entries = brazil.get("entries")
+    if isinstance(brazil_entries, bool) or not isinstance(brazil_entries, int) or not 0 <= brazil_entries <= 1_000_000_000:
+        return False
     rate = brazil.get("rate")
     if not _is_finite_number(rate) or not 0 <= rate <= 100:
         return False
+    for field in ("realized_result_brl", "reserve_amount_brl"):
+        value = brazil.get(field)
+        if not _is_finite_number(value) or not -1_000_000_000_000 <= value <= 1_000_000_000_000:
+            return False
+    if brazil.get("reserve_amount_brl") < 0:
+        return False
     total = summary.get("total_reserved_brl")
-    if not _is_finite_number(total) or total < 0:
+    if not _is_finite_number(total) or not 0 <= total <= 1_000_000_000_000:
         return False
     if semantics.get("kind") != "PLANNING_ESTIMATE_ONLY":
         return False
@@ -311,12 +320,14 @@ def _valid_fiscal_summary(summary: Any) -> bool:
         row = periods.get(period)
         if not isinstance(row, dict):
             return False
-        for field in ("realized_result_brl", "reserve_amount_brl"):
-            value = row.get(field)
-            if not _is_finite_number(value):
-                return False
+        entries = row.get("entries")
+        if isinstance(entries, bool) or not isinstance(entries, int) or not 0 <= entries <= 1_000_000_000:
+            return False
+        realized_result = row.get("realized_result_brl")
+        if not _is_finite_number(realized_result) or not -1_000_000_000_000 <= realized_result <= 1_000_000_000_000:
+            return False
         reserve_amount = row.get("reserve_amount_brl")
-        if reserve_amount < 0:
+        if not _is_finite_number(reserve_amount) or not 0 <= reserve_amount <= 1_000_000_000_000:
             return False
         dates = []
         for field in ("start", "end"):
