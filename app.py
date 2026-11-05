@@ -731,7 +731,7 @@ def application(environ, start_response):
             if "rates" in data:
                 settings = FISCAL_RESERVE.update_rates(fiscal_owner_id, data["rates"])
             else:
-                settings = FISCAL_RESERVE.update_rate(fiscal_owner_id, str(data.get("category", "")), data.get("rate"))
+                settings = FISCAL_RESERVE.update_rate(fiscal_owner_id, data.get("category"), data.get("rate"))
             # Keep the legacy foreign setting internally for database compatibility,
             # but never expose its generic percentage through the public API.
             settings.pop("FOREIGN_FINANCIAL_ASSET", None)
@@ -740,15 +740,24 @@ def application(environ, start_response):
             data = _read_json(environ)
             if data.get("confirmed") is not True:
                 raise ValueError("confirmação explícita dos critérios de day trade é obrigatória")
-            instrument = str(data.get("instrument") or "").strip()
-            institution = str(data.get("institution") or "").strip()
-            market_label = str(data.get("market_label") or "").strip()
-            if not instrument or len(instrument) > 80:
-                raise ValueError("instrumento é obrigatório e deve ter até 80 caracteres")
-            if not institution or len(institution) > 120:
-                raise ValueError("instituição é obrigatória e deve ter até 120 caracteres")
-            if not market_label or len(market_label) > 120:
-                raise ValueError("mercado de negociação é obrigatório e deve ter até 120 caracteres")
+            def required_text(field: str, label: str, maximum: int) -> str:
+                raw = data.get(field)
+                if not isinstance(raw, str):
+                    raise ValueError(f"{label} deve ser texto")
+                value = raw.strip()
+                if not value or len(value) > maximum:
+                    raise ValueError(f"{label} é obrigatório e deve ter até {maximum} caracteres")
+                return value
+
+            instrument = required_text("instrument", "instrumento", 80)
+            institution = required_text("institution", "instituição", 120)
+            market_label = required_text("market_label", "mercado de negociação", 120)
+            raw_notes = data.get("notes", "")
+            if not isinstance(raw_notes, str):
+                raise ValueError("notes deve ser texto")
+            user_notes = raw_notes.strip()
+            if len(user_notes) > 160:
+                raise ValueError("notes deve ter até 160 caracteres")
             if data.get("market_scope") != "BR_ELIGIBLE_MARKET":
                 raise ValueError("mercado brasileiro elegível não foi confirmado")
             if any(data.get(flag) is not True for flag in ("same_asset", "same_institution", "same_day")):
@@ -767,7 +776,7 @@ def application(environ, start_response):
                 "independent_market_eligibility_verified": False,
                 "tax_liability_confirmed": False,
                 "reserve_semantics": "PLANNING_ESTIMATE_ONLY",
-                "user_notes": str(data.get("notes") or "").strip()[:160],
+                "user_notes": user_notes,
             }
             evidence_notes = json.dumps(notes, ensure_ascii=False, separators=(",", ":"))
             if len(evidence_notes) > 1000:
