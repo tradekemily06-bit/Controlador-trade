@@ -4,6 +4,7 @@ import csv
 import io
 import json
 import os
+from datetime import date
 from math import isfinite
 import urllib.error
 import urllib.parse
@@ -285,6 +286,15 @@ def _valid_pending_queue_summary(summary: Any, result_field: str) -> bool:
         return False
     if summary.get("included_in_totals") is not False or summary.get("reserve_calculated") is not False:
         return False
+    as_of_raw = summary.get("as_of")
+    if not isinstance(as_of_raw, str) or len(as_of_raw) != 10:
+        return False
+    try:
+        as_of = date.fromisoformat(as_of_raw)
+        if as_of.isoformat() != as_of_raw:
+            return False
+    except ValueError:
+        return False
     total = summary.get("total")
     if isinstance(total, bool) or not isinstance(total, int) or not 0 <= total <= 1_000_000_000:
         return False
@@ -294,6 +304,20 @@ def _valid_pending_queue_summary(summary: Any, result_field: str) -> bool:
     for name in ("day", "week", "month", "year"):
         row = periods.get(name)
         if not isinstance(row, dict):
+            return False
+        dates = []
+        for field in ("start", "end"):
+            raw_date = row.get(field)
+            if not isinstance(raw_date, str) or len(raw_date) != 10:
+                return False
+            try:
+                parsed = date.fromisoformat(raw_date)
+                if parsed.isoformat() != raw_date:
+                    return False
+                dates.append(parsed)
+            except ValueError:
+                return False
+        if dates[0] > dates[1] or dates[1] > as_of:
             return False
         for field in ("total", result_field):
             value = row.get(field)
