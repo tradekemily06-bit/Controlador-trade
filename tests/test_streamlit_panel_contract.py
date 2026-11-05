@@ -184,6 +184,22 @@ def test_streamlit_disables_assistant_chat_when_provider_is_unavailable():
     assert "disabled=(not assistant_available) or (not consent_to_openai)" in source
 
 
+
+
+
+def test_streamlit_requires_fresh_explicit_openai_consent_before_chat_submission():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index('    consent_to_openai = st.checkbox(')
+    end = source.index('    if "assistant_history" not in st.session_state:', start)
+    consent_block = source[start:end]
+
+    assert 'key="assistant_openai_consent"' in consent_block
+    assert "value=True" not in consent_block
+    assert "if not consent_to_openai:" in consent_block
+    assert "disabled=(not assistant_available) or (not consent_to_openai)" in source
+    assert '"consent_to_openai": True' in source
+
+
 def test_streamlit_foreign_pending_forms_capture_structured_evidence_and_display_it():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     for field in (
