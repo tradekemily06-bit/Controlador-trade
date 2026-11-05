@@ -548,3 +548,41 @@ def test_foreign_review_rejects_future_review_date(tmp_path):
     else:
         raise AssertionError("future review dates must be rejected")
     assert queue.list_reviews(OWNER, item["pending_id"]) == []
+
+
+def test_foreign_pending_rejects_non_text_intake_fields(tmp_path):
+    queue = make_queue(tmp_path / "strict-foreign-intake.sqlite3")
+    for field in (
+        "reference", "instrument", "jurisdiction", "original_currency",
+        "occurred_on", "fx_source", "notes", "income_nature",
+    ):
+        payload = sample("FOREIGN-STRICT-" + field.upper())
+        payload[field] = ["valor", "indevido"]
+        try:
+            queue.add(OWNER, payload)
+        except ValueError as exc:
+            assert "deve ser texto" in str(exc)
+        else:
+            raise AssertionError(f"{field} must reject non-text values")
+    assert queue.list_pending(OWNER)["total"] == 0
+
+
+def test_foreign_realized_pending_rejects_non_text_intake_fields(tmp_path):
+    queue = make_queue(tmp_path / "strict-foreign-realized.sqlite3")
+    base = {
+        "reference": "FOREIGN-STRICT-REALIZED",
+        "original_result": 12.5,
+        "original_currency": "EUR",
+        "instrument": "ETF",
+        "jurisdiction": "PENDING_REVIEW",
+        "occurred_on": "2026-11-04",
+    }
+    for field in ("reference", "instrument", "jurisdiction", "original_currency", "occurred_on", "notes"):
+        payload = {**base, field: ["valor", "indevido"]}
+        try:
+            queue.add_realized_result(OWNER, payload)
+        except ValueError as exc:
+            assert "deve ser texto" in str(exc)
+        else:
+            raise AssertionError(f"{field} must reject non-text realized values")
+    assert queue.list_pending(OWNER)["total"] == 0
