@@ -1429,3 +1429,21 @@ def test_streamlit_kill_switch_screen_is_explicitly_read_only_until_runtime_acti
     assert 'api(' not in view
     assert 'form_submit_button' not in view
     assert 'button(' not in view
+
+
+def test_streamlit_dynamic_api_actions_have_matching_runtime_route_prefixes():
+    panel_source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    runtime_source = (PANEL_DIR.parent / "app.py").read_text(encoding="utf-8")
+    dynamic_templates = {
+        match.split("{", 1)[0].split("?", 1)[0]
+        for match in re.findall(r'api\(\s*f["\']([^"\']+)["\']', panel_source)
+    }
+    exact_routes = set(re.findall(r'path\s*==\s*["\']([^"\']+)["\']', runtime_source))
+    prefixes = set(re.findall(r'path\.startswith\(["\']([^"\']+)["\']\)', runtime_source))
+
+    missing = sorted(
+        endpoint for endpoint in dynamic_templates
+        if endpoint not in exact_routes
+        and not any(endpoint.startswith(prefix) for prefix in prefixes)
+    )
+    assert not missing, f"Dynamic Streamlit API calls without a matching runtime route: {missing}"
