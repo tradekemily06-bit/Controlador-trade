@@ -121,6 +121,7 @@ def test_real_close_serializes_concurrent_requests_and_prevents_duplicate_adapte
 
     from execution.execution_ledger import ExecutionLedgerStatus
     from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState
+    from execution.position_close_store import PositionCloseState
 
     runtime = FakeRuntime(tmp_path)
     runtime.execution_ledger.reserve("req-close", cycle_id="cycle-close")
@@ -158,5 +159,95 @@ def test_real_close_serializes_concurrent_requests_and_prevents_duplicate_adapte
 
     assert result.accepted is True
     assert adapter.calls == 1
-    assert runtime.execution_ledger.status("req-close") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert runtime.execution_ledger.status("req-close") is ExecutionLedgerStatus.ACCEPTED
     assert runtime.execution_lifecycle.get("req-close").state is ExecutionLifecycleState.ACCEPTED
+    assert controller.position_closes.get("req-close").state is PositionCloseState.ACCEPTED
+
+
+def test_real_close_persists_intent_and_blocks_retry_after_controller_restart(tmp_path):
+    from datetime import datetime, timezone
+
+    from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState
+    from execution.position_close_store import PositionCloseState, PositionCloseStore
+
+    runtime = FakeRuntime(tmp_path)
+    runtime.execution_ledger.reserve("req-restart", cycle_id="cycle-restart")
+    runtime.execution_ledger.bind_external_id("req-restart", "ticket-456")
+    runtime.execution_ledger.mark_accepted("req-restart")
+    runtime.execution_lifecycle.put(
+        ExecutionLifecycleRecord(
+            "req-restart",
+            ExecutionLifecycleState.ACCEPTED,
+            datetime.now(timezone.utc),
+            "ordem aceita",
+        )
+    )
+
+    adapter = FakeCloseAdapter()
+    adapter.release.set()
+    controller = RealRuntimeController(runtime=runtime, root=tmp_path)
+    controller.registry = FakeRegistry(adapter)
+    result = controller.close_and_reconcile(
+        request_id="req-restart",
+        external_id="ticket-456",
+    )
+    assert result.accepted is True
+
+    # Re-open the durable store as a fresh controller process would.
+    recovered = PositionCloseStore(Path(tmp_path) / "real-position-closes.json")
+    assert recovered.get("req-restart").state is PositionCloseState.ACCEPTED
+
+    retry_adapter = FakeCloseAdapter()
+    retry_adapter.release.set()
+    restarted_controller = RealRuntimeController(runtime=runtime, root=tmp_path)
+    restarted_controller.registry = FakeRegistry(retry_adapter)
+    with pytest.raises(ValueError, match="fechamento já solicitado ou concluído"):
+        restarted_controller.close_and_reconcile(
+            request_id="req-restart",
+            external_id="ticket-456",
+        )
+    assert retry_adapter.calls == 0
+
+
+def test_real_close_records_unknown_and_blocks_retry_after_adapter_exception(tmp_path):
+    from datetime import datetime, timezone
+
+    from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState
+    from execution.position_close_store import PositionCloseState
+
+    class RaisingAdapter:
+        def close_position(self, external_id):
+            raise TimeoutError("broker response timed out")
+
+    runtime = FakeRuntime(tmp_path)
+    runtime.execution_ledger.reserve("req-timeout", cycle_id="cycle-timeout")
+    runtime.execution_ledger.bind_external_id("req-timeout", "ticket-789")
+    runtime.execution_ledger.mark_accepted("req-timeout")
+    runtime.execution_lifecycle.put(
+        ExecutionLifecycleRecord(
+            "req-timeout",
+            ExecutionLifecycleState.ACCEPTED,
+            datetime.now(timezone.utc),
+            "ordem aceita",
+        )
+    )
+    controller = RealRuntimeController(runtime=runtime, root=tmp_path)
+    controller.registry = FakeRegistry(RaisingAdapter())
+
+    with pytest.raises(TimeoutError):
+        controller.close_and_reconcile(
+            request_id="req-timeout",
+            external_id="ticket-789",
+        )
+    assert controller.position_closes.get("req-timeout").state is PositionCloseState.UNKNOWN
+
+    retry_adapter = FakeCloseAdapter()
+    retry_adapter.release.set()
+    retry_controller = RealRuntimeController(runtime=runtime, root=tmp_path)
+    retry_controller.registry = FakeRegistry(retry_adapter)
+    with pytest.raises(ValueError, match="fechamento já solicitado ou concluído"):
+        retry_controller.close_and_reconcile(
+            request_id="req-timeout",
+            external_id="ticket-789",
+        )
+    assert retry_adapter.calls == 0
