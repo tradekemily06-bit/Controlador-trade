@@ -147,9 +147,10 @@ def _fiscal_periods(value: Any) -> dict[str, dict[str, Any]]:
 
 def _fiscal_reserve_semantics(value: Any) -> dict[str, Any]:
     """Never forward free-form semantic descriptions from fiscal service data."""
-    if not isinstance(value, dict):
-        return {}
-    allowed = {
+    # These are application-owned invariants, not claims copied from fiscal
+    # service data. Always emit the fixed safe contract, even if the service
+    # omits or forges semantic fields.
+    return {
         "kind": "PLANNING_ESTIMATE_ONLY",
         "tax_liability_confirmed": False,
         "monthly_tax_assessment": False,
@@ -157,7 +158,6 @@ def _fiscal_reserve_semantics(value: Any) -> dict[str, Any]:
         "irrf_credits_calculated": False,
         "positive_entry_only": True,
     }
-    return {key: expected for key, expected in allowed.items() if value.get(key) == expected}
 
 
 def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id: str, fiscal_pending_queue: Any = None, fiscal_domestic_pending_queue: Any = None) -> dict[str, Any]:
