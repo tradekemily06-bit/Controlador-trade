@@ -34,7 +34,12 @@ def _safe_currency_codes(value: Any) -> list[str]:
 
 
 def _is_finite_number(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and isfinite(value)
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return isfinite(value)
+    except (OverflowError, TypeError, ValueError):
+        return False
 
 
 def _count(value: Any) -> int:
