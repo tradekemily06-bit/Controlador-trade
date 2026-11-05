@@ -262,6 +262,11 @@ class ExecutionLedger:
                 raise ValueError("request_id não foi reservado.")
             if current.status not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
                 raise ValueError(f"transição inválida de {current.status.value} para {status.value}.")
-            self._records[request_id] = ExecutionLedgerRecord(status, current.cycle_id, current.external_id)
+            self._records[request_id] = ExecutionLedgerRecord(
+                status,
+                current.cycle_id,
+                current.external_id,
+                current.account_fingerprint,
+            )
         self._mutate_locked(mutation)
 
