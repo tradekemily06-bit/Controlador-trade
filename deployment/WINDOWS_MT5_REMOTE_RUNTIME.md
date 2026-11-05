@@ -81,7 +81,7 @@ O instalador não grava senha, token ou segredo. O Controlador continua fazendo 
 ## Proteção Cloudflare Access
 A rota publicada deve estar protegida por uma aplicação Cloudflare Access e o Tunnel deve exigir a validação do Access antes de encaminhar o tráfego ao origin. Para túnel gerenciado localmente, isso corresponde a `originRequest.access.required: true` com o `teamName` e o `audTag` da aplicação; em túnel gerenciado remotamente, configure a mesma exigência nas opções da rota. Assim, o header de identidade usado pelo Controlador chega somente depois da autenticação/validação na borda.
 
-O origin continua em `http://127.0.0.1:8000`; não é necessário expor a porta 8000 na Internet. O uso direto no notebook é permitido para mutações somente quando a origem é loopback e o Host é um dos Hosts locais configurados; acessos pelo hostname público continuam exigindo a identidade confiável do Cloudflare Access.
+O origin continua em `http://127.0.0.1:8000`; não é necessário expor a porta 8000 na Internet. O acesso direto sem Cloudflare Access só é permitido para mutações quando `CONTROLADOR_REMOTE_ACCESS_REQUIRED=false`, a conexão chega por loopback e o Host está na allowlist local. Com a configuração deste guia (`CONTROLADOR_REMOTE_ACCESS_REQUIRED=true`), até chamadas locais de mutação exigem o cabeçalho de identidade confiável; um notebook ou celular em outro dispositivo deve usar o hostname HTTPS protegido pelo Cloudflare Access.
 
 ## Regras de segurança
 - REAL não é habilitado por padrão; quando necessário, usa o fluxo REAL controlado e separado, com autorização, auditoria, admission, safety gate e confirmação humana.
