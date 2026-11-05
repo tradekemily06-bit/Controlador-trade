@@ -1418,17 +1418,20 @@ def test_streamlit_fiscal_review_forms_match_queue_validation_limits():
         assert "if len(notes) > 2000:" in api_source
 
 
-def test_streamlit_kill_switch_screen_is_explicitly_read_only_until_runtime_action_exists():
+def test_streamlit_kill_switch_requires_explicit_confirmation_and_has_no_deactivation():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     start = source.index('if module_name == "Kill Switch":')
     end = source.index('if module_name == "Segurança":', start)
     view = source[start:end]
 
-    assert 'st.caption("Tela somente de consulta. Não altera o Kill Switch nem retoma operações.")' in view
+    assert 'activate_kill_switch_form' in view
+    assert 'emergency_confirm = st.checkbox(' in view
+    assert '"confirmed": True' in view
+    assert '"/api/runtime/kill-switch/activate"' in view
+    assert 'if state != "ACTIVE":' in view
+    assert 'A desativação não está disponível nesta interface.' in view
+    assert 'A ativação não as cancela.' in view
     assert 'st.caption("Execução permitida: NÃO · REAL: DESABILITADO")' in view
-    assert 'api(' not in view
-    assert 'form_submit_button' not in view
-    assert 'button(' not in view
 
 
 def test_streamlit_dynamic_api_actions_have_matching_runtime_route_prefixes():
@@ -1447,3 +1450,19 @@ def test_streamlit_dynamic_api_actions_have_matching_runtime_route_prefixes():
         and not any(endpoint.startswith(prefix) for prefix in prefixes)
     )
     assert not missing, f"Dynamic Streamlit API calls without a matching runtime route: {missing}"
+
+def test_kill_switch_activation_api_is_confirmed_persisted_and_never_auto_resumes():
+    runtime_source = (PANEL_DIR.parent / "app.py").read_text(encoding="utf-8")
+    route_start = runtime_source.index('if path == "/api/runtime/kill-switch/activate" and method == "POST":')
+    route_end = runtime_source.index('if path == "/api/health" and method == "GET":', route_start)
+    route = runtime_source[route_start:route_end]
+
+    assert 'confirmed is not True' in route
+    assert 'not isinstance(reason, str)' in route
+    assert 'len(reason.strip()) > 240' in route
+    assert 'OPERATIONAL_RUNTIME.operational_recorder.activate_kill_switch(reason.strip())' in route
+    assert '"execution_allowed": False' in route
+    assert '"pending_request_ids"' in route
+    assert '"unknown_request_ids"' in route
+    assert 'não são canceladas' in route
+    assert 'deactivate' not in route
