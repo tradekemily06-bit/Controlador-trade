@@ -96,10 +96,16 @@ def test_real_reconcile_rejects_non_boolean_outcome_before_gateway_call():
 
 
 class FakeCloseAdapter:
-    def __init__(self):
+    def __init__(self, observation=None):
         self.calls = 0
+        self.observation_calls = 0
+        self.observation = observation
         self.started = Event()
         self.release = Event()
+
+    def reconcile_position_close(self, external_id):
+        self.observation_calls += 1
+        return self.observation
 
     def close_position(self, external_id):
         self.calls += 1
@@ -293,3 +299,106 @@ def test_real_controller_treats_corrupt_close_history_as_recovery_required(tmp_p
     status = controller.status()
     assert status["position_close_recovery_required"] is True
     assert status["unresolved_position_closes"] is None
+
+
+def test_real_close_reconciliation_uses_read_only_broker_evidence(tmp_path):
+    from datetime import datetime, timezone
+
+    from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState
+    from execution.position_close_store import PositionCloseState
+    from execution.ports import PositionCloseObservation, PositionCloseObservationStatus
+
+    runtime = FakeRuntime(tmp_path)
+    runtime.execution_ledger.reserve("req-reconcile", cycle_id="cycle-reconcile")
+    runtime.execution_ledger.bind_external_id("req-reconcile", "ticket-321")
+    runtime.execution_ledger.mark_accepted("req-reconcile")
+    runtime.execution_lifecycle.put(
+        ExecutionLifecycleRecord(
+            "req-reconcile",
+            ExecutionLifecycleState.ACCEPTED,
+            datetime.now(timezone.utc),
+            "ordem aceita",
+        )
+    )
+    controller = RealRuntimeController(runtime=runtime, root=tmp_path)
+    controller.position_closes.begin("req-reconcile", "ticket-321")
+    controller.position_closes.finish(
+        "req-reconcile",
+        PositionCloseState.UNKNOWN,
+        message="resposta perdida",
+    )
+    adapter = FakeCloseAdapter(
+        PositionCloseObservation(
+            PositionCloseObservationStatus.CLOSED,
+            "histórico de saída confirmado",
+        )
+    )
+    controller.registry = FakeRegistry(adapter)
+
+    result = controller.reconcile_position_close(
+        request_id="req-reconcile",
+        external_id="ticket-321",
+    )
+
+    assert result["state"] == "ACCEPTED"
+    assert result["read_only"] is True
+    assert result["order_sent"] is False
+    assert adapter.observation_calls == 1
+    assert adapter.calls == 0
+    assert controller.position_closes.get("req-reconcile").state is PositionCloseState.ACCEPTED
+    assert controller._position_close_recovery_required() is False
+
+
+def test_open_position_reconciliation_allows_only_a_new_explicit_close_request(tmp_path):
+    from datetime import datetime, timezone
+
+    from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState
+    from execution.position_close_store import PositionCloseState
+    from execution.ports import PositionCloseObservation, PositionCloseObservationStatus
+
+    runtime = FakeRuntime(tmp_path)
+    runtime.execution_ledger.reserve("req-open", cycle_id="cycle-open")
+    runtime.execution_ledger.bind_external_id("req-open", "ticket-654")
+    runtime.execution_ledger.mark_accepted("req-open")
+    runtime.execution_lifecycle.put(
+        ExecutionLifecycleRecord(
+            "req-open",
+            ExecutionLifecycleState.ACCEPTED,
+            datetime.now(timezone.utc),
+            "ordem aceita",
+        )
+    )
+    controller = RealRuntimeController(runtime=runtime, root=tmp_path)
+    controller.position_closes.begin("req-open", "ticket-654")
+    controller.position_closes.finish(
+        "req-open",
+        PositionCloseState.UNKNOWN,
+        message="resultado incerto",
+    )
+    adapter = FakeCloseAdapter(
+        PositionCloseObservation(
+            PositionCloseObservationStatus.OPEN,
+            "posição continua aberta",
+        )
+    )
+    controller.registry = FakeRegistry(adapter)
+
+    result = controller.reconcile_position_close(
+        request_id="req-open",
+        external_id="ticket-654",
+    )
+    assert result["state"] == "OPEN"
+    assert controller._position_close_recovery_required() is False
+
+    # A later call to close_and_reconcile is an explicit new request by caller;
+    # the reconciliation operation itself never dispatched a close.
+    close_adapter = FakeCloseAdapter()
+    close_adapter.release.set()
+    controller.registry = FakeRegistry(close_adapter)
+    close_result = controller.close_and_reconcile(
+        request_id="req-open",
+        external_id="ticket-654",
+    )
+    assert close_result.accepted is True
+    assert close_adapter.calls == 1
+    assert adapter.calls == 0
