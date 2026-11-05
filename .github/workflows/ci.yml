@@ -57,7 +57,10 @@ jobs:
           }
           trap cleanup EXIT
 
-          docker run -d --name controlador-trade-ci -p 7860:7860 controlador-trade:ci
+          docker run -d --name controlador-trade-ci -p 7860:7860 \
+            -e CONTROLADOR_SINGLE_USER_IDENTITY=container-smoke-user \
+            -e CONTROLADOR_RUNTIME_DIR=/tmp/controlador-runtime-ci \
+            controlador-trade:ci
 
           for attempt in {1..60}; do
             health_status="$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}starting{{end}}' controlador-trade-ci 2>/dev/null || true)"
