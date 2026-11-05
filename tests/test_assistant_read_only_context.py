@@ -412,7 +412,7 @@ def test_assistant_fiscal_context_filters_nested_periods_limitations_and_semanti
                 },
                 "periods": {
                     "day": {"start": "2026-11-05", "end": "2026-11-05", "entries": 1, "realized_result_brl": 125.0, "reserve_amount_brl": 25.0, "notes": "PRIVATE-PERIOD-NOTE"},
-                    "week": {"start": "not-a-date", "end": "2026-11-05", "entries": 1, "unexpected": "PRIVATE-PERIOD-FIELD"},
+                    "week": {"start": "not-a-date", "end": "2026-11-05<script>", "entries": 1, "unexpected": "PRIVATE-PERIOD-FIELD"},
                     "private_period": {"notes": "PRIVATE-PERIOD-KEY"},
                 },
                 "limitations": ["PRIVATE-LIMITATION"],
@@ -435,7 +435,7 @@ def test_assistant_fiscal_context_filters_nested_periods_limitations_and_semanti
         "start": "2026-11-05", "end": "2026-11-05", "entries": 1,
         "realized_result_brl": 125.0, "reserve_amount_brl": 25.0,
     }
-    assert fiscal["periods"]["week"] == {"end": "2026-11-05", "entries": 1}
+    assert fiscal["periods"]["week"] == {"entries": 1}
     assert "private_period" not in fiscal["periods"]
     assert "BR_CRYPTO" not in fiscal["categories"]
     assert fiscal["reserve_semantics"]["kind"] == "PLANNING_ESTIMATE_ONLY"
