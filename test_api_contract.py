@@ -120,6 +120,47 @@ class ApiContractTests(unittest.TestCase):
         self.assertFalse(payload["execution_allowed"])
         analyze.assert_called_once()
 
+    def test_latest_mt5_analysis_feed_is_read_only_and_scoped_by_symbol_timeframe(self):
+        import app as app_module
+        with app_module._LATEST_MARKET_ANALYSIS_LOCK:
+            app_module._LATEST_MARKET_ANALYSIS.clear()
+        fake = SimpleNamespace(
+            timestamp=datetime(2026, 10, 8, 12, tzinfo=timezone.utc),
+            analysis=SimpleNamespace(signal=SimpleNamespace(value="COMPRAR"), score=84.0, reason="confirmação DEMO", confirmed=True, symbol="EURUSD", timeframe="5m"),
+            quality=SimpleNamespace(score=84.0, level=SimpleNamespace(value="FORTE"), actionable=True),
+            decision=SimpleNamespace(decision="EXECUTAR", reason="filtros aprovados"),
+            snapshot=SimpleNamespace(as_dict=lambda: {"signal": "COMPRAR", "symbol": "EURUSD"}),
+            market_data=SimpleNamespace(
+                source="IC Markets MT5 DEMO",
+                candles=tuple(
+                    SimpleNamespace(timestamp=datetime(2026, 10, 8, tzinfo=timezone.utc) + timedelta(minutes=i),
+                                    open=1.1, high=1.101, low=1.099, close=1.1005, volume=10)
+                    for i in range(20)
+                ),
+            ),
+        )
+        with patch.object(app_module.SERVICE, "analyze_mt5_market", return_value=fake):
+            status, _, posted = self.request(
+                "/api/runtime/analysis", method="POST",
+                payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+            )
+        self.assertEqual(status, "200 OK")
+        status, _, latest = self.request(
+            "/api/runtime/analysis/latest", query="symbol=EURUSD&timeframe=5m"
+        )
+        self.assertEqual(status, "200 OK")
+        self.assertTrue(latest["available"])
+        self.assertEqual(latest["analysis"]["analysis_cycle"]["symbol"], "EURUSD")
+        self.assertEqual(latest["analysis"]["signal"], posted["signal"])
+        self.assertEqual(latest["cache_scope"], "PROCESS_MEMORY_ONLY")
+        self.assertFalse(latest["execution_allowed"])
+        self.assertEqual(latest["real"], "DESABILITADO")
+        status, _, missing = self.request(
+            "/api/runtime/analysis/latest", query="symbol=GBPUSD&timeframe=5m"
+        )
+        self.assertEqual(status, "200 OK")
+        self.assertFalse(missing["available"])
+
     def test_analyze_exposes_stable_presentation_and_security_contract(self):
         status, _, payload = self.request(
             "/api/analyze",
