@@ -1507,7 +1507,7 @@ def test_every_reference_navigation_module_has_an_explicit_streamlit_handler():
     )
     grouped_handlers = {
         module
-        for group in re.findall(r"if module_name in \{([^}]+)\\}:", source)
+        for group in re.findall(r"if module_name in \{([^}]+)\}:", source)
         for module in re.findall(r"[\"']([^\"']+)[\"']", group)
     }
     # Financeiro is intentionally routed by the top-level panel dispatcher to
