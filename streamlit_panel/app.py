@@ -1092,24 +1092,54 @@ def show_readonly_module(module_name: str) -> None:
             st.caption("Conexões futuras não são apresentadas como disponíveis. REAL permanece desabilitado.")
             return
 
-        if module_name in {"Laboratório", "Aprendizado", "Descobertas"}:
-            groups = [
-                ("Materiais", "resources"),
-                ("Observações", "observations"),
-                ("Atividades", "activities"),
-                ("Tentativas", "attempts"),
-                ("Fontes", "learning_sources"),
-            ]
-            cols = st.columns(len(groups))
-            for col, (label, key) in zip(cols, groups):
-                col.metric(label, len(data.get(key, [])))
-            st.caption("Fontes externas exigem validação antes de seu conhecimento ser considerado validado.")
-            st.caption("Aprendizado não autoriza operações: execução permitida = NÃO.")
-            for label, key in groups:
-                items = data.get(key, [])
+        if module_name == "Laboratório":
+            resources = data.get("resources", [])
+            sources = data.get("learning_sources", [])
+            cols = st.columns(2)
+            cols[0].metric("Materiais cadastrados", len(resources))
+            cols[1].metric("Fontes em avaliação", len(sources))
+            st.caption("Espaço para consultar materiais de estudo e verificar a procedência das fontes.")
+            for label, items in (("Materiais do laboratório", resources), ("Procedência e validação das fontes", sources)):
                 if items:
-                    with st.expander(f"{label} ({len(items)})"):
+                    with st.expander(f"{label} ({len(items)})", expanded=True):
                         st.dataframe(items, use_container_width=True, hide_index=True)
+                else:
+                    st.info(f"Nenhum item disponível em: {label.lower()}.")
+            st.caption("Fontes externas exigem validação antes de seu conhecimento ser considerado validado.")
+            st.caption("Execução permitida: NÃO.")
+            return
+
+        if module_name == "Aprendizado":
+            activities = data.get("activities", [])
+            attempts = data.get("attempts", [])
+            cols = st.columns(2)
+            cols[0].metric("Atividades", len(activities))
+            cols[1].metric("Tentativas registradas", len(attempts))
+            st.caption("Acompanhe atividades de aprendizagem e tentativas registradas, sem transformar progresso em autorização operacional.")
+            for label, items in (("Atividades de aprendizagem", activities), ("Histórico de tentativas", attempts)):
+                if items:
+                    with st.expander(f"{label} ({len(items)})", expanded=True):
+                        st.dataframe(items, use_container_width=True, hide_index=True)
+                else:
+                    st.info(f"Nenhum item disponível em: {label.lower()}.")
+            st.caption("Aprendizado não autoriza operações: execução permitida = NÃO.")
+            return
+
+        if module_name == "Descobertas":
+            observations = data.get("observations", [])
+            sources = data.get("learning_sources", [])
+            cols = st.columns(2)
+            cols[0].metric("Observações registradas", len(observations))
+            cols[1].metric("Fontes relacionadas", len(sources))
+            st.caption("Consulte observações registradas e a situação das fontes relacionadas. Uma observação não é uma regra de trading validada.")
+            for label, items in (("Observações", observations), ("Fontes relacionadas", sources)):
+                if items:
+                    with st.expander(f"{label} ({len(items)})", expanded=True):
+                        st.dataframe(items, use_container_width=True, hide_index=True)
+                else:
+                    st.info(f"Nenhum item disponível em: {label.lower()}.")
+            st.caption("Descobertas não alteram sinais, filtros ou parâmetros de execução.")
+            st.caption("Execução permitida: NÃO.")
             return
 
         if module_name == "Escola / Tutorial / Onboarding":
