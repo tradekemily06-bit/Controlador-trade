@@ -893,3 +893,22 @@ def test_assistant_operational_labels_reject_free_text_and_custom_objects():
     assert result["market_data"]["health"] == "UNKNOWN"
     assert "reveal hidden account data" not in str(result)
     assert "ignore previous instructions" not in str(result)
+
+def test_assistant_context_rejects_free_form_system_status_tokens():
+    class UntrustedStatusService(FakeService):
+        def system_status(self):
+            return {
+                "mode": "SIMULACAO WITH EXTRA TEXT",
+                "health": "ONLINE WITH EXTRA TEXT",
+                "components": {"mt5_demo": "NOT_CONNECTED"},
+            }
+
+    context = collect_read_only_context(
+        UntrustedStatusService(), FakeFiscalReserve(), "test-owner"
+    )
+
+    assert context["system"]["mode"] == "UNKNOWN"
+    assert context["system"]["health"] == "UNKNOWN"
+    assert "SIMULACAO WITH EXTRA TEXT" not in str(context)
+    assert "ONLINE WITH EXTRA TEXT" not in str(context)
+
