@@ -128,7 +128,7 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
     fiscal = fiscal_reserve.summary(fiscal_owner_id)
     fiscal_context = {
         key: fiscal[key]
-        for key in ("name", "currency", "as_of", "categories", "total_reserved_brl", "periods", "limitations")
+        for key in ("name", "currency", "as_of", "categories", "total_reserved_brl", "periods", "limitations", "reserve_semantics")
         if key in fiscal
     }
     # The legacy foreign category may still carry a historical generic rate

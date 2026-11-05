@@ -331,6 +331,10 @@ def test_real_fiscal_reserve_period_totals_reach_assistant_context(tmp_path, mon
     assert fiscal["periods"]["year"]["realized_result_brl"] == 1400.0
     assert fiscal["periods"]["year"]["reserve_amount_brl"] == 280.0
     assert fiscal["total_reserved_brl"] == 280.0
+    assert fiscal["reserve_semantics"]["kind"] == "PLANNING_ESTIMATE_ONLY"
+    assert fiscal["reserve_semantics"]["tax_liability_confirmed"] is False
+    assert fiscal["reserve_semantics"]["monthly_tax_assessment"] is False
+    assert fiscal["reserve_semantics"]["monthly_loss_offsets_calculated"] is False
     assert "history" not in fiscal
     assert "ASSISTANT-PERIOD-DAY" not in str(fiscal)
     assert context["assistant_safety"]["tax_estimates_are_not_tax_assessments"] is True
