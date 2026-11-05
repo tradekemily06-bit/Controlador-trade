@@ -37,6 +37,33 @@ def migrate_fiscal_schema(database_path: str) -> str:
                 "SELECT name FROM sqlite_master WHERE type='table'"
             ).fetchall()
         }
+        # A partial rebuild must never silently reassign rows that already
+        # carry an owner. Legacy rows without owner_id can be adopted only when
+        # no persisted owner identity exists in the fiscal tables.
+        for table in TABLES:
+            if table not in existing:
+                continue
+            columns = {row["name"] for row in db.execute(f'PRAGMA table_info("{table}")')}
+            if "owner_id" not in columns:
+                continue
+            null_owners = int(db.execute(
+                f'SELECT COUNT(*) FROM "{table}" WHERE owner_id IS NULL'
+            ).fetchone()[0])
+            if null_owners:
+                raise RuntimeError(
+                    f"A tabela fiscal {table} contém registros sem proprietário; "
+                    "migração automática bloqueada para evitar atribuição indevida."
+                )
+            table_owners = {
+                row[0] for row in db.execute(
+                    f'SELECT DISTINCT owner_id FROM "{table}"'
+                ).fetchall()
+            }
+            if table_owners and table_owners != {owner_id}:
+                raise RuntimeError(
+                    f"A identidade fiscal configurada não corresponde ao proprietário já gravado em {table}; "
+                    "migração automática entre proprietários foi bloqueada."
+                )
         if "fiscal_reserve_pending_domestic" in existing:
             domestic_columns = {row["name"] for row in db.execute("PRAGMA table_info(fiscal_reserve_pending_domestic)")}
             if "owner_id" not in domestic_columns:
