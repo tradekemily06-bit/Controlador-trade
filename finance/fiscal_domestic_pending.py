@@ -136,11 +136,11 @@ class FiscalDomesticPendingQueue:
         raw_result = payload.get("realized_result_brl")
         result = None
         if raw_result is not None:
-            if isinstance(raw_result, bool):
+            if isinstance(raw_result, bool) or not isinstance(raw_result, (int, float)):
                 raise ValueError("realized_result_brl deve ser numérico")
             try:
                 result = float(raw_result)
-            except (TypeError, ValueError) as exc:
+            except (OverflowError, TypeError, ValueError) as exc:
                 raise ValueError("realized_result_brl deve ser numérico") from exc
             if result != result or result in (float("inf"), float("-inf")) or abs(result) > 1e12:
                 raise ValueError("realized_result_brl deve ser finito e estar dentro do limite")
