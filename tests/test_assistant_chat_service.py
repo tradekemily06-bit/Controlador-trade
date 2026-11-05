@@ -193,3 +193,10 @@ def test_assistant_system_rules_require_period_aware_fiscal_estimates_and_no_gen
     assert "não some períodos nem invente valores" in chat_module.SYSTEM_PROMPT
     assert "Nunca apresente nem recomende percentual genérico para resultados estrangeiros" in chat_module.SYSTEM_PROMPT
     assert "A Reserva Fiscal é planejamento, não cálculo definitivo de imposto" in chat_module.SYSTEM_PROMPT
+
+
+def test_assistant_never_describes_user_configured_planning_rate_as_verified_tax_rate():
+    assert "USER_CONFIGURED_PLANNING_RATE" in chat_module.SYSTEM_PROMPT or (
+        "taxa de planejamento configurada pelo usuário" in chat_module.SYSTEM_PROMPT
+    )
+    assert "não uma alíquota oficial verificada pelo sistema" in chat_module.SYSTEM_PROMPT
