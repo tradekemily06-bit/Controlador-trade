@@ -590,6 +590,6 @@ def test_streamlit_security_view_discloses_deployment_boundaries():
     view = source[start:end]
     assert 'data.get("production_storage", {})' in view
     assert 'data.get("production_operation_gate", {})' in view
-    assert 'data.get("identity", {})' in view
+    assert 'data.get("identity", data)' in view
     assert "não comprova implantação remota, backup externo ou isolamento multiusuário em produção" in view
     assert "Execução permitida: NÃO" in view
