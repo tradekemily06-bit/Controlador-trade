@@ -5,6 +5,7 @@ from datetime import datetime, time, timezone, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import math
 import hashlib
+import os
 from typing import Any
 
 from core.models import Signal
@@ -28,6 +29,7 @@ class ICMarketsMT5DemoConfig:
     deviation: int = 20
     magic: int = 2609001
     risk_day_timezone: str = "UTC"
+    terminal_path: str | None = None
 
 
 class ICMarketsMT5DemoAdapter:
@@ -65,11 +67,37 @@ class ICMarketsMT5DemoAdapter:
             self._mt5 = mt5
         return self._mt5
 
+    def _initialize(self, mt5: Any) -> bool:
+        """Initialize only the configured terminal; reject a different MT5 instance."""
+        terminal_path = self.config.terminal_path or os.environ.get("CONTROLADOR_MT5_TERMINAL_PATH") or None
+        if not terminal_path:
+            return bool(mt5.initialize())
+        if not mt5.initialize(path=terminal_path):
+            return False
+        terminal = mt5.terminal_info()
+        expected = os.path.normcase(os.path.realpath(terminal_path))
+        actual = (
+            os.path.normcase(
+                os.path.realpath(
+                    os.path.join(getattr(terminal, "path", ""), os.path.basename(terminal_path))
+                )
+            )
+            if terminal is not None
+            else ""
+        )
+        if actual != expected:
+            try:
+                mt5.shutdown()
+            except Exception:
+                pass
+            return False
+        return True
+
     def is_available(self) -> bool:
         mt5 = None
         try:
             mt5 = self._module()
-            if not mt5.initialize():
+            if not self._initialize(mt5):
                 return False
             account = mt5.account_info()
             return account is not None and self._is_demo_account(account, mt5)
@@ -129,7 +157,7 @@ class ICMarketsMT5DemoAdapter:
         the consecutive-loss field remains unknown and risk gates fail closed.
         """
         mt5 = self._module()
-        if not mt5.initialize():
+        if not self._initialize(mt5):
             raise MT5AdapterError(f"MT5 indisponível: {self._last_error(mt5)}")
         try:
             account = mt5.account_info()
@@ -331,7 +359,7 @@ class ICMarketsMT5DemoAdapter:
         if not isinstance(lookback_days, int) or isinstance(lookback_days, bool) or not 1 <= lookback_days <= 365:
             raise ValueError("lookback_days deve estar entre 1 e 365")
         mt5 = self._module()
-        if not mt5.initialize():
+        if not self._initialize(mt5):
             raise MT5AdapterError(f"MT5 indisponível: {self._last_error(mt5)}")
         try:
             account = mt5.account_info()
@@ -486,7 +514,7 @@ class ICMarketsMT5DemoAdapter:
         if not isinstance(external_id, str) or not external_id.strip():
             raise ValueError("external_id inválido")
         mt5 = self._module()
-        if not mt5.initialize():
+        if not self._initialize(mt5):
             raise MT5AdapterError(f"MT5 indisponível: {self._last_error(mt5)}")
         try:
             account = mt5.account_info()
@@ -524,7 +552,7 @@ class ICMarketsMT5DemoAdapter:
             return ExecutionResult(False, "volume/amount deve ser maior que zero e finito.")
 
         mt5 = self._module()
-        if not mt5.initialize():
+        if not self._initialize(mt5):
             return ExecutionResult(False, f"MT5 indisponível: {self._last_error(mt5)}")
 
         try:
@@ -610,7 +638,7 @@ class ICMarketsMT5DemoAdapter:
         if not isinstance(external_id, str) or not external_id.strip():
             return ExecutionResult(False, "external_id inválido; fechamento bloqueado.")
         mt5 = self._module()
-        if not mt5.initialize():
+        if not self._initialize(mt5):
             return ExecutionResult(False, f"MT5 indisponível: {self._last_error(mt5)}")
         try:
             account = mt5.account_info()
@@ -728,7 +756,7 @@ class ICMarketsMT5DemoAdapter:
             return PositionCloseObservation(unknown, "external_id não é um ticket MT5 numérico.")
 
         mt5 = self._module()
-        if not mt5.initialize():
+        if not self._initialize(mt5):
             return PositionCloseObservation(unknown, f"MT5 indisponível: {self._last_error(mt5)}")
         try:
             account = mt5.account_info()
