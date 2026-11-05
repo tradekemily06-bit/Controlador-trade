@@ -917,6 +917,8 @@ def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid
         },
     }
     assert validate(valid) is True
+    invalid_total = {**valid, "total_reserved_brl": 201.0}
+    assert validate(invalid_total) is False
     invalid_main_period = {
         **valid,
         "periods": {
