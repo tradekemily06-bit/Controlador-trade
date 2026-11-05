@@ -77,7 +77,10 @@ def test_real_close_reconciliation_requires_closing_deal_when_position_is_absent
             SimpleNamespace(entry=FakeMT5.DEAL_ENTRY_OUT, magic=2609001),
         ),
     )
-    result = adapter_for(mt5).reconcile_position_close("101")
+    result = adapter_for(mt5).reconcile_position_close(
+        "101",
+        expected_account_fingerprint=mt5.account_fingerprint(),
+    )
     assert result.status is PositionCloseObservationStatus.CLOSED
     assert mt5.shutdown_calls == 1
 
@@ -86,7 +89,7 @@ def test_real_close_reconciliation_returns_unknown_without_broker_evidence():
     mt5 = FakeMT5(positions=(), closing_deals=())
     result = adapter_for(mt5).reconcile_position_close(
         "101",
-        expected_account_fingerprint="0" * 32,
+        expected_account_fingerprint=mt5.account_fingerprint(),
     )
     assert result.status is PositionCloseObservationStatus.UNKNOWN
     assert mt5.shutdown_calls == 1
@@ -96,4 +99,15 @@ def test_real_close_reconciliation_rejects_unverified_account_type():
     mt5 = FakeMT5(account_mode=0)
     result = adapter_for(mt5).reconcile_position_close("101")
     assert result.status is PositionCloseObservationStatus.UNKNOWN
+    assert mt5.shutdown_calls == 1
+
+
+def test_real_close_reconciliation_rejects_different_account_fingerprint():
+    mt5 = FakeMT5(positions=(SimpleNamespace(ticket=42, magic=2609001),))
+    result = adapter_for(mt5).reconcile_position_close(
+        "101",
+        expected_account_fingerprint="0" * 32,
+    )
+    assert result.status is PositionCloseObservationStatus.UNKNOWN
+    assert "não corresponde" in result.message
     assert mt5.shutdown_calls == 1
