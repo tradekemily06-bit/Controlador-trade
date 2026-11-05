@@ -611,3 +611,44 @@ def test_real_pending_queues_reach_assistant_without_entering_fiscal_reserve(tmp
         "700.0",
     ):
         assert private_value not in serialized
+
+
+def test_assistant_context_rejects_non_finite_numbers_and_boolean_counts():
+    class MalformedFiscal:
+        def summary(self, owner_id):
+            return {
+                "total_reserved_brl": float("nan"),
+                "categories": {
+                    "BR_DAY_TRADE": {
+                        "entries": True,
+                        "rate": 10**1000,
+                        "realized_result_brl": float("-inf"),
+                        "reserve_amount_brl": 12.5,
+                    }
+                },
+                "periods": {
+                    "day": {
+                        "entries": True,
+                        "realized_result_brl": float("nan"),
+                        "reserve_amount_brl": 5.0,
+                    }
+                },
+            }
+
+    class MalformedQueue:
+        def summary(self, owner_id):
+            return {"total": True, "realized_results": float("inf"), "asset_amounts": 2}
+
+    context = collect_read_only_context(
+        FakeService(), MalformedFiscal(), "test-owner", fiscal_pending_queue=MalformedQueue()
+    )
+    fiscal = context["fiscal_reserve"]
+    assert "total_reserved_brl" not in fiscal
+    assert fiscal["categories"]["BR_DAY_TRADE"] == {
+        "entries": 0,
+        "reserve_amount_brl": 12.5,
+    }
+    assert fiscal["periods"]["day"] == {"entries": 0, "reserve_amount_brl": 5.0}
+    assert fiscal["foreign_pending"]["total"] == 0
+    assert fiscal["foreign_pending"]["realized_results"] == 0
+    assert fiscal["foreign_pending"]["asset_amounts"] == 2
