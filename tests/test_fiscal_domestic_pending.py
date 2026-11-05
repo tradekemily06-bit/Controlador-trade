@@ -188,3 +188,13 @@ def test_domestic_review_rejects_coerced_non_text_fields(tmp_path):
         queue.record_review("owner-a", 123, review_payload())
     with pytest.raises(ValueError, match="pending_id inválido"):
         queue.list_reviews("owner-a", 123)
+
+
+def test_domestic_review_rejects_future_review_date(tmp_path):
+    queue = FiscalDomesticPendingQueue(str(tmp_path / "future-domestic-review.sqlite3"))
+    item = queue.add("owner-a", sample("BR-FUTURE-REVIEW"))
+    payload = review_payload()
+    payload["reviewed_on"] = "9999-12-31"
+    with pytest.raises(ValueError, match="reviewed_on não pode estar no futuro"):
+        queue.record_review("owner-a", item["pending_id"], payload)
+    assert queue.list_reviews("owner-a", item["pending_id"]) == []
