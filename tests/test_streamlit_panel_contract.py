@@ -475,3 +475,12 @@ def test_mt5_native_panel_never_offers_or_persists_real_mode():
     assert 'sparam==Obj("MODE_TOGGLE")' not in ea
     assert '\\"selected_mode\\":\\"DEMO\\"' in ea
     assert 'selected_mode="DEMO";' in ea
+
+
+
+def test_streamlit_foreign_pending_queue_has_one_review_flow_without_legacy_duplicate():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert source.count('st.markdown("#### Revisão documental · Exterior")') == 1
+    assert 'st.markdown("#### Pendências registradas")' not in source
+    assert 'foreign_pending_data = api(f"/api/fiscal-reserve/pending?limit=50&offset={foreign_offset}")' in source
+    assert '"/api/fiscal-reserve/pending/" + urllib.parse.quote(selected_foreign_pending_id)' in source
