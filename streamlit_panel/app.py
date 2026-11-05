@@ -345,7 +345,7 @@ def _valid_pending_page(data: Any, expected_offset: int) -> bool:
             or isinstance(offset, bool) or not isinstance(offset, int)
             or offset < 0 or offset != expected_offset):
         return False
-    if not isinstance(items, list) or len(items) > limit:
+    if not isinstance(items, list) or len(items) > limit or offset > total:
         return False
     if offset + len(items) > total:
         return False
