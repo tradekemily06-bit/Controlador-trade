@@ -813,3 +813,19 @@ def test_every_reference_navigation_module_has_a_functional_streamlit_route():
     assert 'show_assistant()' in source
     assert 'elif module in {"Financeiro", "Reserva Fiscal"}:' in source
     assert "show_fiscal()" in source
+
+
+
+def test_fiscal_reserve_writes_are_disabled_when_summary_read_fails_or_is_incomplete():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    fiscal_start = source.index("def show_fiscal()")
+    fiscal_end = source.index("\ndef ", fiscal_start + 1)
+    fiscal = source[fiscal_start:fiscal_end]
+
+    assert "summary_available = False" in fiscal
+    assert 'isinstance(summary.get("categories"), dict)' in fiscal
+    assert 'isinstance(summary.get("periods"), dict)' in fiscal
+    assert 'isinstance(summary.get("reserve_semantics"), dict)' in fiscal
+    assert 'st.form_submit_button("Salvar percentual", disabled=not summary_available)' in fiscal
+    assert 'st.form_submit_button("Registrar estimativa de planejamento", disabled=not summary_available)' in fiscal
+    assert "lançamentos e alterações de percentual ficam bloqueados" in fiscal
