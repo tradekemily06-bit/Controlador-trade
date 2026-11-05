@@ -692,8 +692,8 @@ def test_streamlit_memory_view_displays_recent_records_with_read_only_filters():
     assert 'item.get("created_at", "—")' in view
     assert 'item.get("outcome")' in view
     assert 'item.get("outcome_source")' in view
-    assert 'st.selectbox("Filtrar resultado anotado"' in view
-    assert 'st.selectbox("Filtrar sinal"' in view
+    assert 'filter_cols[0].selectbox("Filtrar resultado anotado"' in view
+    assert 'filter_cols[1].selectbox("Filtrar sinal"' in view
     assert 'item.get("confirmed") is True' in view
     assert "até 50 decisões recentes" in view
     assert "estudo manual" in view.lower()
