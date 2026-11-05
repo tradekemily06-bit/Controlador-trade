@@ -970,6 +970,54 @@ def show_readonly_module(module_name: str) -> None:
 
     try:
         data = api(endpoint)
+        if module_name == "Configurações":
+            prefs = data.get("preferences", {}) if isinstance(data, dict) else {}
+            candle = prefs.get("candle", {}) if isinstance(prefs.get("candle"), dict) else {}
+            notifications = prefs.get("notifications", {}) if isinstance(prefs.get("notifications"), dict) else {}
+            st.caption("Preferências sincronizadas do Ecossistema. Esta tela é somente leitura; alterações de configuração não são feitas aqui.")
+            cols = st.columns(4)
+            cols[0].metric("Ativo padrão", str(prefs.get("default_symbol", "—")))
+            cols[1].metric("Período padrão", str(prefs.get("default_timeframe", "—")))
+            cols[2].metric("Tema", str(prefs.get("chart_theme", "—")))
+            cols[3].metric("Modo selecionado", str(prefs.get("selected_mode", "DEMO")).upper())
+            st.markdown("#### Gráfico e candles")
+            st.write({
+                "Estilo": candle.get("style", "—"),
+                "Cores": candle.get("color_mode", "—"),
+                "Exigir candle fechado": bool(prefs.get("require_closed_candle", True)),
+                "Exigir filtros": bool(prefs.get("require_filters", True)),
+                "Mostrar detalhes técnicos": bool(prefs.get("show_technical_details_by_default", False)),
+                "Alavancagem (preferência)": bool(prefs.get("leverage_enabled", False)),
+            })
+            st.markdown("#### Preferências de notificações")
+            notification_labels = {
+                "important_enabled": "Alertas importantes",
+                "critical_enabled": "Alertas críticos",
+                "system_updates_enabled": "Atualizações do sistema",
+                "security_enabled": "Segurança",
+                "market_enabled": "Mercado",
+                "risk_enabled": "Risco",
+                "connection_enabled": "Conexões",
+                "execution_enabled": "Execução",
+                "learning_enabled": "Aprendizado",
+                "recovery_enabled": "Recuperação",
+                "info_enabled": "Informativos",
+            }
+            st.dataframe(
+                [{"Categoria": label, "Ativo": bool(notifications.get(key, False))}
+                 for key, label in notification_labels.items()],
+                use_container_width=True,
+                hide_index=True,
+            )
+            st.markdown("#### Limites de autorização")
+            safety_cols = st.columns(3)
+            safety_cols[0].metric("Operação autônoma", "DESABILITADA" if prefs.get("autonomous_operation_enabled") is not True else "REVISAR")
+            safety_cols[1].metric("Execução REAL", "DESABILITADA" if prefs.get("real_execution_enabled") is not True else "REVISAR")
+            safety_cols[2].metric("Execução permitida", "NÃO")
+            st.caption("O modo selecionado e a preferência de alavancagem não autorizam operações, não alteram margem e não liberam REAL.")
+            st.caption("Somente leitura · execução permitida: NÃO · REAL: DESABILITADO")
+            return
+
         if module_name == "Motor de Decisão":
             st.caption("Leitura da última análise calculada pelo runtime. Esta tela não solicita uma nova análise nem envia ordens.")
             if data.get("available") is not True:
