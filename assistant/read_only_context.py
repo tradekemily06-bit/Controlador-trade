@@ -56,6 +56,19 @@ def _count(value: Any) -> int:
     return max(0, value)
 
 
+def _fiscal_number(value: Any, field: str) -> bool:
+    """Validate bounded fiscal aggregates before they enter external context."""
+    if not _is_finite_number(value):
+        return False
+    if field == "rate":
+        return 0 <= value <= 100
+    if field == "reserve_amount_brl":
+        return 0 <= value <= 1_000_000_000_000
+    if field == "realized_result_brl":
+        return -1_000_000_000_000 <= value <= 1_000_000_000_000
+    return False
+
+
 def _decision_summary(item: Any) -> dict[str, Any]:
     if not isinstance(item, dict):
         return {}
@@ -197,7 +210,7 @@ def _fiscal_periods(value: Any) -> dict[str, dict[str, Any]]:
             item["entries"] = _count(row.get("entries"))
         for key in ("realized_result_brl", "reserve_amount_brl"):
             raw = row.get(key)
-            if _is_finite_number(raw):
+            if _fiscal_number(raw, key):
                 item[key] = raw
         safe[period] = item
     return safe
@@ -279,7 +292,7 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
             }
             for key in ("rate", "realized_result_brl", "reserve_amount_brl"):
                 value = item.get(key)
-                if _is_finite_number(value):
+                if _fiscal_number(value, key):
                     safe_item[key] = value
             safe_categories[category] = safe_item
         fiscal_context["categories"] = safe_categories
