@@ -20,6 +20,7 @@ except ImportError:  # pragma: no cover - POSIX fallback
 class PositionCloseState(str, Enum):
     REQUESTED = "REQUESTED"
     ACCEPTED = "ACCEPTED"
+    OPEN = "OPEN"
     UNKNOWN = "UNKNOWN"
 
 
@@ -107,9 +108,10 @@ class PositionCloseStore:
             if previous is not None:
                 if previous.external_id != external_id:
                     raise ValueError("request_id já possui fechamento associado a outro external_id.")
-                raise ValueError(
-                    "fechamento já solicitado ou concluído; nova tentativa automática bloqueada até reconciliação."
-                )
+                if previous.state is not PositionCloseState.OPEN:
+                    raise ValueError(
+                        "fechamento já solicitado ou concluído; nova tentativa automática bloqueada até reconciliação."
+                    )
             self._records[request_id] = record
 
         self._mutate_locked(mutation)
@@ -142,6 +144,41 @@ class PositionCloseStore:
                 state=state,
                 updated_at=datetime.now(timezone.utc),
                 close_external_id=close_external_id,
+                message=message,
+            )
+            self._validate(result)
+            self._records[request_id] = result
+
+        self._mutate_locked(mutation)
+        assert result is not None
+        return result
+
+    def reconcile(
+        self,
+        request_id: str,
+        state: PositionCloseState,
+        *,
+        message: str,
+    ) -> PositionCloseRecord:
+        if state not in (PositionCloseState.ACCEPTED, PositionCloseState.OPEN, PositionCloseState.UNKNOWN):
+            raise ValueError("estado de reconciliação de fechamento inválido.")
+        if not isinstance(message, str):
+            raise ValueError("mensagem de reconciliação inválida.")
+        result: PositionCloseRecord | None = None
+
+        def mutation() -> None:
+            nonlocal result
+            previous = self._records.get(request_id)
+            if previous is None:
+                raise ValueError("solicitação de fechamento não encontrada.")
+            if previous.state not in (PositionCloseState.REQUESTED, PositionCloseState.UNKNOWN):
+                raise ValueError("somente fechamento REQUESTED ou UNKNOWN pode ser reconciliado.")
+            result = PositionCloseRecord(
+                request_id=request_id,
+                external_id=previous.external_id,
+                state=state,
+                updated_at=datetime.now(timezone.utc),
+                close_external_id=previous.close_external_id,
                 message=message,
             )
             self._validate(result)
