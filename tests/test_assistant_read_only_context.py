@@ -273,7 +273,7 @@ def test_assistant_receives_fiscal_reserve_totals_for_day_week_month_and_year():
     )
 
     fiscal = context["fiscal_reserve"]
-    assert fiscal["as_of"] == "2026-11-05"
+    assert "as_of" not in fiscal
     assert fiscal["total_reserved_brl"] == 240.0
     assert fiscal["periods"]["day"]["reserve_amount_brl"] == 40.0
     assert fiscal["periods"]["week"]["realized_result_brl"] == 500.0
