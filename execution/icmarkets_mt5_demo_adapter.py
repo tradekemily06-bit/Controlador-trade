@@ -10,7 +10,10 @@ from typing import Any
 from core.models import Signal
 from core.operational_state import OperationalState
 from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
-from execution.ports import (\n    ExecutionMode, ExecutionRequest, ExecutionResult,\n    PositionCloseObservation, PositionCloseObservationStatus,\n)
+from execution.ports import (
+    ExecutionMode, ExecutionRequest, ExecutionResult,
+    PositionCloseObservation, PositionCloseObservationStatus,
+)
 
 
 class MT5AdapterError(RuntimeError):
