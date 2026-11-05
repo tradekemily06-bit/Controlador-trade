@@ -111,6 +111,13 @@ def _safe_bool(value: Any) -> bool:
     return value if isinstance(value, bool) else False
 
 
+def _safe_state_token(value: Any, limit: int = 32) -> str:
+    """Keep operational labels to bounded uppercase identifiers, never free text."""
+    if not isinstance(value, str) or len(value) > limit:
+        return "UNKNOWN"
+    return value if re.fullmatch(r"[A-Z0-9_-]{1,32}", value) else "UNKNOWN"
+
+
 def _risk_summary(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {"available": False}
@@ -143,31 +150,31 @@ def _operations_summary(value: Any) -> dict[str, Any]:
         "available": True,
         "execution": {
             "allowed": False,
-            "mode": str(execution.get("mode", "UNKNOWN"))[:24],
-            "state": str(execution.get("state", "UNKNOWN"))[:32],
+            "mode": _safe_state_token(execution.get("mode"), 24),
+            "state": _safe_state_token(execution.get("state")),
             "real": "DISABLED",
         },
         "reconciliation": {
-            "state": str(reconciliation.get("state", "UNKNOWN"))[:32],
+            "state": _safe_state_token(reconciliation.get("state")),
             "pending_count": len(reconciliation.get("pending_request_ids", [])) if isinstance(reconciliation.get("pending_request_ids", []), list) else 0,
             "unknown_count": len(reconciliation.get("unknown_request_ids", [])) if isinstance(reconciliation.get("unknown_request_ids", []), list) else 0,
         },
         "recovery": {
-            "state": str(recovery.get("state", "UNKNOWN"))[:32],
+            "state": _safe_state_token(recovery.get("state")),
             "can_resume": _safe_bool(recovery.get("can_resume")),
         },
         "kill_switch": {
-            "state": str(kill.get("state", "UNKNOWN"))[:24],
+            "state": _safe_state_token(kill.get("state"), 24),
             "enabled": _safe_bool(kill.get("enabled")),
         },
         "runtime_health": {
-            "state": str(health.get("state", "UNKNOWN"))[:24],
+            "state": _safe_state_token(health.get("state"), 24),
             "ledger_entries": _count(health.get("ledger_entries")),
             "pending_executions": _count(health.get("pending_executions")),
             "unknown_executions": _count(health.get("unknown_executions")),
         },
         "market_data": {
-            "health": str(market.get("health", "UNKNOWN"))[:24],
+            "health": _safe_state_token(market.get("health"), 24),
             "safe_for_analysis": _safe_bool(market.get("safe_for_analysis")),
             "candle_count": _count(market.get("candle_count")),
             "gap_count": _count(market.get("gap_count")),
