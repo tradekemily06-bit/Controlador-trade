@@ -141,3 +141,60 @@ def test_professor_ignores_client_claim_and_requires_server_validated_knowledge(
     })
     assert activity.activity_id == "trusted-activity"
     assert "verified-knowledge" in activity.expected_concepts
+
+
+def test_inconsistent_validated_learning_snapshot_is_discarded(tmp_path):
+    import pytest
+
+    store = EcosystemStateStore(tmp_path / "ecosystem-state.sqlite")
+    store.save_learning({
+        "sources": [{
+            "source_id": "source-inconsistent",
+            "source_type": "LINK",
+            "uri": "https://example.com",
+            "status": "VALIDATED",
+            "content_verified": True,
+            "security_checked": False,
+            "knowledge_validated": True,
+        }],
+        "resources": [],
+        "observations": [],
+        "activities": [],
+        "attempts": [],
+    })
+    service = EcosystemService()
+    service.state_store = store
+    service.restore_learning_state()
+    assert service.learning_sources == {}
+    assert service.learning_resources == {}
+    assert service.learning_observations == []
+
+
+def test_professor_rechecks_review_evidence_in_server_registry(tmp_path):
+    from dataclasses import replace
+    import pytest
+
+    service = EcosystemService()
+    source = service.screen_learning_source({
+        "source_id": "tampered-knowledge",
+        "source_type": "LINK",
+        "uri": "https://example.com/reviewed",
+    })
+    source = service.validate_learning_source(
+        source, content_verified=True, security_checked=True
+    )
+    source = service.admit_learning_knowledge(
+        source, knowledge_validated=True
+    )
+    service.learning_sources[source.source_id] = replace(
+        source, security_checked=False
+    )
+
+    with pytest.raises(ValueError):
+        service.generate_professor_activity({
+            "activity_id": "must-not-be-created",
+            "knowledge_id": "tampered-knowledge",
+            "statement": "Conteúdo sem evidência completa.",
+            "concept": "segurança",
+            "knowledge_validated": True,
+        })
