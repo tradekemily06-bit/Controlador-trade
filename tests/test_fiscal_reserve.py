@@ -430,3 +430,29 @@ def test_reserve_rejects_coerced_category_reference_date_and_notes(tmp_path):
         else:
             raise AssertionError(f"{field} must reject non-text values")
     assert reserve.summary(OWNER)["total_reserved_brl"] == 0
+
+
+
+def test_reserve_settings_and_history_are_isolated_between_owner_ids(tmp_path):
+    reserve = make_reserve(tmp_path / "fiscal-owner-isolation.sqlite3")
+    owner_a = "single:owner-a"
+    owner_b = "single:owner-b"
+
+    reserve.update_rate(owner_a, "BR_DAY_TRADE", 17)
+    reserve.record_realized_result(owner_a, {
+        "category": "BR_DAY_TRADE",
+        "realized_result_brl": 1000,
+        "reference": "OWNER-A-TRADE-001",
+        "occurred_on": "2026-11-04",
+    })
+
+    assert reserve.settings(owner_a) == {"BR_DAY_TRADE": 17.0}
+    assert reserve.settings(owner_b) == {}
+    assert reserve.summary(owner_b)["total_reserved_brl"] == 0
+    assert reserve.summary(owner_b)["history"] == []
+
+    reserve.update_rate(owner_b, "BR_DAY_TRADE", 23)
+    assert reserve.settings(owner_a) == {"BR_DAY_TRADE": 17.0}
+    assert reserve.settings(owner_b) == {"BR_DAY_TRADE": 23.0}
+    assert reserve.summary(owner_a)["total_reserved_brl"] == 170
+    assert reserve.summary(owner_b)["total_reserved_brl"] == 0
