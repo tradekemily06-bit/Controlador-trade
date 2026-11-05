@@ -346,6 +346,23 @@ def test_streamlit_operational_modules_use_live_read_only_runtime_endpoints():
     assert "st.empty()" not in source
 
 
+def test_streamlit_operation_screen_aggregates_read_only_runtime_telemetry_and_keeps_execution_blocked():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index('if module_name == "Operação":')
+    end = source.index('if module_name in {"Memória", "Replay"}:', start)
+    screen = source[start:end]
+    for route in ("/api/health", "/api/connections", "/api/risk", "/api/runtime/analysis/latest"):
+        assert route in screen
+    for field in ("operational_observability", "market_data", "kill_switch", "recovery", "reconciliation", "runtime_health", "configured_limits"):
+        assert field in screen
+    assert "Execução permitida: NÃO" in screen
+    assert "Execução REAL" in screen
+    assert "não envia ordens" in screen
+    assert 'api("/api/runtime/cycle", "POST"' not in screen
+    assert 'api("/api/runtime/close", "POST"' not in screen
+    assert 'api("/api/runtime/real/confirm", "POST"' not in screen
+
+
 def test_streamlit_market_analysis_requires_demo_confirmation_and_never_enables_execution():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert 'api("/api/runtime/analysis", "POST"' in source
