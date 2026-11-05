@@ -43,3 +43,30 @@ def test_closed_observation_is_terminal_and_cannot_be_retried(tmp_path):
         assert "bloqueada até reconciliação" in str(exc)
     else:
         raise AssertionError("confirmed closed position must be terminal")
+
+
+
+def test_legacy_accepted_close_is_recovered_as_unknown_and_requires_reconciliation(tmp_path):
+    path = tmp_path / "legacy-closes.json"
+    path.write_text(
+        '[{"request_id":"legacy-1","external_id":"ticket-legacy",'
+        '"state":"ACCEPTED","updated_at":"2026-11-05T12:00:00+00:00",'
+        '"attempt":1}]',
+        encoding="utf-8",
+    )
+
+    store = PositionCloseStore(path)
+    recovered = store.get("legacy-1")
+    assert recovered.state is PositionCloseState.UNKNOWN
+    assert store.records()[0].state is PositionCloseState.UNKNOWN
+
+    try:
+        store.begin("legacy-1", "ticket-legacy")
+    except ValueError as exc:
+        assert "bloqueada até reconciliação" in str(exc)
+    else:
+        raise AssertionError("legacy ACCEPTED close must not be retried before broker reconciliation")
+
+    store.reconcile("legacy-1", PositionCloseState.OPEN, message="broker confirms position remains open")
+    retry = store.begin("legacy-1", "ticket-legacy")
+    assert retry.attempt == 2
