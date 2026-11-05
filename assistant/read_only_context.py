@@ -116,6 +116,50 @@ def _statistics_summary(value: Any) -> dict[str, Any]:
     return safe
 
 
+def _fiscal_periods(value: Any) -> dict[str, dict[str, Any]]:
+    """Allow only fixed period keys, ISO date bounds, counts and numeric aggregates."""
+    safe: dict[str, dict[str, Any]] = {}
+    if not isinstance(value, dict):
+        return safe
+    for period in ("day", "week", "month", "year"):
+        row = value.get(period)
+        if not isinstance(row, dict):
+            continue
+        item: dict[str, Any] = {}
+        for key in ("start", "end"):
+            raw = row.get(key)
+            if isinstance(raw, str) and len(raw) >= 10:
+                candidate = raw[:10]
+                try:
+                    datetime.strptime(candidate, "%Y-%m-%d")
+                    item[key] = candidate
+                except ValueError:
+                    pass
+        if "entries" in row:
+            item["entries"] = _count(row.get("entries"))
+        for key in ("realized_result_brl", "reserve_amount_brl"):
+            raw = row.get(key)
+            if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+                item[key] = raw
+        safe[period] = item
+    return safe
+
+
+def _fiscal_reserve_semantics(value: Any) -> dict[str, Any]:
+    """Never forward free-form semantic descriptions from fiscal service data."""
+    if not isinstance(value, dict):
+        return {}
+    allowed = {
+        "kind": "PLANNING_ESTIMATE_ONLY",
+        "tax_liability_confirmed": False,
+        "monthly_tax_assessment": False,
+        "monthly_loss_offsets_calculated": False,
+        "irrf_credits_calculated": False,
+        "positive_entry_only": True,
+    }
+    return {key: expected for key, expected in allowed.items() if value.get(key) == expected}
+
+
 def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id: str, fiscal_pending_queue: Any = None, fiscal_domestic_pending_queue: Any = None) -> dict[str, Any]:
     """Build a compact, privacy-filtered snapshot for an assistant response."""
     if service is None or fiscal_reserve is None:
@@ -126,11 +170,28 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
     observability = service.operational_observability()
     statistics = service.statistics()
     fiscal = fiscal_reserve.summary(fiscal_owner_id)
-    fiscal_context = {
-        key: fiscal[key]
-        for key in ("name", "currency", "as_of", "categories", "total_reserved_brl", "periods", "limitations", "reserve_semantics")
-        if key in fiscal
+    fiscal_context: dict[str, Any] = {
+        "name": "Reserva Fiscal",
+        "currency": "BRL",
     }
+    as_of = fiscal.get("as_of") if isinstance(fiscal, dict) else None
+    if isinstance(as_of, str) and len(as_of) >= 10:
+        try:
+            fiscal_context["as_of"] = datetime.strptime(as_of[:10], "%Y-%m-%d").date().isoformat()
+        except ValueError:
+            pass
+    total_reserved = fiscal.get("total_reserved_brl") if isinstance(fiscal, dict) else None
+    if isinstance(total_reserved, (int, float)) and not isinstance(total_reserved, bool):
+        fiscal_context["total_reserved_brl"] = total_reserved
+    if isinstance(fiscal, dict):
+        fiscal_context["periods"] = _fiscal_periods(fiscal.get("periods"))
+        fiscal_context["reserve_semantics"] = _fiscal_reserve_semantics(fiscal.get("reserve_semantics"))
+        # Do not send arbitrary service-provided limitation text to the model.
+        fiscal_context["limitations"] = [
+            "Estimativa de planejamento; não representa imposto apurado ou devido.",
+            "Compensações fiscais e créditos de IRRF não são calculados.",
+            "Categorias sem regra validada permanecem pendentes e fora dos totais.",
+        ]
     # The legacy foreign category may still carry a historical generic rate
     # (15%). Never forward that rate to the external assistant as tax guidance.
     categories = fiscal_context.get("categories")
@@ -140,6 +201,8 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
         safe_categories: dict[str, dict[str, Any]] = {}
         for category, item in categories.items():
             if not isinstance(category, str) or not isinstance(item, dict):
+                continue
+            if category not in {"BR_DAY_TRADE", "FOREIGN_FINANCIAL_ASSET"}:
                 continue
             if category.startswith("FOREIGN_"):
                 # Foreign categories remain classification-only. Legacy rows
