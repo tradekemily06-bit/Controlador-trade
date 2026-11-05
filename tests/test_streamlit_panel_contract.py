@@ -648,3 +648,17 @@ def test_streamlit_notifications_screen_reads_full_history_without_mutations():
     assert "somente leitura" in view.lower()
     assert 'api("/api/notifications/all", "POST"' not in view
     assert "Execução permitida: NÃO · REAL: DESABILITADO" in view
+
+
+def test_streamlit_decision_engine_uses_latest_read_only_analysis_snapshot():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert '"Motor de Decisão": ("Motor de Decisão · última análise", "/api/runtime/analysis/latest")' in source
+    start = source.index('if module_name == "Motor de Decisão":')
+    end = source.index('if module_name == "Operação":', start)
+    view = source[start:end]
+    assert 'data.get("available") is not True' in view
+    assert 'latest.get("signal") or "AGUARDAR"' in view
+    assert 'latest.get("candidate_signal")' in view
+    assert "candidato não significa autorização de operação" in view
+    assert "Execução permitida: NÃO · REAL: DESABILITADO" in view
+    assert 'api("/api/runtime/analysis/latest", "POST"' not in view
