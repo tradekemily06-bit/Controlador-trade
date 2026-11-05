@@ -279,6 +279,36 @@ def application(environ, start_response):
                 request_id,
                 environ,
             )
+        if path == "/api/runtime/kill-switch/activate" and method == "POST":
+            data = _read_json(environ)
+            confirmed = data.get("confirmed")
+            reason = data.get("reason")
+            if confirmed is not True:
+                return _json_response(
+                    start_response, HTTPStatus.BAD_REQUEST,
+                    {"error": "confirmação explícita obrigatória", "execution_allowed": False},
+                    request_id, environ,
+                )
+            if not isinstance(reason, str) or not reason.strip() or len(reason.strip()) > 240:
+                return _json_response(
+                    start_response, HTTPStatus.BAD_REQUEST,
+                    {"error": "informe um motivo de até 240 caracteres", "execution_allowed": False},
+                    request_id, environ,
+                )
+            state = OPERATIONAL_RUNTIME.operational_recorder.activate_kill_switch(reason.strip())
+            observability = SERVICE.operational_observability()
+            return _json_response(
+                start_response, HTTPStatus.OK,
+                {
+                    "activated": state.enabled,
+                    "kill_switch": observability["kill_switch"],
+                    "execution_allowed": False,
+                    "pending_request_ids": observability["reconciliation"]["pending_request_ids"],
+                    "unknown_request_ids": observability["reconciliation"]["unknown_request_ids"],
+                    "message": "Novas execuções bloqueadas. Solicitações já encaminhadas não são canceladas; reconcilie seus estados.",
+                },
+                request_id, environ,
+            )
         if path == "/api/health" and method == "GET":
             status = SERVICE.system_status()
             status["real_runtime"] = REAL_RUNTIME.status()
