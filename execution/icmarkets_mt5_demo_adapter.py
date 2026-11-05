@@ -31,6 +31,7 @@ class ICMarketsMT5DemoConfig:
 
 
 class ICMarketsMT5DemoAdapter:
+    requires_account_fingerprint = False
     """IC Markets MT5 DEMO boundary.
 
     Uses the official MetaTrader5 Python package against a running MT5 terminal.
@@ -529,7 +530,13 @@ class ICMarketsMT5DemoAdapter:
         try:
             account = mt5.account_info()
             if account is None or not self._is_demo_account(account, mt5):
-                return ExecutionResult(False, "conta MT5 não confirmada como DEMO; ordem bloqueada.")
+                return ExecutionResult(False, "conta MT5 não confirmada; ordem bloqueada.")
+            account_fingerprint = self._account_fingerprint(account)
+            if self.requires_account_fingerprint and account_fingerprint is None:
+                return ExecutionResult(
+                    False,
+                    "identidade pseudônima da conta MT5 indisponível; ordem REAL bloqueada.",
+                )
 
             symbol = self.config.symbol or request.symbol
             if not isinstance(symbol, str) or not symbol.strip():
@@ -584,11 +591,21 @@ class ICMarketsMT5DemoAdapter:
                     "MT5 aceitou a ordem, mas não forneceu identificador externo; confirmação bloqueada.",
                 )
 
-            return ExecutionResult(True, "ordem DEMO enviada e confirmada pelo MT5.", str(external_id))
+            return ExecutionResult(
+                True,
+                "ordem enviada e confirmada pelo MT5.",
+                str(external_id),
+                account_fingerprint,
+            )
         finally:
             mt5.shutdown()
 
-    def close_position(self, external_id: str) -> ExecutionResult:
+    def close_position(
+        self,
+        external_id: str,
+        *,
+        expected_account_fingerprint: str | None = None,
+    ) -> ExecutionResult:
         """Close only the confirmed DEMO position identified by this adapter's order ticket."""
         if not isinstance(external_id, str) or not external_id.strip():
             return ExecutionResult(False, "external_id inválido; fechamento bloqueado.")
@@ -598,7 +615,19 @@ class ICMarketsMT5DemoAdapter:
         try:
             account = mt5.account_info()
             if account is None or not self._is_demo_account(account, mt5):
-                return ExecutionResult(False, "conta MT5 não confirmada como DEMO; fechamento bloqueado.")
+                return ExecutionResult(False, "conta MT5 não confirmada; fechamento bloqueado.")
+            current_fingerprint = self._account_fingerprint(account)
+            if self.requires_account_fingerprint and (
+                expected_account_fingerprint is None
+                or current_fingerprint is None
+                or current_fingerprint != expected_account_fingerprint
+            ):
+                return ExecutionResult(
+                    False,
+                    "a conta MT5 conectada não corresponde à conta registrada na abertura; fechamento bloqueado.",
+                )
+            if expected_account_fingerprint is not None and current_fingerprint != expected_account_fingerprint:
+                return ExecutionResult(False, "impressão digital da conta MT5 divergente; fechamento bloqueado.")
             try:
                 target_ticket = int(external_id)
             except (TypeError, ValueError):
@@ -683,7 +712,12 @@ class ICMarketsMT5DemoAdapter:
         finally:
             mt5.shutdown()
 
-    def reconcile_position_close(self, external_id: str) -> PositionCloseObservation:
+    def reconcile_position_close(
+        self,
+        external_id: str,
+        *,
+        expected_account_fingerprint: str | None = None,
+    ) -> PositionCloseObservation:
         """Read MT5 account, open-position, and deal history; never sends an order."""
         unknown = PositionCloseObservationStatus.UNKNOWN
         if not isinstance(external_id, str) or not external_id.strip():
@@ -700,6 +734,18 @@ class ICMarketsMT5DemoAdapter:
             account = mt5.account_info()
             if account is None or not self._is_demo_account(account, mt5):
                 return PositionCloseObservation(unknown, "tipo de conta MT5 não confirmado; reconciliação bloqueada.")
+            current_fingerprint = self._account_fingerprint(account)
+            if self.requires_account_fingerprint and (
+                expected_account_fingerprint is None
+                or current_fingerprint is None
+                or current_fingerprint != expected_account_fingerprint
+            ):
+                return PositionCloseObservation(
+                    unknown,
+                    "a conta MT5 conectada não corresponde à conta registrada na abertura.",
+                )
+            if expected_account_fingerprint is not None and current_fingerprint != expected_account_fingerprint:
+                return PositionCloseObservation(unknown, "impressão digital da conta MT5 divergente.")
 
             deal_fn = getattr(mt5, "history_deals_get", None)
             order_fn = getattr(mt5, "history_orders_get", None)
@@ -786,6 +832,7 @@ class ICMarketsMT5DemoAdapter:
 
 
 class ICMarketsMT5RealAdapter(ICMarketsMT5DemoAdapter):
+    requires_account_fingerprint = True
     """IC Markets MT5 REAL boundary used only behind the REAL gateway.
 
     The inherited MT5 mechanics are deliberately reused so DEMO and REAL do
@@ -810,5 +857,10 @@ class ICMarketsMT5RealAdapter(ICMarketsMT5DemoAdapter):
         demo_shaped_request = replace(request, mode=ExecutionMode.DEMO)
         result = super().execute(demo_shaped_request)
         if result.accepted:
-            return ExecutionResult(True, "ordem REAL enviada e confirmada pelo MT5.", result.external_id)
+            return ExecutionResult(
+                True,
+                "ordem REAL enviada e confirmada pelo MT5.",
+                result.external_id,
+                result.account_fingerprint,
+            )
         return result
