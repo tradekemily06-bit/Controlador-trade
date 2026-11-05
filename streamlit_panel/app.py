@@ -249,6 +249,7 @@ def show_assistant() -> None:
                 {
                     "message": prompt,
                     "conversation_id": st.session_state.get("assistant_conversation_id"),
+                    "consent_to_openai": True,
                 },
             )
             st.session_state.assistant_conversation_id = response.get("conversation_id")

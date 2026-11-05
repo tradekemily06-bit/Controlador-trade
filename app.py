@@ -331,6 +331,14 @@ def application(environ, start_response):
                 return _json_response(start_response, HTTPStatus.OK, {"messages": messages}, request_id, environ)
             if path == "/api/assistant/chat" and method == "POST":
                 data = _read_json(environ)
+                if data.get("consent_to_openai") is not True:
+                    return _json_response(
+                        start_response,
+                        HTTPStatus.BAD_REQUEST,
+                        {"error": "Consentimento explícito para envio do contexto à OpenAI é obrigatório."},
+                        request_id,
+                        environ,
+                    )
                 return _json_response(start_response, HTTPStatus.OK, ASSISTANT.ask(identity, data.get("message"), fiscal_owner_id, data.get("conversation_id")), request_id, environ)
         if path.startswith("/api/fiscal-reserve"):
             authorized, reason = _authorize_remote_mutation(environ)

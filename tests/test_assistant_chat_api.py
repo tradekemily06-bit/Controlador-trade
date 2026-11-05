@@ -63,6 +63,7 @@ def test_chat_api_uses_authenticated_canonical_owner_not_client_owner(tmp_path, 
             "message": "Resuma minha Reserva Fiscal",
             "conversation_id": None,
             "owner_id": "single:forged-owner",
+            "consent_to_openai": True,
         },
     )
 
@@ -90,7 +91,7 @@ def test_chat_api_returns_sanitized_provider_unavailable_response(tmp_path, monk
     status, payload = _request(
         "/api/assistant/chat",
         method="POST",
-        payload={"message": "Resuma minha Reserva Fiscal"},
+        payload={"message": "Resuma minha Reserva Fiscal", "consent_to_openai": True},
     )
 
     assert status.startswith("503")

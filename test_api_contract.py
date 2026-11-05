@@ -33,6 +33,33 @@ class ApiContractTests(unittest.TestCase):
         response = b"".join(application(environ, start_response))
         return captured["status"], captured["headers"], json.loads(response)
 
+    def test_assistant_chat_requires_explicit_openai_consent_at_api_boundary(self):
+        import app as app_module
+        with patch.object(app_module, "_authorize_remote_mutation", return_value=(True, "")), \
+             patch.object(app_module, "migrate_fiscal_schema", return_value="single:test-owner"), \
+             patch.object(app_module.ASSISTANT, "ask", return_value={
+                 "answer": "Resposta segura", "conversation_id": "conversation-test",
+                 "read_only": True, "execution_allowed": False,
+             }) as ask:
+            status, _, rejected = self.request(
+                "/api/assistant/chat", method="POST",
+                payload={"message": "Pergunta sem consentimento"},
+            )
+            self.assertEqual(status, "400 Bad Request")
+            self.assertIn("Consentimento explícito", rejected["error"])
+            ask.assert_not_called()
+
+            status, _, accepted = self.request(
+                "/api/assistant/chat", method="POST",
+                payload={"message": "Pergunta autorizada", "consent_to_openai": True},
+            )
+            self.assertEqual(status, "200 OK")
+            self.assertEqual(accepted["answer"], "Resposta segura")
+            ask.assert_called_once_with(
+                "single:test-owner", "Pergunta autorizada",
+                "single:test-owner", None,
+            )
+
     def test_notifications_endpoint_is_available_and_fail_closed(self):
         status, _, payload = self.request("/api/notifications")
         self.assertEqual(status, "200 OK")
