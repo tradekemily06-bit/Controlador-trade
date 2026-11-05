@@ -118,26 +118,26 @@ class EcosystemPreferencesStore:
             bullish_color=str(candle_data.get("bullish_color", CandleAppearance.bullish_color)),
             bearish_color=str(candle_data.get("bearish_color", CandleAppearance.bearish_color)),
             wick_color=str(candle_data.get("wick_color", CandleAppearance.wick_color)),
-            border_enabled=bool(candle_data.get("border_enabled", True)),
-            show_wicks=bool(candle_data.get("show_wicks", True)),
-            show_bodies=bool(candle_data.get("show_bodies", True)),
+            border_enabled=candle_data.get("border_enabled") if isinstance(candle_data.get("border_enabled"), bool) else True,
+            show_wicks=candle_data.get("show_wicks") if isinstance(candle_data.get("show_wicks"), bool) else True,
+            show_bodies=candle_data.get("show_bodies") if isinstance(candle_data.get("show_bodies"), bool) else True,
         )
         notifications = NotificationPreferences(
-            **{field: bool(notification_data.get(field, getattr(defaults, field))) for field in NotificationPreferences.__dataclass_fields__}
+            **{field: notification_data.get(field) if isinstance(notification_data.get(field), bool) else getattr(defaults, field) for field in NotificationPreferences.__dataclass_fields__}
         )
         preferences = EcosystemPreferences(
             default_symbol=str(payload.get("default_symbol", "EURUSD")),
             default_timeframe=str(payload.get("default_timeframe", "5m")),
-            require_closed_candle=bool(payload.get("require_closed_candle", True)),
-            require_filters=bool(payload.get("require_filters", True)),
+            require_closed_candle=payload.get("require_closed_candle") if isinstance(payload.get("require_closed_candle"), bool) else True,
+            require_filters=payload.get("require_filters") if isinstance(payload.get("require_filters"), bool) else True,
             chart_theme=ChartTheme(str(payload.get("chart_theme", ChartTheme.DARK.value))),
             candle=candle,
             notifications=notifications,
-            show_technical_details_by_default=bool(payload.get("show_technical_details_by_default", False)),
+            show_technical_details_by_default=payload.get("show_technical_details_by_default") if isinstance(payload.get("show_technical_details_by_default"), bool) else False,
             autonomous_operation_enabled=False,
             real_execution_enabled=False,
             selected_mode=str(payload.get("selected_mode", "DEMO")).upper(),
-            leverage_enabled=payload.get("leverage_enabled", False),
+            leverage_enabled=payload.get("leverage_enabled") if isinstance(payload.get("leverage_enabled"), bool) else False,
         )
         return cls(preferences)
 
