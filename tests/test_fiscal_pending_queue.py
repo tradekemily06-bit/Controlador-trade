@@ -534,3 +534,17 @@ def test_foreign_review_rejects_non_text_notes_and_list_id(tmp_path):
         assert "pending_id inválido" in str(exc)
     else:
         raise AssertionError("list_reviews must reject non-text pending_id")
+
+
+def test_foreign_review_rejects_future_review_date(tmp_path):
+    queue = make_queue(tmp_path / "future-foreign-review.sqlite3")
+    item = queue.add(OWNER, sample("FOREIGN-FUTURE-REVIEW"))
+    payload = review_sample()
+    payload["reviewed_on"] = "9999-12-31"
+    try:
+        queue.record_review(OWNER, item["pending_id"], payload)
+    except ValueError as exc:
+        assert "reviewed_on não pode estar no futuro" in str(exc)
+    else:
+        raise AssertionError("future review dates must be rejected")
+    assert queue.list_reviews(OWNER, item["pending_id"]) == []
