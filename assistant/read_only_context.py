@@ -6,13 +6,14 @@ This module does not execute trades, change settings, move funds, or infer tax o
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import re
 from typing import Any
 
 from finance.fiscal_taxonomy import fiscal_classification_catalog
 
 
 def _iso_date(value: Any) -> str:
-    if not isinstance(value, str) or len(value) != 10:
+    if not isinstance(value, str) or re.fullmatch(r"\\d{4}-\\d{2}-\\d{2}", value) is None:
         return ""
     candidate = value[:10]
     try:
@@ -148,13 +149,9 @@ def _fiscal_periods(value: Any) -> dict[str, dict[str, Any]]:
         item: dict[str, Any] = {}
         for key in ("start", "end"):
             raw = row.get(key)
-            if isinstance(raw, str) and len(raw) >= 10:
-                candidate = raw[:10]
-                try:
-                    datetime.strptime(candidate, "%Y-%m-%d")
-                    item[key] = candidate
-                except ValueError:
-                    pass
+            candidate = _iso_date(raw)
+            if candidate:
+                item[key] = candidate
         if "entries" in row:
             item["entries"] = _count(row.get("entries"))
         for key in ("realized_result_brl", "reserve_amount_brl"):
@@ -195,11 +192,9 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
         "currency": "BRL",
     }
     as_of = fiscal.get("as_of") if isinstance(fiscal, dict) else None
-    if isinstance(as_of, str) and len(as_of) >= 10:
-        try:
-            fiscal_context["as_of"] = datetime.strptime(as_of[:10], "%Y-%m-%d").date().isoformat()
-        except ValueError:
-            pass
+    safe_as_of = _iso_date(as_of)
+    if safe_as_of:
+        fiscal_context["as_of"] = safe_as_of
     total_reserved = fiscal.get("total_reserved_brl") if isinstance(fiscal, dict) else None
     if isinstance(total_reserved, (int, float)) and not isinstance(total_reserved, bool):
         fiscal_context["total_reserved_brl"] = total_reserved
