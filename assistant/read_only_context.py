@@ -252,15 +252,11 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
                 "total": _count(pending_summary.get("total")),
                 "realized_results": _count(pending_summary.get("realized_results")),
                 "asset_amounts": _count(pending_summary.get("asset_amounts")),
-                "currencies": sorted({
-                    str(currency).upper()
-                    for currency in pending_summary.get("currencies", [])
-                    if currency
-                }),
+                "currencies": _safe_currency_codes(pending_summary.get("currencies", [])),
                 "periods": {
                     str(period): {
-                        "start": str(values.get("start", ""))[:10],
-                        "end": str(values.get("end", ""))[:10],
+                        "start": _iso_date(values.get("start")),
+                        "end": _iso_date(values.get("end")),
                         "total": _count(values.get("total")),
                         "realized_results": _count(values.get("realized_results")),
                         "asset_amounts": _count(values.get("asset_amounts")),
@@ -285,8 +281,8 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
                 "total": _count(domestic_summary.get("total")),
                 "periods": {
                     str(period): {
-                        "start": str(values.get("start", ""))[:10],
-                        "end": str(values.get("end", ""))[:10],
+                        "start": _iso_date(values.get("start")),
+                        "end": _iso_date(values.get("end")),
                         "total": _count(values.get("total")),
                         "results": _count(values.get("results")),
                     }
