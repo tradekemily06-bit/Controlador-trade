@@ -60,7 +60,12 @@ class ExecutionGateway:
         self._market_data = market_data
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
 
-    def execute(
+    def execute(self, *args, **kwargs) -> GatewayResult:
+        """Serialize final gate, durable reservation and broker dispatch with Kill Switch activation."""
+        with self._kill_switch.execution_lock():
+            return self._execute_locked(*args, **kwargs)
+
+    def _execute_locked(
         self,
         request_id: str,
         request: ExecutionRequest,
