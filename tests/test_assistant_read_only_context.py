@@ -652,3 +652,14 @@ def test_assistant_context_rejects_non_finite_numbers_and_boolean_counts():
     assert fiscal["foreign_pending"]["total"] == 0
     assert fiscal["foreign_pending"]["realized_results"] == 0
     assert fiscal["foreign_pending"]["asset_amounts"] == 2
+
+    class FractionalQueue:
+        def summary(self, owner_id):
+            return {"total": 2.5, "realized_results": "7", "asset_amounts": -3}
+
+    fractional = collect_read_only_context(
+        FakeService(), MalformedFiscal(), "test-owner", fiscal_pending_queue=FractionalQueue()
+    )["fiscal_reserve"]["foreign_pending"]
+    assert fractional["total"] == 0
+    assert fractional["realized_results"] == 0
+    assert fractional["asset_amounts"] == 0
