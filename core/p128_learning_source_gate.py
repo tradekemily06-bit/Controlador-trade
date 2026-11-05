@@ -51,6 +51,8 @@ class LearningSourceGate:
         return LearningSource(source_id.strip(), source_type, uri.strip(), LearningSourceStatus.QUARANTINED)
 
     def validate_content(self, source: LearningSource, *, content_verified: bool, security_checked: bool) -> LearningSource:
+        if not isinstance(content_verified, bool) or not isinstance(security_checked, bool):
+            raise ValueError("content_verified and security_checked must be booleans")
         if not isinstance(source, LearningSource):
             raise ValueError("invalid learning source")
         if source.status is LearningSourceStatus.BLOCKED:
@@ -70,6 +72,8 @@ class LearningSourceGate:
         )
 
     def admit_knowledge(self, source: LearningSource, *, knowledge_validated: bool) -> LearningSource:
+        if not isinstance(knowledge_validated, bool):
+            raise ValueError("knowledge_validated must be a boolean")
         if not isinstance(source, LearningSource):
             raise ValueError("invalid learning source")
         if source.status is not LearningSourceStatus.VALIDATED:
