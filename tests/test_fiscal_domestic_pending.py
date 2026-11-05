@@ -208,3 +208,13 @@ def test_domestic_pending_rejects_non_text_intake_fields(tmp_path):
         with pytest.raises(ValueError, match="deve ser texto"):
             queue.add("owner-a", payload)
     assert queue.list_pending("owner-a")["total"] == 0
+
+
+@pytest.mark.parametrize("value", ["125.75", True, [], {}, float("nan"), float("inf")])
+def test_domestic_pending_rejects_coerced_or_nonfinite_results(tmp_path, value):
+    queue = FiscalDomesticPendingQueue(str(tmp_path / "strict-domestic-money.sqlite3"))
+    payload = sample("BR-STRICT-MONEY")
+    payload["realized_result_brl"] = value
+    with pytest.raises(ValueError, match="realized_result_brl"):
+        queue.add("owner-a", payload)
+    assert queue.list_pending("owner-a")["total"] == 0
