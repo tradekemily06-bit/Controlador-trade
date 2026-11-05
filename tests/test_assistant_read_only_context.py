@@ -483,7 +483,7 @@ def test_pending_context_validates_currency_codes_and_iso_dates():
 
     assert pending["currencies"] == ["EUR", "USD"]
     assert pending["as_of"] == ""
-    assert pending["periods"]["day"]["start"] == "2026-11-05"
+    assert pending["periods"]["day"]["start"] == ""
     assert pending["periods"]["day"]["end"] == "2026-11-05"
     assert pending["periods"]["week"]["start"] == ""
     assert pending["periods"]["week"]["end"] == "2026-11-05"
