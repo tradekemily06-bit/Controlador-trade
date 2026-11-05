@@ -1016,22 +1016,54 @@ def show_readonly_module(module_name: str) -> None:
             return
 
         if module_name == "Notificações":
+            try:
+                all_payload = api("/api/notifications/all")
+                all_items = all_payload.get("items", []) if isinstance(all_payload, dict) else []
+            except Exception as exc:
+                all_items = []
+                st.warning(f"Histórico completo indisponível: {exc}")
             items = data.get("items", [])
-            summary_cols = st.columns(2)
-            summary_cols[0].metric("Notificações", data.get("count", len(items)))
-            summary_cols[1].metric("Críticas", data.get("critical_count", 0))
-            if not items:
-                st.success("Nenhuma notificação ativa.")
-            for item in items:
-                severity = str(item.get("severity", "INFO")).upper()
-                message = f"{item.get('title', 'Notificação')} — {item.get('message', '')}"
-                if severity == "CRITICAL":
-                    st.error(message)
-                elif severity == "IMPORTANT":
-                    st.warning(message)
-                else:
-                    st.info(message)
-            st.caption("Alertas críticos não são ocultados pelas preferências de notificação.")
+            summary_cols = st.columns(3)
+            summary_cols[0].metric("Alertas ativos", data.get("count", len(items)))
+            summary_cols[1].metric("Críticos ativos", data.get("critical_count", 0))
+            summary_cols[2].metric("Exigem atenção", data.get("unread", sum(1 for item in items if item.get("requires_attention"))))
+            if not all_items and not items:
+                st.success("Nenhuma notificação registrada ou ativa.")
+                return
+            st.markdown("#### Histórico de notificações")
+            if all_items:
+                severity_options = ["TODAS"] + sorted({str(item.get("severity", "INFO")).upper() for item in all_items})
+                selected_severity = st.selectbox("Filtrar gravidade", severity_options, key="notification_history_severity")
+                visible_items = [
+                    item for item in all_items
+                    if selected_severity == "TODAS" or str(item.get("severity", "INFO")).upper() == selected_severity
+                ]
+                display_rows = []
+                for item in visible_items:
+                    display_rows.append({
+                        "Horário": item.get("created_at") or item.get("timestamp") or "—",
+                        "Gravidade": str(item.get("severity", "INFO")).upper(),
+                        "Categoria": str(item.get("kind", "SYSTEM")).upper(),
+                        "Título": item.get("title", "Notificação"),
+                        "Mensagem": item.get("message", ""),
+                        "Atenção necessária": bool(item.get("requires_attention", False)),
+                        "Bloqueante": bool(item.get("blocking", False)),
+                    })
+                st.dataframe(display_rows, use_container_width=True, hide_index=True)
+                st.caption(f"Exibindo {len(display_rows)} de {len(all_items)} notificação(ões) retornada(s) pelo runtime.")
+            else:
+                st.info("Não foi possível obter o histórico completo; abaixo estão os alertas ativos disponíveis.")
+                for item in items:
+                    severity = str(item.get("severity", "INFO")).upper()
+                    message = f"{item.get('title', 'Notificação')} — {item.get('message', '')}"
+                    if severity == "CRITICAL":
+                        st.error(message)
+                    elif severity == "IMPORTANT":
+                        st.warning(message)
+                    else:
+                        st.info(message)
+            st.caption("Alertas críticos permanecem ativos independentemente das preferências. Histórico somente leitura; esta tela não marca, apaga ou altera notificações.")
+            st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
             return
 
         if module_name in {"Gestão de Risco", "Simulador"}:
