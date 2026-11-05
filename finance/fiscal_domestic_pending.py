@@ -182,12 +182,17 @@ class FiscalDomesticPendingQueue:
         owner_id = self._require_owner(owner_id)
         if not isinstance(payload, dict):
             raise ValueError("payload deve ser um objeto")
-        pending_id = str(pending_id or "").strip()
+        if not isinstance(pending_id, str):
+            raise ValueError("pending_id inválido")
+        pending_id = pending_id.strip()
         if not pending_id or len(pending_id) > 80:
             raise ValueError("pending_id inválido")
 
         def required(name: str, maximum: int) -> str:
-            value = str(payload.get(name) or "").strip()
+            raw = payload.get(name)
+            if not isinstance(raw, str):
+                raise ValueError(f"{name} deve ser texto")
+            value = raw.strip()
             if not value or len(value) > maximum:
                 raise ValueError(f"{name} é obrigatório e deve ter até {maximum} caracteres")
             return value
@@ -203,7 +208,10 @@ class FiscalDomesticPendingQueue:
         registration = required("professional_registration", 100)
         evidence = required("evidence_reference", 500)
         reviewed_on = self._day(payload.get("reviewed_on"))
-        notes = str(payload.get("review_notes") or "").strip()
+        raw_notes = payload.get("review_notes", "")
+        if not isinstance(raw_notes, str):
+            raise ValueError("review_notes deve ser texto")
+        notes = raw_notes.strip()
         if len(notes) > 2000:
             raise ValueError("review_notes deve ter até 2000 caracteres")
 
