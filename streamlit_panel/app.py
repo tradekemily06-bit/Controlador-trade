@@ -289,11 +289,34 @@ def show_fiscal() -> None:
     try:
         br = summary.get("categories", {}).get("BR_DAY_TRADE", {})
         foreign = summary.get("categories", {}).get("FOREIGN_FINANCIAL_ASSET", {})
+        period_options = {
+            "Diário": "day",
+            "Semanal": "week",
+            "Mensal": "month",
+            "Anual": "year",
+        }
+        selected_period_label = st.selectbox(
+            "Período da Reserva Fiscal · Brasil",
+            options=list(period_options),
+            index=2,
+            key="fiscal_brazil_period",
+        )
+        selected_period_key = period_options[selected_period_label]
+        selected_period = summary.get("periods", {}).get(selected_period_key, {})
         a, b, c = st.columns(3)
-        a.metric("Reserva estimada · Brasil", money(br.get("reserve_amount_brl")))
-        b.metric("Resultado realizado · Brasil", money(br.get("realized_result_brl")))
+        a.metric(
+            f"Reserva estimada · {selected_period_label.lower()}",
+            money(selected_period.get("reserve_amount_brl")),
+        )
+        b.metric(
+            f"Resultado realizado · {selected_period_label.lower()}",
+            money(selected_period.get("realized_result_brl")),
+        )
         c.metric("Estimativa acumulada · Brasil", money(summary.get("total_reserved_brl")))
-        st.caption(f"Referência: {summary.get('as_of', '—')} · Brasil day trade · percentual de planejamento configurado: {br.get('rate', '—')}%")
+        st.caption(
+            f"Período: {selected_period.get('start', '—')} a {selected_period.get('end', '—')} · "
+            f"Brasil day trade · percentual de planejamento configurado: {br.get('rate', '—')}%"
+        )
         semantics = summary.get("reserve_semantics", {})
         st.warning("ESTIMATIVA DE PLANEJAMENTO — não é imposto apurado ou devido. " + str(semantics.get("description") or "Não calcula compensação mensal de prejuízos nem créditos de IRRF."))
         st.info(f"Exterior: {foreign.get('entries', 0)} registro(s) legado(s) · classificação pendente · fora dos totais.")
