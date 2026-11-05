@@ -709,7 +709,7 @@ def show_fiscal() -> None:
                     st.session_state.domestic_pending_offset = max(0, domestic_offset - 50)
                     st.rerun()
             with domestic_page_cols[1]:
-                if st.button("Próximas pendências brasileiras →", key="domestic_pending_next", disabled=domestic_offset + len(domestic_items) >= int(domestic_data.get("total", 0))):
+                if st.button("Próximas pendências brasileiras →", key="domestic_pending_next", disabled=domestic_offset + len(domestic_items) >= domestic_data["total"]):
                     st.session_state.domestic_pending_offset = domestic_offset + 50
                     st.rerun()
             st.caption(f"Exibindo {domestic_offset + 1}–{domestic_offset + len(domestic_items)} de {domestic_data['total']} pendências brasileiras.")
@@ -894,7 +894,7 @@ def show_fiscal() -> None:
                     st.session_state.foreign_pending_offset = max(0, foreign_offset - 50)
                     st.rerun()
             with foreign_page_cols[1]:
-                if st.button("Próximas pendências do exterior →", key="foreign_pending_next", disabled=foreign_offset + len(foreign_items) >= int(foreign_pending_data.get("total", 0))):
+                if st.button("Próximas pendências do exterior →", key="foreign_pending_next", disabled=foreign_offset + len(foreign_items) >= foreign_pending_data["total"]):
                     st.session_state.foreign_pending_offset = foreign_offset + 50
                     st.rerun()
             st.caption(f"Exibindo {foreign_offset + 1}–{foreign_offset + len(foreign_items)} de {foreign_pending_data['total']} pendências do exterior.")
