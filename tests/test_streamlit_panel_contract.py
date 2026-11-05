@@ -410,8 +410,10 @@ def test_streamlit_preferences_save_only_safe_presentation_fields():
     for forbidden in (
         "real_execution_enabled", "autonomous_operation_enabled",
         "selected_mode", "risk_limits", "kill_switch",
+        "require_closed_candle", "require_filters",
     ):
         assert forbidden not in preferences_screen
+    assert "candle fechado e filtros de confirmação permanecem ativos" in preferences_screen
     assert 'safety_cols[1].metric("Execução REAL", "DESABILITADA")' in preferences_screen
     assert 'safety_cols[2].metric("Execução permitida", "NÃO")' in preferences_screen
     assert "Alertas críticos (sempre ativos)" in preferences_screen
