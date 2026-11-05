@@ -360,6 +360,24 @@ def test_streamlit_market_analysis_requires_demo_confirmation_and_never_enables_
 
 
 
+def test_streamlit_market_analysis_shows_asset_session_and_news_readiness_without_authorizing_execution():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    screen = source[source.index("def show_market_analysis"):source.index("def show_replay")]
+    assert 'api("/api/market/assets")' in screen
+    assert 'item.get("weekend_capable") is True' in screen
+    assert 'item.get("is_24_7_capable") is True' in screen
+    assert 'item.get("quote_available") is True' in screen
+    assert 'item.get("suitability_gaps")' in screen
+    assert 'api("/api/news?limit=10")' in screen
+    assert 'news.get("live") is not True' in screen
+    assert "não está configurado" in screen.lower()
+    assert 'api("/api/runtime/analysis", "POST"' in screen
+    assert 'confirmed = st.checkbox("Confirmo que esta análise é somente para estudo em DEMO/SIMULAÇÃO.")' in screen
+    assert "Execução permitida: NÃO" in screen
+    assert "não significa mercado aberto agora" in screen.lower()
+    assert 'api("/api/market/assets", "POST"' not in screen
+
+
 def test_streamlit_preferences_never_submit_execution_authority_fields():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     start = source.index('if module_name == "Configurações":')
