@@ -1329,3 +1329,18 @@ def test_streamlit_fiscal_pending_lists_validate_pages_and_review_history_before
     assert 'if not _valid_review_history(foreign_review_data):' in source
     assert 'int(domestic_data.get("total", 0))' not in source
     assert 'int(foreign_pending_data.get("total", 0))' not in source
+
+
+def test_streamlit_fiscal_notes_limit_matches_api_contract():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    fiscal_start = source.index("def show_fiscal()")
+    fiscal_end = source.index("\ndef ", fiscal_start + 1)
+    fiscal = source[fiscal_start:fiscal_end]
+    api_source = (PANEL_DIR.parent / "app.py").read_text(encoding="utf-8")
+    api_start = api_source.index('if path == "/api/fiscal-reserve/results" and method == "POST":')
+    api_end = api_source.index('if path == "/api/onboarding" and method == "GET":', api_start)
+    api_block = api_source[api_start:api_end]
+
+    assert '"Observações / evidências"' in fiscal
+    assert 'max_chars=160' in fiscal
+    assert 'if len(user_notes) > 160:' in api_block
