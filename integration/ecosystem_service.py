@@ -69,8 +69,9 @@ class EcosystemService:
         if not isinstance(saved, dict):
             return
         try:
-            self.learning_sources = {
-                item["source_id"]: LearningSource(
+            restored_sources: dict[str, LearningSource] = {}
+            for item in saved.get("sources", []):
+                source = LearningSource(
                     source_id=item["source_id"],
                     source_type=LearningSourceType(item["source_type"]),
                     uri=item["uri"],
@@ -80,8 +81,16 @@ class EcosystemService:
                     knowledge_validated=self._require_learning_bool(item.get("knowledge_validated", False), "knowledge_validated"),
                     operation_eligible=False,
                 )
-                for item in saved.get("sources", [])
-            }
+                if source.status is LearningSourceStatus.VALIDATED and not (
+                    source.content_verified and source.security_checked
+                ):
+                    raise ValueError("validated source snapshot lacks required review evidence")
+                if source.knowledge_validated and source.status is not LearningSourceStatus.VALIDATED:
+                    raise ValueError("knowledge snapshot is admitted before source validation")
+                if source.source_id in restored_sources:
+                    raise ValueError("duplicate learning source in snapshot")
+                restored_sources[source.source_id] = source
+            self.learning_sources = restored_sources
             self.learning_resources = {
                 item["resource_id"]: LearningResource(
                     resource_id=item["resource_id"], title=item["title"],
@@ -282,8 +291,14 @@ class EcosystemService:
         # knowledge ID against the server-side source registry and its review state.
         knowledge_id = str(payload.get("knowledge_id", "")).strip()
         source = self.learning_sources.get(knowledge_id)
-        if source is None or source.status is not LearningSourceStatus.VALIDATED or not source.knowledge_validated:
-            raise ValueError("only server-validated knowledge can generate professor activities")
+        if (
+            source is None
+            or source.status is not LearningSourceStatus.VALIDATED
+            or not source.content_verified
+            or not source.security_checked
+            or not source.knowledge_validated
+        ):
+            raise ValueError("only server-reviewed and server-admitted knowledge can generate professor activities")
         activity = self.learning_professor.build_activity(
             ProfessorActivitySpec(
                 activity_id=str(payload.get("activity_id", "")),
