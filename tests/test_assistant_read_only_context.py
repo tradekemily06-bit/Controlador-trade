@@ -392,3 +392,54 @@ def test_assistant_fiscal_categories_forward_only_approved_aggregate_fields():
         "PRIVATE-FOREIGN-NOTE",
     ):
         assert private_value not in serialized
+
+
+def test_assistant_fiscal_context_filters_nested_periods_limitations_and_semantics():
+    class FiscalWithUntrustedNestedFields:
+        def summary(self, owner_id):
+            return {
+                "name": "forged name",
+                "currency": "USD",
+                "as_of": "2026-11-05-private-suffix",
+                "total_reserved_brl": 25.0,
+                "categories": {
+                    "BR_DAY_TRADE": {"entries": 1, "rate": 20.0, "realized_result_brl": 125.0, "reserve_amount_brl": 25.0},
+                    "BR_CRYPTO": {"entries": 99, "rate": 99.0, "notes": "PRIVATE-UNKNOWN-CATEGORY"},
+                },
+                "periods": {
+                    "day": {"start": "2026-11-05", "end": "2026-11-05", "entries": 1, "realized_result_brl": 125.0, "reserve_amount_brl": 25.0, "notes": "PRIVATE-PERIOD-NOTE"},
+                    "week": {"start": "not-a-date", "end": "2026-11-05", "entries": 1, "unexpected": "PRIVATE-PERIOD-FIELD"},
+                    "private_period": {"notes": "PRIVATE-PERIOD-KEY"},
+                },
+                "limitations": ["PRIVATE-LIMITATION"],
+                "reserve_semantics": {
+                    "kind": "FORGED_KIND",
+                    "tax_liability_confirmed": True,
+                    "description": "PRIVATE-SEMANTIC-DESCRIPTION",
+                    "unexpected": "PRIVATE-SEMANTIC-FIELD",
+                },
+            }
+
+    import json
+    context = collect_read_only_context(FakeService(), FiscalWithUntrustedNestedFields(), "test-owner")
+    fiscal = context["fiscal_reserve"]
+    serialized = json.dumps(fiscal, ensure_ascii=False)
+    assert fiscal["name"] == "Reserva Fiscal"
+    assert fiscal["currency"] == "BRL"
+    assert fiscal["as_of"] == "2026-11-05"
+    assert fiscal["periods"]["day"] == {
+        "start": "2026-11-05", "end": "2026-11-05", "entries": 1,
+        "realized_result_brl": 125.0, "reserve_amount_brl": 25.0,
+    }
+    assert fiscal["periods"]["week"] == {"end": "2026-11-05", "entries": 1}
+    assert "private_period" not in fiscal["periods"]
+    assert "BR_CRYPTO" not in fiscal["categories"]
+    assert fiscal["reserve_semantics"]["kind"] == "PLANNING_ESTIMATE_ONLY"
+    assert fiscal["reserve_semantics"]["tax_liability_confirmed"] is False
+    for private_value in (
+        "PRIVATE-UNKNOWN-CATEGORY", "PRIVATE-PERIOD-NOTE", "PRIVATE-PERIOD-FIELD",
+        "PRIVATE-PERIOD-KEY", "PRIVATE-LIMITATION", "PRIVATE-SEMANTIC-DESCRIPTION",
+        "PRIVATE-SEMANTIC-FIELD", "FORGED_KIND", "forged name", "USD",
+    ):
+        assert private_value not in serialized
+
