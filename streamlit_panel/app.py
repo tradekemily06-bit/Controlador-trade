@@ -1097,7 +1097,7 @@ def show_readonly_module(module_name: str) -> None:
         if module_name == "Segurança":
             storage = data.get("production_storage", {})
             gate = data.get("production_operation_gate", {})
-            identity = data.get("identity", {})
+            identity = data.get("identity", data)
             cols = st.columns(3)
             cols[0].metric("Armazenamento", str(storage.get("state", "NÃO CONFIRMADO")))
             cols[1].metric("Gate operacional", str(gate.get("storage_state", "NÃO CONFIRMADO")))
