@@ -51,6 +51,23 @@ def test_domestic_pending_owner_scope_and_duplicate_reference(tmp_path):
         queue.add("owner-a", sample())
 
 
+def test_domestic_pending_rejects_unknown_and_foreign_category_candidates(tmp_path):
+    queue = FiscalDomesticPendingQueue(str(tmp_path / "fiscal.sqlite3"))
+    unknown = sample("BR-UNKNOWN-CATEGORY")
+    unknown["category_candidate"] = "BR_FAKE_TAX_CATEGORY"
+    with pytest.raises(ValueError, match="catálogo brasileiro permitido"):
+        queue.add("owner-a", unknown)
+
+    foreign = sample("BR-FOREIGN-CATEGORY")
+    foreign["category_candidate"] = "FOREIGN_CRYPTO"
+    with pytest.raises(ValueError, match="catálogo brasileiro permitido"):
+        queue.add("owner-a", foreign)
+
+    unspecified = sample("BR-UNSPECIFIED-CATEGORY")
+    unspecified["category_candidate"] = ""
+    assert queue.add("owner-a", unspecified)["category_candidate"] == ""
+
+
 def test_domestic_pending_validates_date_and_rejects_boolean_result(tmp_path):
     queue = FiscalDomesticPendingQueue(str(tmp_path / "fiscal.sqlite3"))
     bad_date = sample("BR-BAD-DATE")
