@@ -447,3 +447,72 @@ def test_assistant_fiscal_context_filters_nested_periods_limitations_and_semanti
     ):
         assert private_value not in serialized
 
+
+
+def test_pending_context_validates_currency_codes_and_iso_dates():
+    class UntrustedQueue:
+        def summary(self, owner_id):
+            return {
+                "total": 4,
+                "realized_results": 2,
+                "asset_amounts": 2,
+                "currencies": ["USD", "eur", "PRIVATE-CURRENCY", "💣", "USD"],
+                "as_of": "not-a-date-injected",
+                "periods": {
+                    "day": {
+                        "start": "2026-11-05<script>",
+                        "end": "2026-11-05",
+                        "total": 4,
+                        "realized_results": 2,
+                        "asset_amounts": 2,
+                    },
+                    "week": {
+                        "start": "not-a-date",
+                        "end": "2026-11-05",
+                        "total": 4,
+                    },
+                },
+                "included_in_totals": False,
+                "reserve_calculated": False,
+            }
+
+    context = collect_read_only_context(
+        FakeService(), FakeFiscalReserve(), "test-owner", UntrustedQueue()
+    )
+    pending = context["fiscal_reserve"]["foreign_pending"]
+
+    assert pending["currencies"] == ["EUR", "USD"]
+    assert pending["as_of"] == ""
+    assert pending["periods"]["day"]["start"] == "2026-11-05"
+    assert pending["periods"]["day"]["end"] == "2026-11-05"
+    assert pending["periods"]["week"]["start"] == ""
+    assert pending["periods"]["week"]["end"] == "2026-11-05"
+
+
+def test_domestic_pending_context_validates_dates():
+    class UntrustedDomesticQueue:
+        def summary(self, owner_id):
+            return {
+                "total": 1,
+                "as_of": "<script>2026-11-05",
+                "periods": {
+                    "day": {
+                        "start": "2026-99-99",
+                        "end": "2026-11-05",
+                        "total": 1,
+                        "results": 1,
+                    }
+                },
+                "included_in_totals": False,
+                "reserve_calculated": False,
+            }
+
+    context = collect_read_only_context(
+        FakeService(), FakeFiscalReserve(), "test-owner",
+        fiscal_domestic_pending_queue=UntrustedDomesticQueue(),
+    )
+    pending = context["fiscal_reserve"]["domestic_pending"]
+
+    assert pending["as_of"] == ""
+    assert pending["periods"]["day"]["start"] == ""
+    assert pending["periods"]["day"]["end"] == "2026-11-05"
