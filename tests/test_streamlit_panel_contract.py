@@ -360,17 +360,17 @@ def test_streamlit_module_dispatch_has_no_unreachable_duplicate_handlers():
     ]
     rendered = [ast.unparse(node) for node in handlers]
     for expression in (
-        'module_name == "Escola / Tutorial / Onboarding"',
-        'module_name == "Estatísticas"',
-        'module_name == "Relatórios"',
-        'module_name == "MT5 DEMO / Simulação"',
-        'module_name == "Conexões"',
-        'module_name == "Multi-Broker"',
+        "module_name == 'Escola / Tutorial / Onboarding'",
+        "module_name == 'Estatísticas'",
+        "module_name == 'Relatórios'",
+        "module_name == 'MT5 DEMO / Simulação'",
+        "module_name == 'Conexões'",
+        "module_name == 'Multi-Broker'",
     ):
         assert rendered.count(expression) == 1
-    assert 'module_name in {"Memória", "Replay"}' not in rendered
-    assert 'module_name in {"Motor de Decisão", "Estatísticas", "Relatórios"}' not in rendered
-    assert 'module_name in {"MT5 DEMO / Simulação", "Conexões", "Multi-Broker"}' not in rendered
+    assert "module_name in {'Memória', 'Replay'}" not in rendered
+    assert "module_name in {'Motor de Decisão', 'Estatísticas', 'Relatórios'}" not in rendered
+    assert "module_name in {'MT5 DEMO / Simulação', 'Conexões', 'Multi-Broker'}" not in rendered
 
 
 def test_streamlit_local_quickstart_configures_the_required_fiscal_owner_identity():
