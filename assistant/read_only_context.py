@@ -13,7 +13,7 @@ from finance.fiscal_taxonomy import fiscal_classification_catalog
 
 
 def _iso_date(value: Any) -> str:
-    if not isinstance(value, str) or re.fullmatch(r"\\d{4}-\\d{2}-\\d{2}", value) is None:
+    if not isinstance(value, str) or re.fullmatch(r"\d{4}-\d{2}-\d{2}", value) is None:
         return ""
     candidate = value[:10]
     try:
