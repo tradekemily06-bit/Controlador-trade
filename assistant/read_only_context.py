@@ -250,7 +250,7 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
     if safe_as_of:
         fiscal_context["as_of"] = safe_as_of
     total_reserved = fiscal.get("total_reserved_brl") if isinstance(fiscal, dict) else None
-    if _is_finite_number(total_reserved):
+    if _fiscal_number(total_reserved, "reserve_amount_brl"):
         fiscal_context["total_reserved_brl"] = total_reserved
     if isinstance(fiscal, dict):
         fiscal_context["categories"] = fiscal.get("categories", {}) if isinstance(fiscal.get("categories"), dict) else {}
