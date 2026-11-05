@@ -272,6 +272,12 @@ def _is_finite_number(value: Any) -> bool:
         return False
 
 
+def _safe_fiscal_count(value: Any) -> int:
+    """Render only bounded, genuine integer counts from fiscal API responses."""
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 1_000_000_000:
+        return 0
+    return value
+
 def _valid_fiscal_summary(summary: Any) -> bool:
     """Enable fiscal writes only when every required aggregate is structurally valid."""
     if not isinstance(summary, dict):
@@ -311,6 +317,34 @@ def _valid_fiscal_summary(summary: Any) -> bool:
     total = summary.get("total_reserved_brl")
     if not _is_finite_number(total) or not 0 <= total <= 1_000_000_000_000:
         return False
+    foreign_pending = summary.get("foreign_pending")
+    if foreign_pending is not None:
+        if not isinstance(foreign_pending, dict):
+            return False
+        if foreign_pending.get("available") is True:
+            if foreign_pending.get("classification_status") != "PENDING_CLASSIFICATION":
+                return False
+            if foreign_pending.get("included_in_totals") is not False or foreign_pending.get("reserve_calculated") is not False:
+                return False
+            for field in ("total", "realized_results", "asset_amounts"):
+                count = foreign_pending.get(field)
+                if isinstance(count, bool) or not isinstance(count, int) or not 0 <= count <= 1_000_000_000:
+                    return False
+            pending_periods = foreign_pending.get("periods")
+            if not isinstance(pending_periods, dict):
+                return False
+            for period in ("day", "week", "month", "year"):
+                row = pending_periods.get(period)
+                if not isinstance(row, dict):
+                    return False
+                for field in ("total", "realized_results", "asset_amounts"):
+                    count = row.get(field)
+                    if isinstance(count, bool) or not isinstance(count, int) or not 0 <= count <= 1_000_000_000:
+                        return False
+        elif foreign_pending.get("available") is not False:
+            return False
+        elif foreign_pending.get("included_in_totals") is not False or foreign_pending.get("reserve_calculated") is not False:
+            return False
     if semantics.get("kind") != "PLANNING_ESTIMATE_ONLY":
         return False
     for flag in ("tax_liability_confirmed", "monthly_tax_assessment", "monthly_loss_offsets_calculated", "irrf_credits_calculated"):
@@ -418,7 +452,7 @@ def show_fiscal() -> None:
             pending_cols = st.columns(4)
             for col, period, label in zip(pending_cols, ("day", "week", "month", "year"), ("Dia", "Semana", "Mês", "Ano")):
                 pending_period = pending_periods.get(period, {})
-                col.metric(f"Exterior pendente · {label}", int(pending_period.get("total", 0)))
+                col.metric(f"Exterior pendente · {label}", _safe_fiscal_count(pending_period.get("total", 0)))
                 col.caption(
                     f"{int(pending_period.get('realized_results', 0))} resultado(s) · "
                     f"{int(pending_period.get('asset_amounts', 0))} ativo(s) · sem cálculo"
