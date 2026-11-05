@@ -727,7 +727,8 @@ def test_assistant_decision_context_only_forwards_controlled_values():
 def test_assistant_decision_score_must_stay_within_documented_range():
     from assistant.read_only_context import _decision_summary
 
-    assert _decision_summary({"score": 0}) == {"score": 0}
+    assert _decision_summary({"score": 1}) == {"score": 1}
     assert _decision_summary({"score": 100}) == {"score": 100}
+    assert _decision_summary({"score": 0}) == {}
     assert _decision_summary({"score": -0.01}) == {}
     assert _decision_summary({"score": 100.01}) == {}
