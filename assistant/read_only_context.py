@@ -118,6 +118,27 @@ def _safe_state_token(value: Any, limit: int = 32) -> str:
     return value if re.fullmatch(r"[A-Z0-9_-]{1,32}", value) else "UNKNOWN"
 
 
+
+
+_COMPONENT_KEYS = (
+    "decision_engine", "memory", "replay", "statistics", "risk_gate",
+    "automation", "learning", "news", "mt5_demo", "real", "saas",
+    "production_storage", "production_operation_gate",
+    "trusted_identity_provider", "tenant_isolation",
+)
+
+
+def _component_summary(value: Any) -> dict[str, str]:
+    """Forward only known component names and bounded machine-state tokens."""
+    if not isinstance(value, dict):
+        return {}
+    return {
+        key: _safe_state_token(value.get(key), 48)
+        for key in _COMPONENT_KEYS
+        if key in value
+    }
+
+
 def _risk_summary(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {"available": False}
@@ -366,12 +387,9 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
     fiscal_context["domestic_pending"] = domestic_pending_context
     recent_decisions = service.memory_view(limit=5)
 
-    components = status.get("components", {})
-    safe_components = {}
-    if isinstance(components, dict):
-        for key, value in components.items():
-            if isinstance(value, (str, int, float, bool)):
-                safe_components[str(key)[:64]] = str(value)[:48] if isinstance(value, str) else value
+    # Component labels are a fixed application contract. Do not forward
+    # arbitrary keys or free-form status strings from service/provider data.
+    safe_components = _component_summary(status.get("components"))
 
     return {
         "as_of": datetime.now(timezone.utc).isoformat(),
