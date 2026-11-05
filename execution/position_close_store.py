@@ -19,7 +19,7 @@ except ImportError:  # pragma: no cover - POSIX fallback
 
 class PositionCloseState(str, Enum):
     REQUESTED = "REQUESTED"
-    ACCEPTED = "ACCEPTED"  # Legacy persisted value; new reconciliations use CLOSED.
+    ACCEPTED = "ACCEPTED"  # Legacy persisted value.
     CLOSED = "CLOSED"
     OPEN = "OPEN"
     UNKNOWN = "UNKNOWN"
@@ -33,16 +33,17 @@ class PositionCloseRecord:
     updated_at: datetime
     close_external_id: str | None = None
     message: str = ""
+    attempt: int = 1
 
 
 class PositionCloseStore:
-    """Durable, fail-closed idempotency boundary for position close requests."""
+    """Durable, append-only attempt history and fail-closed close idempotency."""
 
     def __init__(self, path: str | Path) -> None:
         if path is None:
             raise ValueError("path é obrigatório.")
         self.path = Path(path)
-        self._records: dict[str, PositionCloseRecord] = {}
+        self._records: dict[tuple[str, int], PositionCloseRecord] = {}
         self._load()
 
     @staticmethod
@@ -55,6 +56,8 @@ class PositionCloseStore:
             raise ValueError("estado de fechamento inválido.")
         if not isinstance(record.updated_at, datetime):
             raise ValueError("timestamp de fechamento inválido.")
+        if isinstance(record.attempt, bool) or not isinstance(record.attempt, int) or record.attempt < 1:
+            raise ValueError("número da tentativa de fechamento inválido.")
         if record.close_external_id is not None and (
             not isinstance(record.close_external_id, str) or not record.close_external_id.strip()
         ):
@@ -69,7 +72,7 @@ class PositionCloseStore:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
             if not isinstance(payload, list):
                 raise ValueError
-            records: dict[str, PositionCloseRecord] = {}
+            records: dict[tuple[str, int], PositionCloseRecord] = {}
             for item in payload:
                 if not isinstance(item, dict):
                     raise ValueError
@@ -80,32 +83,40 @@ class PositionCloseStore:
                     updated_at=datetime.fromisoformat(item["updated_at"]),
                     close_external_id=item.get("close_external_id"),
                     message=item.get("message", ""),
+                    attempt=item.get("attempt", 1),
                 )
                 self._validate(record)
-                if record.request_id in records:
+                key = (record.request_id, record.attempt)
+                if key in records:
                     raise ValueError
-                records[record.request_id] = record
+                records[key] = record
             self._records = records
         except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
             raise ValueError("registro persistido de fechamento inválido.") from exc
+
+    def _latest(self, request_id: str) -> PositionCloseRecord | None:
+        matches = [
+            record for (stored_id, _), record in self._records.items()
+            if stored_id == request_id
+        ]
+        return max(matches, key=lambda record: record.attempt) if matches else None
 
     def get(self, request_id: str) -> PositionCloseRecord | None:
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id não pode ser vazio.")
         self._load()
-        return self._records.get(request_id)
+        return self._latest(request_id)
 
     def begin(self, request_id: str, external_id: str) -> PositionCloseRecord:
-        record = PositionCloseRecord(
-            request_id=request_id,
-            external_id=external_id,
-            state=PositionCloseState.REQUESTED,
-            updated_at=datetime.now(timezone.utc),
-        )
-        self._validate(record)
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("request_id de fechamento inválido.")
+        if not isinstance(external_id, str) or not external_id.strip():
+            raise ValueError("external_id de fechamento inválido.")
+        result: PositionCloseRecord | None = None
 
         def mutation() -> None:
-            previous = self._records.get(request_id)
+            nonlocal result
+            previous = self._latest(request_id)
             if previous is not None:
                 if previous.external_id != external_id:
                     raise ValueError("request_id já possui fechamento associado a outro external_id.")
@@ -113,10 +124,22 @@ class PositionCloseStore:
                     raise ValueError(
                         "fechamento já solicitado ou concluído; nova tentativa automática bloqueada até reconciliação."
                     )
-            self._records[request_id] = record
+                attempt = previous.attempt + 1
+            else:
+                attempt = 1
+            result = PositionCloseRecord(
+                request_id=request_id,
+                external_id=external_id,
+                state=PositionCloseState.REQUESTED,
+                updated_at=datetime.now(timezone.utc),
+                attempt=attempt,
+            )
+            self._validate(result)
+            self._records[(request_id, attempt)] = result
 
         self._mutate_locked(mutation)
-        return record
+        assert result is not None
+        return result
 
     def finish(
         self,
@@ -134,7 +157,7 @@ class PositionCloseStore:
 
         def mutation() -> None:
             nonlocal result
-            previous = self._records.get(request_id)
+            previous = self._latest(request_id)
             if previous is None:
                 raise ValueError("solicitação de fechamento não encontrada.")
             if previous.state is not PositionCloseState.REQUESTED:
@@ -146,9 +169,10 @@ class PositionCloseStore:
                 updated_at=datetime.now(timezone.utc),
                 close_external_id=close_external_id,
                 message=message,
+                attempt=previous.attempt,
             )
             self._validate(result)
-            self._records[request_id] = result
+            self._records[(request_id, previous.attempt)] = result
 
         self._mutate_locked(mutation)
         assert result is not None
@@ -169,7 +193,7 @@ class PositionCloseStore:
 
         def mutation() -> None:
             nonlocal result
-            previous = self._records.get(request_id)
+            previous = self._latest(request_id)
             if previous is None:
                 raise ValueError("solicitação de fechamento não encontrada.")
             if previous.state not in (PositionCloseState.REQUESTED, PositionCloseState.UNKNOWN):
@@ -181,9 +205,10 @@ class PositionCloseStore:
                 updated_at=datetime.now(timezone.utc),
                 close_external_id=previous.close_external_id,
                 message=message,
+                attempt=previous.attempt,
             )
             self._validate(result)
-            self._records[request_id] = result
+            self._records[(request_id, previous.attempt)] = result
 
         self._mutate_locked(mutation)
         assert result is not None
@@ -191,7 +216,21 @@ class PositionCloseStore:
 
     def records(self) -> tuple[PositionCloseRecord, ...]:
         self._load()
-        return tuple(self._records[key] for key in sorted(self._records))
+        latest: dict[str, PositionCloseRecord] = {}
+        for record in self._records.values():
+            current = latest.get(record.request_id)
+            if current is None or record.attempt > current.attempt:
+                latest[record.request_id] = record
+        return tuple(latest[key] for key in sorted(latest))
+
+    def history(self, request_id: str | None = None) -> tuple[PositionCloseRecord, ...]:
+        self._load()
+        records = self._records.values()
+        if request_id is not None:
+            if not isinstance(request_id, str) or not request_id.strip():
+                raise ValueError("request_id não pode ser vazio.")
+            records = (record for record in records if record.request_id == request_id)
+        return tuple(sorted(records, key=lambda record: (record.request_id, record.attempt)))
 
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -199,14 +238,15 @@ class PositionCloseStore:
         temporary.write_text(
             json.dumps([
                 {
-                    "request_id": r.request_id,
-                    "external_id": r.external_id,
-                    "state": r.state.value,
-                    "updated_at": r.updated_at.isoformat(),
-                    "close_external_id": r.close_external_id,
-                    "message": r.message,
+                    "request_id": record.request_id,
+                    "external_id": record.external_id,
+                    "state": record.state.value,
+                    "updated_at": record.updated_at.isoformat(),
+                    "close_external_id": record.close_external_id,
+                    "message": record.message,
+                    "attempt": record.attempt,
                 }
-                for r in (self._records[key] for key in sorted(self._records))
+                for record in self.history()
             ], ensure_ascii=False, indent=2, sort_keys=True),
             encoding="utf-8",
         )
