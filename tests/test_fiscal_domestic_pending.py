@@ -170,3 +170,21 @@ def test_domestic_and_foreign_review_catalogs_are_disjoint():
     from finance.fiscal_taxonomy import BRAZIL_CATEGORIES
 
     assert set(BRAZIL_CATEGORIES).isdisjoint(FOREIGN_REVIEW_CANDIDATES)
+
+
+def test_domestic_review_rejects_coerced_non_text_fields(tmp_path):
+    queue = FiscalDomesticPendingQueue(str(tmp_path / "strict-domestic-review.sqlite3"))
+    item = queue.add("owner-a", sample())
+    for field in (
+        "candidate_classification", "confirmed_jurisdiction", "reviewer_name",
+        "reviewer_role", "professional_registration", "evidence_reference", "review_notes",
+    ):
+        payload = review_payload()
+        payload[field] = ["texto", "indevido"]
+        with pytest.raises(ValueError, match="deve ser texto"):
+            queue.record_review("owner-a", item["pending_id"], payload)
+
+    with pytest.raises(ValueError, match="pending_id inválido"):
+        queue.record_review("owner-a", 123, review_payload())
+    with pytest.raises(ValueError, match="pending_id inválido"):
+        queue.list_reviews("owner-a", 123)
