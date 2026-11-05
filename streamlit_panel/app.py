@@ -777,21 +777,59 @@ def show_fiscal() -> None:
 
 def show_market_analysis() -> None:
     st.subheader("Análise de Mercado")
-    st.caption("Consulta de candles do MT5 DEMO e análise. Esta tela não envia ordens nem autoriza execução.")
+    st.caption("Disponibilidade de ativos e sessões consultada no MT5 DEMO. Capacidade de negociar no fim de semana não significa mercado aberto agora. Esta tela não envia ordens.")
     try:
         assets_payload = api("/api/market/assets")
-        assets = assets_payload.get("assets", [])
+        raw_assets = assets_payload.get("assets", [])
+        assets = [item for item in raw_assets if isinstance(item, dict)] if isinstance(raw_assets, list) else []
         symbols = []
-        for asset in assets:
+        for asset in raw_assets if isinstance(raw_assets, list) else []:
             if isinstance(asset, str):
                 symbols.append(asset)
             elif isinstance(asset, dict) and asset.get("symbol"):
                 symbols.append(str(asset["symbol"]))
+        st.caption(f"Fonte declarada: {assets_payload.get('source', '—')} · {int(assets_payload.get('count', len(raw_assets) if isinstance(raw_assets, list) else 0))} ativo(s) retornado(s)")
+        if assets:
+            st.markdown("#### Universo de ativos e disponibilidade")
+            asset_rows = [{
+                "Ativo": item.get("symbol") or "—",
+                "Classe": item.get("asset_class") or "—",
+                "Visível": "SIM" if item.get("visible") is True else "NÃO",
+                "Negociável": "SIM" if item.get("tradeable") is True else "NÃO",
+                "Cotação": "DISPONÍVEL" if item.get("quote_available") is True else "INDISPONÍVEL",
+                "Estado da sessão": item.get("state") or "DESCONHECIDO",
+                "Pode operar 24/7": "SIM · capacidade" if item.get("is_24_7_capable") is True or item.get("weekend_capable") is True else "NÃO CONFIRMADO",
+                "Adequação": item.get("suitability") or "NÃO AVALIADA",
+                "Motivo": item.get("suitability_rationale") or item.get("reason") or "—",
+                "Lacunas": "; ".join(str(value) for value in (item.get("suitability_gaps") or [])) or "—",
+            } for item in assets]
+            st.dataframe(asset_rows, use_container_width=True, hide_index=True)
+            st.caption("A indicação 24/7 representa capacidade cadastrada do instrumento, não garantia de cotação, liquidez ou execução contínua. Confirme o estado da sessão e a cotação atuais.")
+        elif symbols:
+            st.dataframe([{"Ativo": symbol, "Disponibilidade": "Retornado pelo runtime; detalhes não fornecidos"} for symbol in symbols], use_container_width=True, hide_index=True)
         if not symbols:
             st.warning("O runtime não disponibilizou ativos do MT5 DEMO. Verifique a conexão e a fonte de candles.")
             return
+        try:
+            news = api("/api/news?limit=10")
+            st.markdown("#### Notícias e eventos")
+            if str(news.get("provider") or "").upper() == "UNCONFIGURED" or news.get("live") is not True:
+                st.info("Feed de notícias em tempo real não está configurado. Não considere filtro de notícias como ativo.")
+            items = news.get("items", [])
+            if items:
+                st.dataframe([{
+                    "Título": item.get("title") or item.get("headline") or "—",
+                    "Fonte": item.get("source") or "—",
+                    "Horário": item.get("timestamp") or item.get("published_at") or "—",
+                    "Impacto": item.get("impact") or item.get("severity") or "—",
+                    "Ativo": item.get("symbol") or "—",
+                } for item in items if isinstance(item, dict)], use_container_width=True, hide_index=True)
+            else:
+                st.caption("Nenhum item de notícia disponível.")
+        except Exception as exc:
+            st.warning(f"Feed de notícias indisponível: {exc}. A ausência do feed não confirma que eventos foram filtrados.")
         with st.form("market_analysis_form"):
-            symbol = st.selectbox("Ativo", sorted(set(symbols)))
+            symbol = st.selectbox("Ativo para análise", sorted(set(symbols)))
             timeframe = st.selectbox("Período gráfico", ["1m", "5m", "15m", "30m", "1h", "4h", "1d"], index=1)
             candle_limit = st.slider("Quantidade de candles", min_value=30, max_value=500, value=100, step=10)
             confirmed = st.checkbox("Confirmo que esta análise é somente para estudo em DEMO/SIMULAÇÃO.")
@@ -800,8 +838,6 @@ def show_market_analysis() -> None:
             if not confirmed:
                 st.error("Confirme o uso somente em DEMO/SIMULAÇÃO para solicitar a análise.")
             else:
-                # A solicitação nova invalida o sinal anterior até que a análise
-                # atual termine. Se o runtime falhar, o C não exibe dado obsoleto.
                 st.session_state.pop("market_analysis_result", None)
                 try:
                     result = api("/api/runtime/analysis", "POST", {"symbol": symbol, "timeframe": timeframe, "limit": candle_limit})
@@ -826,6 +862,8 @@ def show_market_analysis() -> None:
                 st.dataframe(candles[-100:], use_container_width=True, hide_index=True)
     except Exception as exc:
         st.warning(f"Não foi possível carregar ativos do MT5 DEMO: {exc}")
+
+
 
 
 def show_replay() -> None:
