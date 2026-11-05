@@ -70,7 +70,7 @@ def _decision_summary(item: Any) -> dict[str, Any]:
     }:
         safe["signal"] = signal
     score = item.get("score")
-    if _is_finite_number(score):
+    if _is_finite_number(score) and 0 <= score <= 100:
         safe["score"] = score
     confirmed = item.get("confirmed")
     if isinstance(confirmed, bool):
