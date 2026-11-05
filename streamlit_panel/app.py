@@ -272,8 +272,20 @@ def _valid_fiscal_summary(summary: Any) -> bool:
     if not isinstance(categories, dict) or not isinstance(periods, dict) or not isinstance(semantics, dict):
         return False
     brazil = categories.get("BR_DAY_TRADE")
-    if not isinstance(brazil, dict):
+    foreign = categories.get("FOREIGN_FINANCIAL_ASSET")
+    if not isinstance(brazil, dict) or not isinstance(foreign, dict):
         return False
+    foreign_entries = foreign.get("entries")
+    if isinstance(foreign_entries, bool) or not isinstance(foreign_entries, int) or foreign_entries < 0:
+        return False
+    if foreign.get("classification_status") != "PENDING_CLASSIFICATION":
+        return False
+    if foreign.get("rate_available") is not False:
+        return False
+    for field in ("realized_result_brl", "reserve_amount_brl"):
+        value = foreign.get(field)
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not isfinite(value) or value != 0:
+            return False
     rate = brazil.get("rate")
     if isinstance(rate, bool) or not isinstance(rate, (int, float)) or not isfinite(rate) or not 0 <= rate <= 100:
         return False
