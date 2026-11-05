@@ -600,6 +600,15 @@ def test_streamlit_learning_modules_show_distinct_existing_data_without_trade_au
     assert "Materiais do laboratório" in laboratory
     assert "Histórico de tentativas" in laboratory
     assert "Observações" in laboratory
+    assert 'api("/api/learning/resources", "POST"' in laboratory
+    assert 'api("/api/learning/activities", "POST"' in laboratory
+    assert 'api("/api/learning/attempts", "POST"' in laboratory
+    assert 'api("/api/learning/observations", "POST"' in laboratory
+    assert "learning_resource_create_form" in laboratory
+    assert "learning_activity_create_form" in laboratory
+    assert "learning_attempt_create_form" in laboratory
+    assert "learning_observation_create_form" in laboratory
+    assert '"validated": False' in laboratory
     assert "Execução permitida: NÃO." in laboratory
     assert "Descobertas não alteram sinais, filtros ou parâmetros de execução." in laboratory
     assert '("Laboratório", ("Laboratório de aprendizado", "/api/learning"))' not in source
