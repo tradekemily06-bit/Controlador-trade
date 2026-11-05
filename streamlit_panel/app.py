@@ -293,16 +293,24 @@ def _valid_fiscal_summary(summary: Any) -> bool:
             value = row.get(field)
             if isinstance(value, bool) or not isinstance(value, (int, float)) or not isfinite(value):
                 return False
+        reserve_amount = row.get("reserve_amount_brl")
+        if reserve_amount < 0:
+            return False
+        dates = []
         for field in ("start", "end"):
             value = row.get(field)
             if not isinstance(value, str) or len(value) != 10:
                 return False
             try:
                 from datetime import date
-                if date.fromisoformat(value).isoformat() != value:
+                parsed_date = date.fromisoformat(value)
+                if parsed_date.isoformat() != value:
                     return False
+                dates.append(parsed_date)
             except ValueError:
                 return False
+        if dates[0] > dates[1]:
+            return False
     return True
 
 
