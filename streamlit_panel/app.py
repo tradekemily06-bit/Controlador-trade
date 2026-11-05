@@ -301,7 +301,13 @@ def _valid_pending_queue_summary(summary: Any, result_field: str) -> bool:
     periods = summary.get("periods")
     if not isinstance(periods, dict):
         return False
-    for name in ("day", "week", "month", "year"):
+    expected_periods = {
+        "day": (as_of, as_of),
+        "week": (date.fromordinal(as_of.toordinal() - as_of.weekday()), as_of),
+        "month": (as_of.replace(day=1), as_of),
+        "year": (as_of.replace(month=1, day=1), as_of),
+    }
+    for name, (expected_start, expected_end) in expected_periods.items():
         row = periods.get(name)
         if not isinstance(row, dict):
             return False
@@ -317,7 +323,7 @@ def _valid_pending_queue_summary(summary: Any, result_field: str) -> bool:
                 dates.append(parsed)
             except ValueError:
                 return False
-        if dates[0] > dates[1] or dates[1] > as_of:
+        if dates != [expected_start, expected_end]:
             return False
         for field in ("total", result_field):
             value = row.get(field)
