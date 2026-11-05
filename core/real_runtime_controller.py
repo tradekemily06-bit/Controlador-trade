@@ -14,7 +14,10 @@ from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState
-from execution.ports import (\n    ExecutionMode, ExecutionRequest, PositionCloseObservation,\n    PositionCloseObservationStatus,\n)
+from execution.ports import (
+    ExecutionMode, ExecutionRequest, PositionCloseObservation,
+    PositionCloseObservationStatus,
+)
 from execution.position_close_store import PositionCloseState, PositionCloseStore
 from execution.real_gateway import RealExecutionGateway, RealGatewayResult
 from execution.default_registry import IC_MARKETS_MT5_REAL, build_real_registry
