@@ -352,7 +352,7 @@ def test_streamlit_local_quickstart_configures_the_required_fiscal_owner_identit
     runtime_start = 'py -3.12 app.py'
     assert command in readme
     assert readme.index(command) < readme.index(runtime_start)
-    assert "produção deve usar a identidade exata autenticada pelo Cloudflare Access" in readme
+    assert "Configure `CONTROLADOR_SINGLE_USER_IDENTITY` com a identidade autorizada pelo Cloudflare Access." in readme
 
 
 def test_streamlit_operational_modules_use_live_read_only_runtime_endpoints():
