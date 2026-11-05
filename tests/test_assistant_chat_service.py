@@ -200,3 +200,64 @@ def test_assistant_never_describes_user_configured_planning_rate_as_verified_tax
         "taxa de planejamento configurada pelo usuário" in chat_module.SYSTEM_PROMPT
     )
     assert "não uma alíquota oficial verificada pelo sistema" in chat_module.SYSTEM_PROMPT
+
+
+
+def test_non_json_context_is_rejected_before_user_message_is_persisted(monkeypatch):
+    class ExplosiveString:
+        def __str__(self):
+            raise AssertionError("unexpected context objects must not be stringified")
+
+    store = FakeStore()
+    completion = FakeCompletion()
+    assistant = _assistant(store, completion, monkeypatch)
+
+    monkeypatch.setattr(
+        chat_module,
+        "collect_read_only_context",
+        lambda *args, **kwargs: {"unexpected": ExplosiveString()},
+    )
+
+    try:
+        assistant.ask(
+            identity="single:owner",
+            message="Pergunta privada",
+            fiscal_owner_id="single:owner",
+        )
+    except AssistantUnavailableError as exc:
+        assert str(exc) == (
+            "Contexto do ecossistema indisponível; mensagem não foi enviada."
+        )
+    else:
+        raise AssertionError("non-JSON context must fail closed")
+
+    assert store.messages == []
+    assert completion.calls == []
+
+
+def test_non_finite_context_is_rejected_before_user_message_is_persisted(monkeypatch):
+    store = FakeStore()
+    completion = FakeCompletion()
+    assistant = _assistant(store, completion, monkeypatch)
+
+    monkeypatch.setattr(
+        chat_module,
+        "collect_read_only_context",
+        lambda *args, **kwargs: {"unexpected": float("nan")},
+    )
+
+    try:
+        assistant.ask(
+            identity="single:owner",
+            message="Pergunta privada",
+            fiscal_owner_id="single:owner",
+        )
+    except AssistantUnavailableError as exc:
+        assert str(exc) == (
+            "Contexto do ecossistema indisponível; mensagem não foi enviada."
+        )
+    else:
+        raise AssertionError("non-finite context must fail closed")
+
+    assert store.messages == []
+    assert completion.calls == []
