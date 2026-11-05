@@ -172,6 +172,14 @@ def show_assistant() -> None:
         "As mensagens também ficam armazenadas no histórico local do Assistente no servidor do Ecossistema. "
         "A chave permanece no servidor. Não envie senhas, códigos de acesso ou dados bancários sensíveis."
     )
+    consent_to_openai = st.checkbox(
+        "Autorizo enviar minha pergunta, as mensagens recentes desta conversa e o resumo operacional filtrado à OpenAI para gerar a resposta.",
+        key="assistant_openai_consent",
+        help="Sem esta autorização, o campo de consulta permanece desabilitado. A chave da API continua somente no servidor.",
+    )
+    if not consent_to_openai:
+        st.info("Para usar o Assistente, leia o aviso de privacidade e autorize explicitamente o envio do contexto descrito acima.")
+
     if "assistant_history" not in st.session_state:
         st.session_state.assistant_history = []
 
@@ -228,7 +236,7 @@ def show_assistant() -> None:
 
     prompt = st.chat_input(
         "Pergunte sobre o Ecossistema, risco ou Reserva Fiscal",
-        disabled=not assistant_available,
+        disabled=(not assistant_available) or (not consent_to_openai),
     )
     if prompt:
         st.session_state.assistant_history.append({"role": "user", "content": prompt})
