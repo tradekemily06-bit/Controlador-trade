@@ -6,15 +6,25 @@ Esta é a interface Streamlit do Controlador-Trader destinada a reunir o painel 
 
 No diretório raiz do repositório:
 
-1. Instale as dependências do painel:
+1. Instale as dependências do runtime (inclui o cliente OpenAI usado pelo Assistente):
+
+   `py -3.12 -m pip install -r requirements.txt`
+
+2. Instale as dependências do painel Streamlit:
 
    `py -3.12 -m pip install -r streamlit_panel/requirements.txt`
 
-2. Inicie o runtime do Ecossistema em um primeiro PowerShell:
+3. Se este computador Windows também for hospedar a conexão MT5 DEMO, instale o pacote Python do MetaTrader 5 e confirme que o terminal MT5 está instalado e em execução:
+
+   `py -3.12 -m pip install MetaTrader5`
+
+   Esta dependência é específica do ambiente Windows com terminal MT5; instalar o Streamlit, por si só, não instala nem conecta o terminal.
+
+4. Inicie o runtime do Ecossistema em um primeiro PowerShell:
 
    `$env:CONTROLADOR_REMOTE_ACCESS_REQUIRED="false"; $env:CONTROLADOR_LOCAL_MUTATIONS_ALLOWED="true"; py -3.12 app.py`
 
-3. Em um segundo PowerShell, na mesma pasta do projeto, inicie o painel:
+5. Em um segundo PowerShell, na mesma pasta do projeto, inicie o painel:
 
    `py -3.12 -m streamlit run streamlit_panel/app.py --server.address 127.0.0.1 --server.port 8501`
 
@@ -48,3 +58,28 @@ A autorização local acima é somente para desenvolvimento no próprio computad
 - As quatro áreas visuais do Figma permanecem como referência; o Assistente é um módulo funcional próprio em MAIS / ADMIN, sem alterar o JSON ou inventar uma quinta área visual.
 - Não modificar nem recriar as imagens ou o arquivo original do Figma. A validação visual só poderá avançar quando as cinco imagens originais forem disponibilizadas para comparação, mantendo os arquivos intactos.
 - O Streamlit é acessado como painel web e conversa com o runtime do Ecossistema; não é desenhado nativamente sobre o gráfico MT5. A conexão funcional com MT5 deve ser validada no runtime DEMO antes do uso operacional.
+
+## Acesso por um único link e continuidade com o notebook desligado
+
+**Este acesso remoto ainda não está implantado nem validado.** A instalação local descrita acima depende de dois processos no computador e só fica disponível enquanto o runtime e o Streamlit estiverem em execução. Não existe, neste estado do repositório, um link público de produção pronto para uso no celular.
+
+Para atingir o objetivo de acessar o mesmo painel pelo celular e pelo notebook sem manter o notebook pessoal ligado, a implantação precisa manter os componentes necessários em infraestrutura remota:
+
+- Hospedar o Streamlit e o runtime/API como serviços persistentes, com comunicação privada entre eles. O painel deve apontar CONTROLADOR_API_BASE_URL para a API privada e confiável.
+- O runtime escuta em 127.0.0.1 por padrão. CONTROLADOR_BIND_HOST pode alterar o endereço de escuta; só configurar 0.0.0.0 quando o serviço estiver isolado em rede privada e protegido por proxy autenticado/firewall. Nunca publicar a porta 8000 diretamente na internet.
+- Proteger o acesso web e a API com o mesmo provedor de identidade confiável. O proxy precisa remover cabeçalhos de identidade fornecidos pelo visitante e inserir o cabeçalho autenticado; manter CONTROLADOR_REMOTE_ACCESS_REQUIRED=true, CONTROLADOR_TRUSTED_IDENTITY_HEADER e CONTROLADOR_SINGLE_USER_IDENTITY coerentes nos serviços.
+- Manter armazenamento persistente e backups protegidos para .runtime, banco fiscal e histórico do Assistente. Não usar armazenamento efêmero para esses dados.
+- Se as operações MT5 precisarem continuar enquanto o notebook pessoal estiver desligado, o terminal MT5 e o adaptador DEMO também precisam executar em uma máquina Windows/VPS continuamente ligada e validada. Hospedar somente o Streamlit não mantém o MT5 conectado.
+- Validar saúde, autenticação, isolamento de identidade, persistência após reinício, conectividade MT5 DEMO e bloqueio REAL antes de liberar o link para uso.
+
+Não foi feita implantação, não foram criadas credenciais, não foi aberto acesso público e nenhuma ordem foi enviada. A escolha do provedor e a configuração de produção permanecem pendentes.
+
+## Integração funcional dentro do gráfico MT5
+
+O repositório também contém a interface nativa do MT5 em `mql5/Experts/ControladorTrading/Controlador-Trading.mq5`. Ela é um Expert Advisor (EA) que desenha controles reais no gráfico com objetos MQL5, trata cliques em `OnChartEvent`, atualiza dados por `OnTimer` e consulta o runtime por HTTP usando `WebRequest`. Portanto, a interface do MT5 não é uma imagem estática.
+
+A arquitetura tem dois clientes ligados ao mesmo runtime:
+- **MT5:** o EA MQL5 é a camada nativa que fica dentro do gráfico e apresenta controles e dados operacionais.
+- **Streamlit:** é a interface web complementar para as áreas do Ecossistema, incluindo Reserva Fiscal e Assistente, conectada à mesma API/runtime.
+
+**Limite importante:** o Streamlit não é executado dentro do gráfico MT5 e não deve ser descrito como se fosse. A camada que aparece dentro do gráfico é o EA MQL5. As duas interfaces só podem ser consideradas integradas ponta a ponta depois de validar que consultam e atualizam o mesmo estado do runtime, com autenticação e permissões seguras. O EA atualmente usa por padrão `http://127.0.0.1:8000`; esse endereço local exige que o runtime esteja ativo no mesmo computador. Para uso remoto, a arquitetura precisa ser adaptada com segurança, sem expor a API diretamente.

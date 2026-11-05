@@ -422,3 +422,56 @@ def test_streamlit_foreign_pending_table_displays_fx_evidence_as_not_applied():
     assert 'if fx_conversion_method == "NOT_CONVERTED":' in source
     assert 'if fx_method_signed == "NOT_CONVERTED":' in source
     assert "há uma cotação informada, mas o método está marcado como ainda não convertido." in source
+
+
+def test_streamlit_documents_remote_single_link_and_persistent_mt5_requirements():
+    readme = (PANEL_DIR / "README.md").read_text(encoding="utf-8")
+    assert "Este acesso remoto ainda não está implantado nem validado." in readme
+    assert "dois processos no computador" in readme
+    assert "CONTROLADOR_BIND_HOST" in readme
+    assert "Nunca publicar a porta 8000 diretamente na internet." in readme
+    assert "armazenamento persistente e backups protegidos" in readme
+    assert "máquina Windows/VPS continuamente ligada e validada" in readme
+    assert "não mantém o MT5 conectado" in readme
+    assert "Não foi feita implantação" in readme
+
+
+def test_streamlit_setup_documents_runtime_openai_and_windows_mt5_dependencies():
+    readme = (PANEL_DIR / "README.md").read_text(encoding="utf-8")
+    assert "py -3.12 -m pip install -r requirements.txt" in readme
+    assert "cliente OpenAI usado pelo Assistente" in readme
+    assert "py -3.12 -m pip install MetaTrader5" in readme
+    assert "terminal MT5 está instalado e em execução" in readme
+
+
+def test_mt5_native_panel_is_real_mql5_client_of_shared_runtime():
+    repo_root = PANEL_DIR.parent
+    ea = (repo_root / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    readme = (PANEL_DIR / "README.md").read_text(encoding="utf-8")
+    assert 'WebRequest(method,InpRuntimeUrl+path' in ea
+    assert "void OnChartEvent(" in ea
+    assert "void OnTimer()" in ea
+    assert '"/api/health"' in ea
+    assert '"/api/runtime/analysis"' in ea
+    assert "não é executado dentro do gráfico MT5" in readme
+    assert "não é uma imagem estática" in readme
+
+
+def test_mt5_native_panel_restores_last_user_selected_visibility_state():
+    repo_root = PANEL_DIR.parent
+    ea = (repo_root / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    loader = ea.split("void LoadPanelVisibility(){", 1)[1].split("\n}", 1)[0]
+    assert "GlobalVariableCheck(key)" in loader
+    assert "GlobalVariableGet(key)>0.5" in loader
+    assert "GlobalVariableSet(key,0.0)" in loader
+    assert "panel_visible=false;" not in loader.split("else{", 1)[0]
+
+
+
+def test_mt5_native_panel_never_offers_or_persists_real_mode():
+    repo_root = PANEL_DIR.parent
+    ea = (repo_root / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    assert 'SetButton(Obj("MODE_TOGGLE")' not in ea
+    assert 'sparam==Obj("MODE_TOGGLE")' not in ea
+    assert '\\"selected_mode\\":\\"DEMO\\"' in ea
+    assert 'selected_mode="DEMO";' in ea
