@@ -330,8 +330,8 @@ class RealRuntimeController:
         # Persist the intent before touching the broker. A crash or ambiguous
         # adapter result remains blocked from automatic retry until reconciled.
         self.position_closes.begin(request_id, external_id.strip())
-        adapter = self.registry.get(self.broker_id)
         try:
+            adapter = self.registry.get(self.broker_id)
             close = adapter.close_position(
                 external_id.strip(),
                 expected_account_fingerprint=record.account_fingerprint,
