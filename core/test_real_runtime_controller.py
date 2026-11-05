@@ -251,3 +251,42 @@ def test_real_close_records_unknown_and_blocks_retry_after_adapter_exception(tmp
             external_id="ticket-789",
         )
     assert retry_adapter.calls == 0
+
+
+def test_real_controller_reports_unresolved_close_and_fails_closed_for_new_entries(tmp_path):
+    from datetime import datetime, timezone
+
+    from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState
+    from execution.position_close_store import PositionCloseState
+
+    runtime = FakeRuntime(tmp_path)
+    runtime.execution_ledger.reserve("req-unknown-close", cycle_id="cycle-unknown-close")
+    runtime.execution_ledger.bind_external_id("req-unknown-close", "ticket-999")
+    runtime.execution_ledger.mark_accepted("req-unknown-close")
+    runtime.execution_lifecycle.put(
+        ExecutionLifecycleRecord(
+            "req-unknown-close",
+            ExecutionLifecycleState.ACCEPTED,
+            datetime.now(timezone.utc),
+            "ordem aceita",
+        )
+    )
+    controller = RealRuntimeController(runtime=runtime, root=tmp_path)
+    controller.position_closes.begin("req-unknown-close", "ticket-999")
+    controller.position_closes.finish(
+        "req-unknown-close",
+        PositionCloseState.UNKNOWN,
+        message="resposta do broker incerta",
+    )
+
+    status = controller.status()
+    assert status["position_close_recovery_required"] is True
+    assert status["unresolved_position_closes"] == 1
+    assert controller._position_close_recovery_required() is True
+
+
+def test_real_controller_treats_corrupt_close_history_as_recovery_required(tmp_path):
+    runtime = FakeRuntime(tmp_path)
+    controller = RealRuntimeController(runtime=runtime, root=tmp_path)
+    controller.position_closes.path.write_text("{invalid", encoding="utf-8")
+    assert controller._position_close_recovery_required() is True
