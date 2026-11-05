@@ -116,3 +116,27 @@ def test_chat_api_rejects_missing_trusted_identity_before_assistant_call(tmp_pat
 
     assert status.startswith("401")
     assert payload["error"] == "trusted identity is required"
+
+
+def test_chat_api_rejects_missing_or_false_openai_consent_before_assistant_call(tmp_path, monkeypatch):
+    class Assistant:
+        def ask(self, *args, **kwargs):
+            raise AssertionError("Assistente não pode ser chamado sem consentimento explícito")
+
+    _configure(monkeypatch, Assistant())
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", tmp_path / "fiscal.sqlite3")
+
+    for payload in (
+        {"message": "Explique minha Reserva Fiscal"},
+        {"message": "Explique minha Reserva Fiscal", "consent_to_openai": False},
+        {"message": "Explique minha Reserva Fiscal", "consent_to_openai": "true"},
+    ):
+        status, response = _request(
+            "/api/assistant/chat",
+            method="POST",
+            payload=payload,
+        )
+        assert status.startswith("400")
+        assert response["error"] == (
+            "Consentimento explícito para envio do contexto à OpenAI é obrigatório."
+        )
