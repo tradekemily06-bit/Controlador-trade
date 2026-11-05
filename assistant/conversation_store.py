@@ -122,7 +122,7 @@ class AssistantConversationStore:
                     raise PermissionError("conversa não encontrada")
             else:
                 conversation_id = str(uuid.uuid4())
-                title = message_content.replace("\\n", " ")[:72] or "Nova conversa"
+                title = message_content.replace("\n", " ")[:72] or "Nova conversa"
                 db.execute(
                     "INSERT INTO conversations(id,owner,title) VALUES(?,?,?)",
                     (conversation_id, owner, title),
