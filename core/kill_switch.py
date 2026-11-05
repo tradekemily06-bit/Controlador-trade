@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from contextlib import contextmanager
+from threading import RLock
+from typing import Iterator
 
 
 class KillSwitchValidationError(ValueError):
@@ -26,22 +29,36 @@ class KillSwitch:
 
     def __init__(self) -> None:
         self._state = KillSwitchState()
+        # Serialize state transitions with the complete broker-dispatch critical
+        # section. Activation waits for an already-started dispatch to finish.
+        self._execution_lock = RLock()
 
     @property
     def state(self) -> KillSwitchState:
-        return self._state
+        with self._execution_lock:
+            return self._state
+
+    @contextmanager
+    def execution_lock(self) -> Iterator[None]:
+        """Hold the shared lock from the final safety check through dispatch."""
+        with self._execution_lock:
+            yield
 
     def activate(self, reason: str) -> KillSwitchState:
-        self._state = KillSwitchState(enabled=True, reason=reason)
-        return self._state
+        with self._execution_lock:
+            self._state = KillSwitchState(enabled=True, reason=reason)
+            return self._state
 
     def deactivate(self) -> KillSwitchState:
-        self._state = KillSwitchState(enabled=False, reason=None)
-        return self._state
+        with self._execution_lock:
+            self._state = KillSwitchState(enabled=False, reason=None)
+            return self._state
 
     def allows_execution(self) -> bool:
-        return not self._state.enabled
+        with self._execution_lock:
+            return not self._state.enabled
 
     def guard(self) -> None:
-        if self._state.enabled:
-            raise RuntimeError(f"execução bloqueada pelo kill switch: {self._state.reason}")
+        with self._execution_lock:
+            if self._state.enabled:
+                raise RuntimeError(f"execução bloqueada pelo kill switch: {self._state.reason}")
