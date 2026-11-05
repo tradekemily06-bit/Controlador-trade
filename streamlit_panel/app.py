@@ -1018,6 +1018,39 @@ def show_readonly_module(module_name: str) -> None:
             st.caption("Somente leitura · execução permitida: NÃO · REAL: DESABILITADO")
             return
 
+        if module_name == "Escola / Tutorial / Onboarding":
+            guide = data.get("guide", {}) if isinstance(data, dict) else {}
+            steps = guide.get("steps", []) if isinstance(guide, dict) else []
+            steps = [step for step in steps if isinstance(step, dict)] if isinstance(steps, list) else []
+            st.caption("Roteiro guiado para localizar e compreender os módulos do Ecossistema. A marcação de etapas fica apenas nesta sessão do Streamlit.")
+            st.subheader(str(guide.get("title") or "Primeiros passos no Ecossistema"))
+            if not steps:
+                st.warning("O roteiro de onboarding não está disponível no runtime.")
+                st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
+                return
+            completed = 0
+            for index, step in enumerate(steps, start=1):
+                step_id = str(step.get("step_id") or f"step-{index}")
+                title = str(step.get("title") or f"Etapa {index}")
+                purpose = str(step.get("purpose") or "Objetivo não informado.")
+                location = str(step.get("location") or "—").replace("_", " ").title()
+                with st.expander(f"{index}. {title} · {location}", expanded=(index == 1)):
+                    st.write(purpose)
+                    st.caption("Próximo passo: " + str(step.get("action_hint") or "Consulte o módulo correspondente."))
+                    if step.get("technical_details_hidden") is True:
+                        st.caption("Detalhes técnicos ficam ocultos nesta orientação inicial.")
+                    done = st.checkbox("Marcar etapa como revisada", key=f"onboarding_reviewed_{step_id}")
+                    if done:
+                        completed += 1
+            st.progress(completed / len(steps))
+            st.caption(f"Etapas revisadas nesta sessão: {completed}/{len(steps)}")
+            st.success(str(guide.get("completion_message") or "Roteiro concluído.")) if completed == len(steps) else st.info("Você pode continuar o roteiro em qualquer ordem; a marcação não altera o runtime.")
+            if guide.get("execution_authorized") is not False:
+                st.error("O roteiro não confirmou explicitamente o bloqueio de execução. Não use esta tela como autorização.")
+            else:
+                st.caption("Este roteiro é educativo. Execução autorizada: NÃO · REAL: DESABILITADO")
+            return
+
         if module_name == "Memória":
             records = data.get("records", []) if isinstance(data, dict) else []
             records = [item for item in records if isinstance(item, dict)] if isinstance(records, list) else []
