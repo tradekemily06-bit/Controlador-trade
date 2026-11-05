@@ -633,3 +633,18 @@ def test_streamlit_statistics_and_reports_have_distinct_aggregated_views():
     assert "não inclui credenciais, dados bancários ou ordens" in reports_view
     assert "Execução permitida: NÃO · REAL: DESABILITADO" in statistics_view
     assert "Execução permitida: NÃO · REAL: DESABILITADO" in reports_view
+
+
+def test_streamlit_notifications_screen_reads_full_history_without_mutations():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index('if module_name == "Notificações":')
+    end = source.index('if module_name in {"Gestão de Risco", "Simulador"}:', start)
+    view = source[start:end]
+    assert 'api("/api/notifications/all")' in view
+    assert 'data.get("critical_count", 0)' in view
+    assert 'st.selectbox("Filtrar gravidade"' in view
+    assert '"Atenção necessária": bool(item.get("requires_attention", False))' in view
+    assert '"Bloqueante": bool(item.get("blocking", False))' in view
+    assert "somente leitura" in view.lower()
+    assert 'api("/api/notifications/all", "POST"' not in view
+    assert "Execução permitida: NÃO · REAL: DESABILITADO" in view
