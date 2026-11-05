@@ -969,6 +969,16 @@ def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid
     })
     invalid_cases.append({
         **valid,
+        "categories": {
+            **valid["categories"],
+            "FOREIGN_FINANCIAL_ASSET": {
+                **valid["categories"]["FOREIGN_FINANCIAL_ASSET"],
+                "entries": 10**1000,
+            },
+        },
+    })
+    invalid_cases.append({
+        **valid,
         "reserve_semantics": {**valid["reserve_semantics"], "tax_liability_confirmed": True},
     })
     invalid_cases.append({
