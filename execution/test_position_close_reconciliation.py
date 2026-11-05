@@ -17,6 +17,7 @@ class FakeMT5:
             SimpleNamespace(position_id=42, magic=2609001),
         ))
         self.shutdown_calls = 0
+        self.order_send_calls = 0
 
     def initialize(self):
         return True
@@ -43,6 +44,10 @@ class FakeMT5:
 
     def positions_get(self):
         return self.positions
+
+    def order_send(self, payload):
+        self.order_send_calls += 1
+        return SimpleNamespace(retcode=0, order=999)
 
     def shutdown(self):
         self.shutdown_calls += 1
@@ -110,4 +115,25 @@ def test_real_close_reconciliation_rejects_different_account_fingerprint():
     )
     assert result.status is PositionCloseObservationStatus.UNKNOWN
     assert "não corresponde" in result.message
+    assert mt5.shutdown_calls == 1
+
+
+def test_real_close_refuses_account_fingerprint_mismatch_before_order_send():
+    mt5 = FakeMT5(positions=(SimpleNamespace(ticket=42, magic=2609001),))
+    result = adapter_for(mt5).close_position(
+        "101",
+        expected_account_fingerprint="0" * 32,
+    )
+    assert result.accepted is False
+    assert "não corresponde" in result.message
+    assert mt5.order_send_calls == 0
+    assert mt5.shutdown_calls == 1
+
+
+def test_real_close_requires_expected_account_fingerprint():
+    mt5 = FakeMT5(positions=(SimpleNamespace(ticket=42, magic=2609001),))
+    result = adapter_for(mt5).close_position("101")
+    assert result.accepted is False
+    assert "não corresponde" in result.message
+    assert mt5.order_send_calls == 0
     assert mt5.shutdown_calls == 1
