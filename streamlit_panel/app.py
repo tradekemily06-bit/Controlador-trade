@@ -1894,7 +1894,6 @@ def show_readonly_module(module_name: str) -> None:
                 st.success("Kill Switch ativo. A desativação não está disponível nesta interface.")
             st.caption("A ativação bloqueia novas execuções. Ordens já encaminhadas exigem reconciliação manual; não há cancelamento automático.")
             st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
-            st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
             return
 
         if module_name == "Segurança":
