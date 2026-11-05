@@ -129,3 +129,39 @@ def test_cycle_id_cannot_be_reserved_twice(tmp_path):
     ledger.reserve("req-1", cycle_id="cycle-1")
     with pytest.raises(ValueError, match="cycle_id já possui"):
         ledger.reserve("req-2", cycle_id="cycle-1")
+
+
+def test_account_fingerprint_is_persisted_and_preserved_across_transitions(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(path)
+    ledger.reserve("req-account", cycle_id="cycle-account")
+    fingerprint = "a" * 32
+    ledger.bind_external_id(
+        "req-account",
+        "ticket-account",
+        account_fingerprint=fingerprint,
+    )
+    ledger.mark_accepted("req-account")
+
+    restored = ExecutionLedger(path)
+    record = restored.record_for("req-account")
+    assert record is not None
+    assert record.account_fingerprint == fingerprint
+
+    with pytest.raises(ValueError, match="não corresponde à conta previamente registrada"):
+        restored.bind_external_id(
+            "req-account",
+            "ticket-account",
+            account_fingerprint="b" * 32,
+        )
+
+
+def test_invalid_account_fingerprint_is_rejected(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-invalid-fingerprint")
+    with pytest.raises(ValueError, match="account_fingerprint inválido"):
+        ledger.bind_external_id(
+            "req-invalid-fingerprint",
+            "ticket-invalid",
+            account_fingerprint="not-a-fingerprint",
+        )
