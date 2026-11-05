@@ -708,7 +708,11 @@ def show_fiscal() -> None:
             market_label = st.text_input("Mercado / ambiente de negociação", max_chars=120, placeholder="Ex.: B3")
             result = st.number_input("Resultado realizado (R$)", min_value=-1000000000000.0, max_value=1000000000000.0, step=10.0, format="%.2f", help="Lucro positivo / prejuízo negativo. Compensações mensais e créditos de IRRF não são calculados.")
             reference = st.text_input("Referência / comprovante", max_chars=160)
-            notes = st.text_area("Observações / evidências", max_chars=600)
+            notes = st.text_area(
+                "Observações / evidências",
+                max_chars=160,
+                help="Limite de 160 caracteres para manter o formulário alinhado à validação da API.",
+            )
             confirmed = st.checkbox("Confirmo que foi o mesmo ativo, pela mesma instituição, no mesmo dia e em mercado brasileiro elegível.")
             submitted = st.form_submit_button("Registrar estimativa de planejamento", disabled=not summary_available)
         if submitted and not confirmed:
