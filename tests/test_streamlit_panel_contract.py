@@ -397,6 +397,7 @@ def test_streamlit_market_analysis_shows_asset_session_and_news_readiness_withou
 
 def test_streamlit_preferences_never_submit_execution_authority_fields():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert source.count('if module_name == "Configurações":') == 1
     start = source.index('if module_name == "Configurações":')
     end = source.index('if module_name == "Escola / Tutorial / Onboarding":', start)
     preferences_screen = source[start:end]
@@ -416,15 +417,16 @@ def test_streamlit_operational_screens_render_human_readable_summaries_without_r
     assert "Kill Switch" in source
     assert "Fontes externas exigem validação" in source
     assert "Guia de primeiro uso" in source
-    assert "Salvar preferências" in source
-    assert "Salvar aparência" in source
-    assert "Salvar notificações" in source
-    assert '"/api/preferences"' in source
-    assert '"/api/preferences/candles"' in source
-    assert '"/api/preferences/notifications"' in source
-    assert "alertas críticos" in source.lower()
+    settings_start = source.index('if module_name == "Configurações":')
+    settings_end = source.index('if module_name == "Escola / Tutorial / Onboarding":', settings_start)
+    settings_screen = source[settings_start:settings_end]
+    assert "Preferências sincronizadas do Ecossistema" in settings_screen
+    assert "Somente leitura" in settings_screen
+    assert "Salvar preferências" not in settings_screen
+    assert "Salvar aparência" not in settings_screen
+    assert "Salvar notificações" not in settings_screen
+    assert 'api("/api/preferences", "POST"' not in settings_screen
     assert "st.json(data)" not in source
-
 
 def test_streamlit_replay_uses_historical_mt5_demo_data_without_orders():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
