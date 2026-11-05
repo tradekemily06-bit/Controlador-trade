@@ -94,3 +94,14 @@ def test_general_boolean_preferences_reject_non_boolean_values():
     with pytest.raises(ValueError, match="require_filters must be a boolean"):
         store.update(require_filters="false")
     assert store.preferences.require_filters is True
+
+
+def test_invalid_saved_boolean_text_uses_default():
+    restored = EcosystemPreferencesStore.from_dict({
+        "require_filters": "false",
+        "candle": {"show_wicks": "false"},
+        "notifications": {"risk_enabled": "false"},
+    }).preferences
+    assert restored.require_filters is True
+    assert restored.candle.show_wicks is True
+    assert restored.notifications.risk_enabled is True
