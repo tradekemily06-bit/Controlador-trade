@@ -68,6 +68,10 @@ def migrate_fiscal_schema(database_path: str) -> str:
             domestic_columns = {row["name"] for row in db.execute("PRAGMA table_info(fiscal_reserve_pending_domestic)")}
             if "owner_id" not in domestic_columns:
                 raise RuntimeError("A fila brasileira pendente não possui identidade proprietária; acesso bloqueado.")
+            if db.execute(
+                "SELECT 1 FROM fiscal_reserve_pending_domestic WHERE owner_id IS NULL LIMIT 1"
+            ).fetchone():
+                raise RuntimeError("A fila brasileira pendente contém registros sem proprietário; acesso bloqueado.")
             domestic_owners = {row[0] for row in db.execute(
                 "SELECT DISTINCT owner_id FROM fiscal_reserve_pending_domestic WHERE owner_id IS NOT NULL"
             ).fetchall()}
@@ -77,6 +81,10 @@ def migrate_fiscal_schema(database_path: str) -> str:
             review_columns = {row["name"] for row in db.execute("PRAGMA table_info(fiscal_domestic_pending_reviews)")}
             if "owner_id" not in review_columns:
                 raise RuntimeError("A revisão brasileira pendente não possui identidade proprietária; acesso bloqueado.")
+            if db.execute(
+                "SELECT 1 FROM fiscal_domestic_pending_reviews WHERE owner_id IS NULL LIMIT 1"
+            ).fetchone():
+                raise RuntimeError("A revisão brasileira pendente contém registros sem proprietário; acesso bloqueado.")
             review_owners = {row[0] for row in db.execute(
                 "SELECT DISTINCT owner_id FROM fiscal_domestic_pending_reviews WHERE owner_id IS NOT NULL"
             ).fetchall()}
