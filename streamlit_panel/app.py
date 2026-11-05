@@ -1137,7 +1137,29 @@ def show_readonly_module(module_name: str) -> None:
             st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
             return
 
-        if module_name in {"Gestão de Risco", "Simulador"}:
+        if module_name == "Gestão de Risco":
+            limits = data.get("configured_limits", {}) if isinstance(data, dict) else {}
+            allowed = data.get("allowed") is True
+            st.caption("Painel de limites configurados pelo Risk Manager. Estes valores não são o P&L atual da conta nem uma autorização de ordem.")
+            cols = st.columns(3)
+            cols[0].metric("Limite de perda diária", str(limits.get("daily_loss_limit", "—")))
+            cols[1].metric("Máximo de operações", str(limits.get("max_operations", "—")))
+            cols[2].metric("Máximo de perdas consecutivas", str(limits.get("max_consecutive_losses", "—")))
+            if allowed:
+                st.success("Gate de risco reportado: LIBERADO")
+            else:
+                st.error("Gate de risco reportado: BLOQUEADO")
+            st.markdown("#### Motivo informado pelo motor")
+            st.write(str(data.get("reason") or "O motor não forneceu uma justificativa."))
+            st.markdown("#### Dados externos")
+            st.metric("Provedor de notícias", str(data.get("news_provider", "NÃO CONFIGURADO")))
+            if str(data.get("news_provider", "")).upper() == "UNCONFIGURED":
+                st.info("O provedor de notícias não está configurado; não trate esta tela como confirmação de filtro de notícias em tempo real.")
+            st.caption("Leitura somente informativa · não altera limites, não libera execução e não envia ordens.")
+            st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
+            return
+
+        if module_name == "Simulador":
             limits = data.get("configured_limits", {})
             cols = st.columns(3)
             cols[0].metric("Limite de perda diária", str(limits.get("daily_loss_limit", "—")))

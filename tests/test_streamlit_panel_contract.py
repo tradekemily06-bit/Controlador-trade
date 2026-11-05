@@ -638,7 +638,7 @@ def test_streamlit_statistics_and_reports_have_distinct_aggregated_views():
 def test_streamlit_notifications_screen_reads_full_history_without_mutations():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     start = source.index('if module_name == "Notificações":')
-    end = source.index('if module_name in {"Gestão de Risco", "Simulador"}:', start)
+    end = source.index('if module_name == "Gestão de Risco":', start)
     view = source[start:end]
     assert 'api("/api/notifications/all")' in view
     assert 'data.get("critical_count", 0)' in view
@@ -648,6 +648,23 @@ def test_streamlit_notifications_screen_reads_full_history_without_mutations():
     assert "somente leitura" in view.lower()
     assert 'api("/api/notifications/all", "POST"' not in view
     assert "execução permitida: não · real: desabilitado" in view.lower()
+
+
+def test_streamlit_risk_management_has_dedicated_read_only_limits_view():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert '"Gestão de Risco": ("Gestão de Risco", "/api/risk")' in source
+    start = source.index('if module_name == "Gestão de Risco":')
+    end = source.index('if module_name == "Simulador":', start)
+    view = source[start:end]
+    assert 'data.get("configured_limits", {})' in view
+    assert 'limits.get("daily_loss_limit", "—")' in view
+    assert 'limits.get("max_operations", "—")' in view
+    assert 'limits.get("max_consecutive_losses", "—")' in view
+    assert 'data.get("allowed") is True' in view
+    assert 'data.get("news_provider", "NÃO CONFIGURADO")' in view
+    assert "não altera limites" in view.lower()
+    assert "execução permitida: não · real: desabilitado" in view.lower()
+    assert 'api("/api/risk", "POST"' not in view
 
 
 def test_streamlit_settings_view_reads_preferences_without_mutations():
