@@ -1416,3 +1416,16 @@ def test_streamlit_fiscal_review_forms_match_queue_validation_limits():
         assert 'required("professional_registration", 100)' in api_source
         assert 'required("evidence_reference", 500)' in api_source
         assert "if len(notes) > 2000:" in api_source
+
+
+def test_streamlit_kill_switch_screen_is_explicitly_read_only_until_runtime_action_exists():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index('if module_name == "Kill Switch":')
+    end = source.index('if module_name == "Segurança":', start)
+    view = source[start:end]
+
+    assert 'st.caption("Tela somente de consulta. Não altera o Kill Switch nem retoma operações.")' in view
+    assert 'st.caption("Execução permitida: NÃO · REAL: DESABILITADO")' in view
+    assert 'api(' not in view
+    assert 'form_submit_button' not in view
+    assert 'button(' not in view
