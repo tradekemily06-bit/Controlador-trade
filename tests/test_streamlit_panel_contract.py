@@ -768,3 +768,14 @@ def test_streamlit_decision_engine_uses_latest_read_only_analysis_snapshot():
     assert "candidato não significa autorização de operação" in view
     assert "execução permitida: não · real: desabilitado" in view.lower()
     assert 'api("/api/runtime/analysis/latest", "POST"' not in view
+
+
+
+def test_streamlit_fiscal_reserve_displays_day_week_month_year_estimates():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'periods = summary.get("periods", {})' in source
+    assert '("day", "week", "month", "year")' in source
+    assert '("Dia", "Semana", "Mês", "Ano")' in source
+    assert 'col.metric(label, money(item.get("reserve_amount_brl")))' in source
+    assert 'col.caption("Resultado: " + money(item.get("realized_result_brl")))' in source
+    assert "ESTIMATIVA DE PLANEJAMENTO — não é imposto apurado ou devido." in source

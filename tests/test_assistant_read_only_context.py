@@ -215,3 +215,122 @@ def test_assistant_foreign_pending_context_fails_closed_when_owner_scoped_summar
     )
     pending = context["fiscal_reserve"]["foreign_pending"]
     assert pending == {"available": False, "included_in_totals": False}
+
+
+
+def test_assistant_receives_fiscal_reserve_totals_for_day_week_month_and_year():
+    class FiscalWithPeriodTotals:
+        def summary(self, owner_id):
+            assert owner_id == "test-owner"
+            return {
+                "name": "Reserva Fiscal",
+                "currency": "BRL",
+                "as_of": "2026-11-05",
+                "total_reserved_brl": 240.0,
+                "categories": {
+                    "BR_DAY_TRADE": {
+                        "rate": 20.0,
+                        "realized_result_brl": 1200.0,
+                        "reserve_amount_brl": 240.0,
+                    }
+                },
+                "periods": {
+                    "day": {
+                        "start": "2026-11-05",
+                        "end": "2026-11-05",
+                        "realized_result_brl": 200.0,
+                        "reserve_amount_brl": 40.0,
+                        "entries": 1,
+                    },
+                    "week": {
+                        "start": "2026-11-02",
+                        "end": "2026-11-05",
+                        "realized_result_brl": 500.0,
+                        "reserve_amount_brl": 100.0,
+                        "entries": 3,
+                    },
+                    "month": {
+                        "start": "2026-11-01",
+                        "end": "2026-11-05",
+                        "realized_result_brl": 900.0,
+                        "reserve_amount_brl": 180.0,
+                        "entries": 5,
+                    },
+                    "year": {
+                        "start": "2026-01-01",
+                        "end": "2026-11-05",
+                        "realized_result_brl": 1200.0,
+                        "reserve_amount_brl": 240.0,
+                        "entries": 8,
+                    },
+                },
+                "limitations": ["Estimativa de planejamento; não é imposto apurado."],
+                "history": [{"reference": "PRIVATE-ENTRY-REF", "notes": "não enviar"}],
+            }
+
+    context = collect_read_only_context(
+        FakeService(), FiscalWithPeriodTotals(), "test-owner"
+    )
+
+    fiscal = context["fiscal_reserve"]
+    assert fiscal["as_of"] == "2026-11-05"
+    assert fiscal["total_reserved_brl"] == 240.0
+    assert fiscal["periods"]["day"]["reserve_amount_brl"] == 40.0
+    assert fiscal["periods"]["week"]["realized_result_brl"] == 500.0
+    assert fiscal["periods"]["month"]["reserve_amount_brl"] == 180.0
+    assert fiscal["periods"]["year"]["realized_result_brl"] == 1200.0
+    assert fiscal["limitations"] == ["Estimativa de planejamento; não é imposto apurado."]
+    assert "history" not in fiscal
+    assert "PRIVATE-ENTRY-REF" not in str(context)
+    assert "não enviar" not in str(context)
+
+
+
+def test_real_fiscal_reserve_period_totals_reach_assistant_context(tmp_path, monkeypatch):
+    from datetime import date
+    from finance.fiscal_identity import configured_fiscal_owner_id
+    from finance.fiscal_reserve import FiscalReserve
+    from finance.fiscal_schema import migrate_fiscal_schema
+
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "assistant-fiscal-integration-owner")
+    owner_id = configured_fiscal_owner_id()
+    database = tmp_path / "assistant-fiscal-integration.sqlite3"
+    reserve = FiscalReserve(str(database))
+    migrate_fiscal_schema(str(database))
+
+    for occurred_on, amount, reference in (
+        ("2026-11-05", 200.0, "ASSISTANT-PERIOD-DAY"),
+        ("2026-11-04", 300.0, "ASSISTANT-PERIOD-WEEK"),
+        ("2026-11-01", 400.0, "ASSISTANT-PERIOD-MONTH"),
+        ("2026-01-01", 500.0, "ASSISTANT-PERIOD-YEAR"),
+    ):
+        reserve.record_realized_result(owner_id, {
+            "category": "BR_DAY_TRADE",
+            "realized_result_brl": amount,
+            "reference": reference,
+            "occurred_on": occurred_on,
+        })
+
+    class FixedDateFiscalReserve:
+        def summary(self, requested_owner_id):
+            assert requested_owner_id == owner_id
+            return reserve.summary(requested_owner_id, as_of=date(2026, 11, 5))
+
+    context = collect_read_only_context(
+        FakeService(), FixedDateFiscalReserve(), owner_id
+    )
+    fiscal = context["fiscal_reserve"]
+
+    assert fiscal["as_of"] == "2026-11-05"
+    assert fiscal["periods"]["day"]["realized_result_brl"] == 200.0
+    assert fiscal["periods"]["day"]["reserve_amount_brl"] == 40.0
+    assert fiscal["periods"]["week"]["realized_result_brl"] == 500.0
+    assert fiscal["periods"]["week"]["reserve_amount_brl"] == 100.0
+    assert fiscal["periods"]["month"]["realized_result_brl"] == 900.0
+    assert fiscal["periods"]["month"]["reserve_amount_brl"] == 180.0
+    assert fiscal["periods"]["year"]["realized_result_brl"] == 1400.0
+    assert fiscal["periods"]["year"]["reserve_amount_brl"] == 280.0
+    assert fiscal["total_reserved_brl"] == 280.0
+    assert "history" not in fiscal
+    assert "ASSISTANT-PERIOD-DAY" not in str(fiscal)
+    assert context["assistant_safety"]["tax_estimates_are_not_tax_assessments"] is True
