@@ -27,9 +27,14 @@ def _iso_date(value: Any) -> str:
 def _safe_currency_codes(value: Any) -> list[str]:
     if not isinstance(value, (list, tuple, set)):
         return []
+    # Currency codes are data, not objects to stringify. Accept only bounded
+    # strings so hostile/custom objects cannot run __str__ during sanitization.
     return sorted({
-        item for item in (str(code).upper() for code in value)
-        if len(item) == 3 and item.isascii() and item.isalpha()
+        code.upper() for code in value
+        if isinstance(code, str)
+        and len(code) == 3
+        and code.isascii()
+        and code.isalpha()
     })[:10]
 
 
