@@ -12,9 +12,10 @@ from typing import Any
 class EcosystemStateStore:
     """Durable single-runtime store for user-facing ecosystem state.
 
-    Trading authority remains outside this store. The store only persists
-    preferences and notifications so all clients of the same runtime observe
-    the same state after restarts.
+    Trading authority remains outside this store. It persists user preferences,
+    notifications, and educational records so all clients of the same runtime
+    observe the same state after restarts. Learning records never grant trading
+    authority.
     """
 
     def __init__(self, path: str | Path) -> None:
