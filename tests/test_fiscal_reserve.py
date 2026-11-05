@@ -380,3 +380,27 @@ def test_every_public_reserve_operation_rejects_missing_or_invalid_owner(tmp_pat
                 assert "identidade proprietária" in str(exc)
             else:
                 raise AssertionError("fiscal reserve operation must reject invalid owner identity")
+
+
+def test_reserve_rejects_coerced_numeric_values(tmp_path):
+    reserve = make_reserve(tmp_path / "strict-reserve-money.sqlite3")
+    for value in ("1000", True, [], {}, float("nan"), float("inf")):
+        try:
+            reserve.record_realized_result(OWNER, {
+                "category": "BR_DAY_TRADE",
+                "realized_result_brl": value,
+                "reference": "STRICT-RESERVE-" + str(type(value).__name__) + str(value)[:5],
+                "occurred_on": "2026-11-04",
+            })
+        except ValueError as exc:
+            assert "realized_result_brl" in str(exc)
+        else:
+            raise AssertionError("reserve amount must reject coerced or non-finite values")
+    for value in ("20", True, [], {}, float("nan"), float("inf")):
+        try:
+            reserve.update_rate(OWNER, "BR_DAY_TRADE", value)
+        except ValueError as exc:
+            assert "percentual" in str(exc)
+        else:
+            raise AssertionError("reserve rate must reject coerced or non-finite values")
+    assert reserve.summary(OWNER)["total_reserved_brl"] == 0
