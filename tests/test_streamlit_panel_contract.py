@@ -682,6 +682,23 @@ def test_streamlit_settings_view_reads_preferences_without_mutations():
     assert 'api("/api/preferences", "POST"' not in view
 
 
+def test_streamlit_onboarding_shows_guided_steps_without_execution_authority():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert '"Escola / Tutorial / Onboarding": ("Primeiros passos", "/api/onboarding")' in source
+    start = source.index('if module_name == "Escola / Tutorial / Onboarding":')
+    end = source.index('if module_name == "Memória":', start)
+    view = source[start:end]
+    assert 'data.get("guide", {})' in view
+    assert 'guide.get("steps", [])' in view
+    assert 'step.get("purpose")' in view
+    assert 'step.get("action_hint")' in view
+    assert 'step.get("technical_details_hidden") is True' in view
+    assert 'st.checkbox("Marcar etapa como revisada"' in view
+    assert 'guide.get("execution_authorized") is not False' in view
+    assert "marcação não altera o runtime" in view.lower()
+    assert 'api("/api/onboarding", "POST"' not in view
+
+
 def test_streamlit_memory_view_displays_recent_records_with_read_only_filters():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert '"Memória": ("Memória de decisões", "/api/memory?limit=50")' in source
