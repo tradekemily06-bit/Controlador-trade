@@ -198,10 +198,26 @@ class RealRuntimeController:
             "human_action_required": True,
         }
 
-    def confirm(self, **kwargs) -> RealGatewayResult:
+    def confirm(
+        self,
+        *,
+        confirmation_id: str,
+        request_id: str,
+        symbol: str,
+        signal: str,
+        amount: float,
+        duration_seconds: int,
+    ) -> RealGatewayResult:
         """Serialize REAL final authorization and dispatch with Kill Switch activation."""
         with self.runtime.kill_switch.execution_lock():
-            return self._confirm_locked(**kwargs)
+            return self._confirm_locked(
+                confirmation_id=confirmation_id,
+                request_id=request_id,
+                symbol=symbol,
+                signal=signal,
+                amount=amount,
+                duration_seconds=duration_seconds,
+            )
 
     def _confirm_locked(
         self,
