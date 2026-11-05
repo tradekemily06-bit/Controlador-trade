@@ -187,7 +187,7 @@ def test_streamlit_disables_assistant_chat_when_provider_is_unavailable():
 
 
 
-def test_streamlit_requires_fresh_explicit_openai_consent_before_chat_submission():
+def test_streamlit_requires_explicit_openai_consent_before_chat_submission():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     start = source.index('    consent_to_openai = st.checkbox(')
     end = source.index('    if "assistant_history" not in st.session_state:', start)
