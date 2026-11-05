@@ -777,6 +777,7 @@ def test_assistant_context_rejects_out_of_range_fiscal_rates_and_amounts():
     class OutOfRangeFiscal:
         def summary(self, owner_id):
             return {
+                "total_reserved_brl": 1_000_000_000_001.0,
                 "categories": {
                     "BR_DAY_TRADE": {
                         "entries": 2,
@@ -797,6 +798,7 @@ def test_assistant_context_rejects_out_of_range_fiscal_rates_and_amounts():
     fiscal = collect_read_only_context(
         FakeService(), OutOfRangeFiscal(), "test-owner"
     )["fiscal_reserve"]
+    assert "total_reserved_brl" not in fiscal
     assert fiscal["categories"]["BR_DAY_TRADE"] == {
         "entries": 2,
         "rate_kind": "USER_CONFIGURED_PLANNING_RATE",
