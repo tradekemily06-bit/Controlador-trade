@@ -884,7 +884,19 @@ def application(environ, start_response):
             }, request_id, environ)
         if path == "/api/runtime/real/reconcile" and method == "POST":
             data = _read_json(environ)
-            REAL_RUNTIME.reconcile(request_id=str(data.get("request_id", "")), executed=bool(data.get("executed", False)))
+            executed = data.get("executed")
+            if not isinstance(executed, bool):
+                return _json_response(
+                    start_response,
+                    HTTPStatus.BAD_REQUEST,
+                    {"error": "executed deve ser booleano verdadeiro ou falso."},
+                    request_id,
+                    environ,
+                )
+            REAL_RUNTIME.reconcile(
+                request_id=str(data.get("request_id", "")),
+                executed=executed,
+            )
             return _json_response(start_response, HTTPStatus.OK, {"reconciled": True}, request_id, environ)
         if path == "/api/runtime/real/close" and method == "POST":
             data = _read_json(environ)
