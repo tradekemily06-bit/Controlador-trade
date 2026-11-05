@@ -259,3 +259,30 @@ def test_partial_rebuild_refuses_to_reassign_existing_owner(tmp_path, monkeypatc
     ).fetchone() == (20.0,)
     db.close()
 
+
+
+def test_owner_scoped_fast_path_rejects_orphaned_foreign_reviews(tmp_path, monkeypatch):
+    path = str(tmp_path / "owner-scoped-orphan.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner-a")
+    owner = migrate_fiscal_schema(path)
+
+    # Simulate corruption introduced by an external writer that did not enable
+    # SQLite foreign-key enforcement on its connection.
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "INSERT INTO fiscal_pending_reviews "
+            "(review_id,owner_id,pending_id,candidate_classification,confirmed_jurisdiction,"
+            "reviewer_name,reviewer_role,professional_registration,evidence_reference,"
+            "reviewed_on,review_notes,created_at) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("orphan-review", owner, "missing-pending", "ETF", "US", "Reviewer",
+             "contador", "CRC-X", "DOC-X", "2026-11-04", "", "now"),
+        )
+
+    with pytest.raises(RuntimeError, match="integridade referencial inválida"):
+        migrate_fiscal_schema(path)
+
+    with sqlite3.connect(path) as db:
+        assert db.execute(
+            "SELECT COUNT(*) FROM fiscal_pending_reviews WHERE review_id='orphan-review'"
+        ).fetchone()[0] == 1
