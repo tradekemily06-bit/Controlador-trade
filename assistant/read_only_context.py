@@ -53,7 +53,9 @@ def _count(value: Any) -> int:
     # into plausible-looking totals in the assistant context.
     if isinstance(value, bool) or not isinstance(value, int):
         return 0
-    return max(0, value)
+    # Keep corrupted or adversarial aggregates from becoming enormous
+    # numeric payloads in the external assistant prompt.
+    return min(max(0, value), 1_000_000_000)
 
 
 def _fiscal_number(value: Any, field: str) -> bool:
