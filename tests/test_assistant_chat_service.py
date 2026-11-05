@@ -184,3 +184,12 @@ def test_bounded_history_never_replays_system_developer_or_tool_roles():
         {"role": "assistant", "content": "resposta segura"},
         {"role": "user", "content": "outra pergunta"},
     ]
+
+
+
+def test_assistant_system_rules_require_period_aware_fiscal_estimates_and_no_generic_foreign_rate():
+    assert "totais disponíveis por dia, semana, mês e ano" in chat_module.SYSTEM_PROMPT
+    assert "Respeite a data de referência e os intervalos informados no contexto" in chat_module.SYSTEM_PROMPT
+    assert "não some períodos nem invente valores" in chat_module.SYSTEM_PROMPT
+    assert "Nunca apresente nem recomende percentual genérico para resultados estrangeiros" in chat_module.SYSTEM_PROMPT
+    assert "A Reserva Fiscal é planejamento, não cálculo definitivo de imposto" in chat_module.SYSTEM_PROMPT
