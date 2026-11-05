@@ -302,6 +302,14 @@ class RealRuntimeController:
                 external_id=external_id,
             )
 
+    @staticmethod
+    def _valid_account_fingerprint(value: object) -> bool:
+        return (
+            isinstance(value, str)
+            and len(value) == 32
+            and all(char in "0123456789abcdef" for char in value)
+        )
+
     def _close_and_reconcile_locked(self, *, request_id: str, external_id: str):
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id REAL inválido.")
@@ -314,13 +322,20 @@ class RealRuntimeController:
             raise ValueError("somente uma execução REAL ACCEPTED pode ser fechada.")
         if record.external_id != external_id.strip():
             raise ValueError("external_id não corresponde à identidade persistida do request REAL.")
+        if not self._valid_account_fingerprint(record.account_fingerprint):
+            raise ValueError(
+                "fechamento REAL bloqueado: ledger não possui impressão digital confiável da conta de abertura."
+            )
 
         # Persist the intent before touching the broker. A crash or ambiguous
         # adapter result remains blocked from automatic retry until reconciled.
         self.position_closes.begin(request_id, external_id.strip())
         adapter = self.registry.get(self.broker_id)
         try:
-            close = adapter.close_position(external_id.strip())
+            close = adapter.close_position(
+                external_id.strip(),
+                expected_account_fingerprint=record.account_fingerprint,
+            )
         except Exception as exc:
             self.position_closes.finish(
                 request_id,
@@ -352,13 +367,25 @@ class RealRuntimeController:
                 raise ValueError("solicitação de fechamento não encontrada.")
             if record.external_id != external_id.strip():
                 raise ValueError("external_id não corresponde ao fechamento persistido.")
+            opening_record = self.runtime.execution_ledger.record_for(request_id)
+            if (
+                opening_record is None
+                or opening_record.status is not ExecutionLedgerStatus.ACCEPTED
+                or opening_record.external_id != external_id.strip()
+            ):
+                raise ValueError("identidade de abertura não confere com o ledger persistido.")
+            if not self._valid_account_fingerprint(opening_record.account_fingerprint):
+                raise ValueError("reconciliação bloqueada: impressão digital da conta de abertura ausente ou inválida.")
             if record.state not in (PositionCloseState.REQUESTED, PositionCloseState.UNKNOWN):
                 raise ValueError("somente fechamento REQUESTED ou UNKNOWN pode ser reconciliado.")
             adapter = self.registry.get(self.broker_id)
             observe = getattr(adapter, "reconcile_position_close", None)
             if not callable(observe):
                 raise RuntimeError("adaptador não oferece reconciliação somente leitura de fechamento.")
-            observation = observe(external_id.strip())
+            observation = observe(
+                external_id.strip(),
+                expected_account_fingerprint=opening_record.account_fingerprint,
+            )
             if (
                 not isinstance(observation, PositionCloseObservation)
                 or not isinstance(observation.status, PositionCloseObservationStatus)
