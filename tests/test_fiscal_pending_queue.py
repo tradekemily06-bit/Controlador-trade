@@ -586,3 +586,35 @@ def test_foreign_realized_pending_rejects_non_text_intake_fields(tmp_path):
         else:
             raise AssertionError(f"{field} must reject non-text realized values")
     assert queue.list_pending(OWNER)["total"] == 0
+
+
+def test_foreign_pending_rejects_coerced_or_nonfinite_numeric_values(tmp_path):
+    import pytest
+    queue = make_queue(tmp_path / "strict-foreign-money.sqlite3")
+    for field in ("original_amount", "fx_rate"):
+        for value in ("5.42", True, [], {}, float("nan"), float("inf")):
+            payload = sample("FOREIGN-STRICT-" + field + str(type(value).__name__) + str(value)[:5])
+            payload[field] = value
+            try:
+                queue.add(OWNER, payload)
+            except ValueError as exc:
+                assert field in str(exc)
+            else:
+                raise AssertionError(f"{field} must reject coerced or non-finite values")
+    base = {
+        "reference": "FOREIGN-STRICT-RESULT-NUMERIC",
+        "original_result": 12.5,
+        "original_currency": "EUR",
+        "instrument": "ETF",
+        "jurisdiction": "PENDING_REVIEW",
+        "occurred_on": "2026-11-04",
+    }
+    for value in ("12.5", True, [], {}, float("nan"), float("inf")):
+        payload = {**base, "original_result": value}
+        try:
+            queue.add_realized_result(OWNER, payload)
+        except ValueError as exc:
+            assert "original_result" in str(exc)
+        else:
+            raise AssertionError("original_result must reject coerced or non-finite values")
+    assert queue.list_pending(OWNER)["total"] == 0
