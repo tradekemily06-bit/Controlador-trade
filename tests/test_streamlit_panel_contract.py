@@ -1730,3 +1730,15 @@ def test_streamlit_assistant_panel_never_displays_raw_exception_details():
     assert "{exc}" not in assistant
     assert "Detalhes técnicos não são exibidos no painel." in assistant
     assert "Não foi possível enviar a consulta ao Assistente." in assistant
+
+
+def test_streamlit_requires_https_for_remote_trusted_identity_api():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index("def _validate_api_base_url(")
+    end = source.index("\n\n_validate_api_base_url(", start)
+    guard = source[start:end]
+    assert 'parsed.scheme not in {"http", "https"}' in guard
+    assert "parsed.username is not None or parsed.password is not None" in guard
+    assert "ipaddress.ip_address(hostname).is_loopback" in guard
+    assert 'remote_required and not loopback and parsed.scheme != "https"' in guard
+    assert "_validate_api_base_url(BASE_URL, REMOTE_REQUIRED)" in source
