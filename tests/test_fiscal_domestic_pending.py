@@ -90,6 +90,37 @@ def test_domestic_pending_summary_has_day_week_month_year_counts_only(tmp_path):
     assert summary["included_in_totals"] is False
     assert summary["reserve_calculated"] is False
 
+
+def test_domestic_pending_summary_respects_all_calendar_boundaries(tmp_path):
+    queue = FiscalDomesticPendingQueue(str(tmp_path / "domestic-period-boundaries.sqlite3"))
+    dates = (
+        ("BR-DAY", "2026-11-03", 10.0),
+        ("BR-WEEK", "2026-11-02", 0.0),
+        ("BR-MONTH", "2026-10-31", None),
+        ("BR-YEAR", "2025-12-31", -5.0),
+    )
+    for reference, occurred_on, result in dates:
+        payload = sample(reference)
+        payload["occurred_on"] = occurred_on
+        payload.pop("realized_result_brl", None)
+        if result is not None:
+            payload["realized_result_brl"] = result
+        queue.add("owner-a", payload)
+
+    summary = queue.summary("owner-a", as_of=date(2026, 11, 3))
+
+    assert summary["total"] == 4
+    assert summary["periods"]["day"]["total"] == 1
+    assert summary["periods"]["day"]["results"] == 1
+    assert summary["periods"]["week"]["total"] == 2
+    assert summary["periods"]["week"]["results"] == 2
+    assert summary["periods"]["month"]["total"] == 2
+    assert summary["periods"]["month"]["results"] == 2
+    assert summary["periods"]["year"]["total"] == 3
+    assert summary["periods"]["year"]["results"] == 3
+    assert summary["included_in_totals"] is False
+    assert summary["reserve_calculated"] is False
+
 def test_domestic_pending_supports_shared_in_memory_database():
     queue = FiscalDomesticPendingQueue()
     queue.add("owner-a", sample())
