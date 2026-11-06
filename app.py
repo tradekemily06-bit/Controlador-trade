@@ -215,6 +215,20 @@ def _authorize_remote_mutation(environ) -> tuple[bool, str]:
     return True, "trusted"
 
 
+def _remote_identity_http_status(reason: str) -> HTTPStatus:
+    """Map authentication failures consistently without hiding deployment errors."""
+    if reason in {"trusted identity is required", "trusted identity is invalid"}:
+        return HTTPStatus.UNAUTHORIZED
+    if reason in {
+        "trusted identity header is not configured",
+        "single-user identity is not configured",
+        "single-user identity configuration is invalid",
+        "trusted remote identity provider is not configured",
+    }:
+        return HTTPStatus.SERVICE_UNAVAILABLE
+    return HTTPStatus.FORBIDDEN
+
+
 
 def _authorize_local_runtime(environ) -> tuple[bool, str]:
     """Authorize native terminal calls only from a loopback client using an allowed local Host."""
@@ -380,7 +394,7 @@ def application(environ, start_response):
             if remote_required:
                 authorized, reason = _authorize_remote_mutation(environ)
                 if not authorized:
-                    auth_status = HTTPStatus.UNAUTHORIZED if reason == "trusted identity is required" else HTTPStatus.FORBIDDEN
+                    auth_status = _remote_identity_http_status(reason)
                     return _json_response(start_response, auth_status, {"error": "Identidade autenticada necessária para consultar a auditoria."}, request_id, environ)
             elif client not in {"127.0.0.1", "::1"}:
                 return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": "Auditoria disponível somente em acesso local ou remoto autenticado."}, request_id, environ)
@@ -407,7 +421,7 @@ def application(environ, start_response):
         if path.startswith("/api/assistant/"):
             authorized, auth_reason = _authorize_remote_mutation(environ)
             if not authorized:
-                auth_status = HTTPStatus.UNAUTHORIZED if auth_reason == "trusted identity is required" else HTTPStatus.FORBIDDEN
+                auth_status = _remote_identity_http_status(auth_reason)
                 public_reason = (
                     "Identidade autenticada necessária."
                     if auth_reason == "trusted identity is required"
@@ -460,7 +474,7 @@ def application(environ, start_response):
         if path.startswith("/api/fiscal-reserve"):
             authorized, reason = _authorize_remote_mutation(environ)
             if not authorized:
-                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": reason, "request_id": request_id}, request_id, environ)
+                return _json_response(start_response, _remote_identity_http_status(reason), {"error": reason, "request_id": request_id}, request_id, environ)
             try:
                 fiscal_owner_id = migrate_fiscal_schema(str(FISCAL_RESERVE_DB))
             except (FiscalOwnerIdentityError, RuntimeError) as exc:
