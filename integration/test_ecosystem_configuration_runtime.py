@@ -738,3 +738,22 @@ def test_timed_exit_worker_reconciles_before_closing_and_persists_completion(tmp
     assert runtime.timed_exits.record_for("request-demo-1").state == "CLOSED"
 
 
+
+
+def test_timed_exit_status_view_omits_account_fingerprint(tmp_path):
+    service, runtime = _service_with_accepted_demo_position(tmp_path)
+    runtime.timed_exits.schedule(
+        request_id="request-demo-1",
+        cycle_id="cycle-demo-1",
+        external_id="123456",
+        account_fingerprint="a" * 32,
+        delay_seconds=60,
+    )
+    result = service.list_mt5_timed_exits()
+    assert len(result) == 1
+    assert result[0]["external_id"] == "123456"
+    assert result[0]["state"] == "SCHEDULED"
+    assert result[0]["best_effort"] is True
+    assert "account_fingerprint" not in result[0]
+
+
