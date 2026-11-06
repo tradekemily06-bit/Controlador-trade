@@ -63,7 +63,7 @@ class LatestMarketAnalysisStore:
     def latest(self, symbol: str | None = None, timeframe: str | None = None) -> dict[str, Any] | None:
         if bool(symbol) != bool(timeframe):
             raise ValueError("symbol e timeframe devem ser informados juntos")
-        with self._lock, self._connect() as connection:
+        with self._lock, closing(self._connect()) as connection:
             if symbol and timeframe:
                 row = connection.execute(
                     "SELECT payload_json FROM latest_market_analysis WHERE symbol = ? AND timeframe = ?",
