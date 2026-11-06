@@ -251,7 +251,9 @@ def _assistant_consent_scope() -> str:
             return ""
         identity = trusted_identity_from_headers(st.context.headers, IDENTITY_HEADER)
     else:
-        identity = os.environ.get("CONTROLADOR_SINGLE_USER_IDENTITY", "local-single-user").strip()
+        # Local consent must be scoped to the same explicit server identity
+        # used by the API/fiscal owner. Never invent a fallback principal.
+        identity = os.environ.get("CONTROLADOR_SINGLE_USER_IDENTITY", "").strip()
     if not identity:
         return ""
     return hashlib.sha256(identity.strip().casefold().encode("utf-8")).hexdigest()
