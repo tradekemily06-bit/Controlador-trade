@@ -1107,6 +1107,7 @@ class ConfiguredEcosystemService(EcosystemService):
             "runtime_health": NotificationKind.SYSTEM_UPDATE,
             "kill_switch": NotificationKind.RISK,
             "security_audit": NotificationKind.SECURITY,
+            "notifications": NotificationKind.SECURITY,
         }
         severity_by_incident = {
             "CRITICAL": NotificationSeverity.CRITICAL,
@@ -1128,6 +1129,16 @@ class ConfiguredEcosystemService(EcosystemService):
                     status=str(AUDIT.persistence_error).upper(),
                     source="security_audit",
                     message="persistência da trilha de auditoria indisponível; verifique o armazenamento local",
+                )
+            )
+        if self.state_store.notifications_load_error is not None:
+            incidents.append(
+                OperationalIncident(
+                    code="NOTIFICATION_STORE_CORRUPT",
+                    severity="CRITICAL",
+                    status="INVALID_JSON",
+                    source="notifications",
+                    message="O histórico persistido de notificações está corrompido; registros inválidos não foram restaurados.",
                 )
             )
         items: list[dict[str, Any]] = []
