@@ -291,3 +291,95 @@ def test_assistant_history_routes_do_not_migrate_or_access_fiscal_schema(tmp_pat
         ("history", "single:canonical-owner", "conversation-1"),
         ("delete", "single:canonical-owner", "conversation-1"),
     ]
+
+
+def test_notification_recovery_api_requires_authenticated_identity_and_explicit_confirmation(monkeypatch):
+    calls = []
+
+    class StateStore:
+        def archive_notifications_for_recovery(self, *, confirmed=False):
+            calls.append(("archive", confirmed))
+            return {"archive_id": "archive-1", "payload_sha256": "a" * 64}
+
+        def inspect_notification_quarantine(self, archive_id):
+            calls.append(("inspect", archive_id))
+            return {
+                "archive_id": archive_id,
+                "payload_sha256": "a" * 64,
+                "notification_count": 2,
+                "notifications": [{"message": "private notification body"}],
+                "integrity_verified": True,
+                "fully_valid": True,
+            }
+
+        def restore_notifications_from_quarantine(self, archive_id, *, confirmed=False):
+            calls.append(("restore", archive_id, confirmed))
+            return {
+                "archive_id": archive_id,
+                "restored_count": 2,
+                "integrity_verified": True,
+                "archive_preserved": True,
+            }
+
+    class Service:
+        state_store = StateStore()
+
+    _configure(monkeypatch, object())
+    monkeypatch.setattr(app_module, "SERVICE", Service())
+
+    status, payload = _request(
+        "/api/notifications/recovery/archive",
+        method="POST",
+        payload={"confirmed": False},
+    )
+    assert status.startswith("400")
+    assert calls == []
+
+    status, payload = _request(
+        "/api/notifications/recovery/archive",
+        method="POST",
+        payload={"confirmed": True},
+    )
+    assert status.startswith("201")
+    assert payload["archive"]["archive_id"] == "archive-1"
+    assert payload["original_preserved"] is True
+
+    status, payload = _request(
+        "/api/notifications/recovery/inspect?archive_id=archive-1",
+    )
+    assert status.startswith("200")
+    assert payload["archive"]["fully_valid"] is True
+    assert "notifications" not in payload["archive"]
+    assert "private notification body" not in json.dumps(payload)
+
+    status, payload = _request(
+        "/api/notifications/recovery/restore",
+        method="POST",
+        payload={"archive_id": "archive-1", "confirmed": True},
+    )
+    assert status.startswith("200")
+    assert payload["restoration"]["archive_preserved"] is True
+    assert calls == [
+        ("archive", True),
+        ("inspect", "archive-1"),
+        ("restore", "archive-1", True),
+    ]
+
+
+def test_notification_recovery_inspection_rejects_missing_trusted_identity(monkeypatch):
+    class StateStore:
+        def inspect_notification_quarantine(self, archive_id):
+            raise AssertionError("quarantine must not be inspected without trusted identity")
+
+    class Service:
+        state_store = StateStore()
+
+    _configure(monkeypatch, object())
+    monkeypatch.setattr(app_module, "SERVICE", Service())
+
+    status, payload = _request(
+        "/api/notifications/recovery/inspect?archive_id=archive-1",
+        identity="",
+    )
+    assert status.startswith("401")
+    assert "error" in payload
