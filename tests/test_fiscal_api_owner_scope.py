@@ -327,6 +327,60 @@ def test_foreign_pending_api_intake_results_and_reviews_stay_owner_scoped_and_un
 
 
 
+
+def test_mt5_pending_result_ignores_forged_owner_id_and_uses_authenticated_owner(
+    tmp_path, monkeypatch
+):
+    database = tmp_path / "mt5-pending-owner.sqlite3"
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "X-Auth-User")
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", database)
+    monkeypatch.setattr(app_module.SECURITY, "allow", lambda environ: True)
+    monkeypatch.setattr(app_module.SECURITY, "headers", lambda request_id, **kwargs: [])
+    monkeypatch.setattr(app_module, "_audit", lambda *args, **kwargs: None)
+
+    owner_id = migrate_fiscal_schema(str(database))
+    queue = FiscalPendingQueue(str(database))
+    monkeypatch.setattr(app_module, "FISCAL_PENDING_QUEUE", queue)
+
+    candidate = {
+        "account_currency": "USD",
+        "account_fingerprint": "a" * 32,
+        "occurred_at_utc": "2026-11-05T15:30:00+00:00",
+        "opened_at_utc": "2026-11-05T14:30:00+00:00",
+        "position_id": "POSITION-001",
+        "profit": 25.0,
+        "commission": -1.0,
+        "swap": 0.0,
+        "fee": 0.0,
+        "net_result_account_currency": 24.0,
+        "symbol": "EURUSD",
+        "deal_count": 2,
+        "closing_deal_count": 1,
+    }
+    monkeypatch.setattr(
+        app_module.SERVICE.mt5_operational_adapter,
+        "read_closed_deal_candidate",
+        lambda ticket: candidate if ticket == "TICKET-001" else None,
+    )
+
+    status, response = _request(
+        "/api/fiscal-reserve/mt5-pending-result",
+        method="POST",
+        payload={
+            "confirmed": True,
+            "ticket": "TICKET-001",
+            "owner_id": "single:attacker-selected-owner",
+        },
+    )
+
+    assert status.startswith("201")
+    assert response["registered"] is True
+    assert response["reserve_calculated"] is False
+    assert queue.list_pending(owner_id)["total"] == 1
+    assert queue.list_pending("single:attacker-selected-owner")["total"] == 0
+
 def test_domestic_pending_api_rejects_foreign_review_category(tmp_path, monkeypatch):
     database = tmp_path / "domestic-review-api.sqlite3"
     monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
