@@ -302,3 +302,6 @@ def test_mql5_preserves_active_cycle_ticket_across_analysis_and_ea_restart():
     assert "last_cycle_id=cid; last_external_id=eid;" not in run_cycle
     assert 'if(last_cycle_id!="" && last_external_id!="")' in run_cycle
     assert "Feche/reconcilie a posicao DEMO atual antes de novo ciclo." in run_cycle
+    assert "if(!cycle_identity_store_valid)" in run_cycle
+    assert "FileIsExist(CycleIdentityFileName())" in panel
+    assert "Falha ao salvar ticket; não reinicie EA." in run_cycle
