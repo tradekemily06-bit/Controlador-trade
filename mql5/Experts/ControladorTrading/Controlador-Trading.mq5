@@ -592,7 +592,7 @@ void RunCycle(){
    last_cycle_id=cid; last_external_id=eid;
    SetLabel(Obj("CYCLEID"),"Ciclo DEMO: "+(cid==""?"concluido":"atualizado"),20,465,8,C'145,160,180');
    SetLabel(Obj("EXTID"),"Execucao: "+(eid==""?"sem atividade":"registrada"),20,483,8,C'145,160,180');
-   SetLabel(Obj("INFO1"),"Ciclo DEMO validado",20,361,9,C'205,215,230');
+   SetLabel(Obj("INFO1"),"Ciclo DEMO; fechamento manual",20,361,9,C'255,209,102');
 }
 void CloseCycle(){
    if(last_cycle_id=="" || last_external_id==""){
