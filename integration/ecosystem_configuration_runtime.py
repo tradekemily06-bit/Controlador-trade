@@ -1213,11 +1213,12 @@ class ConfiguredEcosystemService(EcosystemService):
 
     def publish_material_event(self, kind: str, title: str, message: str, *, critical: bool = False, blocking: bool = False) -> dict[str, Any]:
         """Route a material runtime event into the notification center."""
-        notification_kind = NotificationKind(str(kind).upper())
-        severity = NotificationSeverity.CRITICAL if critical else NotificationSeverity.IMPORTANT
-        notification_id = f"event-{len(self.notifications.all()) + 1}"
-        candidate = EcosystemNotification(notification_id, notification_kind, severity, title, message, requires_attention=critical or blocking, blocking=blocking)
-        snapshot = [asdict(notification) | {"kind": notification.kind.value, "severity": notification.severity.value} for notification in (*self.notifications.all(), candidate)]
-        self.state_store.save_notifications(snapshot)
-        item = self.notifications.publish(candidate)
-        return asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}
+        with self._notification_history_lock:
+            notification_kind = NotificationKind(str(kind).upper())
+            severity = NotificationSeverity.CRITICAL if critical else NotificationSeverity.IMPORTANT
+            notification_id = f"event-{len(self.notifications.all()) + 1}"
+            candidate = EcosystemNotification(notification_id, notification_kind, severity, title, message, requires_attention=critical or blocking, blocking=blocking)
+            snapshot = [asdict(notification) | {"kind": notification.kind.value, "severity": notification.severity.value} for notification in (*self.notifications.all(), candidate)]
+            self.state_store.save_notifications(snapshot)
+            item = self.notifications.publish(candidate)
+            return asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}
