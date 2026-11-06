@@ -1851,6 +1851,18 @@ def test_streamlit_api_rejects_invalid_or_non_object_json_responses():
     assert api_helper.count('raise RuntimeError("Resposta inválida do serviço do Ecossistema.") from None') == 2
 
 
+
+def test_closed_panel_health_uses_only_online_or_unavailable_labels():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    helper_start = source.index("def render_latest_signal(")
+    helper_end = source.index("# Four approved navigation areas", helper_start)
+    helper = source[helper_start:helper_end]
+    assert '"OK": "SISTEMA ONLINE"' in helper
+    assert '"WARNING": "INDISPONÍVEL"' in helper
+    assert '"CRITICAL": "INDISPONÍVEL"' in helper
+    assert '"WARNING": "ATENÇÃO"' not in helper
+
+
 def test_streamlit_signal_strip_refreshes_periodically_in_both_panel_states():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     helper_start = source.index("def render_latest_signal(")
