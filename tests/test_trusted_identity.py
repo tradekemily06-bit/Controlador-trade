@@ -66,3 +66,22 @@ def test_trusted_identity_uses_only_the_exact_configured_header():
     assert trusted_identity_from_headers(
         headers, "Cf-Access-Authenticated-User-Email"
     ) == "owner@example.com"
+
+
+def test_trusted_identity_rejects_control_characters_before_forwarding():
+    for malformed in (
+        "owner@example.com\\r\\nX-Injected: attacker",
+        "owner@example.com\\x00",
+        "owner@example.com\\x7f",
+    ):
+        assert trusted_identity_from_headers(
+            {"Cf-Access-Authenticated-User-Email": malformed},
+            "Cf-Access-Authenticated-User-Email",
+        ) == ""
+
+
+def test_trusted_identity_rejects_unreasonably_long_values():
+    assert trusted_identity_from_headers(
+        {"Cf-Access-Authenticated-User-Email": "a" * 321},
+        "Cf-Access-Authenticated-User-Email",
+    ) == ""
