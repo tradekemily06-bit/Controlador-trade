@@ -472,3 +472,45 @@ def test_notification_quarantine_restore_verifies_archive_without_separate_inspe
         ).fetchone()[0]
     assert current == raw
     assert archived == raw
+
+
+def test_notification_corruption_flag_and_writer_are_serialized(tmp_path, monkeypatch):
+    import json
+    import sqlite3
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    from core.ecosystem_state_store import NotificationHistoryUnavailableError
+
+    path = tmp_path / "notification-corruption-lock.sqlite3"
+    store = EcosystemStateStore(path)
+    store.mark_notifications_unavailable("invalid_records")
+    read_started = Event()
+    allow_read_to_finish = Event()
+
+    def blocked_corrupt_read(_key):
+        read_started.set()
+        assert allow_read_to_finish.wait(timeout=5)
+        raise json.JSONDecodeError("corrupt", "{", 0)
+
+    monkeypatch.setattr(store, "load", blocked_corrupt_read)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        load_future = pool.submit(store.load_notifications)
+        assert read_started.wait(timeout=5)
+        save_future = pool.submit(store.save_notifications, [])
+        allow_read_to_finish.set()
+        assert load_future.result(timeout=5) == []
+        try:
+            save_future.result(timeout=5)
+        except NotificationHistoryUnavailableError:
+            pass
+        else:
+            raise AssertionError("writer must not pass while corruption is being detected")
+
+    with sqlite3.connect(path) as db:
+        assert db.execute(
+            "SELECT value_json FROM ecosystem_state WHERE key = ?",
+            ("notifications",),
+        ).fetchone() is None
+    assert store.notifications_load_error == "invalid_json"
