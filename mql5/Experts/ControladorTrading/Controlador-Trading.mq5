@@ -650,7 +650,7 @@ void RunCycle(){
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Ciclo concluido.":reason,0,62),20,204,9,C'180,190,205');
    SetLabel(Obj("CYCLEID"),"Ciclo DEMO: "+(last_cycle_id==""?"sem posicao":"registrado"),20,465,8,C'145,160,180');
    SetLabel(Obj("EXTID"),"Execucao: "+(last_external_id==""?"sem atividade":"registrada"),20,483,8,C'145,160,180');
-   SetLabel(Obj("INFO1"),"Ciclo DEMO; fechamento manual",20,361,9,C'255,209,102');
+   SetLabel(Obj("INFO1"),cycle_identity_store_valid?"Ciclo DEMO; fechamento manual":"Falha ao salvar ticket; não reinicie EA.",20,361,9,C'255,209,102');
 }
 void CloseCycle(){
    if(last_cycle_id=="" || last_external_id==""){
