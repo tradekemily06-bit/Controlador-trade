@@ -335,15 +335,57 @@ class EcosystemStateStore:
         }
 
     def save_notifications(self, notifications: list[dict[str, Any]]) -> None:
-        # Hold the same re-entrant lock across the guard and SQLite write so a
-        # concurrent load/mark cannot change the corruption state in between.
+        # The in-memory flag protects this store instance, but another process
+        # or store instance may have observed corruption independently. Re-read
+        # and validate the durable row while holding SQLite's write reservation
+        # so a stale writer cannot overwrite damaged history.
         with self._lock:
             if self._notifications_load_error is not None:
                 raise NotificationHistoryUnavailableError(
                     "histórico de notificações exige recuperação explícita antes de nova gravação"
                 )
             try:
-                self._write_state("notifications", notifications)
+                with self._connect() as db:
+                    db.execute("BEGIN IMMEDIATE")
+                    row = db.execute(
+                        "SELECT value_json FROM ecosystem_state WHERE key = ?",
+                        ("notifications",),
+                    ).fetchone()
+                    if row is not None:
+                        try:
+                            persisted = json.loads(row[0])
+                        except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
+                            self._notifications_load_error = "invalid_json"
+                            raise NotificationHistoryUnavailableError(
+                                "histórico persistido inválido; recuperação explícita obrigatória"
+                            )
+                        if not isinstance(persisted, list):
+                            self._notifications_load_error = "invalid_shape"
+                            raise NotificationHistoryUnavailableError(
+                                "formato do histórico persistido inválido; recuperação explícita obrigatória"
+                            )
+                        from core.ecosystem_notifications import EcosystemNotificationCenter
+                        center = EcosystemNotificationCenter()
+                        center.restore(persisted)
+                        if center.restore_had_invalid_records or len(center.all()) != len(persisted):
+                            self._notifications_load_error = "invalid_records"
+                            raise NotificationHistoryUnavailableError(
+                                "registros persistidos inválidos; recuperação explícita obrigatória"
+                            )
+                    encoded = json.dumps(
+                        notifications,
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                        default=lambda item: item.value if isinstance(item, Enum) else str(item),
+                    )
+                    db.execute(
+                        """
+                        INSERT INTO ecosystem_state(key, value_json)
+                        VALUES (?, ?)
+                        ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json
+                        """,
+                        ("notifications", encoded),
+                    )
             except sqlite3.Error as exc:
                 raise NotificationHistoryUnavailableError(
                     "persistência do histórico de notificações indisponível"
