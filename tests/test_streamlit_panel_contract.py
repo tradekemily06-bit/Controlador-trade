@@ -1629,3 +1629,37 @@ def test_streamlit_audit_module_discloses_persistence_state_and_memory_fallback(
     assert '"READ_FAILED": "FALHA DE LEITURA"' in source
     assert "O histórico em memória pode não sobreviver a uma reinicialização." in source
     assert "Persistência SQLite não configurada." in source
+
+
+def test_streamlit_fiscal_history_page_validation_rejects_malformed_rows_and_recovers_stale_offsets():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    function = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_valid_fiscal_history_page"
+    )
+    namespace = {"Any": Any, "date": date}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), str(PANEL_DIR / "app.py"), "exec"), namespace)
+    validate = namespace["_valid_fiscal_history_page"]
+
+    row = {
+        "entry_id": "entry-1",
+        "category": "BR_DAY_TRADE",
+        "reference": "FISCAL-REF-1",
+        "occurred_on": "2026-11-05",
+        "notes": "{}",
+    }
+    valid = {
+        "history": [row],
+        "history_page": {"limit": 50, "offset": 0, "returned": 1, "total": 3, "has_more": True},
+    }
+    assert validate(valid, 0) is True
+    assert validate({"history": [], "history_page": {
+        "limit": 50, "offset": 100, "returned": 0, "total": 3, "has_more": False,
+    }}, 100) is True
+    assert validate({**valid, "history": [None]}, 0) is False
+    assert validate({**valid, "history": [{**row, "owner_id": "leak"}]}, 0) is False
+    assert validate({**valid, "history": [{**row, "occurred_on": "05/11/2026"}]}, 0) is False
+    assert validate({**valid, "history_page": {**valid["history_page"], "returned": 2}}, 0) is False
+    assert validate({**valid, "history_page": {**valid["history_page"], "has_more": False}}, 0) is False
+    assert validate({**valid, "history_page": {**valid["history_page"], "offset": True}}, 0) is False
