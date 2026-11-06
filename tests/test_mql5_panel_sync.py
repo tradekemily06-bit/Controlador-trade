@@ -315,7 +315,7 @@ def test_mql5_releases_stale_cycle_only_after_read_only_broker_confirmation():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     refresh = panel.split("bool RefreshActiveCycleState()", 1)[1].split("void RunCycle()", 1)[0]
     run_cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
-    assert 'Http("POST","/api/runtime/close/reconcile"' in refresh
+    assert 'Http("POST","/api/runtime/close/local/reconcile"' in refresh
     assert 'state=="CLOSED"' in refresh
     assert "ClearCycleIdentity();" in refresh
     assert 'state=="OPEN"' in refresh
@@ -332,7 +332,7 @@ def test_mql5_native_recovery_inventory_supports_multiple_exact_tickets():
     selection = panel.split("void ReconcileSelectedRecovery()", 1)[1].split("int OnInit()", 1)[0]
     events = panel.split("void OnChartEvent", 1)[1]
 
-    assert 'Http("GET","/api/runtime/positions/recovery"' in panel
+    assert 'Http("GET","/api/runtime/positions/recovery/local"' in panel
     assert 'ExtractJsonArrayObjects(json,"positions",objects)' in panel
     assert "RecoveryPosition recovery_items[];" in panel
     assert "recovery_items[n].cycle_id=cycle;" in panel
@@ -347,7 +347,7 @@ def test_mql5_native_recovery_inventory_supports_multiple_exact_tickets():
     assert 'Http("POST","/api/runtime/close/reconcile"' in selection
     assert 'item.state!="BROKER_CONFIRMED_OPEN"' in selection
     assert "if(!recovery_close_armed)" in selection
-    assert 'Http("POST","/api/runtime/close"' in selection
+    assert 'Http("POST","/api/runtime/close/local"' in selection
     assert 'Obj("REC_PREV")' in events
     assert 'Obj("REC_NEXT")' in events
     assert 'Obj("REC_RECONCILE")' in events
