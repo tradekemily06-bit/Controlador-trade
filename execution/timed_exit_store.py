@@ -213,7 +213,7 @@ class TimedExitStore:
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_name(f".{self.path.name}.tmp")
-        temporary.write_text(json.dumps([
+        serialized = json.dumps([
             {
                 "request_id": item.request_id,
                 "cycle_id": item.cycle_id,
@@ -226,8 +226,22 @@ class TimedExitStore:
                 "message": item.message,
             }
             for item in sorted(self._records.values(), key=lambda value: value.request_id)
-        ], ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+        ], ensure_ascii=False, indent=2, sort_keys=True)
+        # Flush the complete temporary file before replacing the previous
+        # schedule. The account fingerprint is private runtime metadata.
+        with temporary.open("w", encoding="utf-8", newline="\\n") as handle:
+            handle.write(serialized)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if os.name != "nt":
+            os.chmod(temporary, 0o600)
         os.replace(temporary, self.path)
+        if os.name != "nt":
+            directory_fd = os.open(self.path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
 
     def _mutate_locked(self, mutation) -> None:
         lock_path = self.path.with_name(f".{self.path.name}.lock")
