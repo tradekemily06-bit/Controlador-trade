@@ -88,3 +88,28 @@ def test_security_audit_reports_invalid_existing_schema_without_leaking_details(
     )
     assert audit.snapshot()[0]["request_id"] == "request-safe"
     assert str(database) not in str(audit.snapshot())
+
+
+
+def test_security_audit_marks_read_failure_and_keeps_memory_fallback(tmp_path, monkeypatch):
+    import sqlite3
+
+    audit = SecurityAudit(max_events=2, database_path=str(tmp_path / "audit.sqlite3"))
+    audit.record(
+        request_id="request-memory",
+        method="GET",
+        path="/api/health",
+        status=200,
+        client_key="client",
+    )
+
+    def unavailable_connection():
+        raise sqlite3.OperationalError("private database location must not leak")
+
+    monkeypatch.setattr(audit, "_connect", unavailable_connection)
+    events = audit.snapshot()
+
+    assert [event["request_id"] for event in events] == ["request-memory"]
+    assert audit.persistence_available is False
+    assert audit.persistence_error == "read_failed"
+    assert "private database location" not in str(events)
