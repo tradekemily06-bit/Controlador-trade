@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
 from typing import Any
@@ -45,16 +46,17 @@ class LatestMarketAnalysisStore:
         if not isinstance(payload, dict):
             raise ValueError("snapshot deve ser um objeto")
         serialized = json.dumps(payload, ensure_ascii=False, allow_nan=False)
+        updated_at = datetime.now(timezone.utc).isoformat(timespec="microseconds")
         with self._lock, self._connect() as connection:
             connection.execute(
                 """
                 INSERT INTO latest_market_analysis(symbol, timeframe, payload_json, updated_at)
-                VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                VALUES (?, ?, ?, ?)
                 ON CONFLICT(symbol, timeframe) DO UPDATE SET
                     payload_json = excluded.payload_json,
                     updated_at = excluded.updated_at
                 """,
-                (normalized_symbol, normalized_timeframe, serialized),
+                (normalized_symbol, normalized_timeframe, serialized, updated_at),
             )
 
     def latest(self, symbol: str | None = None, timeframe: str | None = None) -> dict[str, Any] | None:
