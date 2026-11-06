@@ -578,7 +578,7 @@ def application(environ, start_response):
             ticket = str(data.get("ticket") or "").strip()
             if not ticket or len(ticket) > 80:
                 raise ValueError("ticket MT5 é obrigatório e deve ter até 80 caracteres")
-with getattr(SERVICE.mt5_operational_adapter, "session_lock", nullcontext()):
+            with getattr(SERVICE.mt5_operational_adapter, "session_lock", nullcontext()):
                 try:
                     candidate = SERVICE.mt5_operational_adapter.read_closed_deal_candidate(ticket)
                 except MT5DealNotFoundError:
@@ -684,7 +684,7 @@ with getattr(SERVICE.mt5_operational_adapter, "session_lock", nullcontext()):
             if data.get("market_scope") != "BR_ELIGIBLE_MARKET":
                 raise ValueError("mercado brasileiro elegível não foi confirmado; mantenha o negócio pendente até classificação")
             declared_market_scope = str(data.get("market_scope") or "").strip()[:80]
-with getattr(SERVICE.mt5_operational_adapter, "session_lock", nullcontext()):
+            with getattr(SERVICE.mt5_operational_adapter, "session_lock", nullcontext()):
                 try:
                     candidate = SERVICE.mt5_operational_adapter.read_closed_deal_candidate(ticket)
                 except MT5DealNotFoundError:
