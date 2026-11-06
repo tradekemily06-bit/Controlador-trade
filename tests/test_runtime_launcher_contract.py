@@ -101,6 +101,28 @@ def test_controller_supervisor_pins_runtime_paths_and_demo_safety_environment():
         assert required in text
 
 
+
+def test_controller_supervisor_pins_remote_identity_and_local_ea_boundary():
+    text = _read("deployment/start_controlador_runtime.ps1")
+    required = (
+        "$env:CONTROLADOR_REMOTE_ACCESS_REQUIRED = 'true'",
+        "$env:CONTROLADOR_LOCAL_MUTATIONS_ALLOWED = 'true'",
+        "$env:CONTROLADOR_LOCAL_MUTATION_HOSTS = 'localhost,127.0.0.1,[::1]'",
+        "$env:CONTROLADOR_TRUSTED_IDENTITY_HEADER = 'Cf-Access-Authenticated-User-Email'",
+        "if ([string]::IsNullOrWhiteSpace([string]$env:CONTROLADOR_SINGLE_USER_IDENTITY)) {",
+        "CONTROLADOR_SINGLE_USER_IDENTITY não configurado",
+        "$env:CONTROLADOR_BIND_HOST = '127.0.0.1'",
+    )
+    for item in required:
+        assert item in text
+
+    # The single-user identity gate must run before the supervisor can launch
+    # the API process; a missing pin must fail closed at startup.
+    identity_gate = text.index("CONTROLADOR_SINGLE_USER_IDENTITY não configurado")
+    supervisor_launch = text.index("Start-Process")
+    assert identity_gate < supervisor_launch
+
+
 def test_mt5_supervisor_logs_specific_health_gate_failure_reason():
     text = _read("deployment/start_mt5_runtime.ps1")
     assert "MT5_HEALTH_DIAGNOSTIC=" in text
