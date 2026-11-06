@@ -249,3 +249,18 @@ def test_domestic_pending_rejects_coerced_or_nonfinite_results(tmp_path, value):
     with pytest.raises(ValueError, match="realized_result_brl"):
         queue.add("owner-a", payload)
     assert queue.list_pending("owner-a")["total"] == 0
+
+
+
+def test_domestic_pending_rejects_out_of_range_pagination_offsets(tmp_path):
+    queue = FiscalDomesticPendingQueue(str(tmp_path / "domestic-pagination.sqlite3"))
+    queue.add("owner-a", sample("BR-PAGE-BOUNDARY"))
+
+    for offset in (-1, True, 1_000_000_001, 2**63):
+        with pytest.raises(ValueError, match="offset deve estar entre"):
+            queue.list_pending("owner-a", limit=10, offset=offset)
+
+    page = queue.list_pending("owner-a", limit=10, offset=1_000_000_000)
+    assert page["offset"] == 1_000_000_000
+    assert page["items"] == []
+    assert page["total"] == 1
