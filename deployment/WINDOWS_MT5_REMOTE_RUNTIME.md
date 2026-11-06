@@ -27,6 +27,25 @@ CONTROLADOR_SINGLE_USER_IDENTITY=usuario-individual-autorizado@example.com
 CONTROLADOR_RUNTIME_DIR=C:\\Controlador-trade\\.runtime
 CONTROLADOR_SECURITY_AUDIT_DB=C:\\Controlador-trade\\.runtime\\security-audit.sqlite
 
+### Configuração mínima do Tunnel gerenciado localmente
+
+Use uma rota de hostname para o Streamlit e exija que o próprio `cloudflared` valide o JWT do Access antes de encaminhar ao origin. Substitua os três valores entre sinais de menor/maior pelos dados da sua conta e aplicação Access; não copie valores fictícios para produção.
+
+```yaml
+ingress:
+  - hostname: painel.seu-dominio.example
+    service: http://127.0.0.1:8501
+    originRequest:
+      access:
+        required: true
+        teamName: <seu-team-name>
+        audTag:
+          - <aud-tag-da-aplicacao-access>
+  - service: http_status:404
+```
+
+Não crie uma segunda rota pública para `127.0.0.1:8000`. A API é chamada pelo Streamlit localmente. O `Cf-Access-Authenticated-User-Email` usado pela aplicação identifica o usuário, mas não é uma assinatura criptográfica: a barreira de autenticidade da borda é a validação do JWT `Cf-Access-Jwt-Assertion` pelo `cloudflared` com `required: true`, além da origem inacessível diretamente. Se a aplicação for movida para fora desse caminho protegido por Tunnel, a API/origin deverá validar assinatura, emissor e audiência do JWT antes de confiar na identidade. Não substitua essa validação por simples decodificação do token.
+
 ## Assistente do Ecossistema
 
 Para habilitar respostas com IA, configure `OPENAI_API_KEY` como variável de ambiente protegida no usuário/serviço Windows que inicia o runtime. A chave fica somente no servidor; nunca a coloque no Git, na interface web, em arquivos servidos ao navegador ou em mensagens do Assistente. Opcionalmente, configure `OPENAI_MODEL`; sem essa variável, o serviço usa o modelo padrão definido pelo código. Sem `OPENAI_API_KEY`, a rota de conversa responde como indisponível e não deve ser tratada como Assistente operacionalmente pronto.
