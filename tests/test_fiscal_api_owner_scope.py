@@ -705,3 +705,64 @@ def test_mt5_missing_deal_exception_returns_422_without_registering_fiscal_recor
 
     assert foreign_queue.list_pending(owner_id)["total"] == 0
     assert domestic_queue.list_pending(owner_id)["total"] == 0
+
+
+def test_foreign_pending_api_returns_conflict_for_duplicate_asset_and_realized_references(
+    tmp_path, monkeypatch
+):
+    database = tmp_path / "foreign-pending-duplicate-api.sqlite3"
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "X-Auth-User")
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", database)
+    monkeypatch.setattr(app_module.SECURITY, "allow", lambda environ: True)
+    monkeypatch.setattr(app_module.SECURITY, "headers", lambda request_id, **kwargs: [])
+    monkeypatch.setattr(app_module, "_audit", lambda *args, **kwargs: None)
+
+    owner_id = migrate_fiscal_schema(str(database))
+    queue = FiscalPendingQueue(str(database))
+    monkeypatch.setattr(app_module, "FISCAL_PENDING_QUEUE", queue)
+
+    asset = {
+        "reference": "FOREIGN-DUPLICATE-ASSET-API-001",
+        "original_amount": 100.0,
+        "original_currency": "USD",
+        "instrument": "ETF",
+        "jurisdiction": "US",
+        "occurred_on": "2026-11-04",
+    }
+    status, created = _request(
+        "/api/fiscal-reserve/pending", method="POST", payload=asset
+    )
+    assert status.startswith("201")
+    assert created["reserve_calculated"] is False
+
+    duplicate_status, duplicate = _request(
+        "/api/fiscal-reserve/pending", method="POST", payload=asset
+    )
+    assert duplicate_status.startswith("409")
+    assert "referência" in duplicate["error"].lower()
+
+    realized = {
+        "reference": "FOREIGN-DUPLICATE-RESULT-API-001",
+        "original_result": -25.0,
+        "original_currency": "EUR",
+        "instrument": "ETF",
+        "jurisdiction": "EU",
+        "occurred_on": "2026-11-04",
+    }
+    status, created_result = _request(
+        "/api/fiscal-reserve/pending-result", method="POST", payload=realized
+    )
+    assert status.startswith("201")
+    assert created_result["reserve_calculated"] is False
+
+    duplicate_result_status, duplicate_result = _request(
+        "/api/fiscal-reserve/pending-result",
+        method="POST",
+        payload=realized,
+    )
+    assert duplicate_result_status.startswith("409")
+    assert "referência" in duplicate_result["error"].lower()
+    assert queue.list_pending(owner_id)["total"] == 2
+    assert queue.summary(owner_id)["total"] == 2
