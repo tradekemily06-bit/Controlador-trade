@@ -22,6 +22,7 @@ class EcosystemStateStore:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = Lock()
+        self._notifications_load_error: str | None = None
         self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
@@ -72,8 +73,18 @@ class EcosystemStateStore:
     def save_preferences(self, preferences: Any) -> None:
         self.save("preferences", asdict(preferences))
 
+    @property
+    def notifications_load_error(self) -> str | None:
+        """Return a safe category when persisted notification JSON is corrupt."""
+        return self._notifications_load_error
+
     def load_notifications(self) -> list[dict[str, Any]]:
-        value = self.load("notifications")
+        self._notifications_load_error = None
+        try:
+            value = self.load("notifications")
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            self._notifications_load_error = "invalid_json"
+            return []
         return value if isinstance(value, list) else []
 
     def save_notifications(self, notifications: list[dict[str, Any]]) -> None:
