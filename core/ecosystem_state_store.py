@@ -349,6 +349,11 @@ class EcosystemStateStore:
             try:
                 from core.ecosystem_notifications import EcosystemNotificationCenter
                 candidate = EcosystemNotificationCenter()
+                if not isinstance(notifications, list):
+                    self._notifications_load_error = "invalid_records"
+                    raise NotificationHistoryUnavailableError(
+                        "lote de notificações deve ser uma lista; gravação bloqueada"
+                    )
                 candidate.restore(notifications)
                 if (
                     candidate.restore_had_invalid_records
