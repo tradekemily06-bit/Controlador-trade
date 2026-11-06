@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Any
 from pathlib import Path
+from threading import RLock
 import tempfile
 
 from core.ecosystem_notifications import EcosystemNotification, EcosystemNotificationCenter, NotificationKind, NotificationSeverity, UpdateKind
@@ -61,6 +62,7 @@ class ConfiguredEcosystemService(EcosystemService):
         persisted_preferences = self.state_store.load_preferences()
         self.preferences = EcosystemPreferencesStore.from_dict(persisted_preferences) if persisted_preferences else EcosystemPreferencesStore()
         self.notifications = EcosystemNotificationCenter()
+        self._notification_history_lock = RLock()
         self.notifications.restore(self.state_store.load_notifications())
         if self.notifications.restore_had_invalid_records:
             self.state_store.mark_notifications_unavailable("invalid_records")
