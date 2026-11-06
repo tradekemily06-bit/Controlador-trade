@@ -290,3 +290,32 @@ def test_oversized_context_is_rejected_without_truncating_json_or_persisting_mes
     assert store.messages == []
     assert completion.calls == []
 
+
+
+def test_provider_configuration_failure_preserves_persisted_conversation_id(monkeypatch):
+    store = FakeStore()
+    completion = FakeCompletion()
+    assistant = _assistant(store, completion, monkeypatch)
+
+    def unavailable_client():
+        raise AssistantUnavailableError("Assistente não configurado: chave OpenAI ausente no servidor.")
+
+    monkeypatch.setattr(assistant, "_client", unavailable_client)
+
+    try:
+        assistant.ask(
+            identity="single:owner",
+            message="Pergunta privada",
+            fiscal_owner_id="single:owner",
+        )
+    except AssistantUnavailableError as exc:
+        assert str(exc) == (
+            "Assistente não configurado: chave OpenAI ausente no servidor."
+        )
+        assert exc.conversation_id == "conversation-1"
+    else:
+        raise AssertionError("provider setup failure must be reported")
+
+    assert store.messages[-1]["role"] == "user"
+    assert store.messages[-1]["content"] == "Pergunta privada"
+    assert completion.calls == []
