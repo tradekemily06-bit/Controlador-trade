@@ -286,7 +286,7 @@ def test_mql5_close_preserves_cycle_until_broker_confirms_position_closed():
     assert 'state=="OPEN"' in close
     assert 'last_cycle_id=""; last_external_id="";' in close
     assert "Fechamento inconclusivo; ciclo preservado." in close
-    assert "Ciclo DEMO; fechamento manual" in panel
+    assert "Sem saida temporizada; fechamento manual explicito." in panel
 
 
 def test_mql5_preserves_active_cycle_ticket_across_analysis_and_ea_restart():
@@ -301,7 +301,26 @@ def test_mql5_preserves_active_cycle_ticket_across_analysis_and_ea_restart():
     assert 'if(allowed=="true" && accepted=="true" && cid!="" && eid!="")' in run_cycle
     assert "last_cycle_id=cid; last_external_id=eid;" not in run_cycle
     assert 'if(last_cycle_id!="" && last_external_id!="")' in run_cycle
-    assert "Feche/reconcilie a posicao DEMO atual antes de novo ciclo." in run_cycle
+    assert "RefreshActiveCycleState()" in run_cycle
+    refresh = panel.split("bool RefreshActiveCycleState()", 1)[1].split("void RunCycle()", 1)[0]
+    assert 'JsonObjectValue(response,"close_reconciliation","state")' in refresh
+    assert 'state=="CLOSED"' in refresh
+    assert 'state=="OPEN"' in refresh
     assert "if(!cycle_identity_store_valid)" in run_cycle
     assert "FileIsExist(CycleIdentityFileName())" in panel
     assert "Falha ao salvar ticket; não reinicie EA." in run_cycle
+
+
+def test_mql5_releases_stale_cycle_only_after_read_only_broker_confirmation():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    refresh = panel.split("bool RefreshActiveCycleState()", 1)[1].split("void RunCycle()", 1)[0]
+    run_cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    assert 'Http("POST","/api/runtime/close/reconcile"' in refresh
+    assert 'state=="CLOSED"' in refresh
+    assert "ClearCycleIdentity();" in refresh
+    assert 'state=="OPEN"' in refresh
+    assert 'if(last_cycle_id!="" && last_external_id!="" && !RefreshActiveCycleState())' in run_cycle
+    assert 'JsonObjectValue(r,"timed_exit","scheduled")' in run_cycle
+    assert 'JsonObjectValue(r,"timed_exit","due_at")' in run_cycle
+    assert "best-effort" in run_cycle
+
