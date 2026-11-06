@@ -283,3 +283,52 @@ def test_configured_service_surfaces_malformed_notification_records_as_critical(
     assert incidents[0]["status"] == "INVALID_RECORDS"
     assert incidents[0]["blocking"] is True
     assert summary["execution_allowed"] is False
+
+
+def test_failed_notification_persistence_does_not_publish_to_memory(monkeypatch):
+    import pytest
+
+    from core.ecosystem_state_store import NotificationHistoryUnavailableError
+    from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
+
+    service = ConfiguredEcosystemService()
+    before = service.notifications.all()
+
+    def fail_save(_notifications):
+        raise NotificationHistoryUnavailableError("safe persistence failure")
+
+    monkeypatch.setattr(service.state_store, "save_notifications", fail_save)
+
+    with pytest.raises(NotificationHistoryUnavailableError):
+        service.publish_material_event(
+            "SECURITY",
+            "Evento não persistido",
+            "Não deve aparecer como salvo.",
+            critical=True,
+            blocking=True,
+        )
+
+    assert service.notifications.all() == before
+
+
+def test_failed_ecosystem_update_persistence_does_not_publish_to_memory(monkeypatch):
+    import pytest
+
+    from core.ecosystem_state_store import NotificationHistoryUnavailableError
+    from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
+
+    service = ConfiguredEcosystemService()
+    before = service.notifications.all()
+
+    def fail_save(_notifications):
+        raise NotificationHistoryUnavailableError("safe persistence failure")
+
+    monkeypatch.setattr(service.state_store, "save_notifications", fail_save)
+
+    with pytest.raises(NotificationHistoryUnavailableError):
+        service.publish_ecosystem_update(
+            "Atualização não persistida",
+            "Não deve aparecer como salva.",
+        )
+
+    assert service.notifications.all() == before
