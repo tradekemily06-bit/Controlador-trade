@@ -287,7 +287,15 @@ def application(environ, start_response):
     if not is_local_health_probe and not SECURITY.allow(environ):
         return _json_response(start_response, HTTPStatus.TOO_MANY_REQUESTS, {"error": "Limite de requisições excedido", "request_id": request_id}, request_id, environ)
 
-    if method == "POST" and path != "/api/updates":
+    # Native EA close endpoints have their own stricter loopback/Host gate below.
+    # Exempt only these exact paths from the remote identity gate so a same-machine
+    # terminal can use them when remote Access is mandatory; all other POST routes
+    # continue through _authorize_remote_mutation.
+    local_ea_post_paths = {
+        "/api/runtime/close/local/reconcile",
+        "/api/runtime/close/local",
+    }
+    if method == "POST" and path != "/api/updates" and path not in local_ea_post_paths:
         raw_length = environ.get("CONTENT_LENGTH")
         try:
             declared_length = int(raw_length) if raw_length not in (None, "") else 0
