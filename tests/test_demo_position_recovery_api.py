@@ -62,3 +62,39 @@ def test_remote_recovery_and_close_routes_still_require_trusted_identity():
     ):
         route = source.split(f'if path == "{route_path}"', 1)[1].split("\n        if path ==", 1)[0]
         assert "_authorize_remote_mutation(environ)" in route
+
+
+def test_native_recovery_routes_keep_explicit_response_contracts_and_fresh_close_preflight():
+    api = (ROOT / "app.py").read_text(encoding="utf-8")
+    integration = (ROOT / "integration" / "ecosystem_configuration_runtime.py").read_text(encoding="utf-8")
+    inventory = api.split('if path == "/api/runtime/positions/recovery/local" and method == "GET":', 1)[1].split(
+        'if path == "/api/runtime/close/local/reconcile" and method == "POST":', 1
+    )[0]
+    reconcile = api.split('if path == "/api/runtime/close/local/reconcile" and method == "POST":', 1)[1].split(
+        'if path == "/api/runtime/close/local" and method == "POST":', 1
+    )[0]
+    close = api.split('if path == "/api/runtime/close/local" and method == "POST":', 1)[1].split(
+        'if path == "/api/runtime/positions/recovery" and method == "GET":', 1
+    )[0]
+    close_service = integration.split("def close_mt5_position", 1)[1].split(
+        "def reconcile_mt5_position_close", 1
+    )[0]
+
+    assert '"positions": positions' in inventory
+    assert '"read_only": True' in inventory
+    assert '"broker_query_performed": False' in inventory
+    assert '"close_reconciliation": result' in reconcile
+    assert '"closed": close_result.accepted' in close
+    assert '"close_state": "CLOSED" if close_result.accepted else "UNKNOWN"' in close
+    assert "reconcile_position_close(" in close_service
+    assert "if current.state is not PositionCloseState.OPEN:" in close_service
+    assert close_service.index("reconcile_position_close(") < close_service.index("close_position(")
+    assert "store.begin(request_id, external_id.strip())" in close_service
+
+
+def test_local_runtime_authorization_does_not_trust_forwarded_client_headers():
+    api = (ROOT / "app.py").read_text(encoding="utf-8")
+    helper = api.split("def _authorize_local_runtime", 1)[1].split("def _authorize_internal_update", 1)[0]
+    assert 'environ.get("REMOTE_ADDR")' in helper
+    assert "HTTP_X_FORWARDED_FOR" not in helper
+    assert 'environ.get("HTTP_HOST")' in helper
