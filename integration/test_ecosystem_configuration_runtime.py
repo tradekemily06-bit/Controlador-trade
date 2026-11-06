@@ -89,7 +89,7 @@ def test_mt5_cycle_wires_controlled_automation_into_canonical_runtime():
         exposure=0.0,
     )
 
-    result = service.run_mt5_cycle(symbol="EURUSD", timeframe="5m", limit=3)
+    result = service.run_mt5_cycle(symbol="EURUSD", timeframe="5m", limit=20)
     assert result == "runtime-result"
     assert fake.kwargs["automation_policy"].enabled is True
     assert fake.kwargs["confirmed"] is True
@@ -98,6 +98,26 @@ def test_mt5_cycle_wires_controlled_automation_into_canonical_runtime():
     assert fake.kwargs["entry_conditions"] == ()
     assert callable(fake.kwargs["automation_readiness_factory"])
     assert callable(fake.kwargs["automation_risk_budget_factory"])
+
+
+def test_mt5_cycle_rejects_invalid_client_sizing_before_runtime_access():
+    service = ConfiguredEcosystemService(execution_provider="paper")
+    invalid_requests = (
+        {"symbol": "EURUSD", "amount": True},
+        {"symbol": "EURUSD", "amount": float("nan")},
+        {"symbol": "EURUSD", "amount": float("inf")},
+        {"symbol": "EURUSD", "duration_seconds": True},
+        {"symbol": "EURUSD", "duration_seconds": 0},
+        {"symbol": "EURUSD", "duration_seconds": 86401},
+        {"symbol": "EURUSD", "limit": 19},
+        {"symbol": "EURUSD", "limit": 501},
+    )
+    for request in invalid_requests:
+        try:
+            service.run_mt5_cycle(**request)
+        except ValueError:
+            continue
+        raise AssertionError(f"invalid MT5 cycle request was accepted: {request!r}")
 
 
 def test_mt5_cycle_blocks_when_selected_provider_is_not_mt5(tmp_path):
