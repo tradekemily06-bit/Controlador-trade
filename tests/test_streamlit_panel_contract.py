@@ -1835,3 +1835,13 @@ def test_streamlit_api_rejects_invalid_or_non_object_json_responses():
     assert "except (UnicodeDecodeError, json.JSONDecodeError):" in api_helper
     assert 'if not isinstance(result, dict):' in api_helper
     assert api_helper.count('raise RuntimeError("Resposta inválida do serviço do Ecossistema.") from None') == 2
+
+
+def test_streamlit_signal_strip_refreshes_periodically_in_both_panel_states():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert '@st.fragment(run_every="15s")' in source
+    assert "def render_latest_signal(closed: bool = False)" in source
+    assert "render_latest_signal(closed=True)" in source
+    assert "render_latest_signal(closed=False)" in source
+    assert 'api("/api/runtime/analysis/latest")' in source
+    assert 'latest_payload.get("available") is True' in source
