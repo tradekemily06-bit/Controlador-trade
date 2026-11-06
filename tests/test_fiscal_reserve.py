@@ -318,13 +318,22 @@ def test_unverified_mt5_declarations_in_legacy_ledger_are_preserved_but_excluded
         "tax_liability_confirmed": False,
         "reserve_semantics": "PLANNING_ESTIMATE_ONLY",
     }
-    reserve.record_realized_result(OWNER, {
-        "category": "BR_DAY_TRADE",
-        "realized_result_brl": 250.0,
-        "reference": "MT5-DEMO:UNVERIFIED-LEGACY-001",
-        "occurred_on": "2026-11-04",
-        "notes": json.dumps(evidence, separators=(",", ":")),
-    })
+    # Recreate a historical row written before the inclusion marker was
+    # reserved by the service. New user notes must not be able to set this state.
+    import sqlite3
+    with sqlite3.connect(reserve.database_path) as db:
+        db.execute(
+            "INSERT INTO fiscal_reserve_entries "
+            "(entry_id, owner_id, category, entry_type, realized_result_brl, "
+            "reserve_rate, reserve_amount_brl, reference, occurred_on, created_at, notes) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "legacy-unverified-entry", OWNER, "BR_DAY_TRADE", "REALIZED_RESULT",
+                250.0, 20.0, 50.0, "MT5-DEMO:UNVERIFIED-LEGACY-001",
+                "2026-11-04", "2026-11-04T12:00:00+00:00",
+                json.dumps(evidence, separators=(",", ":")),
+            ),
+        )
 
     summary = reserve.summary(OWNER, as_of=date(2026, 11, 4))
     assert summary["total_reserved_brl"] == 0.0
@@ -456,3 +465,19 @@ def test_reserve_settings_and_history_are_isolated_between_owner_ids(tmp_path):
     assert reserve.settings(owner_b) == {"BR_DAY_TRADE": 23.0}
     assert reserve.summary(owner_a)["total_reserved_brl"] == 170
     assert reserve.summary(owner_b)["total_reserved_brl"] == 0
+
+
+def test_user_notes_cannot_set_reserved_legacy_exclusion_marker(tmp_path):
+    reserve = make_reserve(tmp_path / "reserved-marker.sqlite3")
+    payload = {
+        "category": "BR_DAY_TRADE",
+        "realized_result_brl": 250.0,
+        "reference": "USER-NOTE-MARKER-001",
+        "occurred_on": "2026-11-04",
+        "notes": "Anotação comum USER_DECLARED_PENDING_REVIEW",
+    }
+    import pytest
+    with pytest.raises(ValueError, match="marcador interno reservado"):
+        reserve.record_realized_result(OWNER, payload)
+    assert reserve.summary(OWNER)["history_page"]["total"] == 0
+    assert reserve.summary(OWNER)["total_reserved_brl"] == 0.0
