@@ -47,12 +47,12 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
         if not self._terminal_path:
             try:
                 return bool(mt5.initialize())
-            except Exception:
+            except Exception as exc:
                 try:
                     mt5.shutdown()
                 except Exception:
                     pass
-                return False
+                raise MT5MarketDataError("falha ao inicializar o terminal MT5") from exc
         try:
             if not mt5.initialize(path=self._terminal_path):
                 return False
@@ -69,14 +69,18 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
             )
             if actual != expected:
                 mt5.shutdown()
-                return False
+                raise MT5MarketDataError(
+                    "terminal MT5 conectado não corresponde ao caminho configurado; leitura bloqueada."
+                )
             return True
-        except Exception:
+        except MT5MarketDataError:
+            raise
+        except Exception as exc:
             try:
                 mt5.shutdown()
             except Exception:
                 pass
-            return False
+            raise MT5MarketDataError("falha ao verificar o terminal MT5 configurado") from exc
 
     def _module(self) -> Any:
         if self._mt5 is None:
