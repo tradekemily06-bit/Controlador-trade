@@ -359,3 +359,19 @@ def test_windows_autostart_offers_boot_mode_and_unbounded_task_runtime():
     assert "New-ScheduledTaskTrigger -AtStartup" in text
     assert "New-TimeSpan -Seconds 0" in text
     assert "StartWhenAvailable" in text
+    assert "New-ScheduledTaskPrincipal -UserId $currentIdentity.Name -LogonType S4U" in text
+    assert 'Register-ScheduledTask -TaskName "$TaskPrefix-MT5"' in text
+    assert 'Register-ScheduledTask -TaskName "$TaskPrefix-Controlador"' in text
+    assert 'Register-ScheduledTask -TaskName "$TaskPrefix-Streamlit"' in text
+    assert "-MultipleInstances IgnoreNew" in text
+    assert "-RestartCount 3" in text
+    assert "-RestartInterval (New-TimeSpan -Minutes 1)" in text
+
+
+def test_remote_runtime_docs_distinguish_windows_supervisors_from_cloudflare_tunnel_service():
+    text = _read("deployment/WINDOWS_MT5_REMOTE_RUNTIME.md")
+    assert "cloudflared service install" in text
+    assert "o instalador `install_windows_autostart.ps1` registra somente as três tarefas" in text
+    assert "não instala nem registra o serviço Windows `cloudflared`" in text
+    assert "porta 8000" in text
+    assert "AtStartupS4U" in text
