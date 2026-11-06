@@ -15,6 +15,7 @@ from typing import Any
 import streamlit as st
 
 from presentation import closed_panel_signal
+from trusted_identity import trusted_identity_from_headers
 
 ROOT = Path(__file__).resolve().parent
 CONFIG = json.loads((ROOT / "controlador_trader_referencia_visual.json").read_text(encoding="utf-8"))
@@ -66,7 +67,7 @@ def api(path: str, method: str = "GET", payload: dict[str, Any] | None = None) -
         if not IDENTITY_HEADER:
             raise RuntimeError("A identidade confiável não foi configurada no servidor Streamlit.")
         incoming = st.context.headers
-        identity = incoming.get(IDENTITY_HEADER) or incoming.get(IDENTITY_HEADER.lower())
+        identity = trusted_identity_from_headers(incoming, IDENTITY_HEADER)
         if not identity:
             raise RuntimeError("Acesso remoto bloqueado: identidade autenticada não chegou pelo proxy confiável.")
         headers[IDENTITY_HEADER] = identity
