@@ -1,5 +1,6 @@
 import io
 import json
+import sqlite3
 
 import app as app_module
 from assistant.chat_service import AssistantUnavailableError
@@ -390,3 +391,31 @@ def test_notification_recovery_inspection_rejects_missing_trusted_identity(monke
     )
     assert status.startswith("401")
     assert "error" in payload
+
+
+
+def test_chat_api_returns_sanitized_unavailable_when_fiscal_sqlite_fails(tmp_path, monkeypatch):
+    class Assistant:
+        def ask(self, *args, **kwargs):
+            raise AssertionError("OpenAI não pode ser chamada quando a persistência fiscal falha")
+
+    _configure(monkeypatch, Assistant())
+
+    def broken_migration(_path):
+        raise sqlite3.OperationalError("database is locked: /private/runtime/fiscal.sqlite3")
+
+    monkeypatch.setattr(app_module, "migrate_fiscal_schema", broken_migration)
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", tmp_path / "fiscal.sqlite3")
+
+    status, payload = _request(
+        "/api/assistant/chat",
+        method="POST",
+        payload={"message": "Consulte minha reserva", "consent_to_openai": True},
+    )
+
+    assert status.startswith("503")
+    assert payload["error"] == (
+        "Persistência temporariamente indisponível; nenhuma alteração foi confirmada."
+    )
+    assert "database is locked" not in json.dumps(payload)
+    assert str(tmp_path) not in json.dumps(payload)
