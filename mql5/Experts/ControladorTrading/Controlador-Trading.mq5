@@ -281,18 +281,34 @@ void DeletePanel(bool preserveCompact=false){
    }
    if(preserveCompact) RefreshPanelToggle();
 }
-string JsonValue(string json,string key){
-   string needle="\"" + key + "\":";
+int JsonValueStart(string json,string key){
+   string needle="\""+key+"\"";
    int p=StringFind(json,needle);
+   while(p>=0){
+      int q=p+StringLen(needle);
+      while(q<StringLen(json) && (StringGetCharacter(json,q)==' ' || StringGetCharacter(json,q)=='\n' || StringGetCharacter(json,q)=='\r' || StringGetCharacter(json,q)=='\t')) q++;
+      if(q<StringLen(json) && StringGetCharacter(json,q)==':'){
+         q++;
+         while(q<StringLen(json) && (StringGetCharacter(json,q)==' ' || StringGetCharacter(json,q)=='\n' || StringGetCharacter(json,q)=='\r' || StringGetCharacter(json,q)=='\t')) q++;
+         return q;
+      }
+      p=StringFind(json,needle,p+StringLen(needle));
+   }
+   return -1;
+}
+string JsonValue(string json,string key){
+   int p=JsonValueStart(json,key);
    if(p<0) return "";
-   p+=StringLen(needle);
-   while(p<StringLen(json) && (StringGetCharacter(json,p)==' ' || StringGetCharacter(json,p)=='\n' || StringGetCharacter(json,p)=='\r')) p++;
    if(p<StringLen(json) && StringGetCharacter(json,p)=='"'){
       int q=p+1;
-      while(q<StringLen(json)){
-         if(StringGetCharacter(json,q)=='"' && (q==p+1 || StringGetCharacter(json,q-1)!='\\')) break;
-         q++;
+      bool escaped=false;
+      for(;q<StringLen(json);q++){
+         ushort c=StringGetCharacter(json,q);
+         if(escaped) escaped=false;
+         else if(c=='\\') escaped=true;
+         else if(c=='"') break;
       }
+      if(q>=StringLen(json)) return "";
       return StringSubstr(json,p+1,q-p-1);
    }
    int q=p;
@@ -301,16 +317,16 @@ string JsonValue(string json,string key){
       if(c==',' || c=='}' || c==']' || c=='\n' || c=='\r') break;
       q++;
    }
-   return StringSubstr(json,p,q-p);
+   string value=StringSubstr(json,p,q-p);
+   StringTrimLeft(value);
+   StringTrimRight(value);
+   return value;
 }
 bool ExtractJsonArrayObjects(string json,string arrayKey,string &objects[]){
    ArrayResize(objects,0);
-   string marker="\""+arrayKey+"\":";
-   int markerPos=StringFind(json,marker);
-   if(markerPos<0) return false;
-   int start=StringFind(json,"[",markerPos+StringLen(marker));
-   if(start<0) return false;
-   int length=StringLen(json),pos=start+1;
+   int valueStart=JsonValueStart(json,arrayKey);
+   if(valueStart<0 || valueStart>=StringLen(json) || StringGetCharacter(json,valueStart)!='[') return false;
+   int length=StringLen(json),pos=valueStart+1;
    bool have_item=false,after_comma=false;
    while(pos<length){
       ushort c=StringGetCharacter(json,pos);
@@ -343,93 +359,12 @@ bool ExtractJsonArrayObjects(string json,string arrayKey,string &objects[]){
    }
    return false;
 }
-bool ParseRecoveryInventory(string json){
-   string objects[];
-   if(!ExtractJsonArrayObjects(json,"positions",objects)) return false;
-   ArrayResize(recovery_items,0);
-   for(int i=0;i<ArraySize(objects);i++){
-      string cycle=JsonValue(objects[i],"cycle_id");
-      string ticket=JsonValue(objects[i],"external_id");
-      string state=JsonValue(objects[i],"recovery_state");
-      if(cycle=="" || ticket=="" || (state!="BLOCKED_ACCOUNT_IDENTITY" && state!="BROKER_CONFIRMED_OPEN" && state!="RECONCILIATION_REQUIRED")){
-         ArrayResize(recovery_items,0); return false;
-      }
-      int n=ArraySize(recovery_items);
-      if(ArrayResize(recovery_items,n+1)!=n+1){ ArrayResize(recovery_items,0); return false; }
-      recovery_items[n].cycle_id=cycle;
-      recovery_items[n].external_id=ticket;
-      recovery_items[n].state=state;
-   }
-   return true;
-}
-void RenderRecoverySelection(){
-   int count=ArraySize(recovery_items);
-   if(!recovery_inventory_valid){
-      SetLabel(Obj("RECOVERY_ITEM"),"Inventario indisponivel ou invalido.",20,560,8,C'255,118,118');
-      SetLabel(Obj("RECOVERY_STATUS"),recovery_message,20,604,8,C'255,118,118'); return;
-   }
-   if(count==0){
-      SetLabel(Obj("RECOVERY_ITEM"),"Nenhum ciclo pendente no ledger.",20,560,8,C'88,214,141');
-      SetLabel(Obj("RECOVERY_STATUS"),"Lista vazia; consulta somente leitura.",20,604,8,C'145,160,180'); return;
-   }
-   recovery_selected=MathMax(0,MathMin(recovery_selected,count-1));
-   RecoveryPosition item=recovery_items[recovery_selected];
-   SetLabel(Obj("RECOVERY_ITEM"),StringFormat("%d/%d Ticket %s · %s",recovery_selected+1,count,item.external_id,item.state),20,560,8,C'205,215,230');
-   SetLabel(Obj("RECOVERY_STATUS"),StringSubstr(recovery_message,0,58),20,604,8,C'145,160,180');
-}
-bool RefreshRecoveryInventory(){
-   string response; int code=0;
-   if(!Http("GET","/api/runtime/positions/recovery/local","",response,code)){
-      recovery_inventory_valid=false; recovery_message="Falha HTTP ao consultar inventario."; RenderRecoverySelection(); return false;
-   }
-   if(!ParseRecoveryInventory(response)){
-      recovery_inventory_valid=false; recovery_message="Resposta JSON invalida; acoes bloqueadas."; RenderRecoverySelection(); return false;
-   }
-   recovery_inventory_valid=true; recovery_selected=0; recovery_close_armed=false;
-   recovery_message="Inventario lido; broker ainda nao consultado."; RenderRecoverySelection(); return true;
-}
-void ReconcileSelectedRecovery(){
-   if(!recovery_inventory_valid || ArraySize(recovery_items)==0) return;
-   RecoveryPosition item=recovery_items[recovery_selected];
-   if(item.state=="BLOCKED_ACCOUNT_IDENTITY"){ recovery_message="Identidade original bloqueada; sem fechamento."; RenderRecoverySelection(); return; }
-   string body="{\"cycle_id\":\""+JsonEscape(item.cycle_id)+"\",\"external_id\":\""+JsonEscape(item.external_id)+"\"}";
-   string response; int code=0;
-   if(!Http("POST","/api/runtime/close/local/reconcile",body,response,code)){
-      recovery_message="MT5 nao confirmou; nenhuma ordem enviada."; RenderRecoverySelection(); return;
-   }
-   string state=JsonObjectValue(response,"close_reconciliation","state");
-   if(state=="CLOSED"){ recovery_message="MT5 confirmou CLOSED; atualizando lista."; RefreshRecoveryInventory(); }
-   else if(state=="OPEN"){
-      recovery_items[recovery_selected].state="BROKER_CONFIRMED_OPEN";
-      recovery_close_armed=false; recovery_message="MT5 confirmou OPEN. Clique FECHAR e confirme novamente."; RenderRecoverySelection();
-   }else{ recovery_message="Estado UNKNOWN; fechamento permanece bloqueado."; RenderRecoverySelection(); }
-}
-void CloseSelectedRecovery(){
-   if(!recovery_inventory_valid || ArraySize(recovery_items)==0) return;
-   RecoveryPosition item=recovery_items[recovery_selected];
-   if(item.state!="BROKER_CONFIRMED_OPEN"){ recovery_message="Fechamento exige estado OPEN confirmado pelo MT5."; RenderRecoverySelection(); return; }
-   if(!recovery_close_armed){ recovery_close_armed=true; recovery_message="Confirme: clique FECHAR novamente para este ticket."; RenderRecoverySelection(); return; }
-   recovery_close_armed=false;
-   string body="{\"cycle_id\":\""+JsonEscape(item.cycle_id)+"\",\"external_id\":\""+JsonEscape(item.external_id)+"\"}";
-   string response; int code=0;
-   if(!Http("POST","/api/runtime/close/local",body,response,code)){
-      recovery_message="Fechamento inconclusivo; reconciliacao necessaria."; RefreshRecoveryInventory(); return;
-   }
-   if(JsonValue(response,"closed")=="true" && JsonValue(response,"close_state")=="CLOSED"){
-      recovery_message="Fechamento confirmado pelo runtime."; RefreshRecoveryInventory(); return;
-   }
-   recovery_message="Sem confirmacao CLOSED; consultando estado."; ReconcileSelectedRecovery();
-}
 string JsonObjectValue(string json,string objectKey,string key){
-   string marker="\""+objectKey+"\":";
-   int p=StringFind(json,marker);
-   if(p<0) return "";
-   int start=StringFind(json,"{",p+StringLen(marker));
-   if(start<0) return "";
+   int valueStart=JsonValueStart(json,objectKey);
+   if(valueStart<0 || valueStart>=StringLen(json) || StringGetCharacter(json,valueStart)!='{') return "";
    int depth=0;
-   bool inString=false;
-   bool escaped=false;
-   for(int i=start;i<StringLen(json);i++){
+   bool inString=false,escaped=false;
+   for(int i=valueStart;i<StringLen(json);i++){
       ushort ch=StringGetCharacter(json,i);
       if(inString){
          if(escaped) escaped=false;
@@ -440,7 +375,7 @@ string JsonObjectValue(string json,string objectKey,string key){
          else if(ch=='{') depth++;
          else if(ch=='}'){
             depth--;
-            if(depth==0) return JsonValue(StringSubstr(json,start,i-start+1),key);
+            if(depth==0) return JsonValue(StringSubstr(json,valueStart,i-valueStart+1),key);
          }
       }
    }
