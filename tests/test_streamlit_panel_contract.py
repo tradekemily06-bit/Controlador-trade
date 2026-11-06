@@ -356,15 +356,20 @@ def test_streamlit_closed_panel_shows_signal_score_and_system_availability():
     start = source.index("if not st.session_state.panel_open:")
     end = source.index("st.stop()", start) + len("st.stop()")
     closed_state = source[start:end]
+    helper_start = source.index("def render_latest_signal(")
+    helper_end = source.index("# Four approved navigation areas", helper_start)
+    helper = source[helper_start:helper_end]
+
     assert 'st.button("C", key="open_control_hub")' in closed_state
     assert 'toggle_col, signal_col = st.columns([1, 3], vertical_alignment="center")' in closed_state
     assert 'with toggle_col:' in closed_state and 'with signal_col:' in closed_state
-    assert 'api("/api/health")' in closed_state
-    assert 'api("/api/runtime/analysis/latest")' in closed_state
-    assert "closed_panel_signal(latest_analysis)" in closed_state
-    assert "closed-signal" in closed_state
-    assert "closed-score" in closed_state
-    assert "closed-status" in closed_state
+    assert "render_latest_signal(closed=True)" in closed_state
+    assert 'api("/api/health")' in helper
+    assert 'api("/api/runtime/analysis/latest")' in helper
+    assert "closed_panel_signal(latest_analysis)" in helper
+    assert "closed-signal" in helper
+    assert "closed-score" in helper
+    assert "closed-status" in helper
     assert "Controlador-Trader" not in closed_state
     assert "Histórico" not in closed_state
     assert "market_analysis_result" not in closed_state
@@ -386,13 +391,16 @@ def test_streamlit_open_and_closed_panel_share_the_latest_signal_and_score():
     open_start = source.index('with st.container(key="control-hub-shell"):')
     open_end = source.index('if st.button("Fechar painel"', open_start)
     opened = source[open_start:open_end]
+    helper_start = source.index("def render_latest_signal(")
+    helper_end = source.index("# Four approved navigation areas", helper_start)
+    helper = source[helper_start:helper_end]
 
-    assert 'api("/api/runtime/analysis/latest")' in closed
-    assert 'api("/api/runtime/analysis/latest")' in opened
-    assert "closed_panel_signal(latest_analysis)" in closed
-    assert "closed_panel_signal(open_latest_analysis)" in opened
-    assert "closed-signal" in closed and "closed-score" in closed
-    assert "open-signal-strip" in opened and "open-score" in opened
+    assert "render_latest_signal(closed=True)" in closed
+    assert "render_latest_signal(closed=False)" in opened
+    assert 'api("/api/runtime/analysis/latest")' in helper
+    assert "closed_panel_signal(latest_analysis)" in helper
+    assert "closed-signal" in helper and "closed-score" in helper
+    assert "open-signal" in helper and "open-score" in helper
     assert "position: fixed;" not in source[source.index(".st-key-panel-toggle {"):source.index("*, *::before")]
 
 def test_streamlit_does_not_fill_unimplemented_modules_with_placeholder_copy():
@@ -1839,9 +1847,14 @@ def test_streamlit_api_rejects_invalid_or_non_object_json_responses():
 
 def test_streamlit_signal_strip_refreshes_periodically_in_both_panel_states():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    helper_start = source.index("def render_latest_signal(")
+    helper_end = source.index("# Four approved navigation areas", helper_start)
+    helper = source[helper_start:helper_end]
     assert '@st.fragment(run_every="15s")' in source
     assert "def render_latest_signal(closed: bool = False)" in source
     assert "render_latest_signal(closed=True)" in source
     assert "render_latest_signal(closed=False)" in source
-    assert 'api("/api/runtime/analysis/latest")' in source
-    assert 'latest_payload.get("available") is True' in source
+    assert 'api("/api/runtime/analysis/latest")' in helper
+    assert 'latest_payload.get("available") is True' in helper
+    assert 'api("/api/health")' in helper
+
