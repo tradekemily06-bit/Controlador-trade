@@ -100,6 +100,13 @@ Exemplo do modo 24/7: `-AutostartMode AtStartupS4U`. A configuração é feita u
 
 O instalador não grava senha, token ou segredo. O Controlador continua fazendo preflight DEMO e não transforma uma falha do MT5 em autorização: sem DEMO válido, a execução permanece bloqueada.
 
+## Serviço persistente do Cloudflare Tunnel — etapa separada
+
+O instalador `install_windows_autostart.ps1` registra somente as três tarefas agendadas do MT5, Controlador e Streamlit. Ele **não instala nem registra o serviço Windows `cloudflared`** e não cria a conta, o túnel, o DNS, o hostname ou a aplicação Cloudflare Access. Portanto, instalar as tarefas do ecossistema, isoladamente, não conclui o acesso remoto 24/7.
+
+No host Windows permanente, crie/configure o Tunnel no painel Cloudflare, publique exclusivamente o hostname do Streamlit em `http://127.0.0.1:8501`, configure a validação obrigatória do Access na borda e instale o conector como serviço Windows usando o comando oficial `cloudflared.exe service install <TUNNEL_TOKEN>` em terminal elevado. O token é segredo: não o coloque no Git, em scripts versionados, logs, prints ou mensagens. Confirme no Windows que o serviço `cloudflared` está em execução e no painel Cloudflare que o Tunnel está `Healthy`. A porta 8000 permanece privada.
+
+A documentação oficial recomenda executar o Tunnel como serviço para iniciar no boot e continuar ativo enquanto o origin estiver online: https://developers.cloudflare.com/tunnel/features/locally-managed-tunnels/as-a-service/ e https://developers.cloudflare.com/tunnel/get-started/. A instalação do serviço não substitui a validação de rota, Access, hostname e health do painel.
 ## Proteção Cloudflare Access
 A rota publicada deve estar protegida por uma aplicação Cloudflare Access e o Tunnel deve exigir a validação do Access antes de encaminhar o tráfego ao origin. Para túnel gerenciado localmente, isso corresponde a `originRequest.access.required: true` com o `teamName` e o `audTag` da aplicação; em túnel gerenciado remotamente, configure a mesma exigência nas opções da rota. Assim, o header de identidade usado pelo Controlador chega somente depois da autenticação/validação na borda.
 
