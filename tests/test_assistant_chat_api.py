@@ -324,6 +324,12 @@ def test_notification_recovery_api_requires_authenticated_identity_and_explicit_
     class Service:
         state_store = StateStore()
 
+        def restore_notification_history(self, archive_id, *, confirmed=False):
+            calls.append(("runtime_restore", archive_id, confirmed))
+            return self.state_store.restore_notifications_from_quarantine(
+                archive_id, confirmed=confirmed
+            )
+
     _configure(monkeypatch, object())
     monkeypatch.setattr(app_module, "SERVICE", Service())
 
@@ -362,6 +368,7 @@ def test_notification_recovery_api_requires_authenticated_identity_and_explicit_
     assert calls == [
         ("archive", True),
         ("inspect", "archive-1"),
+        ("runtime_restore", "archive-1", True),
         ("restore", "archive-1", True),
     ]
 
