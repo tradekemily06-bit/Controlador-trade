@@ -619,7 +619,20 @@ void CloseCycle(){
             SetLabel(Obj("INFO1"),"Fechamento inconclusivo; ciclo preservado.",20,361,9,C'255,118,118');
          }
       }else SetLabel(Obj("INFO1"),"Sem evidencia de fechamento; ciclo preservado.",20,361,9,C'255,118,118');
-   }else SetLabel(Obj("INFO1"),"Fechamento bloqueado ou indisponivel",20,361,9,C'255,118,118');
+   }else{
+      string reconciliation; int reconcile_code=0;
+      if(Http("POST","/api/runtime/close/reconcile",body,reconciliation,reconcile_code)){
+         string state=JsonObjectValue(reconciliation,"close_reconciliation","state");
+         if(state=="CLOSED"){
+            SetLabel(Obj("INFO1"),"MT5 confirmou o fechamento.",20,361,9,C'88,214,141');
+            last_cycle_id=""; last_external_id="";
+         }else if(state=="OPEN"){
+            SetLabel(Obj("INFO1"),"MT5 confirma: posicao continua aberta.",20,361,9,C'255,209,102');
+         }else{
+            SetLabel(Obj("INFO1"),"Fechamento inconclusivo; ciclo preservado.",20,361,9,C'255,118,118');
+         }
+      }else SetLabel(Obj("INFO1"),"Fechamento bloqueado; identidade preservada.",20,361,9,C'255,118,118');
+   }
 }
 int OnInit(){
    active_view="COCKPIT";
