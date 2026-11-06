@@ -294,6 +294,8 @@ def test_application_migrates_owner_schema_before_fiscal_repositories_are_create
     app_path = Path(__file__).resolve().parents[1] / "app.py"
     tree = ast.parse(app_path.read_text(encoding="utf-8"))
     migration_index = None
+    process_lock_acquire_index = None
+    runtime_construction_index = None
     repository_indexes = []
 
     for index, statement in enumerate(tree.body):
@@ -308,7 +310,24 @@ def test_application_migrates_owner_schema_before_fiscal_repositories_are_create
             migration_index = index
         elif value.func.id in {"FiscalReserve", "FiscalPendingQueue", "FiscalDomesticPendingQueue"}:
             repository_indexes.append(index)
+        elif value.func.id == "build_demo_execution_port":
+            runtime_construction_index = index
+        elif (
+            isinstance(value.func, ast.Attribute)
+            and value.func.attr == "acquire"
+            and isinstance(value.func.value, ast.Name)
+            and value.func.value.id == "_RUNTIME_PROCESS_LOCK"
+        ):
+            process_lock_acquire_index = index
 
+    assert process_lock_acquire_index is not None, "app.py must acquire the process lock during startup"
+    assert runtime_construction_index is not None, "app.py must construct the operational runtime"
+    assert process_lock_acquire_index < runtime_construction_index, (
+        "process exclusivity must be acquired before operational runtime construction"
+    )
+    assert process_lock_acquire_index < migration_index, (
+        "process exclusivity must be acquired before fiscal schema migration"
+    )
     assert migration_index is not None, "app.py must apply the owner-scoped fiscal migration"
     assert repository_indexes, "app.py must initialize fiscal repositories"
     assert all(migration_index < index for index in repository_indexes), (
