@@ -264,3 +264,36 @@ def test_notification_quarantine_can_preserve_payload_after_transient_read_failu
     assert original == raw
     assert archived == raw
     assert store.notifications_load_error == "read_failed"
+
+
+def test_notification_quarantine_preserves_binary_corrupt_payload(tmp_path):
+    import hashlib
+    import sqlite3
+
+    path = tmp_path / "notification-quarantine-binary.sqlite3"
+    store = EcosystemStateStore(path)
+    raw = b"\\x00\\xffnot-json"
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "INSERT INTO ecosystem_state(key, value_json) VALUES (?, ?)",
+            ("notifications", sqlite3.Binary(raw)),
+        )
+
+    assert store.load_notifications() == []
+    assert store.notifications_load_error == "read_failed" or store.notifications_load_error == "invalid_json"
+    archive = store.archive_notifications_for_recovery(confirmed=True)
+
+    with sqlite3.connect(path) as db:
+        original = db.execute(
+            "SELECT value_json FROM ecosystem_state WHERE key = ?",
+            ("notifications",),
+        ).fetchone()[0]
+        archived = db.execute(
+            "SELECT raw_payload FROM notification_history_quarantine WHERE archive_id = ?",
+            (archive["archive_id"],),
+        ).fetchone()[0]
+
+    assert isinstance(original, bytes)
+    assert original == raw
+    assert archived == raw
+    assert archive["payload_sha256"] == hashlib.sha256(raw).hexdigest()
