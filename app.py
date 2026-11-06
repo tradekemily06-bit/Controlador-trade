@@ -1580,9 +1580,13 @@ def run(host: str | None = None, port: int | None = None) -> None:
     selected_port = port or int(os.environ.get("PORT", "8000"))
     if not _RUNTIME_PROCESS_LOCK.is_acquired:
         _RUNTIME_PROCESS_LOCK.acquire()
-    from execution.timed_exit_worker import TimedExitWorker
-    timed_exit_worker = TimedExitWorker(SERVICE, OPERATIONAL_RUNTIME)
+    timed_exit_worker = None
     try:
+        # Keep import and worker construction inside the protected startup
+        # block: either can fail after the process locks have been acquired.
+        from execution.timed_exit_worker import TimedExitWorker
+
+        timed_exit_worker = TimedExitWorker(SERVICE, OPERATIONAL_RUNTIME)
         timed_exit_worker.start()
         with make_server(
             selected_host,
@@ -1593,7 +1597,11 @@ def run(host: str | None = None, port: int | None = None) -> None:
             print(f"Controlador Trading em http://{selected_host}:{selected_port}")
             server.serve_forever()
     finally:
-        timed_exit_worker.stop()
+        # If worker shutdown itself fails, retain the process locks (fail
+        # closed). If import/construction/startup fails before a worker exists,
+        # release the locks acquired by this run attempt.
+        if timed_exit_worker is not None:
+            timed_exit_worker.stop()
         _RUNTIME_PROCESS_LOCK.release()
 
 
