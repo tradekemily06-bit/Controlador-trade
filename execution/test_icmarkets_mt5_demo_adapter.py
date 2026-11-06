@@ -472,3 +472,105 @@ def test_closed_deal_ticket_lookup_revalidates_final_close_and_private_account_f
             pass
         else:
             raise AssertionError(f"ticket {invalid_ticket} should not identify the final closing deal")
+
+def test_closed_deal_preview_aggregates_multiple_partial_closes_for_one_position():
+    mt5 = FakeMT5()
+    mt5.account_info = lambda: SimpleNamespace(
+        trade_mode=mt5.ACCOUNT_TRADE_MODE_DEMO, currency="BRL",
+        login=12345678, server="ICMarketsSC-Demo",
+    )
+    mt5.positions_get = lambda: ()
+    opening = SimpleNamespace(
+        entry=mt5.DEAL_ENTRY_IN, ticket=10, position_id=900,
+        symbol="WIN$", volume=1.0, profit=0.0,
+        commission=-0.4, swap=0.0, fee=0.0, time=1793318300,
+    )
+    partial_one = SimpleNamespace(
+        entry=mt5.DEAL_ENTRY_OUT, ticket=11, position_id=900,
+        symbol="WIN$", volume=0.4, profit=8.0,
+        commission=-0.2, swap=0.0, fee=-0.1, time=1793318350,
+    )
+    partial_two = SimpleNamespace(
+        entry=mt5.DEAL_ENTRY_OUT, ticket=12, position_id=900,
+        symbol="WIN$", volume=0.6, profit=-2.0,
+        commission=-0.3, swap=-0.1, fee=-0.2, time=1793318400,
+    )
+
+    def history_deals_get(*args, **kwargs):
+        if kwargs.get("position") == 900:
+            return (opening, partial_one, partial_two)
+        return (partial_one, partial_two)
+
+    mt5.history_deals_get = history_deals_get
+    preview = ICMarketsMT5DemoAdapter(mt5_module=mt5).read_closed_deal_candidates()
+    assert preview["count"] == 1
+    candidate = preview["candidates"][0]
+    assert candidate["ticket"] == "12"
+    assert candidate["volume"] == 1.0
+    assert candidate["profit"] == 6.0
+    assert candidate["commission"] == -0.9
+    assert candidate["swap"] == -0.1
+    assert candidate["fee"] == -0.3
+    assert candidate["net_result_account_currency"] == 4.7
+    assert candidate["deal_count"] == 3
+    assert candidate["closing_deal_count"] == 2
+
+
+def test_closed_deal_preview_withholds_position_when_opened_and_closed_volume_do_not_match():
+    mt5 = FakeMT5()
+    mt5.account_info = lambda: SimpleNamespace(
+        trade_mode=mt5.ACCOUNT_TRADE_MODE_DEMO, currency="BRL"
+    )
+    mt5.positions_get = lambda: ()
+    opening = SimpleNamespace(
+        entry=mt5.DEAL_ENTRY_IN, ticket=20, position_id=901,
+        symbol="WIN$", volume=1.0, profit=0.0,
+        commission=0.0, swap=0.0, fee=0.0, time=1793318300,
+    )
+    closing = SimpleNamespace(
+        entry=mt5.DEAL_ENTRY_OUT, ticket=21, position_id=901,
+        symbol="WIN$", volume=0.7, profit=5.0,
+        commission=0.0, swap=0.0, fee=0.0, time=1793318400,
+    )
+
+    def history_deals_get(*args, **kwargs):
+        if kwargs.get("position") == 901:
+            return (opening, closing)
+        return (closing,)
+
+    mt5.history_deals_get = history_deals_get
+    preview = ICMarketsMT5DemoAdapter(mt5_module=mt5).read_closed_deal_candidates()
+    assert preview["count"] == 0
+    assert preview["candidates"] == []
+    assert preview["withheld_incomplete_positions"] == 1
+
+
+def test_closed_deal_preview_withholds_position_still_reported_open_by_mt5():
+    mt5 = FakeMT5()
+    mt5.account_info = lambda: SimpleNamespace(
+        trade_mode=mt5.ACCOUNT_TRADE_MODE_DEMO, currency="BRL"
+    )
+    mt5.positions_get = lambda: (
+        SimpleNamespace(identifier=902, ticket=777),
+    )
+    opening = SimpleNamespace(
+        entry=mt5.DEAL_ENTRY_IN, ticket=30, position_id=902,
+        symbol="WIN$", volume=1.0, profit=0.0,
+        commission=0.0, swap=0.0, fee=0.0, time=1793318300,
+    )
+    closing = SimpleNamespace(
+        entry=mt5.DEAL_ENTRY_OUT, ticket=31, position_id=902,
+        symbol="WIN$", volume=1.0, profit=5.0,
+        commission=0.0, swap=0.0, fee=0.0, time=1793318400,
+    )
+
+    def history_deals_get(*args, **kwargs):
+        if kwargs.get("position") == 902:
+            return (opening, closing)
+        return (closing,)
+
+    mt5.history_deals_get = history_deals_get
+    preview = ICMarketsMT5DemoAdapter(mt5_module=mt5).read_closed_deal_candidates()
+    assert preview["count"] == 0
+    assert preview["candidates"] == []
+    assert preview["withheld_incomplete_positions"] == 1
