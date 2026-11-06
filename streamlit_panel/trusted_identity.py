@@ -4,6 +4,9 @@ from collections.abc import Mapping
 from typing import Any
 
 
+MAX_TRUSTED_IDENTITY_LENGTH = 320
+
+
 def trusted_identity_from_headers(headers: Any, configured_name: str) -> str:
     """Read a trusted HTTP identity header without depending on header-name casing.
 
@@ -27,4 +30,11 @@ def trusted_identity_from_headers(headers: Any, configured_name: str) -> str:
     ):
         return ""
     values = {value.strip() for value in matching_values}
-    return next(iter(values)) if len(values) == 1 else ""
+    if len(values) != 1:
+        return ""
+    identity = next(iter(values))
+    if len(identity) > MAX_TRUSTED_IDENTITY_LENGTH:
+        return ""
+    if any(ord(character) < 32 or ord(character) == 127 for character in identity):
+        return ""
+    return identity
