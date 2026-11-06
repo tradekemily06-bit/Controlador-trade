@@ -76,7 +76,6 @@ def test_state_store_is_not_an_execution_authority(tmp_path: Path):
     assert restored.preferences.autonomous_operation_enabled is False
 
 
-
 def test_corrupt_notification_json_does_not_prevent_state_store_startup(tmp_path: Path):
     db = EcosystemStateStore(tmp_path / "state.sqlite")
     with db._connect() as connection:
@@ -91,6 +90,28 @@ def test_corrupt_notification_json_does_not_prevent_state_store_startup(tmp_path
     assert restored == []
     assert db.notifications_load_error == "invalid_json"
 
+
+def test_corrupt_notification_history_is_not_overwritten_by_routine_save(tmp_path: Path):
+    import pytest
+
+    db = EcosystemStateStore(tmp_path / "state.sqlite")
+    with db._connect() as connection:
+        connection.execute(
+            "INSERT INTO ecosystem_state(key, value_json) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json",
+            ("notifications", "{broken-json"),
+        )
+
+    assert db.load_notifications() == []
+    with pytest.raises(RuntimeError, match="explicit recovery"):
+        db.save_notifications([{"notification_id": "new-event"}])
+
+    with db._connect() as connection:
+        stored = connection.execute(
+            "SELECT value_json FROM ecosystem_state WHERE key = ?",
+            ("notifications",),
+        ).fetchone()[0]
+    assert stored == "{broken-json"
 
 
 def test_notification_store_read_error_is_reported_without_crashing(tmp_path: Path, monkeypatch):
