@@ -1905,5 +1905,7 @@ def test_assistant_openai_consent_is_bound_to_authenticated_identity():
     assert 'if not identity:\n        return ""' in helper
     assert "hashlib.sha256" in helper
     assert 'st.session_state["assistant_openai_consent"] = False' in assistant
+    assert "_reset_assistant_conversation()" in assistant
+    assert 'st.session_state.pop("saved_assistant_conversation", None)' in assistant
     assert 'st.session_state["assistant_consent_scope"] = consent_scope' in assistant
     assert "disabled=not bool(consent_scope)" in assistant
