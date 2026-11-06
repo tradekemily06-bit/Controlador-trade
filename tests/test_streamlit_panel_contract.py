@@ -1808,7 +1808,19 @@ def test_streamlit_latest_signal_uses_durable_snapshot_store():
     source = (Path(__file__).resolve().parents[1] / "app.py").read_text(encoding="utf-8")
     assert "LatestMarketAnalysisStore" in source
     assert "CONTROLADOR_ANALYSIS_SNAPSHOT_DB" in source
-    assert "LATEST_MARKET_ANALYSIS.latest(symbol or None, timeframe or None)" in source
+    assert "LATEST_MARKET_ANALYSIS.latest_record(symbol or None, timeframe or None)" in source
     assert "LATEST_MARKET_ANALYSIS.save(" in source
     assert "PERSISTENT_SQLITE" in source
     assert "_LATEST_MARKET_ANALYSIS: dict" not in source
+
+
+def test_latest_market_analysis_endpoint_expires_old_snapshots_fail_closed():
+    source = (Path(__file__).resolve().parents[1] / "app.py").read_text(encoding="utf-8")
+    start = source.index('if path == "/api/runtime/analysis/latest" and method == "GET":')
+    end = source.index('if path == "/api/runtime/analysis" and method == "POST":', start)
+    route = source[start:end]
+    assert 'CONTROLADOR_ANALYSIS_MAX_AGE_SECONDS' in route
+    assert 'fresh = age_seconds <= max_age_seconds' in route
+    assert '"analysis": snapshot if available else None' in route
+    assert '"stale": snapshot is not None and not fresh' in route
+    assert '"unavailable_reason": "ANALYSIS_EXPIRED"' in route
