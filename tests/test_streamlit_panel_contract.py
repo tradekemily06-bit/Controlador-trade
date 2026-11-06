@@ -375,13 +375,16 @@ def test_streamlit_leverage_control_persists_only_the_preference_without_executi
 
 
 
-def test_assistant_is_a_standalone_module_inside_streamlit_without_changing_figma_tabs():
+def test_financeiro_groups_fiscal_reserve_and_assistant_inside_the_four_reference_areas():
     config = json.loads((PANEL_DIR / "controlador_trader_referencia_visual.json").read_text(encoding="utf-8"))
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert list(config["open_state"]["tabs"]) == ["COCKPIT", "ANÁLISE", "ESTUDO", "MAIS / ADMIN"]
-    assert 'AREAS["MAIS / ADMIN"].append("Assistente do Ecossistema")' in source
-    assert 'if module == "Assistente do Ecossistema":' in source
-    assert 'financial = st.radio("Financeiro", ["Reserva Fiscal", "Assistente do Ecossistema"]' not in source
+    assert 'AREAS["MAIS / ADMIN"].append(' not in source
+    assert 'if module == "Financeiro":' in source
+    assert 'financial = st.radio(' in source
+    assert '["Reserva Fiscal", "Assistente do Ecossistema"]' in source
+    assert 'if financial == "Reserva Fiscal":' in source
+    assert "show_fiscal()" in source
     assert "show_assistant()" in source
 
 
@@ -389,7 +392,7 @@ def test_streamlit_readme_identifies_the_streamlit_panel_as_user_facing_and_figm
     readme = (PANEL_DIR / "README.md").read_text(encoding="utf-8")
     assert "O Figma é somente referência visual" in readme
     assert "painel de uso pretendido" in readme
-    assert "Assistente do Ecossistema é acrescentado como módulo funcional próprio em MAIS / ADMIN" in readme
+    assert "Reserva Fiscal e Assistente do Ecossistema ficam agrupados dentro de Financeiro" in readme
 
 
 
