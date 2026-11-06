@@ -192,3 +192,88 @@ def test_local_ea_post_routes_reach_their_own_loopback_authorization_before_remo
     ):
         route = source.split(f'if path == "{route_path}"', 1)[1].split("\n        if path ==", 1)[0]
         assert "_authorize_local_runtime(environ)" in route
+
+
+def _invoke_local_close_api(monkeypatch, path, *, remote_addr="127.0.0.1", host="127.0.0.1:8000", access_identity=None):
+    import io
+    import json
+
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "Cf-Access-Authenticated-User-Email")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "true")
+    monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATION_HOSTS", "localhost,127.0.0.1,[::1]")
+    monkeypatch.setattr(app_module.SECURITY, "allow", lambda environ: True)
+    monkeypatch.setattr(app_module.SECURITY, "headers", lambda request_id, **kwargs: [])
+    monkeypatch.setattr(app_module, "_audit", lambda *args, **kwargs: None)
+
+    raw = json.dumps({"cycle_id": "cycle-1", "external_id": "ticket-1"}).encode("utf-8")
+    environ = {
+        "REQUEST_METHOD": "POST",
+        "PATH_INFO": path,
+        "QUERY_STRING": "",
+        "REMOTE_ADDR": remote_addr,
+        "HTTP_HOST": host,
+        "CONTENT_LENGTH": str(len(raw)),
+        "wsgi.input": io.BytesIO(raw),
+    }
+    if access_identity is not None:
+        environ["HTTP_CF_ACCESS_AUTHENTICATED_USER_EMAIL"] = access_identity
+    response = {}
+
+    def start_response(status, headers):
+        response["status"] = status
+
+    body = b"".join(app_module.application(environ, start_response))
+    return response["status"], json.loads(body)
+
+
+def test_local_ea_close_and_reconcile_work_when_remote_access_is_required(monkeypatch):
+    calls = []
+
+    class CloseResult:
+        accepted = True
+        message = "closed"
+        external_id = "ticket-1-close"
+
+    def reconcile(**kwargs):
+        calls.append(("reconcile", kwargs))
+        return {"state": "OPEN", "read_only": True}
+
+    def close(**kwargs):
+        calls.append(("close", kwargs))
+        return CloseResult()
+
+    monkeypatch.setattr(app_module.SERVICE, "reconcile_mt5_position_close", reconcile)
+    monkeypatch.setattr(app_module.SERVICE, "close_mt5_position", close)
+
+    for path in ("/api/runtime/close/local/reconcile", "/api/runtime/close/local"):
+        status, payload = _invoke_local_close_api(monkeypatch, path)
+        assert status.startswith("200")
+        assert calls[-1][1] == {"cycle_id": "cycle-1", "external_id": "ticket-1"}
+        if path.endswith("/reconcile"):
+            assert payload["close_reconciliation"] == {"state": "OPEN", "read_only": True}
+        else:
+            assert payload["closed"] is True
+            assert payload["close_state"] == "CLOSED"
+
+    assert [item[0] for item in calls] == ["reconcile", "close"]
+
+
+def test_local_ea_close_routes_still_reject_proxy_identity_and_non_loopback(monkeypatch):
+    class CloseResult:
+        accepted = True
+        message = "closed"
+        external_id = "ticket-1-close"
+
+    monkeypatch.setattr(app_module.SERVICE, "close_mt5_position", lambda **kwargs: CloseResult())
+
+    proxied_status, _ = _invoke_local_close_api(
+        monkeypatch, "/api/runtime/close/local", access_identity="owner@example.com"
+    )
+    assert proxied_status.startswith("403")
+
+    remote_status, _ = _invoke_local_close_api(
+        monkeypatch, "/api/runtime/close/local", remote_addr="203.0.113.20"
+    )
+    assert remote_status.startswith("403")
