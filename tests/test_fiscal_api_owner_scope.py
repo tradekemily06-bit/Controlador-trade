@@ -766,3 +766,34 @@ def test_foreign_pending_api_returns_conflict_for_duplicate_asset_and_realized_r
     assert "referência" in duplicate_result["error"].lower()
     assert queue.list_pending(owner_id)["total"] == 2
     assert queue.summary(owner_id)["total"] == 2
+
+
+def test_fiscal_post_with_wrong_trusted_identity_is_forbidden_before_schema_access(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "X-Auth-User")
+    monkeypatch.setattr(app_module.SECURITY, "allow", lambda environ: True)
+    monkeypatch.setattr(app_module.SECURITY, "headers", lambda request_id, **kwargs: [])
+    monkeypatch.setattr(app_module, "_audit", lambda *args, **kwargs: None)
+
+    def unexpected_schema_access(*args, **kwargs):
+        raise AssertionError("unauthorized identity must be rejected before fiscal schema access")
+
+    monkeypatch.setattr(app_module, "migrate_fiscal_schema", unexpected_schema_access)
+    status, response = _request(
+        "/api/fiscal-reserve/domestic-pending",
+        method="POST",
+        identity="attacker@example.com",
+        payload={
+            "owner_id": "single:attacker-selected-owner",
+            "reference": "BR-UNAUTHORIZED-001",
+            "instrument": "ETF",
+            "occurred_on": "2026-11-06",
+        },
+    )
+
+    assert status.startswith("403")
+    assert "pending" not in json.dumps(response).lower()
+    assert "attacker-selected-owner" not in json.dumps(response)
