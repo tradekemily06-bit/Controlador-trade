@@ -487,18 +487,29 @@ def test_notification_corruption_flag_and_writer_are_serialized(tmp_path, monkey
     store.mark_notifications_unavailable("invalid_records")
     read_started = Event()
     allow_read_to_finish = Event()
+    save_attempted = Event()
+    save_finished = Event()
 
     def blocked_corrupt_read(_key):
         read_started.set()
         assert allow_read_to_finish.wait(timeout=5)
         raise json.JSONDecodeError("corrupt", "{", 0)
 
+    def concurrent_save():
+        save_attempted.set()
+        try:
+            store.save_notifications([])
+        finally:
+            save_finished.set()
+
     monkeypatch.setattr(store, "load", blocked_corrupt_read)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         load_future = pool.submit(store.load_notifications)
         assert read_started.wait(timeout=5)
-        save_future = pool.submit(store.save_notifications, [])
+        save_future = pool.submit(concurrent_save)
+        assert save_attempted.wait(timeout=5)
+        assert not save_finished.wait(timeout=0.05)
         allow_read_to_finish.set()
         assert load_future.result(timeout=5) == []
         try:
