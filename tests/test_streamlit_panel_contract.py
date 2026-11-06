@@ -198,7 +198,7 @@ def test_streamlit_disables_assistant_chat_when_provider_is_unavailable():
 def test_streamlit_restores_assistant_conversation_id_after_provider_failure():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     api_start = source.index("def api(")
-    api_end = source.index("\\ndef money(", api_start)
+    api_end = source.index(chr(10) + "def money(", api_start)
     api_helper = source[api_start:api_end]
 
     assert 'error_payload = json.loads(detail)' in api_helper
