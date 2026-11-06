@@ -125,12 +125,18 @@ class RuntimeProcessLockSet:
 
     def release(self) -> None:
         errors: list[Exception] = []
-        while self._acquired:
-            lock = self._acquired.pop()
+        still_acquired: list[RuntimeProcessLock] = []
+        # Attempt every lock in reverse acquisition order. Keep ownership
+        # records for descriptors that remain open so a later shutdown/recovery
+        # path can retry their release instead of silently losing the handle.
+        for lock in reversed(self._acquired):
             try:
                 lock.release()
-            except Exception as exc:  # release every acquired lock even if one fails
+            except Exception as exc:
                 errors.append(exc)
+                if getattr(lock, "is_acquired", True):
+                    still_acquired.append(lock)
+        self._acquired = list(reversed(still_acquired))
         if errors:
             raise RuntimeError("falha ao liberar um ou mais locks do runtime.") from errors[0]
 
