@@ -175,8 +175,12 @@ def _authorize_remote_mutation(environ) -> tuple[bool, str]:
             ).split(",")
             if item.strip()
         }
-        host = str(environ.get("HTTP_HOST") or "").split(":", 1)[0].strip().lower()
-        if host and host not in local_hosts:
+        raw_host = str(environ.get("HTTP_HOST") or "").strip().lower()
+        if raw_host.startswith("[") and "]" in raw_host:
+            host = raw_host[1:raw_host.index("]")]
+        else:
+            host = raw_host.split(":", 1)[0]
+        if host and host not in local_hosts and f"[{host}]" not in local_hosts:
             return False, "local host is not allowed"
         return True, "local"
 
