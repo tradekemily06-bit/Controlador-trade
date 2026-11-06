@@ -414,3 +414,128 @@ def test_mt5_historical_backtest_rejects_non_demo_provider():
         raise AssertionError("historical backtest must require MT5 DEMO")
 
 
+
+
+def _service_with_accepted_demo_position(tmp_path):
+    from datetime import datetime, timezone
+    from core.operational_runtime import build_operational_runtime
+    from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState
+
+    runtime = build_operational_runtime(tmp_path)
+    service = ConfiguredEcosystemService(
+        operational_runtime=runtime,
+        execution_provider="ic_markets_mt5_demo",
+    )
+    runtime.execution_ledger.reserve("request-demo-1", cycle_id="cycle-demo-1")
+    runtime.execution_ledger.bind_external_id(
+        "request-demo-1",
+        "123456",
+        account_fingerprint="a" * 32,
+    )
+    runtime.execution_ledger.mark_accepted("request-demo-1")
+    runtime.execution_lifecycle.put(ExecutionLifecycleRecord(
+        "request-demo-1",
+        ExecutionLifecycleState.ACCEPTED,
+        datetime.now(timezone.utc),
+        "accepted in DEMO",
+    ))
+    return service, runtime
+
+
+def test_demo_close_persists_attempt_and_uses_opening_account_fingerprint(tmp_path):
+    from execution.ports import ExecutionResult
+    service, runtime = _service_with_accepted_demo_position(tmp_path)
+    calls = []
+
+    class FakeAdapter:
+        def close_position(self, external_id, *, expected_account_fingerprint=None):
+            calls.append((external_id, expected_account_fingerprint))
+            return ExecutionResult(True, "posição fechada e confirmada", "close-999")
+
+    service.mt5_operational_adapter = FakeAdapter()
+    result = service.close_mt5_position(cycle_id="cycle-demo-1", external_id="123456")
+
+    assert result.accepted is True
+    assert calls == [("123456", "a" * 32)]
+    record = runtime.position_closes.get("request-demo-1")
+    assert record.state.value == "CLOSED"
+    assert record.close_external_id == "close-999"
+
+
+def test_demo_close_fails_closed_without_opening_account_fingerprint(tmp_path):
+    from datetime import datetime, timezone
+    from core.operational_runtime import build_operational_runtime
+    from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState
+
+    runtime = build_operational_runtime(tmp_path)
+    service = ConfiguredEcosystemService(
+        operational_runtime=runtime,
+        execution_provider="ic_markets_mt5_demo",
+    )
+    runtime.execution_ledger.reserve("request-demo-2", cycle_id="cycle-demo-2")
+    runtime.execution_ledger.bind_external_id("request-demo-2", "123457")
+    runtime.execution_ledger.mark_accepted("request-demo-2")
+    runtime.execution_lifecycle.put(ExecutionLifecycleRecord(
+        "request-demo-2",
+        ExecutionLifecycleState.ACCEPTED,
+        datetime.now(timezone.utc),
+        "accepted without account fingerprint",
+    ))
+    calls = []
+
+    class FakeAdapter:
+        def close_position(self, *args, **kwargs):
+            calls.append((args, kwargs))
+            raise AssertionError("broker must not be called without opening account fingerprint")
+
+    service.mt5_operational_adapter = FakeAdapter()
+    try:
+        service.close_mt5_position(cycle_id="cycle-demo-2", external_id="123457")
+    except ValueError as exc:
+        assert "impressão digital" in str(exc)
+    else:
+        raise AssertionError("close without opening account fingerprint must be blocked")
+    assert calls == []
+
+
+def test_demo_close_unknown_requires_read_only_reconciliation_before_retry(tmp_path):
+    from execution.ports import (
+        ExecutionResult,
+        PositionCloseObservation,
+        PositionCloseObservationStatus,
+    )
+    service, runtime = _service_with_accepted_demo_position(tmp_path)
+
+    class FakeAdapter:
+        close_calls = 0
+
+        def close_position(self, external_id, *, expected_account_fingerprint=None):
+            self.close_calls += 1
+            if self.close_calls == 1:
+                return ExecutionResult(False, "resposta ambígua do broker")
+            return ExecutionResult(True, "posição fechada", "close-1000")
+
+        def reconcile_position_close(self, external_id, *, expected_account_fingerprint=None):
+            return PositionCloseObservation(
+                PositionCloseObservationStatus.OPEN,
+                "MT5 confirma que a posição continua aberta",
+            )
+
+    adapter = FakeAdapter()
+    service.mt5_operational_adapter = adapter
+    first = service.close_mt5_position(cycle_id="cycle-demo-1", external_id="123456")
+    assert first.accepted is False
+    assert runtime.position_closes.get("request-demo-1").state.value == "UNKNOWN"
+
+    reconciliation = service.reconcile_mt5_position_close(
+        cycle_id="cycle-demo-1",
+        external_id="123456",
+    )
+    assert reconciliation["state"] == "OPEN"
+    assert reconciliation["read_only"] is True
+    assert reconciliation["order_sent"] is False
+
+    second = service.close_mt5_position(cycle_id="cycle-demo-1", external_id="123456")
+    assert second.accepted is True
+    assert adapter.close_calls == 2
+    assert [item.attempt for item in runtime.position_closes.history("request-demo-1")] == [1, 2]
