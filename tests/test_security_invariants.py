@@ -32,3 +32,32 @@ def test_production_boundary_failure_is_visible_as_critical_health(monkeypatch):
 def test_market_context_has_no_operational_decision_fields():
     context = reason_market_context(None)
     assert context is None
+
+
+
+def test_security_audit_persistence_failure_is_visible_as_critical_health(monkeypatch):
+    from types import SimpleNamespace
+    import integration.ecosystem_service as service_module
+
+    monkeypatch.setattr(
+        service_module,
+        "AUDIT",
+        SimpleNamespace(
+            persistence_available=False,
+            persistence_error="write_failed",
+            max_events=1000,
+        ),
+    )
+
+    status = EcosystemService().system_status()
+
+    assert status["health"] == "CRITICAL"
+    assert status["security_audit"]["persistence"] == "WRITE_FAILED"
+    assert status["components"]["security_audit"] == "WRITE_FAILED"
+    assert any(
+        alert["component"] == "security_audit"
+        and alert["severity"] == "CRITICAL"
+        for alert in status["alerts"]
+    )
+    assert status["execution_allowed"] is False
+    assert status["real"] == "DESABILITADO"
