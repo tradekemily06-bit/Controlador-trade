@@ -7,9 +7,10 @@ Este é o desenho de uso diário do Controlador Trading: um único runtime Windo
 - terminal MetaTrader 5 conectado à conta IC Markets DEMO
 - Python + dependências do projeto
 - pacote MetaTrader5 de requirements-mt5.txt
-- Controlador Trading ouvindo somente em 127.0.0.1:8000
-- Cloudflare Tunnel como transporte HTTPS sem porta inbound pública
-- Cloudflare Access como identidade na frente do hostname
+- Controlador Trading (API/MT5) ouvindo somente em 127.0.0.1:8000, sem rota pública direta
+- Painel Streamlit ouvindo somente em 127.0.0.1:8501 e chamando a API pela interface loopback
+- Cloudflare Tunnel como transporte HTTPS sem porta inbound pública, com o hostname do painel roteado para `http://127.0.0.1:8501`
+- Cloudflare Access protegendo o hostname do painel e inserindo a identidade confiável; a porta 8000 não deve ser publicada no Tunnel
 
 ## Variáveis obrigatórias do runtime remoto
 
@@ -81,7 +82,7 @@ O instalador não grava senha, token ou segredo. O Controlador continua fazendo 
 ## Proteção Cloudflare Access
 A rota publicada deve estar protegida por uma aplicação Cloudflare Access e o Tunnel deve exigir a validação do Access antes de encaminhar o tráfego ao origin. Para túnel gerenciado localmente, isso corresponde a `originRequest.access.required: true` com o `teamName` e o `audTag` da aplicação; em túnel gerenciado remotamente, configure a mesma exigência nas opções da rota. Assim, o header de identidade usado pelo Controlador chega somente depois da autenticação/validação na borda.
 
-O origin continua em `http://127.0.0.1:8000`; não é necessário expor a porta 8000 na Internet. As rotas remotas de mutação continuam exigindo o cabeçalho de identidade confiável do Cloudflare Access. Há uma exceção estreita para o EA nativo no mesmo host: os endpoints `/api/runtime/*/local` exigem simultaneamente `CONTROLADOR_LOCAL_MUTATIONS_ALLOWED=true`, cliente loopback (`127.0.0.1` ou `::1`) e Host na allowlist `CONTROLADOR_LOCAL_MUTATION_HOSTS`. O runtime não confia em cabeçalho de identidade fornecido pelo próprio EA. Além do loopback e da allowlist de Host, a rota local rejeita qualquer requisição que carregue o cabeçalho de identidade confiável configurado para o Cloudflare Access; isso protege também contra um túnel/reverse proxy que conecte ao origin por loopback. A implantação ainda precisa confirmar que o Cloudflare Access encaminha esse cabeçalho ao origin; notebook/celular devem usar exclusivamente o hostname HTTPS protegido.
+O origin da API continua em `http://127.0.0.1:8000` e o origin web do Streamlit é `http://127.0.0.1:8501`. O hostname HTTPS do painel deve apontar para a porta 8501, protegido por Cloudflare Access; a porta 8000 permanece privada e não deve ser publicada como hostname/rota pública. O Streamlit encaminha o cabeçalho de identidade recebido do proxy para a API, que compara a identidade com `CONTROLADOR_SINGLE_USER_IDENTITY`. As rotas remotas de mutação continuam exigindo o cabeçalho de identidade confiável do Cloudflare Access. Há uma exceção estreita para o EA nativo no mesmo host: os endpoints `/api/runtime/*/local` exigem simultaneamente `CONTROLADOR_LOCAL_MUTATIONS_ALLOWED=true`, cliente loopback (`127.0.0.1` ou `::1`) e Host na allowlist `CONTROLADOR_LOCAL_MUTATION_HOSTS`. O runtime não confia em cabeçalho de identidade fornecido pelo próprio EA. Além do loopback e da allowlist de Host, a rota local rejeita qualquer requisição que carregue o cabeçalho de identidade confiável configurado para o Cloudflare Access; isso protege também contra um túnel/reverse proxy que conecte ao origin por loopback. A implantação ainda precisa confirmar que o Cloudflare Access encaminha esse cabeçalho ao origin; notebook/celular devem usar exclusivamente o hostname HTTPS protegido.
 
 ## Regras de segurança
 - REAL não é habilitado por padrão; quando necessário, usa o fluxo REAL controlado e separado, com autorização, auditoria, admission, safety gate e confirmação humana.
@@ -96,6 +97,8 @@ O origin continua em `http://127.0.0.1:8000`; não é necessário expor a porta 
 - /api/health responder pelo hostname HTTPS.
 - /api/status e `/api/runtime/real/status` devem refletir o estado real do runtime; ausência de pré-requisitos mantém REAL bloqueado.
 - login/identidade do Access validado.
+- tarefa Windows do Streamlit ativa e `http://127.0.0.1:8501/_stcore/health` saudável no host
+- hostname HTTPS do painel roteado à porta 8501 com Cloudflare Access; porta 8000 não publicada
 - GET funcionar no celular e notebook.
 - uma preferência alterada em um dispositivo aparecer no outro.
 - o estado sobreviver a reinício.
