@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import secrets
 import sqlite3
 import time
@@ -11,6 +12,25 @@ from pathlib import Path
 from threading import Lock
 
 MAX_SECURITY_EVENTS = 1000
+
+_SENSITIVE_PATH_SEGMENT = re.compile(
+    r"^(?:\\d+|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|"
+    r"[0-9a-f]{16,}|[A-Za-z0-9_-]{32,}|[^/]+@[^/]+)$",
+    re.IGNORECASE,
+)
+
+
+def _sanitize_path(path: str) -> str:
+    """Keep route shape while removing common identifiers and credential-like segments."""
+    value = str(path or "/").split("?", 1)[0]
+    if not value.startswith("/"):
+        return "/<invalid>"
+    segments = value.split("/")
+    safe_segments = [
+        "<redacted>" if _SENSITIVE_PATH_SEGMENT.fullmatch(segment) else segment
+        for segment in segments
+    ]
+    return "/".join(safe_segments)[:512]
 
 
 @dataclass(frozen=True)
@@ -72,7 +92,7 @@ class SecurityAudit:
 
     def record(self, *, request_id: str, method: str, path: str, status: int, client_key: str) -> None:
         digest = hashlib.sha256(self._salt + client_key.encode("utf-8", "replace")).hexdigest()
-        event = SecurityEvent(time.time(), request_id, method, path[:512], int(status), digest)
+        event = SecurityEvent(time.time(), request_id, method, _sanitize_path(path), int(status), digest)
         self._events.append(event)
         if not self._database_path:
             return
