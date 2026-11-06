@@ -243,8 +243,8 @@ class PositionCloseStore:
             previous = self._latest(request_id)
             if previous is None:
                 raise ValueError("solicitação de fechamento não encontrada.")
-            if previous.state not in (PositionCloseState.REQUESTED, PositionCloseState.UNKNOWN):
-                raise ValueError("somente fechamento REQUESTED ou UNKNOWN pode ser reconciliado.")
+            if previous.state not in (PositionCloseState.REQUESTED, PositionCloseState.UNKNOWN, PositionCloseState.OPEN):
+                raise ValueError("somente fechamento REQUESTED, UNKNOWN ou OPEN pode ser reconciliado.")
             result = PositionCloseRecord(
                 request_id=request_id,
                 external_id=previous.external_id,
