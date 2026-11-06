@@ -324,3 +324,31 @@ def test_mql5_releases_stale_cycle_only_after_read_only_broker_confirmation():
     assert 'JsonObjectValue(r,"timed_exit","due_at")' in run_cycle
     assert "best-effort" in run_cycle
 
+
+
+def test_mql5_native_recovery_inventory_supports_multiple_exact_tickets():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    parser = panel.split("bool ExtractJsonArrayObjects", 1)[1].split("bool ParseRecoveryInventory", 1)[0]
+    selection = panel.split("void ReconcileSelectedRecovery()", 1)[1].split("int OnInit()", 1)[0]
+    events = panel.split("void OnChartEvent", 1)[1]
+
+    assert 'Http("GET","/api/runtime/positions/recovery"' in panel
+    assert 'ExtractJsonArrayObjects(json,"positions",objects)' in panel
+    assert "RecoveryPosition recovery_items[];" in panel
+    assert "recovery_items[n].cycle_id=cycle;" in panel
+    assert "recovery_items[n].external_id=ticket;" in panel
+    assert "if(c!='{') return false;" in parser
+    assert "if(depth!=0 || inString) return false;" in parser
+    assert "bool have_item=false,after_comma=false;" in parser
+    assert "if(c==']') return !after_comma;" in parser
+    assert 'state!="BLOCKED_ACCOUNT_IDENTITY"' in parser
+    assert 'state!="BROKER_CONFIRMED_OPEN"' in parser
+    assert 'state!="RECONCILIATION_REQUIRED"' in parser
+    assert 'Http("POST","/api/runtime/close/reconcile"' in selection
+    assert 'item.state!="BROKER_CONFIRMED_OPEN"' in selection
+    assert "if(!recovery_close_armed)" in selection
+    assert 'Http("POST","/api/runtime/close"' in selection
+    assert 'Obj("REC_PREV")' in events
+    assert 'Obj("REC_NEXT")' in events
+    assert 'Obj("REC_RECONCILE")' in events
+    assert 'Obj("REC_CLOSE")' in events
