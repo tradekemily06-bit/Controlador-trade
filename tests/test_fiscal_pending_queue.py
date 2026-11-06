@@ -105,7 +105,7 @@ def test_pending_queue_pagination_returns_distinct_pages_and_total(tmp_path):
 
 def test_pending_queue_rejects_invalid_pagination(tmp_path):
     queue = make_queue(tmp_path / "fiscal.sqlite3")
-    for limit, offset in ((0, 0), (501, 0), (True, 0), (10, -1), (10, True)):
+    for limit, offset in ((0, 0), (501, 0), (True, 0), (10, -1), (10, True), (10, 1_000_000_001), (10, 2**63)):
         try:
             queue.list_pending(OWNER, limit=limit, offset=offset)
         except ValueError:
