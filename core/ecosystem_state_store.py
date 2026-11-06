@@ -85,7 +85,14 @@ class EcosystemStateStore:
         except (json.JSONDecodeError, UnicodeDecodeError):
             self._notifications_load_error = "invalid_json"
             return []
-        return value if isinstance(value, list) else []
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            self._notifications_load_error = "invalid_shape"
+            return []
+        if any(not isinstance(item, dict) for item in value):
+            self._notifications_load_error = "invalid_records"
+        return value
 
     def save_notifications(self, notifications: list[dict[str, Any]]) -> None:
         self.save("notifications", notifications)
