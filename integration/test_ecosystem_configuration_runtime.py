@@ -388,6 +388,8 @@ def test_mt5_historical_backtest_is_side_effect_free_and_uses_demo_history(monke
             self.candles = candles
 
         def fetch_market_data(self, request):
+            if hasattr(self, "lock"):
+                assert self.lock.held, "MT5 lock must cover the complete historical backtest"
             self.request = request
             return self.candles
 
