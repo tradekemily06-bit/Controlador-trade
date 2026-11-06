@@ -1858,3 +1858,21 @@ def test_streamlit_signal_strip_refreshes_periodically_in_both_panel_states():
     assert 'latest_payload.get("available") is True' in helper
     assert 'api("/api/health")' in helper
 
+
+
+
+def test_assistant_openai_consent_is_bound_to_authenticated_identity():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index("def _assistant_consent_scope()")
+    end = source.index("\ndef show_assistant()", start)
+    helper = source[start:end]
+    assistant_start = source.index("def show_assistant()")
+    assistant_end = source.index("\ndef ", assistant_start + 1)
+    assistant = source[assistant_start:assistant_end]
+
+    assert "trusted_identity_from_headers(st.context.headers, IDENTITY_HEADER)" in helper
+    assert 'os.environ.get("CONTROLADOR_SINGLE_USER_IDENTITY", "local-single-user")' in helper
+    assert "hashlib.sha256" in helper
+    assert 'st.session_state["assistant_openai_consent"] = False' in assistant
+    assert 'st.session_state["assistant_consent_scope"] = consent_scope' in assistant
+    assert "disabled=not bool(consent_scope)" in assistant
