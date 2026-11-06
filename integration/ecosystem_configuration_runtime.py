@@ -942,7 +942,7 @@ class ConfiguredEcosystemService(EcosystemService):
                     "read_only": True,
                     "order_sent": False,
                 }
-            if record.state in (PositionCloseState.CLOSED, PositionCloseState.OPEN):
+            if record.state is PositionCloseState.CLOSED:
                 return {
                     "request_id": request_id,
                     "external_id": external_id.strip(),
@@ -951,7 +951,7 @@ class ConfiguredEcosystemService(EcosystemService):
                     "read_only": True,
                     "order_sent": False,
                 }
-            if record.state not in (PositionCloseState.REQUESTED, PositionCloseState.UNKNOWN):
+            if record.state not in (PositionCloseState.REQUESTED, PositionCloseState.UNKNOWN, PositionCloseState.OPEN):
                 raise ValueError("estado de fechamento DEMO não pode ser reconciliado")
 
             observation = self.mt5_operational_adapter.reconcile_position_close(
