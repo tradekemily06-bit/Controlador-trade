@@ -20,6 +20,7 @@ from zoneinfo import ZoneInfo
 DEFAULT_RATES = {
     "BR_DAY_TRADE": 20.0,
 }
+MAX_FISCAL_HISTORY_OFFSET = 1_000_000_000
 # Reserved legacy marker: user-entered notes must never control fiscal inclusion.
 _UNVERIFIED_LEGACY_MARKER = "USER_DECLARED_PENDING_REVIEW"
 # Keep the legacy category readable for historical rows, but never configure
@@ -292,8 +293,14 @@ class FiscalReserve:
         owner_id = self._require_owner(owner_id)
         if isinstance(history_limit, bool) or not isinstance(history_limit, int) or not 1 <= history_limit <= 500:
             raise ValueError("history_limit deve estar entre 1 e 500")
-        if isinstance(history_offset, bool) or not isinstance(history_offset, int) or history_offset < 0:
-            raise ValueError("history_offset deve ser um inteiro não negativo")
+        if (
+            isinstance(history_offset, bool)
+            or not isinstance(history_offset, int)
+            or not 0 <= history_offset <= MAX_FISCAL_HISTORY_OFFSET
+        ):
+            raise ValueError(
+                f"history_offset deve estar entre 0 e {MAX_FISCAL_HISTORY_OFFSET}"
+            )
         rates = self.settings(owner_id)
         reference_day = as_of or datetime.now(ZoneInfo("America/Sao_Paulo")).date()
         week_start = reference_day.fromordinal(reference_day.toordinal() - reference_day.weekday())
