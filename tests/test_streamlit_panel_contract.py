@@ -1683,6 +1683,9 @@ def test_windows_bootstrap_installs_and_supervises_the_streamlit_panel():
     assert "8501" in supervisor
     assert "http://127.0.0.1:8000" in supervisor
     assert "$env:CONTROLADOR_REMOTE_ACCESS_REQUIRED = 'true'" in supervisor
+    assert "CONTROLADOR_SINGLE_USER_IDENTITY não configurado" in supervisor
+    assert "GetEnvironmentVariable('CONTROLADOR_SINGLE_USER_IDENTITY', 'Machine')" in supervisor
+    assert "não corresponde à identidade persistida no escopo de Máquina" in supervisor
     assert "127.0.0.1:8501" in readme
     assert "hostname do painel" in runbook
     assert "porta 8000 não deve ser publicada" in runbook
