@@ -8,7 +8,7 @@ from analysis.decision_record import DecisionRecord
 from analysis.decision_store import DecisionStore
 from analysis.statistics import summarize, summarize_breakdowns, summarize_periods
 from core.ecosystem_health import build_health_alerts
-from core.operational_alerts import build_operational_incidents
+from core.operational_alerts import OperationalIncident, build_operational_incidents
 from core.ecosystem_notifications import EcosystemNotification, NotificationKind, NotificationSeverity
 from core.learning_content import ContentType, LearningActivity, LearningAttempt, LearningObservation, LearningResource, LearningStatus, normalize_tags
 from core.market_data_runtime_integrity import MarketDataRuntimeReport
@@ -438,12 +438,13 @@ class EcosystemService:
         incidents = build_operational_incidents(self.operational_observability())
         if not AUDIT.persistence_available and AUDIT.persistence_error is not None:
             incidents.append(
-                type("AuditPersistenceIncident", (), {
-                    "code": "SECURITY_AUDIT_PERSISTENCE_FAILED",
-                    "severity": "CRITICAL",
-                    "source": "security_audit",
-                    "message": "persistência da trilha de auditoria indisponível; verifique o armazenamento local",
-                })()
+                OperationalIncident(
+                    code="SECURITY_AUDIT_PERSISTENCE_FAILED",
+                    severity="CRITICAL",
+                    status=str(AUDIT.persistence_error).upper(),
+                    source="security_audit",
+                    message="persistência da trilha de auditoria indisponível; verifique o armazenamento local",
+                )
             )
         for incident in incidents:
             items.append(
