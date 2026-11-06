@@ -430,12 +430,11 @@ def test_notification_quarantine_inspection_detects_archive_tampering(tmp_path):
         store.inspect_notification_quarantine(archive["archive_id"])
 
 
-def test_notification_quarantine_restore_rechecks_archive_inside_atomic_transaction(tmp_path, monkeypatch):
-    import sqlite3
-    import pytest
-    from core.ecosystem_state_store import NotificationHistoryUnavailableError
 
-    path = tmp_path / "notification-quarantine-restore-toctou.sqlite3"
+def test_notification_quarantine_restore_verifies_archive_without_separate_inspection(tmp_path, monkeypatch):
+    import sqlite3
+
+    path = tmp_path / "notification-quarantine-atomic-restore.sqlite3"
     store = EcosystemStateStore(path)
     raw = '[{"notification_id":"n1","kind":"SECURITY","severity":"CRITICAL","title":"A","message":"B"}]'
     with sqlite3.connect(path) as db:
@@ -447,24 +446,29 @@ def test_notification_quarantine_restore_rechecks_archive_inside_atomic_transact
     store.load_notifications()
     store.mark_notifications_unavailable("invalid_records")
     archive = store.archive_notifications_for_recovery(confirmed=True)
-    original_inspect = store.inspect_notification_quarantine
 
-    def inspect_then_tamper(archive_id):
-        inspected = original_inspect(archive_id)
-        with sqlite3.connect(path) as db:
-            db.execute(
-                "UPDATE notification_history_quarantine SET raw_payload = ? WHERE archive_id = ?",
-                (raw + " ", archive_id),
-            )
-        return inspected
+    def separate_inspection_must_not_be_used(_archive_id):
+        raise AssertionError("restore must verify archive inside its own SQLite transaction")
 
-    monkeypatch.setattr(store, "inspect_notification_quarantine", inspect_then_tamper)
+    monkeypatch.setattr(
+        store, "inspect_notification_quarantine", separate_inspection_must_not_be_used
+    )
+    restored = store.restore_notifications_from_quarantine(
+        archive["archive_id"], confirmed=True
+    )
 
-    with pytest.raises(NotificationHistoryUnavailableError, match="integridade"):
-        store.restore_notifications_from_quarantine(archive["archive_id"], confirmed=True)
-
+    assert restored["integrity_verified"] is True
+    assert restored["archive_preserved"] is True
+    assert restored["restored_count"] == 1
+    assert store.notifications_load_error is None
     with sqlite3.connect(path) as db:
-        assert db.execute(
+        current = db.execute(
             "SELECT value_json FROM ecosystem_state WHERE key = ?",
             ("notifications",),
-        ).fetchone()[0] == raw
+        ).fetchone()[0]
+        archived = db.execute(
+            "SELECT raw_payload FROM notification_history_quarantine WHERE archive_id = ?",
+            (archive["archive_id"],),
+        ).fetchone()[0]
+    assert current == raw
+    assert archived == raw
