@@ -653,3 +653,12 @@ def test_foreign_reference_uniqueness_is_scoped_to_owner(tmp_path):
     assert owner_a["total"] == owner_b["total"] == 1
     assert owner_a["items"][0]["reference"] == reference
     assert owner_b["items"][0]["reference"] == reference
+
+
+def test_foreign_pending_rejects_non_text_owner_identity(tmp_path):
+    import pytest
+
+    queue = make_queue(tmp_path / "strict-foreign-owner.sqlite3")
+    for invalid_owner in (None, 123, True, [], {}, object()):
+        with pytest.raises(ValueError, match="identidade proprietária"):
+            queue.list_pending(invalid_owner)
