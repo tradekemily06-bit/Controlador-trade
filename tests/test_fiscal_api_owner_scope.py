@@ -548,3 +548,60 @@ def test_domestic_pending_api_list_summary_and_reviews_are_owner_scoped(
     )
     assert status.startswith("200")
     assert other_reviews["reviews"] == []
+
+def test_mt5_fiscal_confirmation_rejects_missing_ticket_and_unresolved_history_candidate(
+    tmp_path, monkeypatch
+):
+    database = tmp_path / "mt5-unresolved-ticket.sqlite3"
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "X-Auth-User")
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", database)
+    monkeypatch.setattr(app_module.SECURITY, "allow", lambda environ: True)
+    monkeypatch.setattr(app_module.SECURITY, "headers", lambda request_id, **kwargs: [])
+    monkeypatch.setattr(app_module, "_audit", lambda *args, **kwargs: None)
+
+    owner_id = migrate_fiscal_schema(str(database))
+    foreign_queue = FiscalPendingQueue(str(database))
+    domestic_queue = FiscalDomesticPendingQueue(str(database))
+    monkeypatch.setattr(app_module, "FISCAL_PENDING_QUEUE", foreign_queue)
+    monkeypatch.setattr(app_module, "FISCAL_DOMESTIC_PENDING_QUEUE", domestic_queue)
+
+    def no_history_candidate(ticket):
+        assert ticket == "TICKET-NOT-FOUND"
+        return None
+
+    monkeypatch.setattr(
+        app_module.SERVICE.mt5_operational_adapter,
+        "read_closed_deal_candidate",
+        no_history_candidate,
+    )
+
+    foreign_base = {"confirmed": True}
+    domestic_base = {
+        "confirmed": True,
+        "category": "BR_DAY_TRADE",
+        "market_scope": "BR_ELIGIBLE_MARKET",
+    }
+    for path, base in (
+        ("/api/fiscal-reserve/mt5-pending-result", foreign_base),
+        ("/api/fiscal-reserve/mt5-confirm", domestic_base),
+    ):
+        missing_status, missing = _request(
+            path, method="POST", payload=base
+        )
+        assert missing_status.startswith("400")
+        assert missing["registered"] is not True
+
+        unresolved_status, unresolved = _request(
+            path,
+            method="POST",
+            payload={**base, "ticket": "TICKET-NOT-FOUND"},
+        )
+        assert unresolved_status.startswith("422")
+        assert unresolved["registered"] is False
+        assert unresolved["reserve_calculated"] is False
+        assert unresolved["execution_allowed"] is False
+
+    assert foreign_queue.list_pending(owner_id)["total"] == 0
+    assert domestic_queue.list_pending(owner_id)["total"] == 0
