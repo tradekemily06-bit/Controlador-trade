@@ -142,9 +142,15 @@ def migrate_fiscal_schema(database_path: str) -> str:
             ).fetchall()}
             if review_owners and review_owners != {owner_id}:
                 raise RuntimeError("A identidade fiscal configurada não corresponde às revisões brasileiras; migração automática bloqueada.")
-        domestic_tables_present = {
+        domestic_table_names = {
             "fiscal_reserve_pending_domestic", "fiscal_domestic_pending_reviews"
-        }.issubset(existing)
+        }
+        domestic_tables_present = domestic_table_names.issubset(existing)
+        if domestic_table_names.intersection(existing) and not domestic_tables_present:
+            raise RuntimeError(
+                "Esquema da fila brasileira pendente incompleto: tabela relacionada ausente; "
+                "acesso bloqueado para preservar os dados."
+            )
         if domestic_tables_present and not _domestic_schema_constraints_valid(db):
             raise RuntimeError(
                 "Esquema da fila brasileira pendente inválido: restrições de proprietário ou "
