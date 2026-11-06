@@ -862,6 +862,42 @@ class ConfiguredEcosystemService(EcosystemService):
                 cycle_id=cycle_id,
                 external_id=external_id,
             )
+            # Never dispatch a close from a stale UI observation. Query the
+            # exact ticket/account immediately before the broker side effect.
+            from execution.ports import PositionCloseObservation, PositionCloseObservationStatus
+            observation = self.mt5_operational_adapter.reconcile_position_close(
+                external_id.strip(),
+                expected_account_fingerprint=fingerprint,
+            )
+            if (
+                not isinstance(observation, PositionCloseObservation)
+                or not isinstance(observation.status, PositionCloseObservationStatus)
+                or not isinstance(observation.message, str)
+            ):
+                raise RuntimeError("adaptador retornou observação de posição DEMO inválida antes do fechamento")
+            state_mapping = {
+                PositionCloseObservationStatus.CLOSED: PositionCloseState.CLOSED,
+                PositionCloseObservationStatus.OPEN: PositionCloseState.OPEN,
+                PositionCloseObservationStatus.UNKNOWN: PositionCloseState.UNKNOWN,
+            }
+            current = store.get(request_id)
+            if current is None:
+                current = store.observe_initial(
+                    request_id,
+                    external_id.strip(),
+                    state_mapping[observation.status],
+                    message=observation.message,
+                )
+            elif current.state is not PositionCloseState.CLOSED:
+                current = store.reconcile(
+                    request_id,
+                    state_mapping[observation.status],
+                    message=observation.message,
+                )
+            if current.state is not PositionCloseState.OPEN:
+                raise ValueError(
+                    "fechamento DEMO bloqueado: a consulta MT5 mais recente não confirmou a posição OPEN"
+                )
             store.begin(request_id, external_id.strip())
             try:
                 close = self.mt5_operational_adapter.close_position(
