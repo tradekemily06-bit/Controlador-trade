@@ -381,6 +381,68 @@ def test_mt5_pending_result_ignores_forged_owner_id_and_uses_authenticated_owner
     assert queue.list_pending(owner_id)["total"] == 1
     assert queue.list_pending("single:attacker-selected-owner")["total"] == 0
 
+
+def test_mt5_brazil_confirmation_is_owner_scoped_and_ticket_deduplicated(
+    tmp_path, monkeypatch
+):
+    database = tmp_path / "mt5-domestic-confirm-owner.sqlite3"
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "X-Auth-User")
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", database)
+    monkeypatch.setattr(app_module.SECURITY, "allow", lambda environ: True)
+    monkeypatch.setattr(app_module.SECURITY, "headers", lambda request_id, **kwargs: [])
+    monkeypatch.setattr(app_module, "_audit", lambda *args, **kwargs: None)
+
+    owner_id = migrate_fiscal_schema(str(database))
+    queue = FiscalDomesticPendingQueue(str(database))
+    monkeypatch.setattr(app_module, "FISCAL_DOMESTIC_PENDING_QUEUE", queue)
+
+    candidate = {
+        "account_currency": "BRL",
+        "account_fingerprint": "b" * 32,
+        "occurred_at_utc": "2026-11-05T15:30:00+00:00",
+        "opened_at_utc": "2026-11-05T14:30:00+00:00",
+        "position_id": "POSITION-BR-001",
+        "profit": 25.0,
+        "commission": -1.0,
+        "swap": 0.0,
+        "fee": 0.0,
+        "net_result_account_currency": 24.0,
+        "symbol": "WINZ26",
+        "deal_count": 2,
+        "closing_deal_count": 1,
+    }
+    monkeypatch.setattr(
+        app_module.SERVICE.mt5_operational_adapter,
+        "read_closed_deal_candidate",
+        lambda ticket: candidate if ticket == "TICKET-BR-001" else None,
+    )
+
+    payload = {
+        "confirmed": True,
+        "ticket": "TICKET-BR-001",
+        "category": "BR_DAY_TRADE",
+        "market_scope": "BR_ELIGIBLE_MARKET",
+        "owner_id": "single:attacker-selected-owner",
+    }
+    status, response = _request(
+        "/api/fiscal-reserve/mt5-confirm", method="POST", payload=payload
+    )
+    assert status.startswith("201")
+    assert response["registered"] is True
+    assert response["reserve_calculated"] is False
+    assert response["included_in_totals"] is False
+    assert queue.list_pending(owner_id)["total"] == 1
+    assert queue.list_pending("single:attacker-selected-owner")["total"] == 0
+
+    duplicate_status, duplicate = _request(
+        "/api/fiscal-reserve/mt5-confirm", method="POST", payload=payload
+    )
+    assert duplicate_status.startswith("409")
+    assert duplicate["registered"] is False
+    assert queue.list_pending(owner_id)["total"] == 1
+
 def test_domestic_pending_api_rejects_foreign_review_category(tmp_path, monkeypatch):
     database = tmp_path / "domestic-review-api.sqlite3"
     monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
