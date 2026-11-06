@@ -119,6 +119,43 @@ def test_chat_api_rejects_missing_trusted_identity_before_assistant_call(tmp_pat
     assert payload["error"] == "trusted identity is required"
 
 
+def test_all_assistant_routes_reject_malformed_identity_before_store_access(tmp_path, monkeypatch):
+    class Assistant:
+        def readiness(self):
+            raise AssertionError("status não pode ser acessado com identidade inválida")
+
+        def conversations(self, identity):
+            raise AssertionError("conversas não podem ser acessadas com identidade inválida")
+
+        def history(self, identity, conversation_id):
+            raise AssertionError("histórico não pode ser acessado com identidade inválida")
+
+        def delete_conversation(self, identity, conversation_id):
+            raise AssertionError("conversa não pode ser excluída com identidade inválida")
+
+        def ask(self, *args, **kwargs):
+            raise AssertionError("provedor não pode ser chamado com identidade inválida")
+
+    _configure(monkeypatch, Assistant())
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", tmp_path / "fiscal.sqlite3")
+
+    for path, method, payload in (
+        ("/api/assistant/status", "GET", None),
+        ("/api/assistant/conversations", "GET", None),
+        ("/api/assistant/history?conversation_id=conversation-1", "GET", None),
+        ("/api/assistant/conversations?conversation_id=conversation-1", "DELETE", None),
+        ("/api/assistant/chat", "POST", {"message": "pergunta", "consent_to_openai": True}),
+    ):
+        status, response = _request(
+            path,
+            method=method,
+            payload=payload,
+            identity="x" * 321,
+        )
+        assert status.startswith(("401", "403"))
+        assert "error" in response
+
+
 def test_chat_api_rejects_malformed_trusted_identity_before_assistant_call(tmp_path, monkeypatch):
     class Assistant:
         def ask(self, *args, **kwargs):
