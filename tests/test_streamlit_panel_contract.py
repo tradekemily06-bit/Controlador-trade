@@ -39,6 +39,12 @@ def test_streamlit_panel_connects_assistant_and_fiscal_to_existing_api():
 
 
 
+
+def test_streamlit_api_uses_case_insensitive_trusted_identity_extraction():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert "from trusted_identity import trusted_identity_from_headers" in source
+    assert "identity = trusted_identity_from_headers(incoming, IDENTITY_HEADER)" in source
+
 def test_streamlit_fiscal_panel_records_losses_and_pages_the_ledger():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert "min_value=-1000000000000.0" in source
