@@ -443,20 +443,34 @@ def _service_with_accepted_demo_position(tmp_path):
 
 
 def test_demo_close_persists_attempt_and_uses_opening_account_fingerprint(tmp_path):
-    from execution.ports import ExecutionResult
+    from execution.ports import (
+        ExecutionResult,
+        PositionCloseObservation,
+        PositionCloseObservationStatus,
+    )
     service, runtime = _service_with_accepted_demo_position(tmp_path)
     calls = []
 
     class FakeAdapter:
+        def reconcile_position_close(self, external_id, *, expected_account_fingerprint=None):
+            calls.append(("reconcile", external_id, expected_account_fingerprint))
+            return PositionCloseObservation(
+                PositionCloseObservationStatus.OPEN,
+                "MT5 confirma posição aberta",
+            )
+
         def close_position(self, external_id, *, expected_account_fingerprint=None):
-            calls.append((external_id, expected_account_fingerprint))
+            calls.append(("close", external_id, expected_account_fingerprint))
             return ExecutionResult(True, "posição fechada e confirmada", "close-999")
 
     service.mt5_operational_adapter = FakeAdapter()
     result = service.close_mt5_position(cycle_id="cycle-demo-1", external_id="123456")
 
     assert result.accepted is True
-    assert calls == [("123456", "a" * 32)]
+    assert calls == [
+        ("reconcile", "123456", "a" * 32),
+        ("close", "123456", "a" * 32),
+    ]
     record = runtime.position_closes.get("request-demo-1")
     assert record.state.value == "CLOSED"
     assert record.close_external_id == "close-999"
