@@ -33,6 +33,7 @@ from finance.fiscal_schema import migrate_fiscal_schema
 from finance.fiscal_identity import FiscalOwnerIdentityError
 from assistant.conversation_store import AssistantConversationStore
 from assistant.chat_service import EcosystemAssistant, AssistantUnavailableError
+from execution.icmarkets_mt5_demo_adapter import MT5DealNotFoundError
 
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
@@ -578,6 +579,11 @@ def application(environ, start_response):
                 raise ValueError("ticket MT5 é obrigatório e deve ter até 80 caracteres")
             try:
                 candidate = SERVICE.mt5_operational_adapter.read_closed_deal_candidate(ticket)
+            except MT5DealNotFoundError:
+                return _json_response(start_response, HTTPStatus.UNPROCESSABLE_ENTITY,
+                                      {"error": "Ticket não encontrado como encerramento integral e conciliado no histórico MT5 DEMO.",
+                                       "registered": False, "reserve_calculated": False,
+                                       "execution_allowed": False}, request_id, environ)
             except RuntimeError as exc:
                 return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE,
                                       {"error": "Negócio não pôde ser revalidado no MT5 DEMO.",
@@ -678,6 +684,11 @@ def application(environ, start_response):
             declared_market_scope = str(data.get("market_scope") or "").strip()[:80]
             try:
                 candidate = SERVICE.mt5_operational_adapter.read_closed_deal_candidate(ticket)
+            except MT5DealNotFoundError:
+                return _json_response(start_response, HTTPStatus.UNPROCESSABLE_ENTITY,
+                                      {"error": "Ticket não encontrado como encerramento integral e conciliado no histórico MT5 DEMO.",
+                                       "registered": False, "reserve_calculated": False,
+                                       "execution_allowed": False}, request_id, environ)
             except RuntimeError as exc:
                 return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE,
                                        {"error": "Negócio não pôde ser revalidado no MT5 DEMO.", "detail": str(exc),
