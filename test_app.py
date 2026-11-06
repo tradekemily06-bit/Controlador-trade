@@ -434,3 +434,25 @@ def test_mt5_timed_exit_status_api_is_authenticated_and_read_only(monkeypatch):
     assert data["orders_sent"] is False
 
 
+
+
+def test_updates_api_returns_safe_503_when_notification_history_is_unavailable(monkeypatch):
+    import app
+    from core.ecosystem_state_store import NotificationHistoryUnavailableError
+
+    monkeypatch.setattr(app, "_authorize_internal_update", lambda _environ: (True, "trusted"))
+
+    def unavailable(*_args, **_kwargs):
+        raise NotificationHistoryUnavailableError("internal sqlite path and details")
+
+    monkeypatch.setattr(app.SERVICE, "publish_ecosystem_update", unavailable)
+
+    status, data = call_app(
+        "/api/updates",
+        "POST",
+        {"title": "Atualização", "message": "Teste de persistência."},
+    )
+
+    assert status.startswith("503")
+    assert data["error"] == "Histórico de notificações indisponível; nenhuma nova notificação foi publicada."
+    assert "sqlite" not in data["error"].lower()
