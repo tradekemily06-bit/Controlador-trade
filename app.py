@@ -1384,7 +1384,11 @@ def application(environ, start_response):
             record = LATEST_MARKET_ANALYSIS.latest_record(symbol or None, timeframe or None)
             snapshot = record.get("analysis") if record else None
             updated_at = record.get("updated_at") if record else None
-            max_age_seconds = max(60, min(86400, int(os.getenv("CONTROLADOR_ANALYSIS_MAX_AGE_SECONDS", "900"))))
+            try:
+                configured_max_age = int(os.getenv("CONTROLADOR_ANALYSIS_MAX_AGE_SECONDS", "900"))
+            except (TypeError, ValueError):
+                configured_max_age = 900
+            max_age_seconds = max(60, min(86400, configured_max_age))
             age_seconds = None
             fresh = False
             if isinstance(updated_at, str):
