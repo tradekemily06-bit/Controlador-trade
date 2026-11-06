@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
@@ -15,7 +16,7 @@ class LatestMarketAnalysisStore:
         self.database = Path(database).expanduser().resolve()
         self.database.parent.mkdir(parents=True, exist_ok=True)
         self._lock = RLock()
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS latest_market_analysis (
@@ -47,7 +48,7 @@ class LatestMarketAnalysisStore:
             raise ValueError("snapshot deve ser um objeto")
         serialized = json.dumps(payload, ensure_ascii=False, allow_nan=False)
         updated_at = datetime.now(timezone.utc).isoformat(timespec="microseconds")
-        with self._lock, self._connect() as connection:
+        with self._lock, closing(self._connect()) as connection, connection:
             connection.execute(
                 """
                 INSERT INTO latest_market_analysis(symbol, timeframe, payload_json, updated_at)
