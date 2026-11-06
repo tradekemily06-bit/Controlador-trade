@@ -826,6 +826,25 @@ class ConfiguredEcosystemService(EcosystemService):
             })
         return results
 
+    def list_mt5_timed_exits(self) -> list[dict[str, Any]]:
+        """Expose scheduled DEMO exit status without account secrets or broker actions."""
+        if self.operational_runtime is None:
+            raise RuntimeError("runtime operacional não conectado")
+        store = getattr(self.operational_runtime, "timed_exits", None)
+        if store is None:
+            raise RuntimeError("armazenamento de saída temporizada indisponível")
+        return [{
+            "request_id": record.request_id,
+            "cycle_id": record.cycle_id,
+            "external_id": record.external_id,
+            "due_at": record.due_at.isoformat(),
+            "next_attempt_at": record.next_attempt_at.isoformat(),
+            "state": record.state,
+            "attempts": record.attempts,
+            "message": record.message,
+            "best_effort": True,
+        } for record in store.records()]
+
     def close_mt5_position(self, *, cycle_id: str, external_id: str) -> Any:
         """Persist and close only the cycle's DEMO position on its original account."""
         from execution.ports import ExecutionResult
