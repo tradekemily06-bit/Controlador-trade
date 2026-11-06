@@ -79,13 +79,22 @@ class EcosystemAssistant:
         try:
             self._client()
         except AssistantUnavailableError as exc:
+            credentials_configured = bool(os.getenv("OPENAI_API_KEY", "").strip())
             return {
                 "available": False,
-                "credentials_configured": False,
+                "credentials_configured": credentials_configured,
                 "client_initialized": False,
                 "connection_tested": False,
-                "status": "NOT_CONFIGURED",
-                "message": str(exc),
+                "status": (
+                    "CLIENT_INITIALIZATION_FAILED"
+                    if credentials_configured
+                    else "NOT_CONFIGURED"
+                ),
+                "message": (
+                    "Credenciais presentes, mas o cliente do provedor não pôde ser inicializado."
+                    if credentials_configured
+                    else str(exc)
+                ),
                 "read_only": True,
                 "may_execute_orders": False,
                 "may_enable_real": False,
