@@ -72,6 +72,8 @@ def test_mt5_cycle_wires_controlled_automation_into_canonical_runtime():
             return "runtime-result"
 
     service = ConfiguredEcosystemService(execution_provider="ic_markets_mt5_demo")
+    # User-facing analysis preferences must not weaken an execution cycle.
+    service.preferences.update(require_closed_candle=False, require_filters=False)
     fake = FakeRuntime()
     from types import SimpleNamespace
     service.operational_runtime = SimpleNamespace(checkpoint_store=object())
@@ -90,6 +92,10 @@ def test_mt5_cycle_wires_controlled_automation_into_canonical_runtime():
     result = service.run_mt5_cycle(symbol="EURUSD", timeframe="5m", limit=3)
     assert result == "runtime-result"
     assert fake.kwargs["automation_policy"].enabled is True
+    assert fake.kwargs["confirmed"] is True
+    assert fake.kwargs["filters_ok"] is True
+    assert fake.kwargs["filters_required"] is True
+    assert fake.kwargs["entry_conditions"] == ()
     assert callable(fake.kwargs["automation_readiness_factory"])
     assert callable(fake.kwargs["automation_risk_budget_factory"])
 
