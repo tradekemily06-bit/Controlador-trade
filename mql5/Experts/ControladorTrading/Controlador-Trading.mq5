@@ -381,6 +381,125 @@ string JsonObjectValue(string json,string objectKey,string key){
    }
    return "";
 }
+void RenderRecoverySelection(){
+   int count=ArraySize(recovery_items);
+   if(!recovery_inventory_valid){
+      SetLabel(Obj("RECOVERY_ITEM"),"Inventario indisponivel ou invalido.",20,560,8,C'255,118,118');
+      SetLabel(Obj("RECOVERY_STATUS"),recovery_message,20,604,8,C'255,118,118');
+      return;
+   }
+   if(count==0){
+      SetLabel(Obj("RECOVERY_ITEM"),"Nenhum ciclo pendente no ledger.",20,560,8,C'88,214,141');
+      SetLabel(Obj("RECOVERY_STATUS"),"Lista vazia; consulta somente leitura.",20,604,8,C'145,160,180');
+      return;
+   }
+   recovery_selected=MathMax(0,MathMin(recovery_selected,count-1));
+   RecoveryPosition item=recovery_items[recovery_selected];
+   SetLabel(Obj("RECOVERY_ITEM"),StringFormat("%d/%d Ticket %s · %s",recovery_selected+1,count,item.external_id,item.state),20,560,8,C'205,215,230');
+   SetLabel(Obj("RECOVERY_STATUS"),StringSubstr(recovery_message,0,58),20,604,8,C'145,160,180');
+}
+bool ParseRecoveryInventory(string json){
+   string objects[];
+   if(!ExtractJsonArrayObjects(json,"positions",objects)) return false;
+   ArrayResize(recovery_items,0);
+   for(int i=0;i<ArraySize(objects);i++){
+      string cycle=JsonValue(objects[i],"cycle_id");
+      string ticket=JsonValue(objects[i],"external_id");
+      string state=JsonValue(objects[i],"recovery_state");
+      if(cycle=="" || ticket=="" || (state!="BLOCKED_ACCOUNT_IDENTITY" && state!="BROKER_CONFIRMED_OPEN" && state!="RECONCILIATION_REQUIRED")){
+         ArrayResize(recovery_items,0);
+         return false;
+      }
+      int n=ArraySize(recovery_items);
+      if(ArrayResize(recovery_items,n+1)!=n+1){ ArrayResize(recovery_items,0); return false; }
+      recovery_items[n].cycle_id=cycle;
+      recovery_items[n].external_id=ticket;
+      recovery_items[n].state=state;
+   }
+   return true;
+}
+bool RefreshRecoveryInventory(){
+   string response; int code=0;
+   if(!Http("GET","/api/runtime/positions/recovery/local","",response,code)){
+      recovery_inventory_valid=false;
+      recovery_message="Falha HTTP ao consultar inventario local.";
+      RenderRecoverySelection();
+      return false;
+   }
+   if(!ParseRecoveryInventory(response)){
+      recovery_inventory_valid=false;
+      recovery_message="Resposta JSON invalida; acoes bloqueadas.";
+      RenderRecoverySelection();
+      return false;
+   }
+   recovery_inventory_valid=true;
+   recovery_selected=0;
+   recovery_close_armed=false;
+   recovery_message="Inventario lido; broker ainda nao consultado.";
+   RenderRecoverySelection();
+   return true;
+}
+void ReconcileSelectedRecovery(){
+   if(!recovery_inventory_valid || ArraySize(recovery_items)==0) return;
+   recovery_selected=MathMax(0,MathMin(recovery_selected,ArraySize(recovery_items)-1));
+   RecoveryPosition item=recovery_items[recovery_selected];
+   if(item.state=="BLOCKED_ACCOUNT_IDENTITY"){
+      recovery_message="Identidade original bloqueada; sem fechamento.";
+      RenderRecoverySelection();
+      return;
+   }
+   string body="{\"cycle_id\":\""+JsonEscape(item.cycle_id)+"\",\"external_id\":\""+JsonEscape(item.external_id)+"\"}";
+   string response; int code=0;
+   if(!Http("POST","/api/runtime/close/local/reconcile",body,response,code)){
+      recovery_message="MT5 nao confirmou; nenhuma ordem enviada.";
+      RenderRecoverySelection();
+      return;
+   }
+   string state=JsonObjectValue(response,"close_reconciliation","state");
+   if(state=="CLOSED"){
+      recovery_message="MT5 confirmou CLOSED; atualizando lista.";
+      RefreshRecoveryInventory();
+   }else if(state=="OPEN"){
+      recovery_items[recovery_selected].state="BROKER_CONFIRMED_OPEN";
+      recovery_close_armed=false;
+      recovery_message="MT5 confirmou OPEN. Clique FECHAR e confirme novamente.";
+      RenderRecoverySelection();
+   }else{
+      recovery_message="Estado UNKNOWN; fechamento permanece bloqueado.";
+      RenderRecoverySelection();
+   }
+}
+void CloseSelectedRecovery(){
+   if(!recovery_inventory_valid || ArraySize(recovery_items)==0) return;
+   recovery_selected=MathMax(0,MathMin(recovery_selected,ArraySize(recovery_items)-1));
+   RecoveryPosition item=recovery_items[recovery_selected];
+   if(item.state!="BROKER_CONFIRMED_OPEN"){
+      recovery_message="Fechamento exige estado OPEN confirmado pelo MT5.";
+      RenderRecoverySelection();
+      return;
+   }
+   if(!recovery_close_armed){
+      recovery_close_armed=true;
+      recovery_message="Confirme: clique FECHAR novamente para este ticket.";
+      RenderRecoverySelection();
+      return;
+   }
+   recovery_close_armed=false;
+   string body="{\"cycle_id\":\""+JsonEscape(item.cycle_id)+"\",\"external_id\":\""+JsonEscape(item.external_id)+"\"}";
+   string response; int code=0;
+   if(!Http("POST","/api/runtime/close/local",body,response,code)){
+      recovery_message="Fechamento inconclusivo; reconciliacao necessaria.";
+      RefreshRecoveryInventory();
+      return;
+   }
+   if(JsonValue(response,"closed")=="true" && JsonValue(response,"close_state")=="CLOSED"){
+      recovery_message="Fechamento confirmado pelo runtime.";
+      RefreshRecoveryInventory();
+      return;
+   }
+   recovery_message="Sem confirmacao CLOSED; consultando estado.";
+   ReconcileSelectedRecovery();
+}
 bool Http(string method,string path,string body,string &response,int &code){
    char data[];
    char result[];
