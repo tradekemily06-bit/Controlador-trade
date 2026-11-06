@@ -1573,12 +1573,12 @@ def test_windows_bootstrap_installs_and_supervises_the_streamlit_panel():
     runbook = (root / "deployment" / "WINDOWS_MT5_REMOTE_RUNTIME.md").read_text(encoding="utf-8")
 
     assert "pip install -r streamlit_panel/requirements.txt" in bootstrap
-    assert "deployment\\\\start_streamlit_panel.ps1" in installer
+    assert "start_streamlit_panel.ps1" in installer
     assert '"$TaskPrefix-Streamlit"' in installer
     assert "127.0.0.1" in supervisor
     assert "8501" in supervisor
     assert "http://127.0.0.1:8000" in supervisor
-    assert "CONTROLADOR_REMOTE_ACCESS_REQUIRED = 'true'" in supervisor
+    assert "$env:CONTROLADOR_REMOTE_ACCESS_REQUIRED = 'true'" in supervisor
     assert "127.0.0.1:8501" in readme
     assert "hostname do painel" in runbook
     assert "porta 8000 não deve ser publicada" in runbook
