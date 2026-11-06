@@ -757,3 +757,34 @@ def test_timed_exit_status_view_omits_account_fingerprint(tmp_path):
     assert "account_fingerprint" not in result[0]
 
 
+
+
+def test_demo_open_position_is_rechecked_again_before_timed_close(tmp_path):
+    from execution.ports import PositionCloseObservation, PositionCloseObservationStatus
+
+    service, runtime = _service_with_accepted_demo_position(tmp_path)
+
+    class FakeAdapter:
+        def __init__(self):
+            self.calls = 0
+
+        def reconcile_position_close(self, external_id, *, expected_account_fingerprint=None):
+            self.calls += 1
+            status = (
+                PositionCloseObservationStatus.OPEN
+                if self.calls == 1
+                else PositionCloseObservationStatus.CLOSED
+            )
+            return PositionCloseObservation(status, f"broker observation {self.calls}")
+
+    adapter = FakeAdapter()
+    service.mt5_operational_adapter = adapter
+    first = service.reconcile_mt5_position_close(cycle_id="cycle-demo-1", external_id="123456")
+    second = service.reconcile_mt5_position_close(cycle_id="cycle-demo-1", external_id="123456")
+
+    assert first["state"] == "OPEN"
+    assert second["state"] == "CLOSED"
+    assert adapter.calls == 2
+    assert runtime.position_closes.get("request-demo-1").state.value == "CLOSED"
+
+
