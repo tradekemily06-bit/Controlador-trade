@@ -650,3 +650,90 @@ def test_demo_position_recovery_initial_closed_observation_removes_position_from
     assert service.list_mt5_position_recovery() == []
 
 
+
+
+def test_accepted_demo_cycle_persists_best_effort_timed_exit(tmp_path):
+    from types import SimpleNamespace
+
+    service, runtime = _service_with_accepted_demo_position(tmp_path)
+    cycle = SimpleNamespace(
+        execution=SimpleNamespace(accepted=True),
+        plan=SimpleNamespace(request_id="request-demo-1"),
+    )
+    result = service.schedule_mt5_timed_exit(cycle, duration_seconds=60)
+
+    assert result["scheduled"] is True
+    assert result["state"] == "SCHEDULED"
+    assert result["best_effort"] is True
+    record = runtime.timed_exits.record_for("request-demo-1")
+    assert record is not None
+    assert record.cycle_id == "cycle-demo-1"
+    assert record.external_id == "123456"
+    assert record.account_fingerprint == "a" * 32
+    assert (record.due_at - record.next_attempt_at).total_seconds() == 0
+
+
+def test_timed_exit_is_blocked_without_opening_account_fingerprint(tmp_path):
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from core.operational_runtime import build_operational_runtime
+    from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState
+
+    runtime = build_operational_runtime(tmp_path)
+    service = ConfiguredEcosystemService(
+        operational_runtime=runtime,
+        execution_provider="ic_markets_mt5_demo",
+    )
+    runtime.execution_ledger.reserve("request-no-fingerprint", cycle_id="cycle-no-fingerprint")
+    runtime.execution_ledger.bind_external_id("request-no-fingerprint", "123999")
+    runtime.execution_ledger.mark_accepted("request-no-fingerprint")
+    runtime.execution_lifecycle.put(ExecutionLifecycleRecord(
+        "request-no-fingerprint",
+        ExecutionLifecycleState.ACCEPTED,
+        datetime.now(timezone.utc),
+        "accepted without account fingerprint",
+    ))
+    cycle = SimpleNamespace(
+        execution=SimpleNamespace(accepted=True),
+        plan=SimpleNamespace(request_id="request-no-fingerprint"),
+    )
+
+    result = service.schedule_mt5_timed_exit(cycle, duration_seconds=60)
+
+    assert result["scheduled"] is False
+    assert result["state"] == "BLOCKED"
+    assert runtime.timed_exits.records() == []
+
+
+def test_timed_exit_worker_reconciles_before_closing_and_persists_completion(tmp_path):
+    from execution.timed_exit_worker import TimedExitWorker
+    from execution.ports import ExecutionResult
+    service, runtime = _service_with_accepted_demo_position(tmp_path)
+    runtime.timed_exits.schedule(
+        request_id="request-demo-1",
+        cycle_id="cycle-demo-1",
+        external_id="123456",
+        account_fingerprint="a" * 32,
+        delay_seconds=1,
+        now=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    calls = []
+
+    class FakeService:
+        def reconcile_mt5_position_close(self, *, cycle_id, external_id):
+            calls.append(("reconcile", cycle_id, external_id))
+            return {"state": "OPEN"}
+
+        def close_mt5_position(self, *, cycle_id, external_id):
+            calls.append(("close", cycle_id, external_id))
+            return ExecutionResult(True, "MT5 confirmou fechamento", "close-1")
+
+    worker = TimedExitWorker(FakeService(), runtime)
+    assert worker.run_once() == 1
+    assert calls == [
+        ("reconcile", "cycle-demo-1", "123456"),
+        ("close", "cycle-demo-1", "123456"),
+    ]
+    assert runtime.timed_exits.record_for("request-demo-1").state == "CLOSED"
+
+
