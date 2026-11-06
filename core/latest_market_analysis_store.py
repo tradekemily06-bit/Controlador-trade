@@ -60,21 +60,27 @@ class LatestMarketAnalysisStore:
                 (normalized_symbol, normalized_timeframe, serialized, updated_at),
             )
 
-    def latest(self, symbol: str | None = None, timeframe: str | None = None) -> dict[str, Any] | None:
+    def latest_record(self, symbol: str | None = None, timeframe: str | None = None) -> dict[str, Any] | None:
         if bool(symbol) != bool(timeframe):
             raise ValueError("symbol e timeframe devem ser informados juntos")
         with self._lock, closing(self._connect()) as connection:
             if symbol and timeframe:
                 row = connection.execute(
-                    "SELECT payload_json FROM latest_market_analysis WHERE symbol = ? AND timeframe = ?",
+                    "SELECT payload_json, updated_at FROM latest_market_analysis WHERE symbol = ? AND timeframe = ?",
                     (str(symbol).strip().upper(), str(timeframe).strip().lower()),
                 ).fetchone()
             else:
                 row = connection.execute(
-                    "SELECT payload_json FROM latest_market_analysis "
+                    "SELECT payload_json, updated_at FROM latest_market_analysis "
                     "ORDER BY updated_at DESC, rowid DESC LIMIT 1"
                 ).fetchone()
         if row is None:
             return None
         payload = json.loads(row["payload_json"])
-        return payload if isinstance(payload, dict) else None
+        if not isinstance(payload, dict):
+            return None
+        return {"analysis": payload, "updated_at": row["updated_at"]}
+
+    def latest(self, symbol: str | None = None, timeframe: str | None = None) -> dict[str, Any] | None:
+        record = self.latest_record(symbol, timeframe)
+        return record["analysis"] if record is not None else None
