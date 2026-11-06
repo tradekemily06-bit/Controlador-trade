@@ -21,6 +21,10 @@ class MT5AdapterError(RuntimeError):
     """Raised when the MT5 runtime cannot be used safely."""
 
 
+class MT5DealNotFoundError(MT5AdapterError):
+    """Raised when MT5 is available but the requested closed deal is absent."""
+
+
 @dataclass(frozen=True)
 class ICMarketsMT5DemoConfig:
     """Runtime configuration; credentials are intentionally not stored here."""
@@ -524,7 +528,7 @@ class ICMarketsMT5DemoAdapter:
             if str(item.get("ticket", "")) == raw_ticket
         ]
         if len(matches) != 1:
-            raise MT5AdapterError("ticket não encontrado como encerramento integral e conciliado de posição no histórico DEMO.")
+            raise MT5DealNotFoundError("ticket não encontrado como encerramento integral e conciliado de posição no histórico DEMO.")
         return {
             **matches[0],
             "source": preview.get("source"),
