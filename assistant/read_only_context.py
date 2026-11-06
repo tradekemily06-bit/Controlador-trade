@@ -113,9 +113,15 @@ def _safe_bool(value: Any) -> bool:
 
 def _safe_state_token(value: Any, limit: int = 32) -> str:
     """Keep operational labels to bounded uppercase identifiers, never free text."""
-    if not isinstance(value, str) or len(value) > limit:
+    if (
+        not isinstance(value, str)
+        or isinstance(limit, bool)
+        or not isinstance(limit, int)
+        or not 1 <= limit <= 48
+        or len(value) > limit
+    ):
         return "UNKNOWN"
-    return value if re.fullmatch(r"[A-Z0-9_-]{1,32}", value) else "UNKNOWN"
+    return value if re.fullmatch(rf"[A-Z0-9_-]{{1,{limit}}}", value) else "UNKNOWN"
 
 
 
