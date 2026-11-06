@@ -2590,6 +2590,46 @@ def show_readonly_module(module_name: str) -> None:
         st.warning("Não foi possível carregar este módulo do runtime. Verifique a disponibilidade do serviço e os registros técnicos locais.")
 
 
+@st.fragment(run_every="15s")
+def render_latest_signal(closed: bool = False) -> None:
+    """Refresh the shared signal strip periodically without rerunning the full panel."""
+    try:
+        latest_payload = api("/api/runtime/analysis/latest")
+        latest_analysis = (
+            latest_payload.get("analysis")
+            if isinstance(latest_payload, dict) and latest_payload.get("available") is True
+            else None
+        )
+    except Exception:
+        latest_analysis = None
+    signal_label, score_label, signal_color = closed_panel_signal(latest_analysis)
+    if closed:
+        try:
+            health = str(api("/api/health").get("health") or "UNKNOWN").upper()
+        except Exception:
+            health = "UNKNOWN"
+        status_label = {
+            "OK": "SISTEMA ONLINE",
+            "WARNING": "ATENÇÃO",
+            "CRITICAL": "INDISPONÍVEL",
+        }.get(health, "INDISPONÍVEL")
+        st.markdown(
+            f'<div class="closed-signal" style="color:{signal_color}">{signal_label}</div>'
+            f'<div class="closed-score">{score_label}</div>'
+            f'<div class="closed-status">{status_label}</div>',
+            unsafe_allow_html=True,
+        )
+        return
+    signal_col, score_col = st.columns([3, 2], vertical_alignment="center")
+    with signal_col:
+        st.markdown(
+            f'<div class="open-signal" style="color:{signal_color}">{signal_label}</div>',
+            unsafe_allow_html=True,
+        )
+    with score_col:
+        st.markdown(f'<div class="open-score">{score_label}</div>', unsafe_allow_html=True)
+
+
 # Four approved navigation areas from the extracted reference JSON.
 # Streamlit is the product; the JSON supplies the visual and navigation specification.
 AREAS = {name: list(modules) for name, modules in CONFIG["open_state"]["tabs"].items()}
@@ -2598,29 +2638,13 @@ if "panel_open" not in st.session_state:
 
 if not st.session_state.panel_open:
     with st.container(key="panel-toggle"):
-        try:
-            closed_health = str(api("/api/health").get("health") or "UNKNOWN").upper()
-            closed_status = {"OK": "SISTEMA ONLINE", "WARNING": "ATENÇÃO", "CRITICAL": "INDISPONÍVEL"}.get(closed_health, "INDISPONÍVEL")
-        except Exception:
-            closed_status = "INDISPONÍVEL"
-        try:
-            latest_payload = api("/api/runtime/analysis/latest")
-            latest_analysis = latest_payload.get("analysis") if isinstance(latest_payload, dict) and latest_payload.get("available") is True else None
-        except Exception:
-            latest_analysis = None
-        signal_label, score_label, signal_color = closed_panel_signal(latest_analysis)
         toggle_col, signal_col = st.columns([1, 3], vertical_alignment="center")
         with toggle_col:
             if st.button("C", key="open_control_hub", help="Abrir Controlador-Trader"):
                 st.session_state.panel_open = True
                 st.rerun()
         with signal_col:
-            st.markdown(
-                f'<div class="closed-signal" style="color:{signal_color}">{signal_label}</div>'
-                f'<div class="closed-score">{score_label}</div>'
-                f'<div class="closed-status">{closed_status}</div>',
-                unsafe_allow_html=True,
-            )
+            render_latest_signal(closed=True)
     st.stop()
 
 with st.container(key="control-hub-shell"):
@@ -2630,26 +2654,9 @@ with st.container(key="control-hub-shell"):
     with header_right:
         st.markdown('<div class="demo-pill-wrap"><span class="demo-pill">DEMO</span></div>', unsafe_allow_html=True)
 
-    # The signal and score belong to this same Streamlit panel in both states.
-    try:
-        open_latest_payload = api("/api/runtime/analysis/latest")
-        open_latest_analysis = (
-            open_latest_payload.get("analysis")
-            if isinstance(open_latest_payload, dict) and open_latest_payload.get("available") is True
-            else None
-        )
-    except Exception:
-        open_latest_analysis = None
-    open_signal_label, open_score_label, open_signal_color = closed_panel_signal(open_latest_analysis)
+    # The same periodically refreshed signal and score appear in both panel states.
     with st.container(key="open-signal-strip"):
-        signal_col, score_col = st.columns([3, 2], vertical_alignment="center")
-        with signal_col:
-            st.markdown(
-                f'<div class="open-signal" style="color:{open_signal_color}">{open_signal_label}</div>',
-                unsafe_allow_html=True,
-            )
-        with score_col:
-            st.markdown(f'<div class="open-score">{open_score_label}</div>', unsafe_allow_html=True)
+        render_latest_signal(closed=False)
 
     area = st.radio("Áreas principais", list(AREAS), horizontal=True, key="main_area_navigation", label_visibility="collapsed")
     st.divider()
