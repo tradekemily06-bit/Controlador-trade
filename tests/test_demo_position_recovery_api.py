@@ -43,6 +43,8 @@ def test_native_mt5_recovery_routes_are_loopback_only_and_require_local_mutation
     assert '{"127.0.0.1", "::1"}' in helper
     assert "CONTROLADOR_LOCAL_MUTATIONS_ALLOWED" in helper
     assert "CONTROLADOR_LOCAL_MUTATION_HOSTS" in helper
+    assert "CONTROLADOR_TRUSTED_IDENTITY_HEADER" in helper
+    assert "trusted remote identity cannot use local runtime routes" in helper
     assert 'if not host or host not in allowed_hosts' in helper
 
     for route_path in (
