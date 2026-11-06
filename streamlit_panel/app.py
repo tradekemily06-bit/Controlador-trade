@@ -139,8 +139,14 @@ def api(path: str, method: str = "GET", payload: dict[str, Any] | None = None) -
     request = urllib.request.Request(BASE_URL + path, data=data, headers=headers, method=method)
     try:
         with _API_OPENER.open(request, timeout=TIMEOUT) as response:
-            body = response.read().decode("utf-8")
-            return json.loads(body) if body else {}
+            try:
+                body = response.read().decode("utf-8")
+                result = json.loads(body) if body else {}
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                raise RuntimeError("Resposta inválida do serviço do Ecossistema.") from None
+            if not isinstance(result, dict):
+                raise RuntimeError("Resposta inválida do serviço do Ecossistema.")
+            return result
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
         try:
