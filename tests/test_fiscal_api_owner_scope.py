@@ -45,7 +45,7 @@ def test_fiscal_api_rejects_malformed_trusted_identity_before_schema_or_store_ac
 
     monkeypatch.setattr(app_module, "migrate_fiscal_schema", unexpected_schema_access)
 
-    for malformed_identity in ("x" * 321, "owner@example.com\\r\\nX-Injected: yes", "owner@example.com\\x00"):
+    for malformed_identity in ("x" * 321, "owner@example.com\r\nX-Injected: yes", "owner@example.com\x00", "owner@example.com\x7f"):
         status, body = _request(
             "/api/fiscal-reserve",
             identity=malformed_identity,
