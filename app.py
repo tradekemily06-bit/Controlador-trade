@@ -24,6 +24,7 @@ from core.real_runtime_controller import RealRuntimeController
 from core.runtime_process_lock import RuntimeProcessLockSet
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 from core.ecosystem_state_store import NotificationHistoryUnavailableError
+from core.latest_market_analysis_store import LatestMarketAnalysisStore
 from integration.execution_provider import build_demo_execution_port
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
@@ -45,11 +46,12 @@ EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
 DECISION_DB = Path(os.environ.get("CONTROLADOR_DECISION_DB", str(RUNTIME_DIR / "decision-memory.sqlite"))).expanduser().resolve()
 FISCAL_RESERVE_DB = Path(os.environ.get("CONTROLADOR_FISCAL_RESERVE_DB", str(RUNTIME_DIR / "fiscal-reserve.sqlite3"))).expanduser().resolve()
 ASSISTANT_DB = Path(os.environ.get("CONTROLADOR_ASSISTANT_DB", str(RUNTIME_DIR / "assistant.sqlite3"))).expanduser().resolve()
+ANALYSIS_SNAPSHOT_DB = Path(os.environ.get("CONTROLADOR_ANALYSIS_SNAPSHOT_DB", str(RUNTIME_DIR / "latest-market-analysis.sqlite3"))).expanduser().resolve()
 # Lock the runtime directory and every configured SQLite database before any
 # runtime service, repository, or fiscal migration can touch shared state.
 _RUNTIME_PROCESS_LOCK = RuntimeProcessLockSet(
     RUNTIME_DIR / "controlador-runtime.lock",
-    [DECISION_DB, FISCAL_RESERVE_DB, ASSISTANT_DB],
+    [DECISION_DB, FISCAL_RESERVE_DB, ASSISTANT_DB, ANALYSIS_SNAPSHOT_DB],
 )
 try:
     _RUNTIME_PROCESS_LOCK.acquire()
@@ -69,6 +71,7 @@ try:
     FISCAL_PENDING_QUEUE = FiscalPendingQueue(str(FISCAL_RESERVE_DB))
     FISCAL_DOMESTIC_PENDING_QUEUE = FiscalDomesticPendingQueue(str(FISCAL_RESERVE_DB))
     ASSISTANT_STORE = AssistantConversationStore(ASSISTANT_DB)
+    LATEST_MARKET_ANALYSIS = LatestMarketAnalysisStore(ANALYSIS_SNAPSHOT_DB)
     ASSISTANT = EcosystemAssistant(ASSISTANT_STORE, SERVICE, FISCAL_RESERVE, fiscal_pending_queue=FISCAL_PENDING_QUEUE, fiscal_domestic_pending_queue=FISCAL_DOMESTIC_PENDING_QUEUE)
 except BaseException:
     # Import-time startup can fail under a WSGI supervisor that keeps its
@@ -81,12 +84,6 @@ except BaseException:
         # Preserve the initialization exception as the primary failure.
         pass
     raise
-
-# Latest read-only market snapshots are shared by the API and Streamlit process.
-# This cache is intentionally process-local; restart clears it and clients must show unavailable.
-_LATEST_MARKET_ANALYSIS: dict[tuple[str, str], dict] = {}
-_LATEST_MARKET_ANALYSIS_LOCK = Lock()
-
 
 def _audit(environ, request_id: str, status: int) -> None:
     AUDIT.record(request_id=request_id, method=str(environ.get("REQUEST_METHOD", "GET")).upper(), path=str(environ.get("PATH_INFO", "/")), status=status, client_key=SECURITY.client_key(environ))
@@ -1384,19 +1381,14 @@ def application(environ, start_response):
             timeframe = str(query.get("timeframe", [""])[-1]).strip().lower()
             if bool(symbol) != bool(timeframe):
                 raise ValueError("symbol e timeframe devem ser informados juntos")
-            with _LATEST_MARKET_ANALYSIS_LOCK:
-                if symbol and timeframe:
-                    latest = _LATEST_MARKET_ANALYSIS.get((symbol, timeframe))
-                else:
-                    latest = next(reversed(_LATEST_MARKET_ANALYSIS.values()), None) if _LATEST_MARKET_ANALYSIS else None
-                snapshot = json.loads(json.dumps(latest)) if latest is not None else None
+            snapshot = LATEST_MARKET_ANALYSIS.latest(symbol or None, timeframe or None)
             return _json_response(
                 start_response,
                 HTTPStatus.OK,
                 {
                     "available": snapshot is not None,
                     "analysis": snapshot,
-                    "cache_scope": "PROCESS_MEMORY_ONLY",
+                    "cache_scope": "PERSISTENT_SQLITE",
                     "execution_allowed": False,
                     "real": "DESABILITADO",
                 },
@@ -1494,9 +1486,11 @@ def application(environ, start_response):
                 },
                 "execution_allowed": False,
             }
-            cache_key = (orchestration.analysis.symbol.upper(), orchestration.analysis.timeframe.lower())
-            with _LATEST_MARKET_ANALYSIS_LOCK:
-                _LATEST_MARKET_ANALYSIS[cache_key] = json.loads(json.dumps(analysis_payload))
+            LATEST_MARKET_ANALYSIS.save(
+                orchestration.analysis.symbol,
+                orchestration.analysis.timeframe,
+                analysis_payload,
+            )
             return _json_response(start_response, HTTPStatus.OK, analysis_payload, request_id, environ)
         if path == "/api/analyze" and method == "POST":
             record = SERVICE.analyze(_read_json(environ))
