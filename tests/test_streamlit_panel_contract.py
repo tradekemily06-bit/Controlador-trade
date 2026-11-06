@@ -1824,3 +1824,14 @@ def test_latest_market_analysis_endpoint_expires_old_snapshots_fail_closed():
     assert '"analysis": snapshot if available else None' in route
     assert '"stale": snapshot is not None and not fresh' in route
     assert '"unavailable_reason": "ANALYSIS_EXPIRED"' in route
+
+
+def test_streamlit_api_rejects_invalid_or_non_object_json_responses():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    api_start = source.index("def api(")
+    api_end = source.index(chr(10) + "def money(", api_start)
+    api_helper = source[api_start:api_end]
+
+    assert "except (UnicodeDecodeError, json.JSONDecodeError):" in api_helper
+    assert 'if not isinstance(result, dict):' in api_helper
+    assert api_helper.count('raise RuntimeError("Resposta inválida do serviço do Ecossistema.") from None') == 2
