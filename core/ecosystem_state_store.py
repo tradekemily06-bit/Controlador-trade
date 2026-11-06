@@ -156,7 +156,15 @@ class EcosystemStateStore:
                         "payload original de notificações não encontrado; nada foi alterado"
                     )
                 raw_payload = row[0]
-                digest = hashlib.sha256(raw_payload.encode("utf-8")).hexdigest()
+                if isinstance(raw_payload, str):
+                    payload_bytes = raw_payload.encode("utf-8")
+                elif isinstance(raw_payload, bytes):
+                    payload_bytes = raw_payload
+                else:
+                    raise NotificationHistoryUnavailableError(
+                        "formato do payload original não pode ser preservado com segurança"
+                    )
+                digest = hashlib.sha256(payload_bytes).hexdigest()
                 db.execute(
                     """
                     INSERT INTO notification_history_quarantine
