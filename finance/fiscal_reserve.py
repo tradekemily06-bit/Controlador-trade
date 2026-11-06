@@ -156,7 +156,11 @@ class FiscalReserve:
 
     @staticmethod
     def _require_owner(owner_id: str) -> str:
-        owner = str(owner_id or "").strip()
+        # Owner IDs are security principals, not values to coerce. Reject
+        # booleans, numbers, and custom objects rather than invoking __str__.
+        if not isinstance(owner_id, str):
+            raise ValueError("identidade proprietária obrigatória e inválida")
+        owner = owner_id.strip()
         if not owner or len(owner) > 160:
             raise ValueError("identidade proprietária obrigatória e inválida")
         return owner
