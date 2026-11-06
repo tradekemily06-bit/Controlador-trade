@@ -264,3 +264,10 @@ def test_domestic_pending_rejects_out_of_range_pagination_offsets(tmp_path):
     assert page["offset"] == 1_000_000_000
     assert page["items"] == []
     assert page["total"] == 1
+
+
+def test_domestic_pending_rejects_non_text_owner_identity(tmp_path):
+    queue = FiscalDomesticPendingQueue(str(tmp_path / "strict-domestic-owner.sqlite3"))
+    for invalid_owner in (None, 123, True, [], {}, object()):
+        with pytest.raises(ValueError, match="identidade proprietária"):
+            queue.list_pending(invalid_owner)
