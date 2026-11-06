@@ -1073,6 +1073,7 @@ def application(environ, start_response):
             cycle = result.cycles[-1]
             execution = cycle.execution
             orchestration = cycle.orchestration
+            timed_exit = SERVICE.schedule_mt5_timed_exit(cycle, duration_seconds=duration_seconds)
             decision_value = getattr(orchestration.decision.decision, "value", orchestration.decision.decision)
             candidate_signal = orchestration.analysis.signal.value
             display_signal = candidate_signal if decision_value == "EXECUTAR" else "AGUARDAR"
@@ -1119,8 +1120,9 @@ def application(environ, start_response):
                 ),
                 "external_id": execution.external_id if execution else None,
                 "execution_status": execution.status.value if execution else None,
-                "position_close_policy": "MANUAL_EXPLICIT",
-                "duration_seconds_applied": False,
+                "position_close_policy": "TIMED_BEST_EFFORT_DEMO" if timed_exit.get("scheduled") else "MANUAL_EXPLICIT",
+                "duration_seconds_applied": bool(timed_exit.get("scheduled")),
+                "timed_exit": timed_exit,
                 "execution": {"accepted": execution.accepted, "status": execution.status.value, "message": execution.message, "external_id": execution.external_id} if execution else None,
             }
             return _json_response(start_response, HTTPStatus.OK, {"runtime": payload, "execution_allowed": bool(execution and execution.accepted)}, request_id, environ)
@@ -1397,14 +1399,20 @@ def run(host: str | None = None, port: int | None = None) -> None:
     selected_port = port or int(os.environ.get("PORT", "8000"))
     lock = RuntimeProcessLock(RUNTIME_DIR / "controlador-runtime.lock")
     with lock:
-        with make_server(
-            selected_host,
-            selected_port,
-            application,
-            server_class=ThreadingWSGIServer,
-        ) as server:
-            print(f"Controlador Trading em http://{selected_host}:{selected_port}")
-            server.serve_forever()
+        from execution.timed_exit_worker import TimedExitWorker
+        timed_exit_worker = TimedExitWorker(SERVICE, OPERATIONAL_RUNTIME)
+        timed_exit_worker.start()
+        try:
+            with make_server(
+                selected_host,
+                selected_port,
+                application,
+                server_class=ThreadingWSGIServer,
+            ) as server:
+                print(f"Controlador Trading em http://{selected_host}:{selected_port}")
+                server.serve_forever()
+        finally:
+            timed_exit_worker.stop()
 
 
 if __name__ == "__main__":
