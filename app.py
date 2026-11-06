@@ -1140,7 +1140,10 @@ def application(environ, start_response):
                 "external_id": execution.external_id if execution else None,
                 "execution_status": execution.status.value if execution else None,
                 "position_close_policy": "TIMED_BEST_EFFORT_DEMO" if timed_exit.get("scheduled") else "MANUAL_EXPLICIT",
-                "duration_seconds_applied": bool(timed_exit.get("scheduled")),
+                # MT5's order remains GTC; the separate local worker is a
+                # best-effort close schedule, not a broker-side expiry.
+                "duration_seconds_applied": False,
+                "timed_exit_scheduled": bool(timed_exit.get("scheduled")),
                 "timed_exit": timed_exit,
                 "execution": {"accepted": execution.accepted, "status": execution.status.value, "message": execution.message, "external_id": execution.external_id} if execution else None,
             }
