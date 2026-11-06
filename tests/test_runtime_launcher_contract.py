@@ -342,3 +342,20 @@ def test_controller_restart_budget_limits_rate_not_runtime_uptime():
     assert "while ((Get-Date) -lt $retryAt)" in text
     assert "continue" in text.split("if ($restartTimes.Count -ge $MaxRestartsPerHour)", 1)[1].split("$restartTimes.Add($now)", 1)[0]
     assert "while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf))" in text
+
+def test_streamlit_restart_budget_pauses_and_resumes_without_ending_supervisor():
+    text = _read("deployment/start_streamlit_panel.ps1")
+    assert "$retryAt = $restartTimes[0].AddHours(1)" in text
+    assert "while ((Get-Date) -lt $retryAt)" in text
+    assert "Start-Sleep -Seconds ([Math]::Min(60, $remainingSeconds))" in text
+    assert "continue" in text.split("if ($restartTimes.Count -ge $MaxRestartsPerHour)", 1)[1].split("Write-PanelStatus 'STARTING'", 1)[0]
+    assert "break" not in text.split("if ($restartTimes.Count -ge $MaxRestartsPerHour)", 1)[1].split("Write-PanelStatus 'STARTING'", 1)[0]
+    assert "while ($true)" in text
+
+
+def test_windows_autostart_offers_boot_mode_and_unbounded_task_runtime():
+    text = _read("deployment/install_windows_autostart.ps1")
+    assert "[ValidateSet('Interactive', 'AtStartupS4U')]" in text
+    assert "New-ScheduledTaskTrigger -AtStartup" in text
+    assert "New-TimeSpan -Seconds 0" in text
+    assert "StartWhenAvailable" in text
