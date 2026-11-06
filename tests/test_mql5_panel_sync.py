@@ -364,6 +364,7 @@ def test_mql5_json_helpers_accept_standard_json_whitespace_and_escaped_strings()
     helpers = panel.split("int JsonValueStart", 1)[1].split("bool Http(", 1)[0]
 
     assert "JsonValueStart(json,arrayKey)" in helpers
+    assert "if(have_item && !after_comma) return false;" in helpers
     assert "JsonValueStart(json,objectKey)" in helpers
     assert "StringGetCharacter(json,q)=='\\n'" in helpers
     assert "StringGetCharacter(json,q)=='\\t'" in helpers
