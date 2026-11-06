@@ -190,6 +190,11 @@ def test_chat_api_rejects_missing_or_false_openai_consent_before_assistant_call(
     _configure(monkeypatch, Assistant())
     monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", tmp_path / "fiscal.sqlite3")
 
+    def unexpected_fiscal_migration(_path):
+        raise AssertionError("sem consentimento, nenhuma migração ou leitura fiscal deve ocorrer")
+
+    monkeypatch.setattr(app_module, "migrate_fiscal_schema", unexpected_fiscal_migration)
+
     for payload in (
         {"message": "Explique minha Reserva Fiscal"},
         {"message": "Explique minha Reserva Fiscal", "consent_to_openai": False},
