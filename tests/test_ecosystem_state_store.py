@@ -90,3 +90,18 @@ def test_corrupt_notification_json_does_not_prevent_state_store_startup(tmp_path
 
     assert restored == []
     assert db.notifications_load_error == "invalid_json"
+
+
+
+def test_notification_store_read_error_is_reported_without_crashing(tmp_path: Path, monkeypatch):
+    import sqlite3
+
+    db = EcosystemStateStore(tmp_path / "state.sqlite")
+
+    def fail_read(_key):
+        raise sqlite3.OperationalError("private database path and SQL details")
+
+    monkeypatch.setattr(db, "load", fail_read)
+
+    assert db.load_notifications() == []
+    assert db.notifications_load_error == "read_failed"
