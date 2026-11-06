@@ -6,7 +6,8 @@ from pathlib import Path
 import tempfile
 
 from core.ecosystem_notifications import EcosystemNotification, EcosystemNotificationCenter, NotificationKind, NotificationSeverity, UpdateKind
-from core.operational_alerts import build_operational_incidents
+from core.operational_alerts import OperationalIncident, build_operational_incidents
+from security_audit import AUDIT
 from analysis.pipeline import StrategyPipeline
 from core.decision_engine import DecisionEngine
 from core.live_orchestrator import TradingOrchestrator
@@ -1097,9 +1098,7 @@ class ConfiguredEcosystemService(EcosystemService):
         return tuple(item for item in events if self._notification_visible(item))
 
     def _operational_notifications(self) -> list[dict[str, Any]]:
-        """Expose incidents only when a real operational runtime is attached."""
-        if self.operational_runtime is None:
-            return []
+        """Expose current operational and audit incidents without granting authority."""
         kind_by_source = {
             "execution": NotificationKind.EXECUTION,
             "recovery": NotificationKind.RECOVERY,
@@ -1107,13 +1106,32 @@ class ConfiguredEcosystemService(EcosystemService):
             "market_data": NotificationKind.MARKET,
             "runtime_health": NotificationKind.SYSTEM_UPDATE,
             "kill_switch": NotificationKind.RISK,
+            "security_audit": NotificationKind.SECURITY,
         }
         severity_by_incident = {
             "CRITICAL": NotificationSeverity.CRITICAL,
             "WARNING": NotificationSeverity.IMPORTANT,
         }
+        incidents = (
+            build_operational_incidents(self.operational_observability())
+            if self.operational_runtime is not None
+            else []
+        )
+        # A failed audit database is a security incident even when the trading
+        # runtime is disconnected. An intentionally unconfigured optional DB
+        # is not a failure and must not create a false critical notification.
+        if not AUDIT.persistence_available and AUDIT.persistence_error is not None:
+            incidents.append(
+                OperationalIncident(
+                    code="SECURITY_AUDIT_PERSISTENCE_FAILED",
+                    severity="CRITICAL",
+                    status=str(AUDIT.persistence_error).upper(),
+                    source="security_audit",
+                    message="persistência da trilha de auditoria indisponível; verifique o armazenamento local",
+                )
+            )
         items: list[dict[str, Any]] = []
-        for incident in build_operational_incidents(self.operational_observability()):
+        for incident in incidents:
             severity = severity_by_incident.get(incident.severity.upper(), NotificationSeverity.IMPORTANT)
             items.append(
                 {
