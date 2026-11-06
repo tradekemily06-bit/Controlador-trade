@@ -255,6 +255,7 @@ def test_foreign_pending_api_intake_results_and_reviews_stay_owner_scoped_and_un
         "/api/fiscal-reserve/pending-result",
         method="POST",
         payload={
+            "owner_id": "single:attacker-selected-owner",
             "reference": "FOREIGN-API-RESULT-001",
             "original_result": -37.25,
             "original_currency": "EUR",
@@ -274,6 +275,7 @@ def test_foreign_pending_api_intake_results_and_reviews_stay_owner_scoped_and_un
     assert realized["reserve_calculated"] is False
 
     review_payload = {
+        "owner_id": "single:attacker-selected-owner",
         "candidate_classification": "FOREIGN_FINANCIAL_INVESTMENT",
         "confirmed_jurisdiction": "PENDING_REVIEW",
         "reviewer_name": "Profissional declarado",
@@ -313,6 +315,9 @@ def test_foreign_pending_api_intake_results_and_reviews_stay_owner_scoped_and_un
     assert invalid_review["error"] == "Entrada inválida"
 
     listing = queue.list_pending(owner_id)
+    assert queue.list_pending("single:attacker-selected-owner")["total"] == 0
+    assert queue.list_reviews("single:attacker-selected-owner", pending_id) == []
+    assert len(queue.list_reviews(owner_id, pending_id)) == 1
     assert listing["total"] == 2
     assert {item["reference"] for item in listing["items"]} == {
         "FOREIGN-API-ASSET-001",
