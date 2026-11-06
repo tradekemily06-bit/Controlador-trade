@@ -26,7 +26,7 @@ No diretório raiz do repositório:
 
 5. Em um segundo PowerShell, na mesma pasta do projeto, inicie o painel:
 
-   `py -3.12 -m streamlit run streamlit_panel/app.py --server.address 127.0.0.1 --server.port 8501`
+   `$env:CONTROLADOR_SINGLE_USER_IDENTITY="local-dev-owner"; py -3.12 -m streamlit run streamlit_panel/app.py --server.address 127.0.0.1 --server.port 8501`
 
 A URL local padrão será `http://127.0.0.1:8501`. Mantenha os dois terminais abertos enquanto estiver usando o painel: um executa a API/runtime na porta 8000 e o outro executa a interface Streamlit na porta 8501.
 
