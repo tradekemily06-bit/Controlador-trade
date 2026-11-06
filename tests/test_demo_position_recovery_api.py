@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import app as app_module
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -100,3 +102,49 @@ def test_local_runtime_authorization_does_not_trust_forwarded_client_headers():
     assert 'environ.get("REMOTE_ADDR")' in helper
     assert "HTTP_X_FORWARDED_FOR" not in helper
     assert 'environ.get("HTTP_HOST")' in helper
+
+
+def test_local_runtime_authorization_accepts_only_explicit_same_host_ea_requests(monkeypatch):
+    monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "true")
+    monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATION_HOSTS", "localhost,127.0.0.1,[::1]")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "Cf-Access-Authenticated-User-Email")
+
+    allowed, reason = app_module._authorize_local_runtime({
+        "REMOTE_ADDR": "127.0.0.1",
+        "HTTP_HOST": "127.0.0.1:8000",
+    })
+    assert (allowed, reason) == (True, "local")
+
+    proxied, proxy_reason = app_module._authorize_local_runtime({
+        "REMOTE_ADDR": "127.0.0.1",
+        "HTTP_HOST": "127.0.0.1:8000",
+        "HTTP_CF_ACCESS_AUTHENTICATED_USER_EMAIL": "owner@example.com",
+    })
+    assert proxied is False
+    assert proxy_reason == "trusted remote identity cannot use local runtime routes"
+
+    public_peer, peer_reason = app_module._authorize_local_runtime({
+        "REMOTE_ADDR": "203.0.113.20",
+        "HTTP_HOST": "127.0.0.1:8000",
+    })
+    assert public_peer is False
+    assert peer_reason == "local runtime requires loopback"
+
+    public_host, host_reason = app_module._authorize_local_runtime({
+        "REMOTE_ADDR": "127.0.0.1",
+        "HTTP_HOST": "control.example",
+    })
+    assert public_host is False
+    assert host_reason == "local Host is not allowed"
+
+
+def test_local_runtime_authorization_supports_bracketed_ipv6_loopback(monkeypatch):
+    monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "true")
+    monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATION_HOSTS", "localhost,127.0.0.1,[::1]")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "Cf-Access-Authenticated-User-Email")
+
+    allowed, reason = app_module._authorize_local_runtime({
+        "REMOTE_ADDR": "::1",
+        "HTTP_HOST": "[::1]:8000",
+    })
+    assert (allowed, reason) == (True, "local")
