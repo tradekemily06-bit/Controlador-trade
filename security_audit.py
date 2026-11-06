@@ -14,7 +14,7 @@ from threading import Lock
 MAX_SECURITY_EVENTS = 1000
 
 _SENSITIVE_PATH_SEGMENT = re.compile(
-    r"^(?:\\d+|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|"
+    r"^(?:[0-9]+|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|"
     r"[0-9a-f]{16,}|[A-Za-z0-9_-]{32,}|[^/]+@[^/]+)$",
     re.IGNORECASE,
 )
