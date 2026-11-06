@@ -587,3 +587,66 @@ def test_demo_position_recovery_blocks_missing_account_fingerprint(tmp_path):
     }]
 
 
+
+def test_demo_position_recovery_can_reconcile_first_observation_without_fake_close_attempt(tmp_path):
+    from execution.ports import PositionCloseObservation, PositionCloseObservationStatus
+    service, runtime = _service_with_accepted_demo_position(tmp_path)
+
+    class FakeAdapter:
+        def __init__(self):
+            self.close_calls = 0
+            self.reconcile_calls = 0
+
+        def reconcile_position_close(self, external_id, *, expected_account_fingerprint=None):
+            self.reconcile_calls += 1
+            assert external_id == "123456"
+            assert expected_account_fingerprint == "a" * 32
+            return PositionCloseObservation(
+                PositionCloseObservationStatus.OPEN,
+                "MT5 confirmou a posição aberta",
+            )
+
+        def close_position(self, *args, **kwargs):
+            self.close_calls += 1
+            raise AssertionError("reconciliação inicial não pode enviar fechamento")
+
+    adapter = FakeAdapter()
+    service.mt5_operational_adapter = adapter
+    assert runtime.position_closes.get("request-demo-1") is None
+
+    result = service.reconcile_mt5_position_close(
+        cycle_id="cycle-demo-1",
+        external_id="123456",
+    )
+
+    assert result["state"] == "OPEN"
+    assert result["read_only"] is True
+    assert result["order_sent"] is False
+    assert adapter.reconcile_calls == 1
+    assert adapter.close_calls == 0
+    stored = runtime.position_closes.get("request-demo-1")
+    assert stored.state.value == "OPEN"
+    assert stored.attempt == 1
+    assert service.list_mt5_position_recovery()[0]["recovery_state"] == "BROKER_CONFIRMED_OPEN"
+
+
+def test_demo_position_recovery_initial_closed_observation_removes_position_from_pending_list(tmp_path):
+    from execution.ports import PositionCloseObservation, PositionCloseObservationStatus
+    service, runtime = _service_with_accepted_demo_position(tmp_path)
+
+    class FakeAdapter:
+        def reconcile_position_close(self, external_id, *, expected_account_fingerprint=None):
+            return PositionCloseObservation(
+                PositionCloseObservationStatus.CLOSED,
+                "MT5 confirmou que a posição não está mais aberta",
+            )
+
+    service.mt5_operational_adapter = FakeAdapter()
+    result = service.reconcile_mt5_position_close(
+        cycle_id="cycle-demo-1",
+        external_id="123456",
+    )
+    assert result["state"] == "CLOSED"
+    assert service.list_mt5_position_recovery() == []
+
+
