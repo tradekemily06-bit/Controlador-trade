@@ -522,9 +522,7 @@ def test_domestic_pending_context_validates_dates():
 
 
 def test_real_pending_queues_reach_assistant_without_entering_fiscal_reserve(tmp_path, monkeypatch):
-    from datetime import date
-    from zoneinfo import ZoneInfo
-    from datetime import datetime
+    from datetime import date, timedelta
 
     from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
     from finance.fiscal_identity import configured_fiscal_owner_id
@@ -539,9 +537,9 @@ def test_real_pending_queues_reach_assistant_without_entering_fiscal_reserve(tmp
     migrate_fiscal_schema(str(database))
     foreign_queue = FiscalPendingQueue(str(database))
     domestic_queue = FiscalDomesticPendingQueue(str(database))
-    today = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
-
-    from datetime import timedelta
+    # Freeze the reference date so boundary assertions do not depend on
+    # which weekday/month/year GitHub Actions happens to execute the test.
+    today = date(2026, 11, 5)
 
     week_start = today - timedelta(days=today.weekday())
     previous_week = week_start - timedelta(days=1)
