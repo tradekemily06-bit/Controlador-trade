@@ -357,6 +357,8 @@ def test_streamlit_closed_panel_shows_signal_score_and_system_availability():
     end = source.index("st.stop()", start) + len("st.stop()")
     closed_state = source[start:end]
     assert 'st.button("C", key="open_control_hub")' in closed_state
+    assert 'toggle_col, signal_col = st.columns([1, 3], vertical_alignment="center")' in closed_state
+    assert 'with toggle_col:' in closed_state and 'with signal_col:' in closed_state
     assert 'api("/api/health")' in closed_state
     assert 'api("/api/runtime/analysis/latest")' in closed_state
     assert "closed_panel_signal(latest_analysis)" in closed_state
