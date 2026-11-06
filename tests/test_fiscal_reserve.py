@@ -481,3 +481,17 @@ def test_user_notes_cannot_set_reserved_legacy_exclusion_marker(tmp_path):
         reserve.record_realized_result(OWNER, payload)
     assert reserve.summary(OWNER)["history_page"]["total"] == 0
     assert reserve.summary(OWNER)["total_reserved_brl"] == 0.0
+
+
+def test_history_offset_is_bounded_before_sqlite_binding(tmp_path):
+    reserve = make_reserve(tmp_path / "bounded-history.sqlite3")
+    for invalid_offset in (-1, 1_000_000_001, 2**63):
+        try:
+            reserve.summary(OWNER, history_offset=invalid_offset)
+        except ValueError as exc:
+            assert "history_offset" in str(exc)
+        else:
+            raise AssertionError("out-of-range history offset must be rejected")
+    valid = reserve.summary(OWNER, history_offset=1_000_000_000)
+    assert valid["history_page"]["offset"] == 1_000_000_000
+    assert valid["history"] == []
