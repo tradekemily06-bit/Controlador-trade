@@ -23,6 +23,7 @@ from core.senior_risk_reasoning import RiskDomain, RiskObservation
 from data.models import Candle
 from integration.news_provider import UnconfiguredNewsProvider
 from security.identity_boundary import IdentityPolicy
+from security_audit import AUDIT
 from security.production_operation_gate import ProductionOperationGate
 from security.request_context import ProductionRequestContext, require_production_context
 from storage.production_boundary import ProductionStoragePolicy
@@ -393,10 +394,22 @@ class EcosystemService:
         identity = self.identity.status()
         observability = self.operational_observability()
         mt5_status = self._mt5_demo_status_from_observability(observability)
-        components = {"decision_engine": "ONLINE", "memory": "ONLINE", "replay": "ONLINE", "statistics": "ONLINE", "risk_gate": "ONLINE", "automation": "ONLINE", "learning": "ONLINE", "news": "AGUARDANDO_FONTE", "mt5_demo": mt5_status, "real": "DESABILITADO", "saas": "FOUNDATION", "production_storage": str(production_storage["state"]), "production_operation_gate": str(production_gate["storage_state"]), "trusted_identity_provider": str(identity["trusted_identity_provider"]), "tenant_isolation": str(identity["tenant_isolation"])}
+        audit_persistence = (
+            "NOT_CONFIGURED"
+            if not AUDIT.persistence_available and AUDIT.persistence_error is None
+            else "DURABLE"
+            if AUDIT.persistence_available
+            else str(AUDIT.persistence_error or "unavailable").upper()
+        )
+        audit_component_status = (
+            "OPTIONAL" if audit_persistence == "NOT_CONFIGURED"
+            else "DURABLE" if audit_persistence == "DURABLE"
+            else audit_persistence
+        )
+        components = {"decision_engine": "ONLINE", "memory": "ONLINE", "replay": "ONLINE", "statistics": "ONLINE", "risk_gate": "ONLINE", "automation": "ONLINE", "learning": "ONLINE", "news": "AGUARDANDO_FONTE", "mt5_demo": mt5_status, "real": "DESABILITADO", "saas": "FOUNDATION", "production_storage": str(production_storage["state"]), "production_operation_gate": str(production_gate["storage_state"]), "trusted_identity_provider": str(identity["trusted_identity_provider"]), "tenant_isolation": str(identity["tenant_isolation"]), "security_audit": audit_component_status}
         alerts = build_health_alerts(components)
         health = "CRITICAL" if any(alert.severity == "CRITICAL" for alert in alerts) else ("WARNING" if alerts else "OK")
-        return {"mode": "SIMULACAO", "execution_allowed": False, "execution": "bloqueada_por_padrao", "decision_engine": components["decision_engine"], "memory": components["memory"], "replay": components["replay"], "statistics": components["statistics"], "risk_gate": components["risk_gate"], "learning": components["learning"], "news": components["news"], "mt5_demo": components["mt5_demo"], "real": components["real"], "saas": components["saas"], "components": components, "health": health, "alerts": [alert.to_dict() for alert in alerts], "memory_persistence": "SQLITE" if self.store.database_path else "IN_MEMORY", "production_storage": production_storage, "production_operation_gate": production_gate, "operational_observability": observability, **identity}
+        return {"mode": "SIMULACAO", "execution_allowed": False, "execution": "bloqueada_por_padrao", "decision_engine": components["decision_engine"], "memory": components["memory"], "replay": components["replay"], "statistics": components["statistics"], "risk_gate": components["risk_gate"], "learning": components["learning"], "news": components["news"], "mt5_demo": components["mt5_demo"], "real": components["real"], "saas": components["saas"], "components": components, "health": health, "alerts": [alert.to_dict() for alert in alerts], "memory_persistence": "SQLITE" if self.store.database_path else "IN_MEMORY", "security_audit": {"persistence": audit_persistence, "retention_limit": AUDIT.max_events}, "production_storage": production_storage, "production_operation_gate": production_gate, "operational_observability": observability, **identity}
 
     def health_alerts(self) -> list[dict[str, Any]]:
         return [asdict(item) for item in build_health_alerts(self.operational_observability())]
