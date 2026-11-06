@@ -286,3 +286,4 @@ def test_mql5_close_preserves_cycle_until_broker_confirms_position_closed():
     assert 'state=="OPEN"' in close
     assert 'last_cycle_id=""; last_external_id="";' in close
     assert "Fechamento inconclusivo; ciclo preservado." in close
+    assert "Ciclo DEMO; fechamento manual" in panel
