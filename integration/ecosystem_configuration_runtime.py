@@ -240,6 +240,7 @@ class ConfiguredEcosystemService(EcosystemService):
             proposed_loss,
         )
 
+    @_serialized_mt5_session
     def run_mt5_cycle(self, *, symbol: str, timeframe: str = "5m", limit: int = 100, amount: float = 0.01, duration_seconds: int = 60, senior_context=None) -> Any:
         """Run one unified DEMO runtime cycle from live MT5 observations."""
         if not isinstance(symbol, str) or not symbol.strip():
@@ -348,6 +349,7 @@ class ConfiguredEcosystemService(EcosystemService):
             "message": "saída DEMO persistida; horário é alvo best-effort, não garantia de execução exata",
         }
 
+    @_serialized_mt5_session
     def analyze_mt5_market(
         self,
         *,
@@ -430,6 +432,7 @@ class ConfiguredEcosystemService(EcosystemService):
         self._record_analysis(orchestration.analysis)
         return orchestration
 
+    @_serialized_mt5_session
     def replay_mt5_history(self, *, symbol: str, timeframe: str = "5m", limit: int = 100) -> dict[str, Any]:
         """Replay closed historical MT5 DEMO candles chronologically, without side effects."""
         if self.execution_provider != "ic_markets_mt5_demo":
@@ -586,6 +589,7 @@ class ConfiguredEcosystemService(EcosystemService):
             "simulation_kind": "HISTORICAL_SIGNAL_THRESHOLD_ONLY",
         }
 
+    @_serialized_mt5_session
     def run_mt5_historical_backtest(
         self,
         *,
@@ -847,6 +851,7 @@ class ConfiguredEcosystemService(EcosystemService):
             "best_effort": True,
         } for record in store.records()]
 
+    @_serialized_mt5_session
     def close_mt5_position(self, *, cycle_id: str, external_id: str) -> Any:
         """Persist and close only the cycle's DEMO position on its original account."""
         from execution.ports import ExecutionResult
@@ -928,6 +933,7 @@ class ConfiguredEcosystemService(EcosystemService):
             )
             return close
 
+    @_serialized_mt5_session
     def reconcile_mt5_position_close(self, *, cycle_id: str, external_id: str) -> dict[str, Any]:
         """Reconcile a DEMO close from broker evidence without sending another order."""
         from execution.ports import PositionCloseObservation, PositionCloseObservationStatus
@@ -1021,6 +1027,7 @@ class ConfiguredEcosystemService(EcosystemService):
                 "order_sent": False,
             }
 
+    @_serialized_mt5_session
     def reconcile_mt5_cycle(self, *, cycle_id: str, external_id: str) -> Any:
         """Reconcile one DEMO external order and close only its factual lifecycle."""
         if self.trading_runtime is None:
