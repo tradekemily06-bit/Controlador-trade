@@ -34,7 +34,7 @@ void PersistCycleIdentity(){
    if(last_cycle_id=="" || last_external_id=="") return;
    int handle=FileOpen(CycleIdentityFileName(),FILE_WRITE|FILE_TXT|FILE_ANSI|FILE_COMMON);
    if(handle==INVALID_HANDLE) return;
-   FileWriteString(handle,last_cycle_id+"\\r\\n"+last_external_id);
+   FileWriteString(handle,last_cycle_id+"\r\n"+last_external_id);
    FileClose(handle);
 }
 void LoadCycleIdentity(){
