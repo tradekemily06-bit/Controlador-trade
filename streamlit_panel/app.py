@@ -2553,9 +2553,9 @@ def show_readonly_module(module_name: str) -> None:
 # The Figma reference defines four visual areas. The Assistant is an additional
 # functional module requested by the user and lives inside the Streamlit panel,
 # without changing the reference JSON or creating a fifth navigation area.
+# Keep the four approved Figma navigation areas unchanged. The two requested
+# financial capabilities are grouped under the existing Financeiro module.
 AREAS = {name: list(modules) for name, modules in CONFIG["open_state"]["tabs"].items()}
-AREAS["MAIS / ADMIN"].append("Reserva Fiscal")
-AREAS["MAIS / ADMIN"].append("Assistente do Ecossistema")
 if "panel_open" not in st.session_state:
     st.session_state.panel_open = True
 if not st.session_state.panel_open:
@@ -2578,10 +2578,19 @@ area = st.radio("Áreas principais", list(AREAS), horizontal=True, label_visibil
 st.divider()
 module = st.radio("Módulos", AREAS[area], horizontal=False, label_visibility="collapsed")
 
-if module == "Assistente do Ecossistema":
-    show_assistant()
-elif module in {"Financeiro", "Reserva Fiscal"}:
-    show_fiscal()
+if module == "Financeiro":
+    st.subheader("Financeiro")
+    financial = st.radio(
+        "Financeiro",
+        ["Reserva Fiscal", "Assistente do Ecossistema"],
+        horizontal=True,
+        key="financeiro_section",
+        label_visibility="collapsed",
+    )
+    if financial == "Reserva Fiscal":
+        show_fiscal()
+    else:
+        show_assistant()
 else:
     show_readonly_module(module)
 
