@@ -42,11 +42,19 @@ class RuntimeProcessLock:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             else:  # pragma: no cover - unsupported platform
                 raise RuntimeError("plataforma sem mecanismo de lock de processo disponível.")
-        except (OSError, BlockingIOError) as exc:
-            handle.close()
-            raise RuntimeError(
-                "já existe outra instância do Controlador usando este runtime."
-            ) from exc
+        except BaseException as exc:
+            # Any failure after opening the descriptor must close it, including
+            # unsupported-platform errors and cancellation during lock setup.
+            # Preserve the original exception if descriptor cleanup also fails.
+            try:
+                handle.close()
+            except BaseException:
+                pass
+            if isinstance(exc, OSError):
+                raise RuntimeError(
+                    "já existe outra instância do Controlador usando este runtime."
+                ) from exc
+            raise
         self._file = handle
 
     def release(self) -> None:
