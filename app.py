@@ -21,7 +21,7 @@ from core.ecosystem_onboarding import EcosystemOnboarding
 from analysis.decision_store import DecisionStore
 from core.operational_runtime import build_operational_runtime
 from core.real_runtime_controller import RealRuntimeController
-from core.runtime_process_lock import RuntimeProcessLock
+from core.runtime_process_lock import RuntimeProcessLockSet
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 from integration.execution_provider import build_demo_execution_port
 from security_guard import MAX_BODY_BYTES, SECURITY
@@ -38,14 +38,19 @@ from execution.icmarkets_mt5_demo_adapter import MT5DealNotFoundError
 
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
-RUNTIME_DIR = Path(os.environ.get("CONTROLADOR_RUNTIME_DIR", str(ROOT / ".runtime")))
-# Acquire exclusivity before constructing runtime services or running fiscal migrations.
-# A second process must fail before touching shared SQLite/runtime state.
-_RUNTIME_PROCESS_LOCK = RuntimeProcessLock(RUNTIME_DIR / "controlador-runtime.lock")
-_RUNTIME_PROCESS_LOCK.acquire()
+RUNTIME_DIR = Path(os.environ.get("CONTROLADOR_RUNTIME_DIR", str(ROOT / ".runtime"))).expanduser().resolve()
 EXECUTION_PROVIDER = os.environ.get("CONTROLADOR_EXECUTION_PROVIDER", "paper")
 EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
-DECISION_DB = Path(os.environ.get("CONTROLADOR_DECISION_DB", str(RUNTIME_DIR / "decision-memory.sqlite")))
+DECISION_DB = Path(os.environ.get("CONTROLADOR_DECISION_DB", str(RUNTIME_DIR / "decision-memory.sqlite"))).expanduser().resolve()
+FISCAL_RESERVE_DB = Path(os.environ.get("CONTROLADOR_FISCAL_RESERVE_DB", str(RUNTIME_DIR / "fiscal-reserve.sqlite3"))).expanduser().resolve()
+ASSISTANT_DB = Path(os.environ.get("CONTROLADOR_ASSISTANT_DB", str(RUNTIME_DIR / "assistant.sqlite3"))).expanduser().resolve()
+# Lock the runtime directory and every configured SQLite database before any
+# runtime service, repository, or fiscal migration can touch shared state.
+_RUNTIME_PROCESS_LOCK = RuntimeProcessLockSet(
+    RUNTIME_DIR / "controlador-runtime.lock",
+    [DECISION_DB, FISCAL_RESERVE_DB, ASSISTANT_DB],
+)
+_RUNTIME_PROCESS_LOCK.acquire()
 EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL)
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
 SERVICE = ConfiguredEcosystemService(
@@ -55,14 +60,12 @@ SERVICE = ConfiguredEcosystemService(
 )
 REAL_RUNTIME = RealRuntimeController(runtime=OPERATIONAL_RUNTIME, root=RUNTIME_DIR, symbol=EXECUTION_SYMBOL)
 ONBOARDING = EcosystemOnboarding()
-FISCAL_RESERVE_DB = Path(os.environ.get("CONTROLADOR_FISCAL_RESERVE_DB", str(RUNTIME_DIR / "fiscal-reserve.sqlite3")))
 # Apply the owner-scoped schema before any fiscal repository creates or queries tables.
 # This fails closed when the configured single-owner identity is absent or mismatched.
 migrate_fiscal_schema(str(FISCAL_RESERVE_DB))
 FISCAL_RESERVE = FiscalReserve(str(FISCAL_RESERVE_DB))
 FISCAL_PENDING_QUEUE = FiscalPendingQueue(str(FISCAL_RESERVE_DB))
 FISCAL_DOMESTIC_PENDING_QUEUE = FiscalDomesticPendingQueue(str(FISCAL_RESERVE_DB))
-ASSISTANT_DB = Path(os.environ.get('CONTROLADOR_ASSISTANT_DB', str(RUNTIME_DIR / 'assistant.sqlite3')))
 ASSISTANT_STORE = AssistantConversationStore(ASSISTANT_DB)
 ASSISTANT = EcosystemAssistant(ASSISTANT_STORE, SERVICE, FISCAL_RESERVE, fiscal_pending_queue=FISCAL_PENDING_QUEUE, fiscal_domestic_pending_queue=FISCAL_DOMESTIC_PENDING_QUEUE)
 
