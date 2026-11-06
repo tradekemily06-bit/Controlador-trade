@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hmac
 import json
+import math
 import os
 import sqlite3
 from dataclasses import asdict
@@ -962,6 +963,23 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {"runtime_reconciliation": payload}, request_id, environ)
         if path == "/api/runtime/cycle" and method == "POST":
             data = _read_json(environ)
+            # Validate raw JSON types before coercion: bool is an int in Python,
+            # and float(True)/int(True) would otherwise silently become sizing data.
+            symbol = data.get("symbol", "")
+            timeframe = data.get("timeframe", "5m")
+            limit = data.get("limit", 100)
+            amount = data.get("amount", 0.01)
+            duration_seconds = data.get("duration_seconds", 60)
+            if not isinstance(symbol, str) or not symbol.strip():
+                raise ValueError("symbol é obrigatório")
+            if not isinstance(timeframe, str) or not timeframe.strip():
+                raise ValueError("timeframe é obrigatório")
+            if not isinstance(limit, int) or isinstance(limit, bool) or not 20 <= limit <= 500:
+                raise ValueError("limit deve estar entre 20 e 500")
+            if not isinstance(amount, (int, float)) or isinstance(amount, bool) or not math.isfinite(float(amount)) or float(amount) <= 0:
+                raise ValueError("amount deve ser um número finito e positivo em lotes")
+            if not isinstance(duration_seconds, int) or isinstance(duration_seconds, bool) or not 1 <= duration_seconds <= 86400:
+                raise ValueError("duration_seconds deve estar entre 1 e 86400")
             # Confirmation and filter evidence are derived by the server from
             # the pinned MT5 DEMO feed; client booleans are not trusted here.
             mode_block_reason = _mode_execution_block_reason(SERVICE.get_preferences())
@@ -969,9 +987,9 @@ def application(environ, start_response):
                 from execution.icmarkets_mt5_market_data import MT5MarketDataError
                 try:
                     orchestration = SERVICE.analyze_mt5_market(
-                        symbol=str(data.get("symbol", "")),
-                        timeframe=str(data.get("timeframe", "5m")),
-                        limit=int(data.get("limit", 100)),
+                        symbol=symbol,
+                        timeframe=timeframe,
+                        limit=limit,
                     )
                 except (MT5MarketDataError, RuntimeError) as exc:
                     return _json_response(
@@ -989,11 +1007,11 @@ def application(environ, start_response):
                     environ,
                 )
             result = SERVICE.run_mt5_cycle(
-                symbol=str(data.get("symbol", "")),
-                timeframe=str(data.get("timeframe", "5m")),
-                limit=int(data.get("limit", 100)),
-                amount=float(data.get("amount", 0.01)),
-                duration_seconds=int(data.get("duration_seconds", 60)),
+                symbol=symbol,
+                timeframe=timeframe,
+                limit=limit,
+                amount=float(amount),
+                duration_seconds=duration_seconds,
             )
             if not result.cycles:
                 return _json_response(
