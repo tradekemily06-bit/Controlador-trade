@@ -73,3 +73,71 @@ def test_configured_service_does_not_report_unconfigured_audit_as_failure(monkey
         item["title"] == "SECURITY_AUDIT_PERSISTENCE_FAILED"
         for item in service._operational_notifications()
     )
+
+
+
+def test_notification_preferences_never_hide_critical_security_events():
+    from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
+    from core.ecosystem_notifications import EcosystemNotification
+
+    service = ConfiguredEcosystemService()
+    service.update_notification_preferences({
+        "important_enabled": False,
+        "security_enabled": False,
+        "info_enabled": False,
+    })
+    critical = EcosystemNotification(
+        "critical-security",
+        NotificationKind.SECURITY,
+        NotificationSeverity.CRITICAL,
+        "Falha crítica",
+        "A persistência da auditoria falhou.",
+        requires_attention=True,
+        blocking=True,
+    )
+    important = EcosystemNotification(
+        "important-security",
+        NotificationKind.SECURITY,
+        NotificationSeverity.IMPORTANT,
+        "Aviso de segurança",
+        "Atualização disponível.",
+        requires_attention=True,
+    )
+    service.notifications.publish(critical)
+    service.notifications.publish(important)
+
+    visible = service._visible_notifications(include_info=True)
+
+    assert critical in visible
+    assert important not in visible
+    assert service.preferences.preferences.notifications.critical_enabled is True
+
+
+def test_notification_center_restores_persisted_events_after_restart(tmp_path):
+    from dataclasses import asdict
+
+    from core.ecosystem_notifications import EcosystemNotification
+    from core.ecosystem_state_store import EcosystemStateStore
+
+    store = EcosystemStateStore(tmp_path / "ecosystem-state.sqlite")
+    original = EcosystemNotificationCenter()
+    event = EcosystemNotification(
+        "persisted-1",
+        NotificationKind.SECURITY,
+        NotificationSeverity.CRITICAL,
+        "Auditoria indisponível",
+        "A trilha de auditoria não confirmou persistência.",
+        requires_attention=True,
+        blocking=True,
+    )
+    original.publish(event)
+    store.save_notifications([
+        asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}
+        for item in original.all()
+    ])
+
+    restored = EcosystemNotificationCenter()
+    restored.restore(store.load_notifications())
+
+    assert restored.all() == (event,)
+    assert restored.critical() == (event,)
