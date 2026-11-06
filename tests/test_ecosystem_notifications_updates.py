@@ -48,6 +48,13 @@ def test_configured_service_surfaces_audit_persistence_failure_as_critical(monke
     assert audit_items[0]["requires_attention"] is True
     assert audit_items[0]["blocking"] is True
 
+    summary = service.notification_summary()
+    assert summary["critical_count"] == 1
+    assert any(
+        item["title"] == "SECURITY_AUDIT_PERSISTENCE_FAILED"
+        for item in summary["items"]
+    )
+
 
 def test_configured_service_does_not_report_unconfigured_audit_as_failure(monkeypatch):
     from types import SimpleNamespace
