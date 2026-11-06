@@ -420,3 +420,55 @@ def test_configured_terminal_path_mismatch_blocks_demo_order():
     assert result.success is False
     assert not any(isinstance(call, tuple) and call[0] == "order_send" for call in fake.calls)
     assert "shutdown" in fake.calls
+
+def test_closed_deal_ticket_lookup_revalidates_final_close_and_private_account_fingerprint():
+    mt5 = FakeMT5()
+    mt5.account_info = lambda: SimpleNamespace(
+        trade_mode=mt5.ACCOUNT_TRADE_MODE_DEMO,
+        currency="BRL",
+        login=12345678,
+        server="ICMarketsSC-Demo",
+    )
+    mt5.positions_get = lambda: ()
+    opening = SimpleNamespace(
+        entry=mt5.DEAL_ENTRY_IN, ticket=788, position_id=456,
+        symbol="WIN$N", volume=1.0, profit=0.0,
+        commission=-1.0, swap=0.0, fee=0.0, time=1793318300,
+    )
+    closing = SimpleNamespace(
+        entry=mt5.DEAL_ENTRY_OUT, ticket=789, position_id=456,
+        symbol="WIN$N", volume=1.0, profit=10.0,
+        commission=0.0, swap=-0.5, fee=-0.1, time=1793318400,
+    )
+
+    def history_deals_get(*args, **kwargs):
+        if kwargs.get("position") == 456:
+            return (opening, closing)
+        return (closing,)
+
+    mt5.history_deals_get = history_deals_get
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
+
+    candidate = adapter.read_closed_deal_candidate("789")
+
+    assert candidate["ticket"] == "789"
+    assert candidate["position_id"] == "456"
+    assert candidate["account_currency"] == "BRL"
+    assert len(candidate["account_fingerprint"]) == 32
+    assert "12345678" not in repr(candidate)
+    assert "ICMarketsSC-Demo" not in repr(candidate)
+    assert candidate["profit"] == 10.0
+    assert candidate["commission"] == -1.0
+    assert candidate["swap"] == -0.5
+    assert candidate["fee"] == -0.1
+    assert candidate["net_result_account_currency"] == 8.4
+    assert candidate["deal_count"] == 2
+    assert candidate["closing_deal_count"] == 1
+
+    for invalid_ticket in ("788", "999999"):
+        try:
+            adapter.read_closed_deal_candidate(invalid_ticket)
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError(f"ticket {invalid_ticket} should not identify the final closing deal")
