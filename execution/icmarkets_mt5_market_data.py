@@ -4,6 +4,8 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
+from execution.mt5_session_lock import serialized_mt5_session
+
 from core.p122_broker_market_data import BrokerMarketDataPort, BrokerMarketDataRequest
 from data.models import Candle
 from data.normalizer import normalize_candle
@@ -42,6 +44,7 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
         self._mt5 = mt5_module
         self._terminal_path = terminal_path or os.environ.get("CONTROLADOR_MT5_TERMINAL_PATH") or None
 
+    @serialized_mt5_session
     def initialize_terminal(self, mt5: Any) -> bool:
         """Initialize and verify the configured terminal, cleaning up on failure."""
         if not self._terminal_path:
@@ -127,6 +130,7 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
         )
         return self.fetch_market_data(broker_request)
 
+    @serialized_mt5_session
     def fetch_market_data(self, request: BrokerMarketDataRequest) -> tuple[Candle, ...]:
         if not isinstance(request, BrokerMarketDataRequest):
             raise TypeError("request deve ser BrokerMarketDataRequest")
