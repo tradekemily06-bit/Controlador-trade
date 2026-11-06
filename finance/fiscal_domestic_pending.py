@@ -10,6 +10,9 @@ from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
+
+
+MAX_PENDING_OFFSET = 1_000_000_000
 from zoneinfo import ZoneInfo
 
 from finance.fiscal_taxonomy import BRAZIL_CATEGORIES
@@ -175,8 +178,14 @@ class FiscalDomesticPendingQueue:
         owner_id = self._require_owner(owner_id)
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
             raise ValueError("limit deve estar entre 1 e 500")
-        if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
-            raise ValueError("offset deve ser não negativo")
+        if (
+            isinstance(offset, bool)
+            or not isinstance(offset, int)
+            or not 0 <= offset <= MAX_PENDING_OFFSET
+        ):
+            raise ValueError(
+                f"offset deve estar entre 0 e {MAX_PENDING_OFFSET}"
+            )
         with self._connect() as db:
             total = int(db.execute(
                 "SELECT COUNT(*) FROM fiscal_reserve_pending_domestic WHERE owner_id = ?", (owner_id,)
