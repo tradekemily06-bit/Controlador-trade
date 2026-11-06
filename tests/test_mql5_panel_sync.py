@@ -344,7 +344,7 @@ def test_mql5_native_recovery_inventory_supports_multiple_exact_tickets():
     assert 'state!="BLOCKED_ACCOUNT_IDENTITY"' in parser
     assert 'state!="BROKER_CONFIRMED_OPEN"' in parser
     assert 'state!="RECONCILIATION_REQUIRED"' in parser
-    assert 'Http("POST","/api/runtime/close/reconcile"' in selection
+    assert 'Http("POST","/api/runtime/close/local/reconcile"' in selection
     assert 'item.state!="BROKER_CONFIRMED_OPEN"' in selection
     assert "if(!recovery_close_armed)" in selection
     assert 'Http("POST","/api/runtime/close/local"' in selection
@@ -352,3 +352,18 @@ def test_mql5_native_recovery_inventory_supports_multiple_exact_tickets():
     assert 'Obj("REC_NEXT")' in events
     assert 'Obj("REC_RECONCILE")' in events
     assert 'Obj("REC_CLOSE")' in events
+
+
+def test_mql5_json_helpers_accept_standard_json_whitespace_and_escaped_strings():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    helpers = panel.split("int JsonValueStart", 1)[1].split("bool Http(", 1)[0]
+
+    assert 'StringGetCharacter(json,q)==\':\'' in helpers
+    assert "StringGetCharacter(json,q)=='\\\\n'" in helpers
+    assert "StringGetCharacter(json,q)=='\\\\t'" in helpers
+    assert "JsonValueStart(json,arrayKey)" in helpers
+    assert "JsonValueStart(json,objectKey)" in helpers
+    assert "if(escaped) escaped=false;" in helpers
+    assert "else if(c=='\\\\\\\\') escaped=true;" in helpers
+    assert "else if(ch=='\\\\\\\\') escaped=true;" in helpers
+    assert 'string marker="\\\\""+arrayKey+"\\\\":";' not in helpers
