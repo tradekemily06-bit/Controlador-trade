@@ -455,8 +455,7 @@ def application(environ, start_response):
                 fiscal_owner_id = migrate_fiscal_schema(str(FISCAL_RESERVE_DB))
             except (FiscalOwnerIdentityError, RuntimeError) as exc:
                 return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE,
-                                      {"error": "Reserva Fiscal indisponível até validar a identidade proprietária e a migração.",
-                                       "detail": str(exc)}, request_id, environ)
+                                      {"error": "Reserva Fiscal indisponível até validar a identidade proprietária e a migração."}, request_id, environ)
             # A identidade canônica mantém o mesmo espaço de conversas no acesso
             # local e remoto autorizado, sem confiar no valor enviado pelo navegador.
             identity = fiscal_owner_id
@@ -500,8 +499,7 @@ def application(environ, start_response):
                 fiscal_owner_id = migrate_fiscal_schema(str(FISCAL_RESERVE_DB))
             except (FiscalOwnerIdentityError, RuntimeError) as exc:
                 return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE,
-                                      {"error": "Reserva Fiscal indisponível até validar a identidade proprietária e a migração.",
-                                       "detail": str(exc)}, request_id, environ)
+                                      {"error": "Reserva Fiscal indisponível até validar a identidade proprietária e a migração."}, request_id, environ)
         if path == "/api/fiscal-reserve/domestic-pending" and method == "GET":
             query = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
             try:
@@ -607,8 +605,7 @@ def application(environ, start_response):
                                            "execution_allowed": False}, request_id, environ)
                 except RuntimeError as exc:
                     return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE,
-                                          {"error": "Negócio não pôde ser revalidado no MT5 DEMO.",
-                                           "detail": str(exc), "registered": False,
+                                          {"error": "Negócio não pôde ser revalidado no MT5 DEMO.", "registered": False,
                                            "reserve_calculated": False, "execution_allowed": False},
                                           request_id, environ)
                 if not isinstance(candidate, dict) or not candidate:
@@ -713,7 +710,7 @@ def application(environ, start_response):
                                            "execution_allowed": False}, request_id, environ)
                 except RuntimeError as exc:
                     return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE,
-                                           {"error": "Negócio não pôde ser revalidado no MT5 DEMO.", "detail": str(exc),
+                                           {"error": "Negócio não pôde ser revalidado no MT5 DEMO.",
                                             "registered": False, "execution_allowed": False}, request_id, environ)
                 if not isinstance(candidate, dict) or not candidate:
                     return _json_response(start_response, HTTPStatus.UNPROCESSABLE_ENTITY,
@@ -827,7 +824,7 @@ def application(environ, start_response):
             try:
                 preview = SERVICE.mt5_operational_adapter.read_closed_deal_candidates(lookback_days=lookback_days)
             except RuntimeError as exc:
-                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Histórico MT5 DEMO indisponível para conferência.", "detail": str(exc), "auto_registered": False}, request_id, environ)
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Histórico MT5 DEMO indisponível para conferência.", "auto_registered": False}, request_id, environ)
             return _json_response(start_response, HTTPStatus.OK, preview, request_id, environ)
         if path == "/api/fiscal-reserve" and method == "GET":
             query = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
@@ -1213,7 +1210,7 @@ def application(environ, start_response):
                     return _json_response(
                         start_response,
                         HTTPStatus.SERVICE_UNAVAILABLE,
-                        {"error": "dados de mercado indisponíveis", "detail": str(exc), "execution_allowed": False},
+                        {"error": "dados de mercado indisponíveis", "execution_allowed": False},
                         request_id,
                         environ,
                     )
@@ -1373,7 +1370,6 @@ def application(environ, start_response):
                     HTTPStatus.SERVICE_UNAVAILABLE,
                     {
                         "error": "dados de mercado indisponíveis",
-                        "detail": str(exc),
                         "execution_allowed": False,
                     },
                     request_id,
