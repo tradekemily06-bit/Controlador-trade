@@ -59,6 +59,16 @@ section[data-testid="stSidebar"] { background:#10151B; border-right:1px solid #2
 """, unsafe_allow_html=True)
 
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Never forward trusted identity headers to an HTTP redirect target."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_API_OPENER = urllib.request.build_opener(_NoRedirectHandler)
+
+
 def api(path: str, method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:
     headers = {"Accept": "application/json"}
     if payload is not None:
@@ -74,7 +84,7 @@ def api(path: str, method: str = "GET", payload: dict[str, Any] | None = None) -
     data = None if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(BASE_URL + path, data=data, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+        with _API_OPENER.open(request, timeout=TIMEOUT) as response:
             body = response.read().decode("utf-8")
             return json.loads(body) if body else {}
     except urllib.error.HTTPError as exc:
