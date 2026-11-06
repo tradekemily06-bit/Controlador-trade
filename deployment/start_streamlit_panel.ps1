@@ -95,6 +95,7 @@ try {
         $process = Start-Process -FilePath $PythonExe -ArgumentList $arguments -WorkingDirectory $ProjectRoot -PassThru -NoNewWindow -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
         $startedAt = Get-Date
         $failedHealthChecks = 0
+        $exitReason = ''
         while ($true) {
             Start-Sleep -Seconds 10
             $process.Refresh()
@@ -105,7 +106,7 @@ try {
             } else {
                 $failedHealthChecks++
                 if ($failedHealthChecks -ge 3) {
-                    $finalReason = 'Streamlit permaneceu sem health HTTP após três verificações consecutivas.'
+                    $exitReason = 'Streamlit permaneceu sem health HTTP após três verificações consecutivas.'
                     Stop-Process -Id $process.Id -Force
                     $process.WaitForExit()
                     break
@@ -115,7 +116,7 @@ try {
         $process.Refresh()
         $exitCode = if ($process.HasExited) { $process.ExitCode } else { -1 }
         $restartTimes.Add((Get-Date))
-        $finalReason = "Streamlit encerrou com código $exitCode."
+        $finalReason = if ($exitReason) { $exitReason } else { "Streamlit encerrou com código $exitCode." }
         Write-PanelStatus 'RESTARTING' $finalReason
         Start-Sleep -Seconds $RestartDelaySeconds
     }
