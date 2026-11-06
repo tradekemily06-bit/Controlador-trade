@@ -20,6 +20,8 @@ from zoneinfo import ZoneInfo
 DEFAULT_RATES = {
     "BR_DAY_TRADE": 20.0,
 }
+# Reserved legacy marker: user-entered notes must never control fiscal inclusion.
+_UNVERIFIED_LEGACY_MARKER = "USER_DECLARED_PENDING_REVIEW"
 # Keep the legacy category readable for historical rows, but never configure
 # or seed a generic foreign tax percentage.
 VALID_CATEGORIES = frozenset({"BR_DAY_TRADE", "FOREIGN_FINANCIAL_ASSET"})
@@ -237,6 +239,8 @@ class FiscalReserve:
         if not isinstance(raw_notes, str):
             raise ValueError("notes deve ser texto")
         notes = raw_notes.strip()
+        if _UNVERIFIED_LEGACY_MARKER.casefold() in notes.casefold():
+            raise ValueError("notes contém marcador interno reservado para registros legados")
         if len(notes) > 1000:
             raise ValueError("notes deve ter até 1000 caracteres")
         with self._connect() as db:
