@@ -8,13 +8,16 @@ def test_runtime_process_lock_creates_and_releases_lock_file(tmp_path):
     lock = RuntimeProcessLock(path)
     lock.acquire()
     assert path.exists()
+    assert lock.is_acquired is True
     lock.release()
+    assert lock.is_acquired is False
     lock.release()
 
 
 def test_runtime_process_lock_rejects_reentrant_acquire_on_same_instance(tmp_path):
     lock = RuntimeProcessLock(tmp_path / "runtime.lock")
     lock.acquire()
+    assert lock.is_acquired is True
     try:
         try:
             lock.acquire()
@@ -24,3 +27,4 @@ def test_runtime_process_lock_rejects_reentrant_acquire_on_same_instance(tmp_pat
             raise AssertionError("reentrada do mesmo lock deveria ser recusada")
     finally:
         lock.release()
+    assert lock.is_acquired is False
