@@ -100,8 +100,11 @@ def test_fiscal_and_assistant_read_routes_ignore_forged_owner_parameters(
     monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", database)
     monkeypatch.setattr(app_module, "FISCAL_RESERVE", reserve)
     monkeypatch.setattr(app_module, "FISCAL_PENDING_QUEUE", queue)
+    import execution.mt5_session_lock as mt5_session_lock
+
     adapter = app_module.SERVICE.mt5_operational_adapter
     session_lock = _ObservedSessionLock()
+    monkeypatch.setattr(mt5_session_lock, "MT5_TERMINAL_SESSION_LOCK", session_lock)
     monkeypatch.setattr(adapter, "_session_lock", session_lock)
     original_add = queue.add_realized_result
 
@@ -384,10 +387,14 @@ def test_mt5_pending_result_ignores_forged_owner_id_and_uses_authenticated_owner
         "deal_count": 2,
         "closing_deal_count": 1,
     }
+    def read_candidate_while_session_locked(ticket):
+        assert session_lock.held, "MT5 history read must use the same session lock"
+        return candidate if ticket == "TICKET-001" else None
+
     monkeypatch.setattr(
         app_module.SERVICE.mt5_operational_adapter,
         "read_closed_deal_candidate",
-        lambda ticket: candidate if ticket == "TICKET-001" else None,
+        read_candidate_while_session_locked,
     )
 
     status, response = _request(
@@ -422,8 +429,11 @@ def test_mt5_brazil_confirmation_is_owner_scoped_and_ticket_deduplicated(
     owner_id = migrate_fiscal_schema(str(database))
     queue = FiscalDomesticPendingQueue(str(database))
     monkeypatch.setattr(app_module, "FISCAL_DOMESTIC_PENDING_QUEUE", queue)
+    import execution.mt5_session_lock as mt5_session_lock
+
     adapter = app_module.SERVICE.mt5_operational_adapter
     session_lock = _ObservedSessionLock()
+    monkeypatch.setattr(mt5_session_lock, "MT5_TERMINAL_SESSION_LOCK", session_lock)
     monkeypatch.setattr(adapter, "_session_lock", session_lock)
     original_add = queue.add
 
@@ -448,10 +458,14 @@ def test_mt5_brazil_confirmation_is_owner_scoped_and_ticket_deduplicated(
         "deal_count": 2,
         "closing_deal_count": 1,
     }
+    def read_candidate_while_session_locked(ticket):
+        assert session_lock.held, "MT5 history read must use the same session lock"
+        return candidate if ticket == "TICKET-BR-001" else None
+
     monkeypatch.setattr(
         app_module.SERVICE.mt5_operational_adapter,
         "read_closed_deal_candidate",
-        lambda ticket: candidate if ticket == "TICKET-BR-001" else None,
+        read_candidate_while_session_locked,
     )
 
     payload = {
