@@ -58,8 +58,10 @@ class EcosystemNotificationCenter:
     def restore(self, items: list[dict]) -> None:
         """Restore persisted notifications; invalid records are ignored safely."""
         restored: list[EcosystemNotification] = []
+        invalid_records = False
         for item in items:
             if not isinstance(item, dict):
+                invalid_records = True
                 continue
             try:
                 notification_id = item["notification_id"]
@@ -74,12 +76,16 @@ class EcosystemNotificationCenter:
                 if not all(isinstance(value, str) for value in (
                     notification_id, kind, severity, title, message
                 )):
+                    invalid_records = True
                     continue
                 if type(requires_attention) is not bool or type(blocking) is not bool:
+                    invalid_records = True
                     continue
                 if not notification_id.strip() or not title.strip() or not message.strip():
+                    invalid_records = True
                     continue
                 if len(notification_id) > 160 or len(title) > 240 or len(message) > 4000:
+                    invalid_records = True
                     continue
                 notification = EcosystemNotification(
                     notification_id=notification_id,
@@ -92,8 +98,15 @@ class EcosystemNotificationCenter:
                 )
                 restored.append(notification)
             except (KeyError, TypeError, ValueError):
+                invalid_records = True
                 continue
         self._notifications = restored
+        self._restore_had_invalid_records = invalid_records
+
+    @property
+    def restore_had_invalid_records(self) -> bool:
+        """Whether the latest restore discarded malformed persisted records."""
+        return self._restore_had_invalid_records
 
     def publish(self, notification: EcosystemNotification) -> EcosystemNotification:
         if not isinstance(notification, EcosystemNotification):
