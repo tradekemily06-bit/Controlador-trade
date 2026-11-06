@@ -162,3 +162,66 @@ def test_notification_history_uses_only_dedicated_writer(tmp_path):
 
     store.save_notifications([{"notification_id": "n1"}])
     assert store.load_notifications() == [{"notification_id": "n1"}]
+
+
+def test_notification_quarantine_requires_explicit_confirmation(tmp_path):
+    import sqlite3
+
+    import pytest
+
+    path = tmp_path / "notification-quarantine-confirmation.sqlite3"
+    store = EcosystemStateStore(path)
+    raw = "{broken-json"
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "INSERT INTO ecosystem_state(key, value_json) VALUES (?, ?)",
+            ("notifications", raw),
+        )
+
+    store.load_notifications()
+    with pytest.raises(ValueError, match="confirmação explícita"):
+        store.archive_notifications_for_recovery(confirmed=False)
+
+    with sqlite3.connect(path) as db:
+        assert db.execute(
+            "SELECT COUNT(*) FROM notification_history_quarantine"
+        ).fetchone()[0] == 0
+        assert db.execute(
+            "SELECT value_json FROM ecosystem_state WHERE key = ?",
+            ("notifications",),
+        ).fetchone()[0] == raw
+
+
+def test_notification_quarantine_preserves_exact_payload_without_repairing(tmp_path):
+    import hashlib
+    import sqlite3
+
+    path = tmp_path / "notification-quarantine-preserve.sqlite3"
+    store = EcosystemStateStore(path)
+    raw = '[{"notification_id":"kept","kind":"UNKNOWN","severity":"IMPORTANT","title":"t","message":"m"}]'
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "INSERT INTO ecosystem_state(key, value_json) VALUES (?, ?)",
+            ("notifications", raw),
+        )
+
+    store.load_notifications()
+    archive = store.archive_notifications_for_recovery(confirmed=True)
+
+    assert archive["corruption_category"] == "invalid_records"
+    assert archive["payload_sha256"] == hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    assert store.notifications_load_error == "invalid_records"
+
+    with sqlite3.connect(path) as db:
+        original = db.execute(
+            "SELECT value_json FROM ecosystem_state WHERE key = ?",
+            ("notifications",),
+        ).fetchone()[0]
+        archived = db.execute(
+            "SELECT raw_payload, payload_sha256, corruption_category "
+            "FROM notification_history_quarantine WHERE archive_id = ?",
+            (archive["archive_id"],),
+        ).fetchone()
+
+    assert original == raw
+    assert archived == (raw, archive["payload_sha256"], "invalid_records")
