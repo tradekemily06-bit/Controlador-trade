@@ -1792,6 +1792,25 @@ def show_readonly_module(module_name: str) -> None:
             st.metric("Execução REAL", str(data.get("real", "DESABILITADO")))
             st.caption("Esta tela informa o estado reportado pelo runtime. Ela não confirma que o terminal MT5 esteja aberto neste computador nem que o EA esteja instalado.")
             st.caption("Modo permitido: DEMO/SIMULAÇÃO · Execução automática: NÃO")
+            st.markdown("#### Saídas temporizadas DEMO")
+            try:
+                timed_payload = api("/api/runtime/timed-exits")
+                timed_items = timed_payload.get("timed_exits", [])
+                if not isinstance(timed_items, list):
+                    timed_items = []
+                if not timed_items:
+                    st.caption("Nenhuma saída temporizada registrada.")
+                for timed_item in timed_items:
+                    if not isinstance(timed_item, dict):
+                        continue
+                    timed_state = str(timed_item.get("state") or "UNKNOWN").upper()
+                    st.write(f"**Ticket {timed_item.get('external_id', '—')} · {timed_state}**")
+                    st.caption(f"Prazo alvo: {timed_item.get('due_at', '—')} · próxima tentativa: {timed_item.get('next_attempt_at', '—')} · tentativas: {timed_item.get('attempts', 0)}")
+                    if timed_item.get("message"):
+                        st.caption(str(timed_item["message"]))
+                st.caption("Horários best-effort: indisponibilidade do MT5, rede ou runtime pode atrasar o fechamento.")
+            except Exception as exc:
+                st.warning(f"Status de saídas temporizadas indisponível: {exc}")
             st.markdown("#### Recuperação de posições DEMO")
             st.caption("A lista é recuperada do ledger persistente. A consulta ao MT5 é somente leitura; o fechamento exige confirmação explícita e só fica disponível depois que o MT5 confirmar que a posição continua aberta.")
             try:
