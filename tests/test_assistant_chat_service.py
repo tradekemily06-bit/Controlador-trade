@@ -77,6 +77,31 @@ def _assistant(store, completion, monkeypatch):
     )
 
 
+def test_readiness_distinguishes_present_credentials_from_client_initialization_failure(monkeypatch):
+    assistant = EcosystemAssistant(
+        store=FakeStore(),
+        service=object(),
+        fiscal=object(),
+        client_factory=lambda: object(),
+        model="fake-model",
+    )
+    monkeypatch.setenv("OPENAI_API_KEY", "configured-secret")
+    monkeypatch.setattr(
+        assistant,
+        "_client",
+        lambda: (_ for _ in ()).throw(AssistantUnavailableError("SDK indisponível")),
+    )
+
+    status = assistant.readiness()
+
+    assert status["available"] is False
+    assert status["credentials_configured"] is True
+    assert status["client_initialized"] is False
+    assert status["connection_tested"] is False
+    assert status["status"] == "CLIENT_INITIALIZATION_FAILED"
+    assert "configured-secret" not in str(status)
+
+
 def test_readiness_never_claims_provider_connection_was_tested():
     assistant = EcosystemAssistant(
         store=FakeStore(),
