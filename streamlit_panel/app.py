@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import ipaddress
 import io
 import json
@@ -243,7 +244,27 @@ def _reset_assistant_conversation() -> None:
     st.session_state.assistant_history = []
 
 
+def _assistant_consent_scope() -> str:
+    """Bind OpenAI consent to the authenticated principal for this Streamlit session."""
+    if REMOTE_REQUIRED:
+        if not IDENTITY_HEADER:
+            return ""
+        identity = trusted_identity_from_headers(st.context.headers, IDENTITY_HEADER)
+    else:
+        identity = os.environ.get("CONTROLADOR_SINGLE_USER_IDENTITY", "local-single-user").strip()
+    if not identity:
+        return ""
+    return hashlib.sha256(identity.strip().casefold().encode("utf-8")).hexdigest()
+
+
 def show_assistant() -> None:
+    consent_scope = _assistant_consent_scope()
+    previous_scope = st.session_state.get("assistant_consent_scope")
+    if consent_scope != previous_scope:
+        # A consent granted by one authenticated principal must not survive
+        # an identity switch in the same browser session.
+        st.session_state["assistant_openai_consent"] = False
+        st.session_state["assistant_consent_scope"] = consent_scope
     st.subheader("Assistente do Ecossistema")
     st.caption("Somente leitura · não envia ordens, não movimenta dinheiro e não substitui orientação fiscal profissional.")
     assistant_available = False
@@ -265,6 +286,7 @@ def show_assistant() -> None:
     consent_to_openai = st.checkbox(
         "Autorizo enviar minha pergunta, as mensagens recentes desta conversa e o resumo operacional filtrado à OpenAI para gerar a resposta.",
         key="assistant_openai_consent",
+        disabled=not bool(consent_scope),
         help="Sem esta autorização, o campo de consulta permanece desabilitado. A chave da API continua somente no servidor.",
     )
     if not consent_to_openai:
