@@ -126,3 +126,39 @@ def test_notification_store_read_error_is_reported_without_crashing(tmp_path: Pa
 
     assert db.load_notifications() == []
     assert db.notifications_load_error == "read_failed"
+
+
+def test_generic_state_save_cannot_bypass_notification_history_guard(tmp_path):
+    import sqlite3
+
+    import pytest
+
+    path = tmp_path / "notification-write-guard.sqlite3"
+    store = EcosystemStateStore(path)
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "INSERT INTO ecosystem_state(key, value_json) VALUES (?, ?)",
+            ("notifications", "{broken-json"),
+        )
+
+    assert store.load_notifications() == []
+    with pytest.raises(ValueError, match="save_notifications"):
+        store.save("notifications", [{"notification_id": "replacement"}])
+
+    with sqlite3.connect(path) as db:
+        raw = db.execute(
+            "SELECT value_json FROM ecosystem_state WHERE key = ?",
+            ("notifications",),
+        ).fetchone()[0]
+    assert raw == "{broken-json"
+
+
+def test_notification_history_uses_only_dedicated_writer(tmp_path):
+    import pytest
+
+    store = EcosystemStateStore(tmp_path / "notification-dedicated-writer.sqlite3")
+    with pytest.raises(ValueError, match="save_notifications"):
+        store.save("notifications", [{"notification_id": "n1"}])
+
+    store.save_notifications([{"notification_id": "n1"}])
+    assert store.load_notifications() == [{"notification_id": "n1"}]
