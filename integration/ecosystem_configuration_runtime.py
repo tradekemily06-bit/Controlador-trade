@@ -282,6 +282,62 @@ class ConfiguredEcosystemService(EcosystemService):
             automation_risk_budget_factory=self._build_mt5_automation_risk_budget,
             automation_pretrade_risk_factory=self._build_mt5_pretrade_risk,
         )
+    def schedule_mt5_timed_exit(self, cycle: Any, *, duration_seconds: int) -> dict[str, Any]:
+        """Persist a best-effort DEMO exit only for an accepted, account-bound position."""
+        from execution.execution_ledger import ExecutionLedgerStatus
+        from execution.execution_lifecycle import ExecutionLifecycleState
+
+        if not isinstance(duration_seconds, int) or isinstance(duration_seconds, bool) or not 1 <= duration_seconds <= 86400:
+            raise ValueError("duration_seconds deve estar entre 1 e 86400")
+        if self.operational_runtime is None:
+            raise RuntimeError("runtime operacional não conectado")
+        execution = getattr(cycle, "execution", None)
+        plan = getattr(cycle, "plan", None)
+        if execution is None or execution.accepted is not True or plan is None:
+            return {"state": "NOT_APPLICABLE", "scheduled": False, "message": "nenhuma execução DEMO aceita neste ciclo"}
+        request_id = getattr(plan, "request_id", None)
+        if not isinstance(request_id, str) or not request_id.strip():
+            return {"state": "BLOCKED", "scheduled": False, "message": "request_id ausente; saída temporizada bloqueada"}
+        ledger = self.operational_runtime.execution_ledger
+        identity = ledger.record_for(request_id)
+        lifecycle = self.operational_runtime.execution_lifecycle.get(request_id)
+        if (
+            identity is None
+            or identity.status not in (ExecutionLedgerStatus.ACCEPTED, ExecutionLedgerStatus.RECONCILED_EXECUTED)
+            or lifecycle is None
+            or lifecycle.state is not ExecutionLifecycleState.ACCEPTED
+            or not identity.cycle_id
+            or not identity.external_id
+        ):
+            return {"state": "BLOCKED", "scheduled": False, "message": "identidade persistida da execução DEMO incompleta"}
+        fingerprint = identity.account_fingerprint
+        if (
+            not isinstance(fingerprint, str)
+            or len(fingerprint) != 32
+            or any(char not in "0123456789abcdef" for char in fingerprint)
+        ):
+            return {"state": "BLOCKED", "scheduled": False, "message": "identidade da conta de abertura ausente; saída temporizada bloqueada"}
+        store = getattr(self.operational_runtime, "timed_exits", None)
+        if store is None:
+            return {"state": "BLOCKED", "scheduled": False, "message": "armazenamento persistente de saída temporizada indisponível"}
+        record = store.schedule(
+            request_id=request_id,
+            cycle_id=identity.cycle_id,
+            external_id=identity.external_id,
+            account_fingerprint=fingerprint,
+            delay_seconds=duration_seconds,
+        )
+        return {
+            "state": record.state,
+            "scheduled": True,
+            "request_id": record.request_id,
+            "cycle_id": record.cycle_id,
+            "external_id": record.external_id,
+            "due_at": record.due_at.isoformat(),
+            "best_effort": True,
+            "message": "saída DEMO persistida; horário é alvo best-effort, não garantia de execução exata",
+        }
+
     def analyze_mt5_market(
         self,
         *,
