@@ -1711,7 +1711,7 @@ def test_streamlit_fiscal_panel_never_displays_raw_exception_details():
 def test_streamlit_assistant_panel_never_displays_raw_exception_details():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     start = source.index("def show_assistant()")
-    end = source.index("\\ndef ", start + 1)
+    end = source.index("\ndef ", start + 1)
     assistant = source[start:end]
 
     assert "st.error(str(exc))" not in assistant
