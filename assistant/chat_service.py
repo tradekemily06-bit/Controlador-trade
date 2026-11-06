@@ -2,7 +2,10 @@ from __future__ import annotations
 import json, os
 from assistant.read_only_context import collect_read_only_context
 
-class AssistantUnavailableError(RuntimeError): pass
+class AssistantUnavailableError(RuntimeError):
+    def __init__(self, message, conversation_id=None):
+        super().__init__(message)
+        self.conversation_id = conversation_id
 
 # Bound model input independently from the output-token cap.
 MAX_CONTEXT_CHARS = 24000
@@ -154,7 +157,7 @@ class EcosystemAssistant:
             answer=response.choices[0].message.content
             if not isinstance(answer,str) or not answer.strip(): raise ValueError("resposta vazia")
         except AssistantUnavailableError: raise
-        except Exception as exc: raise AssistantUnavailableError("Não foi possível obter resposta agora; sua mensagem ficou no histórico.") from exc
+        except Exception as exc: raise AssistantUnavailableError("Não foi possível obter resposta agora; sua mensagem ficou no histórico.", conversation_id=cid) from exc
         self.store.append(identity,cid,"assistant",answer)
         return {
             "conversation_id": cid,
