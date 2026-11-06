@@ -287,3 +287,18 @@ def test_mql5_close_preserves_cycle_until_broker_confirms_position_closed():
     assert 'last_cycle_id=""; last_external_id="";' in close
     assert "Fechamento inconclusivo; ciclo preservado." in close
     assert "Ciclo DEMO; fechamento manual" in panel
+
+
+def test_mql5_preserves_active_cycle_ticket_across_analysis_and_ea_restart():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    run_cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    init = panel.split("int OnInit()", 1)[1].split("void OnDeinit", 1)[0]
+    assert "LoadCycleIdentity();" in init
+    assert "PersistCycleIdentity();" in run_cycle
+    assert "ClearCycleIdentity();" in panel
+    assert "FileOpen(CycleIdentityFileName(),FILE_WRITE|FILE_TXT|FILE_ANSI|FILE_COMMON)" in panel
+    assert "FileOpen(CycleIdentityFileName(),FILE_READ|FILE_TXT|FILE_ANSI|FILE_COMMON)" in panel
+    assert 'if(allowed=="true" && accepted=="true" && cid!="" && eid!="")' in run_cycle
+    assert "last_cycle_id=cid; last_external_id=eid;" not in run_cycle
+    assert 'if(last_cycle_id!="" && last_external_id!="")' in run_cycle
+    assert "Feche/reconcilie a posicao DEMO atual antes de novo ciclo." in run_cycle
