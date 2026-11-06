@@ -185,7 +185,7 @@ def show_assistant() -> None:
         else:
             st.caption(str(readiness.get("message") or "Credenciais configuradas; conexão com a API ainda não testada.") + " · " + str(readiness.get("model") or "modelo configurado"))
     except Exception as exc:
-        st.warning(f"Não foi possível verificar a configuração do Assistente. {exc}")
+        st.warning("Não foi possível verificar a configuração do Assistente. Detalhes técnicos não são exibidos no painel.")
 
     st.caption(
         "Privacidade: a pergunta, as mensagens recentes desta conversa e um resumo operacional filtrado são enviados pelo servidor à OpenAI. "
@@ -244,7 +244,7 @@ def show_assistant() -> None:
                     _reset_assistant_conversation()
                 st.rerun()
     except Exception as exc:
-        st.warning(f"Não foi possível carregar o histórico de conversas. {exc}")
+        st.warning("Não foi possível carregar o histórico de conversas. Detalhes técnicos não são exibidos no painel.")
 
     if st.button("Nova consulta", key="new_assistant_session"):
         _reset_assistant_conversation()
@@ -275,7 +275,7 @@ def show_assistant() -> None:
             st.session_state.assistant_history.append({"role": "assistant", "content": answer})
             st.rerun()
         except Exception as exc:
-            st.error(str(exc))
+            st.error("Não foi possível enviar a consulta ao Assistente. Verifique a conexão e tente novamente. Detalhes técnicos não são exibidos no painel.")
 
 
 
