@@ -34,9 +34,9 @@ class FiscalOwnerIdentityTests(unittest.TestCase):
     def test_malformed_identity_fails_closed_at_owner_resolution_boundary(self):
         malformed_values = (
             "x" * 321,
-            "owner@example.com\\r\\nX-Injected: yes",
-            "owner@example.com\\x00",
-            "owner@example.com\\x7f",
+            "owner@example.com\r\nX-Injected: yes",
+            "owner@example.com\x00",
+            "owner@example.com\x7f",
         )
         for value in malformed_values:
             with self.subTest(value=repr(value)):
