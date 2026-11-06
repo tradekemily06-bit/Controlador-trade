@@ -38,6 +38,17 @@ if (-not (Test-Path -LiteralPath $panelRequirements -PathType Leaf)) {
 $env:CONTROLADOR_API_BASE_URL = 'http://127.0.0.1:8000'
 $env:CONTROLADOR_REMOTE_ACCESS_REQUIRED = 'true'
 $env:CONTROLADOR_TRUSTED_IDENTITY_HEADER = 'Cf-Access-Authenticated-User-Email'
+
+# The API and assistant are owner-scoped. Do not launch a remote panel without
+# the same explicit single-user identity required by the runtime supervisor.
+$machineIdentity = [Environment]::GetEnvironmentVariable('CONTROLADOR_SINGLE_USER_IDENTITY', 'Machine')
+if ([string]::IsNullOrWhiteSpace([string]$env:CONTROLADOR_SINGLE_USER_IDENTITY)) {
+    throw 'CONTROLADOR_SINGLE_USER_IDENTITY não configurado. Defina no ambiente do Windows a identidade autorizada pelo Cloudflare Access antes de iniciar o painel.'
+}
+if (-not [string]::IsNullOrWhiteSpace([string]$machineIdentity) -and
+    -not [string]::Equals([string]$env:CONTROLADOR_SINGLE_USER_IDENTITY, [string]$machineIdentity, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw 'A identidade do painel não corresponde à identidade persistida no escopo de Máquina do Windows.'
+}
 $env:STREAMLIT_SERVER_ADDRESS = '127.0.0.1'
 $env:STREAMLIT_SERVER_PORT = '8501'
 $env:STREAMLIT_SERVER_HEADLESS = 'true'
