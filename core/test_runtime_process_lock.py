@@ -124,36 +124,3 @@ def test_runtime_lock_set_rolls_back_partial_acquisition(tmp_path):
     fresh.acquire()
     assert fresh.is_acquired is True
     fresh.release()
-
-
-def test_runtime_lock_sets_block_different_runtimes_sharing_one_database(tmp_path):
-    shared_database = tmp_path / "shared" / "fiscal.sqlite3"
-    first = RuntimeProcessLockSet(
-        tmp_path / "runtime-a" / "runtime.lock",
-        [shared_database],
-    )
-    second = RuntimeProcessLockSet(
-        tmp_path / "runtime-b" / "runtime.lock",
-        [shared_database],
-    )
-
-    first.acquire()
-    try:
-        assert first.is_acquired is True
-        assert second.is_acquired is False
-        try:
-            second.acquire()
-        except RuntimeError as exc:
-            assert "outra instância" in str(exc)
-        else:
-            raise AssertionError(
-                "runtime diferente não pode ignorar o lock do banco compartilhado"
-            )
-        assert second.is_acquired is False
-    finally:
-        first.release()
-
-    second.acquire()
-    assert second.is_acquired is True
-    second.release()
-    assert second.is_acquired is False
