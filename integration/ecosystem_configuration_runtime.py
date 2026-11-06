@@ -1153,6 +1153,7 @@ class ConfiguredEcosystemService(EcosystemService):
                     "kind": kind_by_source.get(incident.source, NotificationKind.SYSTEM_UPDATE).value,
                     "severity": severity.value,
                     "title": incident.code,
+                    "status": incident.status,
                     "message": incident.message,
                     "requires_attention": severity is NotificationSeverity.CRITICAL,
                     "blocking": severity is NotificationSeverity.CRITICAL,
