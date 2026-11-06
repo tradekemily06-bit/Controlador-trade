@@ -381,3 +381,26 @@ def test_mt5_historical_backtest_api_is_read_only(monkeypatch):
     assert data["lookahead"] is False
 
 
+
+def test_mt5_position_recovery_api_is_authenticated_and_read_only(monkeypatch):
+    import app
+
+    expected = [{
+        "cycle_id": "cycle-demo-recovery",
+        "external_id": "ticket-900",
+        "recovery_state": "RECONCILIATION_REQUIRED",
+        "broker_query_performed": False,
+        "order_sent": False,
+    }]
+    monkeypatch.setattr(app, "_authorize_remote_mutation", lambda environ: (True, "trusted"))
+    monkeypatch.setattr(app.SERVICE, "list_mt5_position_recovery", lambda: expected)
+
+    status, data = call_app("/api/runtime/positions/recovery")
+
+    assert status.startswith("200")
+    assert data["positions"] == expected
+    assert data["read_only"] is True
+    assert data["broker_query_performed"] is False
+    assert data["orders_sent"] is False
+
+
