@@ -58,9 +58,23 @@ st.markdown("""
 .stApp { background: #080B0F; color: #E9EEF3; }
 [data-testid="stHeader"] { background: transparent; }
 .block-container { width: 100%; max-width: none; padding: 1rem clamp(.75rem, 2vw, 1.5rem) 6rem; }
-.st-key-panel-toggle { position: fixed; left: 18px; bottom: 14px; z-index: 1000; width: 220px; display: flex; flex-direction: row; align-items: center; gap: 8px; }
-.st-key-panel-toggle .stButton > button { width: 48px; min-width: 48px; height: 48px; min-height: 48px; padding: 0; border-radius: 50%; background: #080B0F; color: #46D6AD; border: 1px solid #46D6AD; box-shadow: 0 0 10px #46D6AD33; font-weight: 800; }
-.st-key-panel-toggle .closed-signal { width: 150px; display: flex; flex-direction: column; align-items: center; gap: 1px; white-space: nowrap; text-align: center; font-size: 10px; line-height: 1.2; text-shadow: 0 1px 4px #080B0F; }\n.st-key-panel-toggle .closed-signal strong { font-size: 10px; font-weight: 800; }
+.st-key-panel-toggle { position: relative; width: max-content; max-width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 2rem 0 1rem; }
+.st-key-panel-toggle .stButton > button { width: 64px; min-width: 64px; height: 64px; min-height: 64px; padding: 0; border-radius: 50%; background: #080B0F; color: #46D6AD; border: 1px solid #46D6AD; box-shadow: 0 0 10px #46D6AD33; font-weight: 800; font-size: 1.25rem; }
+.st-key-panel-toggle .closed-status { color: #7F8B97; font-size: 12px; font-weight: 800; letter-spacing: .06em; padding-left: 4px; }
+.st-key-control-hub-shell { width: min(100%, 980px); margin: 1rem auto 2rem; padding: clamp(1rem, 2vw, 1.5rem); background: #10151B; border: 1px solid #25303B; border-radius: 24px; }
+.st-key-control-hub-shell .hub-title { color: #E9EEF3; font-size: 1.35rem; font-weight: 800; padding: .35rem 0 .9rem; }
+.st-key-control-hub-shell .demo-pill-wrap { display: flex; justify-content: flex-end; padding-top: .3rem; }
+.st-key-control-hub-shell [data-testid="stRadio"] [role="radiogroup"] { gap: .5rem; }
+.st-key-control-hub-shell [data-testid="stRadio"] label { background: #161C24; border: 1px solid #202A34; border-radius: 12px; padding: .65rem .8rem; min-height: 48px; }
+.st-key-control-hub-shell [data-testid="stRadio"] label p { color: #E9EEF3; font-weight: 600; }
+.st-key-control-hub-shell [data-testid="stRadio"] [role="radiogroup"] label:has(input:checked) { border-color: #46D6AD; background: #1A292B; }
+.st-key-control-hub-shell [data-testid="stMetric"] { min-width: 0; }
+.st-key-control-hub-shell [data-testid="stButton"] > button { min-height: 44px; }
+@media (max-width: 720px) {
+  .st-key-control-hub-shell { padding: .8rem; margin: .4rem auto 1rem; border-radius: 18px; }
+  .st-key-control-hub-shell [data-testid="stRadio"] [role="radiogroup"] { gap: .35rem; }
+  .st-key-control-hub-shell [data-testid="stRadio"] label { padding: .5rem .55rem; }
+}
 *, *::before, *::after { box-sizing: border-box; }
 [data-testid="stAppViewContainer"], [data-testid="stMain"], [data-testid="stMainBlockContainer"] { min-width: 0; }
 [data-testid="stDataFrame"], [data-testid="stTable"], .status-card { max-width: 100%; }
@@ -2550,92 +2564,83 @@ def show_readonly_module(module_name: str) -> None:
         st.warning("Não foi possível carregar este módulo do runtime. Verifique a disponibilidade do serviço e os registros técnicos locais.")
 
 
-# The Figma reference defines four visual areas. The Assistant is an additional
-# functional module requested by the user and lives inside the Streamlit panel,
-# without changing the reference JSON or creating a fifth navigation area.
-# Keep the four approved Figma navigation areas unchanged. The two requested
-# financial capabilities are grouped under the existing Financeiro module.
+# Four approved navigation areas from the extracted reference JSON.
+# Streamlit is the product; the JSON supplies the visual and navigation specification.
 AREAS = {name: list(modules) for name, modules in CONFIG["open_state"]["tabs"].items()}
 if "panel_open" not in st.session_state:
     st.session_state.panel_open = True
+
 if not st.session_state.panel_open:
     with st.container(key="panel-toggle"):
-        if st.button("C", key="open_control_hub"):
+        if st.button("C", key="open_control_hub", help="Abrir Controlador-Trader"):
             st.session_state.panel_open = True
             st.rerun()
-        closed_signal, closed_score, closed_color = closed_panel_signal(
-            st.session_state.get("market_analysis_result")
-        )
-        st.markdown(
-            f'<div class="closed-signal" style="color:{closed_color}">'
-            f'<strong>{closed_signal}</strong><span>{closed_score}</span></div>',
-            unsafe_allow_html=True,
-        )
+        try:
+            closed_health = str(api("/api/health").get("health") or "UNKNOWN").upper()
+            closed_status = {"OK": "SISTEMA ONLINE", "WARNING": "ATENÇÃO", "CRITICAL": "INDISPONÍVEL"}.get(closed_health, "INDISPONÍVEL")
+        except Exception:
+            closed_status = "INDISPONÍVEL"
+        st.markdown(f'<div class="closed-status">{closed_status}</div>', unsafe_allow_html=True)
     st.stop()
 
-st.markdown('<div class="status-card"><span style="font-size:1.35rem;font-weight:800">Controlador-Trader</span> <span class="demo-pill" style="float:right">DEMO</span></div>', unsafe_allow_html=True)
-area = st.radio("Áreas principais", list(AREAS), horizontal=True, label_visibility="collapsed")
-st.divider()
-module = st.radio("Módulos", AREAS[area], horizontal=False, label_visibility="collapsed")
+with st.container(key="control-hub-shell"):
+    header_left, header_right = st.columns([4, 1])
+    with header_left:
+        st.markdown('<div class="hub-title">Controlador-Trader</div>', unsafe_allow_html=True)
+    with header_right:
+        st.markdown('<div class="demo-pill-wrap"><span class="demo-pill">DEMO</span></div>', unsafe_allow_html=True)
 
-if module == "Financeiro":
-    st.subheader("Financeiro")
-    financial = st.radio(
-        "Financeiro",
-        ["Reserva Fiscal", "Assistente do Ecossistema"],
-        horizontal=True,
-        key="financeiro_section",
-        label_visibility="collapsed",
-    )
-    if financial == "Reserva Fiscal":
-        show_fiscal()
+    area = st.radio("Áreas principais", list(AREAS), horizontal=True, key="main_area_navigation", label_visibility="collapsed")
+    st.divider()
+    module = st.radio("Módulos", AREAS[area], horizontal=False, key="module_navigation", label_visibility="collapsed")
+
+    if module == "Financeiro":
+        financial = st.radio("Financeiro", ["Reserva Fiscal", "Assistente do Ecossistema"], horizontal=True, key="financeiro_section", label_visibility="collapsed")
+        if financial == "Reserva Fiscal":
+            show_fiscal()
+        else:
+            show_assistant()
     else:
-        show_assistant()
-else:
-    show_readonly_module(module)
+        show_readonly_module(module)
 
-st.divider()
-st.subheader("Estado do Ecossistema")
-try:
-    runtime_status = api("/api/health")
-    components = runtime_status.get("components", {})
-    health_state = str(runtime_status.get("health") or "UNKNOWN").upper()
-    mt5_state = str(components.get("mt5_demo") or runtime_status.get("mt5_demo") or "UNKNOWN").upper()
-    mode_state = str(runtime_status.get("mode") or "UNKNOWN").upper()
-    real_state = str(runtime_status.get("real") or "DESABILITADO").upper()
-    health_label = {"OK": "SISTEMA ONLINE", "WARNING": "ATENÇÃO", "CRITICAL": "INDISPONÍVEL"}.get(health_state, "ESTADO NÃO CONFIRMADO")
-    status_cols = st.columns(4)
-    status_cols[0].metric("Saúde do sistema", health_label)
-    status_cols[1].metric("Modo", mode_state)
-    status_cols[2].metric("MT5 DEMO", mt5_state)
-    status_cols[3].metric("REAL", real_state)
-    if runtime_status.get("execution_allowed") is not False or real_state not in {"DESABILITADO", "DISABLED"}:
-        st.error("Estado de segurança inesperado. Operações bloqueadas na interface; verifique o runtime antes de continuar.")
-    if runtime_status.get("alerts"):
-        with st.expander("Alertas do sistema", expanded=health_state == "CRITICAL"):
-            for alert in runtime_status["alerts"]:
-                st.write(f"- **{alert.get('severity', 'INFO')} · {alert.get('component', 'Sistema')}** — {alert.get('message', 'Verificar componente')}")
-except Exception:
-    st.warning("Runtime indisponível. Estado do MT5 e do sistema não confirmado.")
-left, right = st.columns([2, 1])
-with left:
-    st.caption("Execução REAL permanece bloqueada. Confirme o estado DEMO no runtime antes de operar.")
-with right:
-    if "leverage_enabled" not in st.session_state:
-        try:
-            saved_preferences = api("/api/preferences").get("preferences", {})
-            st.session_state.leverage_enabled = saved_preferences.get("leverage_enabled") is True
-        except Exception:
-            st.session_state.leverage_enabled = False
-    st.checkbox(
-        "Alavancagem",
-        key="leverage_enabled",
-        on_change=save_leverage_preference,
-        help="Salva somente a preferência. Não ativa ordens, não altera margem e não concede autorização de execução.",
-    )
-    if st.session_state.get("leverage_preference_error"):
-        st.warning("Preferência de alavancagem não sincronizada com o runtime.")
-with st.container(key="panel-toggle"):
-    if st.button("C", key="close_control_hub"):
+    st.divider()
+    st.markdown("**Estado do sistema**")
+    try:
+        runtime_status = api("/api/health")
+        components = runtime_status.get("components", {})
+        health_state = str(runtime_status.get("health") or "UNKNOWN").upper()
+        mt5_state = str(components.get("mt5_demo") or runtime_status.get("mt5_demo") or "UNKNOWN").upper()
+        mode_state = str(runtime_status.get("mode") or "UNKNOWN").upper()
+        real_state = str(runtime_status.get("real") or "DESABILITADO").upper()
+        health_label = {"OK": "SISTEMA ONLINE", "WARNING": "ATENÇÃO", "CRITICAL": "INDISPONÍVEL"}.get(health_state, "INDISPONÍVEL")
+        status_cols = st.columns(3)
+        status_cols[0].metric("Saúde do sistema", health_label)
+        status_cols[1].metric("Modo", mode_state)
+        status_cols[2].metric("MT5 DEMO", mt5_state)
+        if runtime_status.get("execution_allowed") is not False or real_state not in {"DESABILITADO", "DISABLED"}:
+            st.error("Estado de segurança inesperado. Operações bloqueadas na interface; verifique o runtime antes de continuar.")
+        if runtime_status.get("alerts"):
+            with st.expander("Alertas do sistema", expanded=health_state == "CRITICAL"):
+                for alert in runtime_status["alerts"]:
+                    st.write(f"- **{alert.get('severity', 'INFO')} · {alert.get('component', 'Sistema')}** — {alert.get('message', 'Verificar componente')}")
+    except Exception:
+        st.warning("Runtime indisponível. Estado do MT5 e do sistema não confirmado.")
+
+    leverage_left, leverage_right = st.columns([3, 1])
+    with leverage_left:
+        st.caption("REAL — DESABILITADO")
+        st.caption("Execução REAL permanece bloqueada.")
+    with leverage_right:
+        if "leverage_enabled" not in st.session_state:
+            try:
+                saved_preferences = api("/api/preferences").get("preferences", {})
+                st.session_state.leverage_enabled = saved_preferences.get("leverage_enabled") is True
+            except Exception:
+                st.session_state.leverage_enabled = False
+        st.checkbox("Alavancagem", key="leverage_enabled", on_change=save_leverage_preference, help="Salva somente a preferência. Não ativa ordens, não altera margem e não concede autorização de execução.")
+        if st.session_state.get("leverage_preference_error"):
+            st.warning("Preferência de alavancagem não sincronizada com o runtime.")
+
+    if st.button("Fechar painel", key="close_control_hub"):
         st.session_state.panel_open = False
         st.rerun()
