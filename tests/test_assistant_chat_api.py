@@ -119,6 +119,30 @@ def test_chat_api_rejects_missing_trusted_identity_before_assistant_call(tmp_pat
     assert payload["error"] == "trusted identity is required"
 
 
+def test_chat_api_rejects_malformed_trusted_identity_before_assistant_call(tmp_path, monkeypatch):
+    class Assistant:
+        def ask(self, *args, **kwargs):
+            raise AssertionError("Assistente não pode ser chamado com identidade malformada")
+
+    _configure(monkeypatch, Assistant())
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", tmp_path / "fiscal.sqlite3")
+
+    for identity in (
+        "x" * 321,
+        "owner@example.com\\r\\nX-Admin: true",
+        "owner@example.com\\x00",
+        "owner@example.com\\x7f",
+    ):
+        status, response = _request(
+            "/api/assistant/chat",
+            method="POST",
+            payload={"message": "pergunta", "consent_to_openai": True},
+            identity=identity,
+        )
+        assert status.startswith("401")
+        assert response["error"] == "trusted identity is invalid"
+
+
 def test_chat_api_rejects_missing_or_false_openai_consent_before_assistant_call(tmp_path, monkeypatch):
     class Assistant:
         def ask(self, *args, **kwargs):
