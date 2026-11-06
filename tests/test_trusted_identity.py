@@ -1,4 +1,4 @@
-from trusted_identity import trusted_identity_from_headers
+from streamlit_panel.trusted_identity import trusted_identity_from_headers
 
 
 def test_trusted_identity_header_lookup_is_case_insensitive():
