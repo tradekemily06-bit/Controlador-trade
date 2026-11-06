@@ -1871,7 +1871,9 @@ def test_assistant_openai_consent_is_bound_to_authenticated_identity():
     assistant = source[assistant_start:assistant_end]
 
     assert "trusted_identity_from_headers(st.context.headers, IDENTITY_HEADER)" in helper
-    assert 'os.environ.get("CONTROLADOR_SINGLE_USER_IDENTITY", "local-single-user")' in helper
+    assert 'os.environ.get("CONTROLADOR_SINGLE_USER_IDENTITY", "")' in helper
+    assert 'os.environ.get("CONTROLADOR_SINGLE_USER_IDENTITY", "local-single-user")' not in helper
+    assert 'if not identity:\n        return ""' in helper
     assert "hashlib.sha256" in helper
     assert 'st.session_state["assistant_openai_consent"] = False' in assistant
     assert 'st.session_state["assistant_consent_scope"] = consent_scope' in assistant
