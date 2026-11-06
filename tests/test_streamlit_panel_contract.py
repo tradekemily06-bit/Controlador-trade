@@ -1802,3 +1802,13 @@ def test_streamlit_assistant_surfaces_only_sanitized_actionable_api_errors():
     assert 'st.error("Falha no Assistente: " + str(exc))' in submit_block
     assert 'except Exception:' in submit_block
     assert "Detalhes técnicos não são exibidos no painel." in submit_block
+
+
+def test_streamlit_latest_signal_uses_durable_snapshot_store():
+    source = (Path(__file__).resolve().parents[1] / "app.py").read_text(encoding="utf-8")
+    assert "LatestMarketAnalysisStore" in source
+    assert "CONTROLADOR_ANALYSIS_SNAPSHOT_DB" in source
+    assert "LATEST_MARKET_ANALYSIS.latest(symbol or None, timeframe or None)" in source
+    assert "LATEST_MARKET_ANALYSIS.save(" in source
+    assert "PERSISTENT_SQLITE" in source
+    assert "_LATEST_MARKET_ANALYSIS: dict" not in source
