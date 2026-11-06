@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from core.models import Signal
-from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, ICMarketsMT5RealAdapter
+from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, ICMarketsMT5RealAdapter, MT5AdapterError
 from execution.ports import ExecutionMode, ExecutionRequest
 
 
@@ -643,3 +643,43 @@ def test_mt5_account_fingerprint_separates_login_and_server_pairs():
     assert first != other_login
     assert first != other_server
     assert other_login != other_server
+
+def test_closed_deal_scan_fails_closed_if_mt5_account_changes_during_history_read():
+    mt5 = FakeMT5()
+    accounts = iter((
+        SimpleNamespace(
+            trade_mode=mt5.ACCOUNT_TRADE_MODE_DEMO,
+            currency="BRL", login=12345678, server="ICMarketsSC-Demo",
+        ),
+        SimpleNamespace(
+            trade_mode=mt5.ACCOUNT_TRADE_MODE_DEMO,
+            currency="BRL", login=87654321, server="ICMarketsSC-Demo",
+        ),
+    ))
+    mt5.account_info = lambda: next(accounts)
+    mt5.positions_get = lambda: ()
+    opening = SimpleNamespace(
+        entry=mt5.DEAL_ENTRY_IN, ticket=788, position_id=456,
+        symbol="WIN$", volume=1.0, profit=0.0,
+        commission=0.0, swap=0.0, fee=0.0, time=1793318300,
+    )
+    closing = SimpleNamespace(
+        entry=mt5.DEAL_ENTRY_OUT, ticket=789, position_id=456,
+        symbol="WIN$", volume=1.0, profit=10.0,
+        commission=0.0, swap=0.0, fee=0.0, time=1793318400,
+    )
+
+    def history_deals_get(*args, **kwargs):
+        if kwargs.get("position") == 456:
+            return (opening, closing)
+        return (closing,)
+
+    mt5.history_deals_get = history_deals_get
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
+
+    try:
+        adapter.read_closed_deal_candidate("789")
+    except MT5AdapterError as exc:
+        assert "mudou" in str(exc) or "reconfirmada" in str(exc)
+    else:
+        raise AssertionError("account switch during history scan must block fiscal candidate")
