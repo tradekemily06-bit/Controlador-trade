@@ -1706,3 +1706,15 @@ def test_streamlit_fiscal_panel_never_displays_raw_exception_details():
     assert "{exc}" not in fiscal
     assert "exc.reason" not in fiscal
     assert "details técnicos não são exibidos no painel" in fiscal
+
+
+def test_streamlit_assistant_panel_never_displays_raw_exception_details():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index("def show_assistant()")
+    end = source.index("\\ndef ", start + 1)
+    assistant = source[start:end]
+
+    assert "st.error(str(exc))" not in assistant
+    assert "{exc}" not in assistant
+    assert "Detalhes técnicos não são exibidos no painel." in assistant
+    assert "Não foi possível enviar a consulta ao Assistente." in assistant
