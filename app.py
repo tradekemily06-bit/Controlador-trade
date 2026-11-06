@@ -32,7 +32,7 @@ from finance.fiscal_taxonomy import fiscal_classification_catalog
 from finance.fiscal_pending_queue import CURRENCIES, FiscalPendingQueue
 from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
 from finance.fiscal_schema import migrate_fiscal_schema
-from finance.fiscal_identity import FiscalOwnerIdentityError
+from finance.fiscal_identity import FiscalOwnerIdentityError, configured_fiscal_owner_id
 from assistant.conversation_store import AssistantConversationStore
 from assistant.chat_service import EcosystemAssistant, AssistantUnavailableError
 from execution.icmarkets_mt5_demo_adapter import MT5DealNotFoundError
@@ -472,13 +472,21 @@ def application(environ, start_response):
                         environ,
                     )
             try:
-                fiscal_owner_id = migrate_fiscal_schema(str(FISCAL_RESERVE_DB))
-            except (FiscalOwnerIdentityError, RuntimeError) as exc:
+                # Conversation ownership comes from trusted server configuration;
+                # listing/history/deletion must not migrate or touch the fiscal DB.
+                identity = configured_fiscal_owner_id()
+            except FiscalOwnerIdentityError:
                 return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE,
-                                      {"error": "Reserva Fiscal indisponível até validar a identidade proprietária e a migração."}, request_id, environ)
-            # A identidade canônica mantém o mesmo espaço de conversas no acesso
-            # local e remoto autorizado, sem confiar no valor enviado pelo navegador.
-            identity = fiscal_owner_id
+                                      {"error": "Identidade proprietária indisponível para o Assistente do Ecossistema."}, request_id, environ)
+            if path == "/api/assistant/chat" and method == "POST":
+                try:
+                    # A fiscal schema migration is required only when assembling
+                    # fiscal context for an explicitly consented OpenAI request.
+                    migrate_fiscal_schema(str(FISCAL_RESERVE_DB))
+                except (FiscalOwnerIdentityError, RuntimeError):
+                    return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                                          {"error": "Reserva Fiscal indisponível até validar a identidade proprietária e a migração."}, request_id, environ)
+            fiscal_owner_id = identity
             if path == "/api/assistant/status" and method == "GET":
                 return _json_response(start_response, HTTPStatus.OK, ASSISTANT.readiness(), request_id, environ)
             if path == "/api/assistant/conversations" and method == "GET":
