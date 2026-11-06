@@ -161,3 +161,17 @@ def test_local_runtime_authorization_fails_closed_when_mutations_are_not_enabled
     })
     assert allowed is False
     assert reason == "local mutations are disabled"
+
+
+def test_remote_mutation_authorization_accepts_bracketed_ipv6_loopback_host(monkeypatch):
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "false")
+    monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "true")
+    monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATION_HOSTS", "localhost,127.0.0.1,[::1]")
+
+    allowed, reason = app_module._authorize_remote_mutation({
+        "REMOTE_ADDR": "::1",
+        "HTTP_HOST": "[::1]:8000",
+    })
+
+    assert allowed is True
+    assert reason == "local"
