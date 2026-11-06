@@ -141,3 +141,74 @@ def test_notification_center_restores_persisted_events_after_restart(tmp_path):
 
     assert restored.all() == (event,)
     assert restored.critical() == (event,)
+
+
+
+def test_notification_restore_rejects_coercible_or_oversized_untrusted_records():
+    center = EcosystemNotificationCenter()
+    center.restore([
+        {
+            "notification_id": "valid",
+            "kind": "SECURITY",
+            "severity": "CRITICAL",
+            "title": "Falha crítica",
+            "message": "Persistência indisponível.",
+            "requires_attention": True,
+            "blocking": True,
+        },
+        {
+            "notification_id": "string-bool",
+            "kind": "SECURITY",
+            "severity": "CRITICAL",
+            "title": "Registro adulterado",
+            "message": "Não deve converter texto em booleano.",
+            "requires_attention": "false",
+            "blocking": "false",
+        },
+        {
+            "notification_id": "oversized",
+            "kind": "SECURITY",
+            "severity": "CRITICAL",
+            "title": "x" * 241,
+            "message": "Mensagem.",
+        },
+        None,
+        "not-a-record",
+    ])
+
+    restored = center.all()
+    assert len(restored) == 1
+    assert restored[0].notification_id == "valid"
+    assert restored[0].blocking is True
+
+
+def test_configured_service_persists_notifications_across_service_restart(monkeypatch, tmp_path):
+    import integration.ecosystem_configuration_runtime as configured_service
+    from core.ecosystem_state_store import EcosystemStateStore as RealStateStore
+    from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
+
+    database = tmp_path / "ecosystem-state.sqlite"
+    monkeypatch.setattr(
+        configured_service,
+        "EcosystemStateStore",
+        lambda _path: RealStateStore(database),
+    )
+
+    first = ConfiguredEcosystemService()
+    published = first.publish_material_event(
+        "SECURITY",
+        "Auditoria persistente",
+        "Evento crítico preservado entre reinicializações.",
+        critical=True,
+        blocking=True,
+    )
+
+    restarted = ConfiguredEcosystemService()
+    restored = restarted.all_notifications()
+
+    assert any(
+        item["notification_id"] == published["notification_id"]
+        and item["severity"] == "CRITICAL"
+        and item["blocking"] is True
+        for item in restored
+    )
