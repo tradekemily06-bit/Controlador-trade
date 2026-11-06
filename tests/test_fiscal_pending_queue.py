@@ -622,3 +622,34 @@ def test_foreign_pending_rejects_coerced_or_nonfinite_numeric_values(tmp_path):
         else:
             raise AssertionError("original_result must reject coerced or non-finite values")
     assert queue.list_pending(OWNER)["total"] == 0
+
+
+def test_foreign_pending_rejects_out_of_range_pagination_offsets(tmp_path):
+    queue = make_queue(tmp_path / "foreign-pagination-bounds.sqlite3")
+    queue.add(OWNER, sample("FOREIGN-PAGE-BOUNDARY"))
+
+    for offset in (-1, True, 1_000_000_001, 2**63):
+        try:
+            queue.list_pending(OWNER, limit=10, offset=offset)
+        except ValueError as exc:
+            assert "offset" in str(exc)
+        else:
+            raise AssertionError("out-of-range foreign pending offset must be rejected")
+
+    page = queue.list_pending(OWNER, limit=10, offset=1_000_000_000)
+    assert page["offset"] == 1_000_000_000
+    assert page["items"] == []
+    assert page["total"] == 1
+
+
+def test_foreign_reference_uniqueness_is_scoped_to_owner(tmp_path):
+    queue = make_queue(tmp_path / "foreign-owner-reference.sqlite3")
+    reference = "SAME-BROKER-REFERENCE"
+    queue.add("owner-a", sample(reference))
+    queue.add("owner-b", sample(reference))
+
+    owner_a = queue.list_pending("owner-a")
+    owner_b = queue.list_pending("owner-b")
+    assert owner_a["total"] == owner_b["total"] == 1
+    assert owner_a["items"][0]["reference"] == reference
+    assert owner_b["items"][0]["reference"] == reference
