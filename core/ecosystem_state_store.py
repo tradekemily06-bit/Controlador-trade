@@ -9,6 +9,10 @@ from threading import Lock
 from typing import Any
 
 
+class NotificationHistoryUnavailableError(RuntimeError):
+    """Notification history cannot be safely persisted or replaced."""
+
+
 class EcosystemStateStore:
     """Durable single-runtime store for user-facing ecosystem state.
 
@@ -101,7 +105,12 @@ class EcosystemStateStore:
         # Preserve damaged evidence until an explicit recovery procedure has
         # inspected it. A routine publish must not silently replace corrupt data.
         if self._notifications_load_error is not None:
-            raise RuntimeError(
-                "notification history requires explicit recovery before it can be overwritten"
+            raise NotificationHistoryUnavailableError(
+                "histórico de notificações exige recuperação explícita antes de nova gravação"
             )
-        self.save("notifications", notifications)
+        try:
+            self.save("notifications", notifications)
+        except sqlite3.Error as exc:
+            raise NotificationHistoryUnavailableError(
+                "persistência do histórico de notificações indisponível"
+            ) from exc
