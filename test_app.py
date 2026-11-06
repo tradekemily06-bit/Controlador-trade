@@ -92,12 +92,13 @@ def test_runtime_cycle_exposes_authoritative_cycle_lineage(monkeypatch):
     )
     fake_result = SimpleNamespace(stopped=True, stop_reason="blocked", cycles=(cycle,))
     monkeypatch.setattr(app.SERVICE, "get_preferences", lambda: {"selected_mode": "DEMO", "leverage_enabled": False})
-    monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **kwargs: fake_result)
+    received = {}
+    monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **kwargs: received.update(kwargs) or fake_result)
 
     status, data = call_app(
         "/api/runtime/cycle",
         "POST",
-        {"symbol": "EURUSD", "timeframe": "5m", "limit": 3, "amount": 0.01, "duration_seconds": 60},
+        {"symbol": "EURUSD", "timeframe": "5m", "limit": 20, "amount": 0.01, "duration_seconds": 60, "confirmed": False, "filters_ok": False, "entry_conditions": ["client-asserted"]},
     )
 
     assert status.startswith("200")
@@ -105,6 +106,24 @@ def test_runtime_cycle_exposes_authoritative_cycle_lineage(monkeypatch):
     assert data["runtime"]["request_id"] == "req-001"
     assert data["execution_allowed"] is False
 
+
+
+def test_runtime_cycle_rejects_boolean_sizing_and_invalid_limits_before_service(monkeypatch):
+    import app
+
+    monkeypatch.setattr(app.SERVICE, "get_preferences", lambda: {"selected_mode": "DEMO", "leverage_enabled": False})
+    monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **kwargs: (_ for _ in ()).throw(AssertionError("service must not be called")))
+    invalid_payloads = (
+        {"symbol": "EURUSD", "amount": True},
+        {"symbol": "EURUSD", "duration_seconds": True},
+        {"symbol": "EURUSD", "limit": True},
+        {"symbol": "EURUSD", "limit": 3},
+        {"symbol": "EURUSD", "amount": float("nan")},
+        {"symbol": "EURUSD", "duration_seconds": 86401},
+    )
+    for payload in invalid_payloads:
+        status, data = call_app("/api/runtime/cycle", "POST", payload)
+        assert status.startswith("400"), (payload, status, data)
 
 
 def test_runtime_close_validates_cycle_before_mt5_side_effect(monkeypatch):
