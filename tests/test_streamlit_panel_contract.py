@@ -1744,3 +1744,14 @@ def test_streamlit_requires_https_for_remote_trusted_identity_api():
     assert "ipaddress.ip_address(hostname).is_loopback" in guard
     assert 'remote_required and not loopback and parsed.scheme != "https"' in guard
     assert "_validate_api_base_url(BASE_URL, REMOTE_REQUIRED)" in source
+
+
+def test_streamlit_assistant_surfaces_only_sanitized_actionable_api_errors():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index('    if prompt:')
+    end = source.index('\n\n\ndef _is_finite_number', start)
+    submit_block = source[start:end]
+    assert 'except RuntimeError as exc:' in submit_block
+    assert 'st.error("Falha no Assistente: " + str(exc))' in submit_block
+    assert 'except Exception:' in submit_block
+    assert "Detalhes técnicos não são exibidos no painel." in submit_block
