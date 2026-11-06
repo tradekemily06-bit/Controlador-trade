@@ -335,6 +335,11 @@ def test_mql5_native_recovery_inventory_supports_multiple_exact_tickets():
     assert 'Http("GET","/api/runtime/positions/recovery/local"' in panel
     assert 'ExtractJsonArrayObjects(json,"positions",objects)' in panel
     assert "RecoveryPosition recovery_items[];" in panel
+    assert "bool ParseRecoveryInventory(string json)" in panel
+    assert "bool RefreshRecoveryInventory()" in panel
+    assert "void ReconcileSelectedRecovery()" in panel
+    assert "void CloseSelectedRecovery()" in panel
+    assert 'Http("GET","/api/runtime/positions/recovery/local"' in panel
     assert "recovery_items[n].cycle_id=cycle;" in panel
     assert "recovery_items[n].external_id=ticket;" in panel
     assert "if(c!='{') return false;" in parser
