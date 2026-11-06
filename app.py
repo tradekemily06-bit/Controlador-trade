@@ -201,6 +201,29 @@ def _authorize_remote_mutation(environ) -> tuple[bool, str]:
     return True, "trusted"
 
 
+
+def _authorize_local_runtime(environ) -> tuple[bool, str]:
+    """Authorize native terminal calls only from a loopback client using an allowed local Host."""
+    client = str(environ.get("REMOTE_ADDR") or "").strip()
+    if client not in {"127.0.0.1", "::1"}:
+        return False, "local runtime requires loopback"
+    enabled = os.environ.get("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "").strip().lower() in {"1", "true", "yes"}
+    if not enabled:
+        return False, "local mutations are disabled"
+    allowed_hosts = {
+        item.strip().lower()
+        for item in os.environ.get("CONTROLADOR_LOCAL_MUTATION_HOSTS", "localhost,127.0.0.1,[::1]").split(",")
+        if item.strip()
+    }
+    raw_host = str(environ.get("HTTP_HOST") or "").strip().lower()
+    if raw_host.startswith("[") and "]" in raw_host:
+        host = raw_host[1:raw_host.index("]")]
+    else:
+        host = raw_host.split(":", 1)[0]
+    if not host or host not in allowed_hosts and f"[{host}]" not in allowed_hosts:
+        return False, "local Host is not allowed"
+    return True, "local"
+
 def _authorize_internal_update(environ) -> tuple[bool, str]:
     expected = os.environ.get("CONTROLADOR_UPDATE_TOKEN", "").strip()
     if not expected:
@@ -946,6 +969,51 @@ def application(environ, start_response):
                 request_id,
                 environ,
             )
+        if path == "/api/runtime/positions/recovery/local" and method == "GET":
+            authorized, reason = _authorize_local_runtime(environ)
+            if not authorized:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": reason}, request_id, environ)
+            positions = SERVICE.list_mt5_position_recovery()
+            return _json_response(start_response, HTTPStatus.OK, {
+                "positions": positions,
+                "count": len(positions),
+                "read_only": True,
+                "broker_query_performed": False,
+                "orders_sent": False,
+                "access_scope": "loopback_local",
+            }, request_id, environ)
+        if path == "/api/runtime/close/local/reconcile" and method == "POST":
+            authorized, reason = _authorize_local_runtime(environ)
+            if not authorized:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": reason}, request_id, environ)
+            data = _read_json(environ)
+            cycle_id = data.get("cycle_id")
+            external_id = data.get("external_id")
+            if not isinstance(cycle_id, str) or not cycle_id.strip():
+                raise ValueError("cycle_id é obrigatório")
+            if not isinstance(external_id, str) or not external_id.strip():
+                raise ValueError("external_id é obrigatório")
+            result = SERVICE.reconcile_mt5_position_close(cycle_id=cycle_id, external_id=external_id)
+            return _json_response(start_response, HTTPStatus.OK, {"close_reconciliation": result}, request_id, environ)
+        if path == "/api/runtime/close/local" and method == "POST":
+            authorized, reason = _authorize_local_runtime(environ)
+            if not authorized:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": reason}, request_id, environ)
+            data = _read_json(environ)
+            cycle_id = data.get("cycle_id")
+            external_id = data.get("external_id")
+            if not isinstance(cycle_id, str) or not cycle_id.strip():
+                raise ValueError("cycle_id é obrigatório")
+            if not isinstance(external_id, str) or not external_id.strip():
+                raise ValueError("external_id é obrigatório")
+            close_result = SERVICE.close_mt5_position(cycle_id=cycle_id, external_id=external_id)
+            return _json_response(start_response, HTTPStatus.OK, {
+                "closed": close_result.accepted,
+                "close_state": "CLOSED" if close_result.accepted else "UNKNOWN",
+                "message": close_result.message,
+                "close_external_id": close_result.external_id,
+                "reconciliation": None,
+            }, request_id, environ)
         if path == "/api/runtime/positions/recovery" and method == "GET":
             authorized, reason = _authorize_remote_mutation(environ)
             if not authorized:
@@ -972,6 +1040,10 @@ def application(environ, start_response):
                 environ,
             )
         if path == "/api/runtime/close/reconcile" and method == "POST":
+            authorized, reason = _authorize_remote_mutation(environ)
+            if not authorized:
+                status = HTTPStatus.UNAUTHORIZED if reason == "trusted identity is required" else HTTPStatus.SERVICE_UNAVAILABLE
+                return _json_response(start_response, status, {"error": "identidade autorizada necessária", "execution_allowed": False}, request_id, environ)
             data = _read_json(environ)
             cycle_id = data.get("cycle_id")
             external_id = data.get("external_id")
@@ -979,18 +1051,13 @@ def application(environ, start_response):
                 raise ValueError("cycle_id é obrigatório")
             if not isinstance(external_id, str) or not external_id.strip():
                 raise ValueError("external_id é obrigatório")
-            result = SERVICE.reconcile_mt5_position_close(
-                cycle_id=cycle_id,
-                external_id=external_id,
-            )
-            return _json_response(
-                start_response,
-                HTTPStatus.OK,
-                {"close_reconciliation": result},
-                request_id,
-                environ,
-            )
+            result = SERVICE.reconcile_mt5_position_close(cycle_id=cycle_id, external_id=external_id)
+            return _json_response(start_response, HTTPStatus.OK, {"close_reconciliation": result}, request_id, environ)
         if path == "/api/runtime/close" and method == "POST":
+            authorized, reason = _authorize_remote_mutation(environ)
+            if not authorized:
+                status = HTTPStatus.UNAUTHORIZED if reason == "trusted identity is required" else HTTPStatus.SERVICE_UNAVAILABLE
+                return _json_response(start_response, status, {"error": "identidade autorizada necessária", "execution_allowed": False}, request_id, environ)
             data = _read_json(environ)
             external_id = data.get("external_id")
             cycle_id = data.get("cycle_id")
@@ -998,10 +1065,7 @@ def application(environ, start_response):
                 raise ValueError("cycle_id é obrigatório")
             if not isinstance(external_id, str) or not external_id.strip():
                 raise ValueError("external_id é obrigatório")
-            close_result = SERVICE.close_mt5_position(
-                cycle_id=cycle_id,
-                external_id=external_id,
-            )
+            close_result = SERVICE.close_mt5_position(cycle_id=cycle_id, external_id=external_id)
             return _json_response(start_response, HTTPStatus.OK, {
                 "closed": close_result.accepted,
                 "close_state": "CLOSED" if close_result.accepted else "UNKNOWN",
