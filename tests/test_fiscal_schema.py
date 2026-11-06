@@ -471,3 +471,51 @@ def test_migration_fails_closed_when_only_one_domestic_queue_table_exists(tmp_pa
             "WHERE reference='BR-PARTIAL-KEEP'"
         ).fetchone()
         assert row == (owner, "BR-PARTIAL-KEEP")
+
+
+
+def test_owner_fast_path_rebuilds_cascading_review_fk_as_restrict(tmp_path, monkeypatch):
+    path = str(tmp_path / "cascading-review-fk.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner-a")
+    owner = migrate_fiscal_schema(path)
+
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "INSERT INTO fiscal_reserve_pending_foreign "
+            "(pending_id,owner_id,reference,original_amount,original_currency,instrument,"
+            "jurisdiction,occurred_on,notes,status,created_at) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            ("p1", owner, "ref-1", 10, "USD", "ETF", "PENDING_REVIEW",
+             "2026-11-05", "", "PENDING_CLASSIFICATION", "now"),
+        )
+        db.execute("DROP TABLE fiscal_pending_reviews")
+        db.execute("""CREATE TABLE fiscal_pending_reviews (
+            review_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, pending_id TEXT NOT NULL,
+            candidate_classification TEXT NOT NULL, confirmed_jurisdiction TEXT NOT NULL,
+            reviewer_name TEXT NOT NULL, reviewer_role TEXT NOT NULL,
+            professional_registration TEXT NOT NULL, evidence_reference TEXT NOT NULL,
+            reviewed_on TEXT NOT NULL, review_notes TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(owner_id,pending_id)
+                REFERENCES fiscal_reserve_pending_foreign(owner_id,pending_id)
+                ON DELETE CASCADE
+        )""")
+        db.execute(
+            "INSERT INTO fiscal_pending_reviews VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("r1", owner, "p1", "ETF", "PENDING_REVIEW", "Reviewer", "contador",
+             "CRC-X", "DOC-X", "2026-11-05", "", "now"),
+        )
+
+    assert migrate_fiscal_schema(path) == owner
+    with sqlite3.connect(path) as db:
+        foreign_keys = list(db.execute("PRAGMA foreign_key_list(fiscal_pending_reviews)"))
+        assert foreign_keys
+        assert {row[6] for row in foreign_keys} == {"RESTRICT"}
+        assert db.execute(
+            "SELECT COUNT(*) FROM fiscal_pending_reviews WHERE review_id='r1'"
+        ).fetchone()[0] == 1
+        db.execute("PRAGMA foreign_keys=ON")
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                "DELETE FROM fiscal_reserve_pending_foreign WHERE pending_id='p1'"
+            )
