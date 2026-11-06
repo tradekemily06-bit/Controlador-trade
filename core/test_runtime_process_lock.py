@@ -57,3 +57,70 @@ def test_runtime_process_lock_serializes_distinct_instances_for_same_path(tmp_pa
     assert second.is_acquired is True
     second.release()
     assert second.is_acquired is False
+
+
+def test_runtime_lock_sets_block_different_runtimes_sharing_one_database(tmp_path):
+    shared_database = tmp_path / "shared" / "fiscal.sqlite3"
+    first = RuntimeProcessLockSet(
+        tmp_path / "runtime-a" / "runtime.lock",
+        [shared_database],
+    )
+    second = RuntimeProcessLockSet(
+        tmp_path / "runtime-b" / "runtime.lock",
+        [shared_database],
+    )
+
+    first.acquire()
+    try:
+        assert first.is_acquired is True
+        assert second.is_acquired is False
+        try:
+            second.acquire()
+        except RuntimeError as exc:
+            assert "outra instância" in str(exc)
+        else:
+            raise AssertionError(
+                "runtime diferente não pode ignorar o lock do banco compartilhado"
+            )
+        assert second.is_acquired is False
+    finally:
+        first.release()
+
+    second.acquire()
+    assert second.is_acquired is True
+    second.release()
+    assert second.is_acquired is False
+
+
+def test_runtime_lock_set_rolls_back_partial_acquisition(tmp_path):
+    shared_database = tmp_path / "shared" / "assistant.sqlite3"
+    owner = RuntimeProcessLockSet(
+        tmp_path / "runtime-owner" / "runtime.lock",
+        [shared_database],
+    )
+    contender = RuntimeProcessLockSet(
+        tmp_path / "runtime-contender" / "runtime.lock",
+        [shared_database],
+    )
+
+    owner.acquire()
+    try:
+        try:
+            contender.acquire()
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("o lock compartilhado deveria bloquear o contender")
+        assert contender.is_acquired is False
+    finally:
+        owner.release()
+
+    # The contender's earlier partial lock (if acquired before the conflict)
+    # must have been released, so a fresh lock set can now acquire every path.
+    fresh = RuntimeProcessLockSet(
+        tmp_path / "runtime-contender" / "runtime.lock",
+        [shared_database],
+    )
+    fresh.acquire()
+    assert fresh.is_acquired is True
+    fresh.release()
