@@ -113,13 +113,13 @@ class RuntimeProcessLockSet:
             for lock in self._locks:
                 lock.acquire()
                 self._acquired.append(lock)
-        except Exception:
-            # Preserve the acquisition failure as the primary error. Rollback
-            # still attempts every acquired lock; a cleanup failure must not
-            # disguise the original reason acquisition failed.
+        except BaseException:
+            # Roll back even for cancellation (KeyboardInterrupt/SystemExit).
+            # Preserve the acquisition failure as the primary error if cleanup
+            # also fails; never leave a partially acquired set by interruption.
             try:
                 self.release()
-            except Exception:
+            except BaseException:
                 pass
             raise
 
