@@ -179,3 +179,38 @@ def test_adapter_rejects_a_different_connected_terminal(rates, tmp_path):
         )
 
     assert mt5.shutdown_called is True
+
+
+def test_market_data_holds_process_wide_mt5_lock_for_entire_terminal_session(rates, monkeypatch):
+    import execution.mt5_session_lock as session_module
+
+    class TrackingRLock:
+        def __init__(self):
+            self.depth = 0
+
+        def __enter__(self):
+            self.depth += 1
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            self.depth -= 1
+
+    lock = TrackingRLock()
+    monkeypatch.setattr(session_module, "MT5_TERMINAL_SESSION_LOCK", lock)
+    mt5 = FakeMT5(rates=rates)
+    original_initialize = mt5.initialize
+
+    def initialize_while_locked(path=None):
+        assert lock.depth > 0, "terminal initialization must be serialized"
+        return original_initialize(path)
+
+    mt5.initialize = initialize_while_locked
+    adapter = ICMarketsMT5DemoMarketDataAdapter(mt5)
+
+    candles = adapter.fetch_market_data(
+        BrokerMarketDataRequest(symbol="BTCUSD", timeframe="5m", limit=2)
+    )
+
+    assert len(candles) == 2
+    assert lock.depth == 0
+    assert mt5.shutdown_called is True
