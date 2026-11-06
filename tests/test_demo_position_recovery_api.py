@@ -175,3 +175,20 @@ def test_remote_mutation_authorization_accepts_bracketed_ipv6_loopback_host(monk
 
     assert allowed is True
     assert reason == "local"
+
+
+def test_local_ea_post_routes_reach_their_own_loopback_authorization_before_remote_gate():
+    source = (ROOT / "app.py").read_text(encoding="utf-8")
+    gate = source.split("def application(environ, start_response):", 1)[1].split("\n    try:", 1)[0]
+
+    assert '"/api/runtime/close/local/reconcile"' in gate
+    assert '"/api/runtime/close/local"' in gate
+    assert 'path not in local_ea_post_paths' in gate
+    assert 'if method == "POST" and path != "/api/updates" and path not in local_ea_post_paths:' in gate
+
+    for route_path in (
+        "/api/runtime/close/local/reconcile",
+        "/api/runtime/close/local",
+    ):
+        route = source.split(f'if path == "{route_path}"', 1)[1].split("\n        if path ==", 1)[0]
+        assert "_authorize_local_runtime(environ)" in route
