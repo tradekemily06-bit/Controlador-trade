@@ -264,8 +264,12 @@ def show_assistant() -> None:
     previous_scope = st.session_state.get("assistant_consent_scope")
     if consent_scope != previous_scope:
         # A consent granted by one authenticated principal must not survive
-        # an identity switch in the same browser session.
+        # an identity switch in the same browser session. Clear all client-side
+        # conversation state too: it may contain messages loaded under the
+        # previous identity even though the server store is owner-scoped.
         st.session_state["assistant_openai_consent"] = False
+        _reset_assistant_conversation()
+        st.session_state.pop("saved_assistant_conversation", None)
         st.session_state["assistant_consent_scope"] = consent_scope
     st.subheader("Assistente do Ecossistema")
     st.caption("Somente leitura · não envia ordens, não movimenta dinheiro e não substitui orientação fiscal profissional.")
