@@ -284,7 +284,7 @@ def test_mql5_close_preserves_cycle_until_broker_confirms_position_closed():
     assert 'JsonObjectValue(reconciliation,"close_reconciliation","state")' in close
     assert 'state=="CLOSED"' in close
     assert 'state=="OPEN"' in close
-    assert 'last_cycle_id=""; last_external_id="";' in close
+    assert close.count("ClearCycleIdentity();") >= 2
     assert "Fechamento inconclusivo; ciclo preservado." in close
     assert "Sem saida temporizada; fechamento manual explicito." in panel
 
