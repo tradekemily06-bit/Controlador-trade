@@ -29,11 +29,11 @@ def test_blocking_security_update_is_critical():
 def test_configured_service_surfaces_audit_persistence_failure_as_critical(monkeypatch):
     from types import SimpleNamespace
 
-    import integration.ecosystem_service as base_service
+    import integration.ecosystem_configuration_runtime as configured_service
     from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 
     monkeypatch.setattr(
-        base_service,
+        configured_service,
         "AUDIT",
         SimpleNamespace(persistence_available=False, persistence_error="write_failed"),
     )
@@ -52,11 +52,11 @@ def test_configured_service_surfaces_audit_persistence_failure_as_critical(monke
 def test_configured_service_does_not_report_unconfigured_audit_as_failure(monkeypatch):
     from types import SimpleNamespace
 
-    import integration.ecosystem_service as base_service
+    import integration.ecosystem_configuration_runtime as configured_service
     from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 
     monkeypatch.setattr(
-        base_service,
+        configured_service,
         "AUDIT",
         SimpleNamespace(persistence_available=False, persistence_error=None),
     )
