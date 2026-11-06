@@ -332,3 +332,30 @@ def test_failed_ecosystem_update_persistence_does_not_publish_to_memory(monkeypa
         )
 
     assert service.notifications.all() == before
+
+
+def test_malformed_notification_history_cannot_be_overwritten_by_publish(monkeypatch, tmp_path):
+    import pytest
+    import integration.ecosystem_configuration_runtime as configured_service
+    from core.ecosystem_state_store import EcosystemStateStore, NotificationHistoryUnavailableError
+    from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
+
+    database = tmp_path / "ecosystem-state.sqlite"
+    initial_store = EcosystemStateStore(database)
+    damaged = [{"notification_id": "incomplete-record"}]
+    initial_store.save("notifications", damaged)
+    monkeypatch.setattr(
+        configured_service,
+        "EcosystemStateStore",
+        lambda _path: EcosystemStateStore(database),
+    )
+
+    service = ConfiguredEcosystemService()
+    before = service.notifications.all()
+
+    with pytest.raises(NotificationHistoryUnavailableError):
+        service.publish_ecosystem_update("Atualização", "Não deve sobrescrever o histórico.")
+
+    assert service.notifications.all() == before
+    assert EcosystemStateStore(database).load("notifications") == damaged
+    assert service.state_store.notifications_load_error == "invalid_records"
