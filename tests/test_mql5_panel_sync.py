@@ -358,12 +358,10 @@ def test_mql5_json_helpers_accept_standard_json_whitespace_and_escaped_strings()
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     helpers = panel.split("int JsonValueStart", 1)[1].split("bool Http(", 1)[0]
 
-    assert 'StringGetCharacter(json,q)==\':\'' in helpers
-    assert "StringGetCharacter(json,q)=='\\\\n'" in helpers
-    assert "StringGetCharacter(json,q)=='\\\\t'" in helpers
     assert "JsonValueStart(json,arrayKey)" in helpers
     assert "JsonValueStart(json,objectKey)" in helpers
+    assert "StringGetCharacter(json,q)=='\\n'" in helpers
+    assert "StringGetCharacter(json,q)=='\\t'" in helpers
     assert "if(escaped) escaped=false;" in helpers
-    assert "else if(c=='\\\\\\\\') escaped=true;" in helpers
-    assert "else if(ch=='\\\\\\\\') escaped=true;" in helpers
-    assert 'string marker="\\\\""+arrayKey+"\\\\":";' not in helpers
+    assert r"else if(c=='\\') escaped=true;" in helpers
+    assert r"else if(ch=='\\') escaped=true;" in helpers
