@@ -111,6 +111,8 @@ def test_runtime_cycle_exposes_authoritative_cycle_lineage(monkeypatch):
     }
     assert data["runtime"]["cycle_id"] == "senior-cycle-001"
     assert data["runtime"]["request_id"] == "req-001"
+    assert data["runtime"]["position_close_policy"] == "MANUAL_EXPLICIT"
+    assert data["runtime"]["duration_seconds_applied"] is False
     assert data["execution_allowed"] is False
 
 
