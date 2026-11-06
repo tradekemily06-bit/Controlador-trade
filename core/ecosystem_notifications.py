@@ -57,6 +57,7 @@ class EcosystemNotificationCenter:
     def restore(self, items: list[dict]) -> None:
         """Restore persisted notifications; invalid records are ignored safely."""
         restored: list[EcosystemNotification] = []
+        seen_ids: set[str] = set()
         invalid_records = False
         for item in items:
             if not isinstance(item, dict):
@@ -86,6 +87,10 @@ class EcosystemNotificationCenter:
                 if len(notification_id) > 160 or len(title) > 240 or len(message) > 4000:
                     invalid_records = True
                     continue
+                if notification_id in seen_ids:
+                    invalid_records = True
+                    continue
+                seen_ids.add(notification_id)
                 notification = EcosystemNotification(
                     notification_id=notification_id,
                     kind=NotificationKind(kind),
