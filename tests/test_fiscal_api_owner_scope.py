@@ -797,3 +797,26 @@ def test_fiscal_post_with_wrong_trusted_identity_is_forbidden_before_schema_acce
     assert status.startswith("403")
     assert "pending" not in json.dumps(response).lower()
     assert "attacker-selected-owner" not in json.dumps(response)
+
+
+def test_fiscal_api_migration_failure_does_not_expose_internal_exception_details(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "X-Auth-User")
+    monkeypatch.setattr(app_module.SECURITY, "allow", lambda environ: True)
+    monkeypatch.setattr(app_module.SECURITY, "headers", lambda request_id, **kwargs: [])
+    monkeypatch.setattr(app_module, "_audit", lambda *args, **kwargs: None)
+
+    def broken_migration(*args, **kwargs):
+        raise RuntimeError("SECRET_DB_PATH=/srv/private/fiscal.sqlite3; SQL=SELECT * FROM private_table")
+
+    monkeypatch.setattr(app_module, "migrate_fiscal_schema", broken_migration)
+    status, response = _request("/api/fiscal-reserve/domestic-pending")
+
+    assert status.startswith("503")
+    assert response["error"] == "Reserva Fiscal indisponível até validar a identidade proprietária e a migração."
+    assert "detail" not in response
+    assert "SECRET_DB_PATH" not in json.dumps(response)
+    assert "private_table" not in json.dumps(response)
