@@ -34,3 +34,31 @@ def test_demo_position_recovery_inventory_does_not_infer_live_open_state():
     assert '"order_sent": False' in method
     assert "reconcile_position_close" not in method
     assert "close_position" not in method
+
+
+def test_native_mt5_recovery_routes_are_loopback_only_and_require_local_mutations():
+    source = (ROOT / "app.py").read_text(encoding="utf-8")
+    helper = source.split("def _authorize_local_runtime", 1)[1].split("def _authorize_internal_update", 1)[0]
+    assert 'REMOTE_ADDR' in helper
+    assert '{"127.0.0.1", "::1"}' in helper
+    assert "CONTROLADOR_LOCAL_MUTATIONS_ALLOWED" in helper
+    assert "CONTROLADOR_LOCAL_MUTATION_HOSTS" in helper
+    assert 'if not host or host not in allowed_hosts' in helper
+
+    for route_path in (
+        "/api/runtime/positions/recovery/local",
+        "/api/runtime/close/local/reconcile",
+        "/api/runtime/close/local",
+    ):
+        route = source.split(f'if path == "{route_path}"', 1)[1].split("\n        if path ==", 1)[0]
+        assert "_authorize_local_runtime(environ)" in route
+
+def test_remote_recovery_and_close_routes_still_require_trusted_identity():
+    source = (ROOT / "app.py").read_text(encoding="utf-8")
+    for route_path in (
+        "/api/runtime/positions/recovery",
+        "/api/runtime/close/reconcile",
+        "/api/runtime/close",
+    ):
+        route = source.split(f'if path == "{route_path}"', 1)[1].split("\n        if path ==", 1)[0]
+        assert "_authorize_remote_mutation(environ)" in route
