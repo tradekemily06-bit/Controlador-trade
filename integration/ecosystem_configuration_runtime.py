@@ -28,7 +28,7 @@ from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
 from execution.icmarkets_mt5_market_data import ICMarketsMT5DemoMarketDataAdapter
 from execution.mt5_session_lock import serialized_mt5_session
 from core.ecosystem_preferences import ChartTheme, EcosystemPreferencesStore
-from core.ecosystem_state_store import EcosystemStateStore
+from core.ecosystem_state_store import EcosystemStateStore, NotificationHistoryUnavailableError
 from core.models import AnalysisResult, Signal
 from core.p122_broker_market_data import BrokerMarketDataRequest, BrokerMarketDataSnapshot
 from core.candle_analysis_evaluator import evaluate_candle_snapshot
@@ -1181,8 +1181,10 @@ class ConfiguredEcosystemService(EcosystemService):
 
     def publish_ecosystem_update(self, title: str, message: str, *, update_kind: UpdateKind = UpdateKind.ECOSYSTEM) -> dict[str, Any]:
         notification_id = f"update-{len(self.notifications.all()) + 1}"
-        item = self.notifications.publish_update(notification_id, title, message, important=True, update_kind=update_kind)
-        self.state_store.save_notifications([asdict(notification) | {"kind": notification.kind.value, "severity": notification.severity.value} for notification in self.notifications.all()])
+        candidate = EcosystemNotification(notification_id, NotificationKind.SYSTEM_UPDATE, NotificationSeverity.IMPORTANT, title, message, requires_attention=True)
+        snapshot = [asdict(notification) | {"kind": notification.kind.value, "severity": notification.severity.value} for notification in (*self.notifications.all(), candidate)]
+        self.state_store.save_notifications(snapshot)
+        item = self.notifications.publish(candidate)
         return asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}
 
     def publish_material_event(self, kind: str, title: str, message: str, *, critical: bool = False, blocking: bool = False) -> dict[str, Any]:
@@ -1190,6 +1192,8 @@ class ConfiguredEcosystemService(EcosystemService):
         notification_kind = NotificationKind(str(kind).upper())
         severity = NotificationSeverity.CRITICAL if critical else NotificationSeverity.IMPORTANT
         notification_id = f"event-{len(self.notifications.all()) + 1}"
-        item = self.notifications.publish(EcosystemNotification(notification_id, notification_kind, severity, title, message, requires_attention=critical or blocking, blocking=blocking))
-        self.state_store.save_notifications([asdict(notification) | {"kind": notification.kind.value, "severity": notification.severity.value} for notification in self.notifications.all()])
+        candidate = EcosystemNotification(notification_id, notification_kind, severity, title, message, requires_attention=critical or blocking, blocking=blocking)
+        snapshot = [asdict(notification) | {"kind": notification.kind.value, "severity": notification.severity.value} for notification in (*self.notifications.all(), candidate)]
+        self.state_store.save_notifications(snapshot)
+        item = self.notifications.publish(candidate)
         return asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}
