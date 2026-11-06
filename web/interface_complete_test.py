@@ -83,3 +83,5 @@ def test_web_close_ui_uses_read_only_reconciliation_and_reports_true_state():
     assert "state==='OPEN'" in close
     assert "Fechamento inconclusivo" in close
     assert "ciclo foi preservada" in close
+    assert "fechamento manual explícito" in HTML
+    assert "duration_seconds como expiração automática" in HTML
