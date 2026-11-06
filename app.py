@@ -23,6 +23,7 @@ from core.operational_runtime import build_operational_runtime
 from core.real_runtime_controller import RealRuntimeController
 from core.runtime_process_lock import RuntimeProcessLockSet
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
+from core.ecosystem_state_store import NotificationHistoryUnavailableError
 from integration.execution_provider import build_demo_execution_port
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
@@ -1560,6 +1561,8 @@ def application(environ, start_response):
         if isinstance(exc.conversation_id, str) and exc.conversation_id:
             payload["conversation_id"] = exc.conversation_id
         return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, payload, request_id, environ)
+    except NotificationHistoryUnavailableError:
+        return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Histórico de notificações indisponível; nenhuma nova notificação foi publicada.", "request_id": request_id}, request_id, environ)
     except PermissionError as exc:
         return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": "Ação não autorizada.", "request_id": request_id}, request_id, environ)
     except (TypeError, ValueError, json.JSONDecodeError):
