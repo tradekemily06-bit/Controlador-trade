@@ -607,13 +607,34 @@ void Analyze(bool render=true){
    SetLabel(Obj("INFO1"),"Decisao atualizada",20,361,9,c);
    ChartRedraw();
 }
+bool RefreshActiveCycleState(){
+   if(last_cycle_id=="" || last_external_id=="") return true;
+   string body="{\\"cycle_id\\":\\""+JsonEscape(last_cycle_id)+"\\",\\"external_id\\":\\""+JsonEscape(last_external_id)+"\\"}";
+   string response; int code=0;
+   if(!Http("POST","/api/runtime/close/reconcile",body,response,code)){
+      SetLabel(Obj("INFO1"),"Estado da posicao inconclusivo; ciclo bloqueado.",20,361,9,C'255,118,118');
+      return false;
+   }
+   string state=JsonObjectValue(response,"close_reconciliation","state");
+   if(state=="CLOSED"){
+      ClearCycleIdentity();
+      SetLabel(Obj("INFO1"),"MT5 confirmou fechamento; novo ciclo liberado.",20,361,9,C'88,214,141');
+      return cycle_identity_store_valid;
+   }
+   if(state=="OPEN"){
+      SetLabel(Obj("INFO1"),"MT5 confirma posicao aberta; feche antes de novo ciclo.",20,361,9,C'255,209,102');
+      return false;
+   }
+   SetLabel(Obj("INFO1"),"MT5 nao confirmou estado; ciclo permanece bloqueado.",20,361,9,C'255,118,118');
+   return false;
+}
+
 void RunCycle(){
    if(!cycle_identity_store_valid){
       SetLabel(Obj("INFO1"),"Arquivo de ciclo indisponivel; novas execucoes bloqueadas.",20,361,9,C'255,118,118');
       return;
    }
-   if(last_cycle_id!="" && last_external_id!=""){
-      SetLabel(Obj("INFO1"),"Feche/reconcilie a posicao DEMO atual antes de novo ciclo.",20,361,9,C'255,209,102');
+   if(last_cycle_id!="" && last_external_id!="" && !RefreshActiveCycleState()){
       return;
    }
    string sym=ObjectGetString(0,Obj("SYM"),OBJPROP_TEXT);
@@ -650,7 +671,13 @@ void RunCycle(){
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Ciclo concluido.":reason,0,62),20,204,9,C'180,190,205');
    SetLabel(Obj("CYCLEID"),"Ciclo DEMO: "+(last_cycle_id==""?"sem posicao":"registrado"),20,465,8,C'145,160,180');
    SetLabel(Obj("EXTID"),"Execucao: "+(last_external_id==""?"sem atividade":"registrada"),20,483,8,C'145,160,180');
-   SetLabel(Obj("INFO1"),cycle_identity_store_valid?"Ciclo DEMO; fechamento manual":"Falha ao salvar ticket; não reinicie EA.",20,361,9,C'255,209,102');
+   string timed_scheduled=JsonObjectValue(r,"timed_exit","scheduled");
+   string timed_due=JsonObjectValue(r,"timed_exit","due_at");
+   if(timed_scheduled=="true"){
+      SetLabel(Obj("INFO1"),"Saida DEMO best-effort: "+StringSubstr(timed_due,0,19),20,361,9,C'88,214,141');
+   }else{
+      SetLabel(Obj("INFO1"),cycle_identity_store_valid?"Sem saida temporizada; fechamento manual explicito.":"Falha ao salvar ticket; não reinicie EA.",20,361,9,C'255,209,102');
+   }
 }
 void CloseCycle(){
    if(last_cycle_id=="" || last_external_id==""){
