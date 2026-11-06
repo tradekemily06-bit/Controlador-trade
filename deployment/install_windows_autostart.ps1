@@ -21,7 +21,12 @@ if ($PythonExe -eq 'python' -or $PythonExe -eq 'python.exe') {
 if (-not (Test-Path -LiteralPath $PythonExe -PathType Leaf)) {
     throw "Python não encontrado: $PythonExe"
 }
-
+if (-not (Test-Path -LiteralPath $ProjectRoot -PathType Container)) {
+    throw "Diretório do projeto não encontrado: $ProjectRoot"
+}
+if ([string]::IsNullOrWhiteSpace([string]$env:CONTROLADOR_SINGLE_USER_IDENTITY)) {
+    throw 'Defina CONTROLADOR_SINGLE_USER_IDENTITY no ambiente do Windows antes de instalar as tarefas. Use exatamente a identidade individual permitida no Cloudflare Access.'
+}
 if ([string]::IsNullOrWhiteSpace($RuntimeDir)) {
     $RuntimeDir = Join-Path $ProjectRoot '.runtime'
 }
