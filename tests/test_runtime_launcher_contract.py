@@ -332,3 +332,13 @@ def test_fiscal_assistant_runtime_validator_is_read_only_and_checks_safe_contrac
     assert "Invoke-WebRequest -UseBasicParsing -Method Post" not in text
     assert "/api/assistant/chat" not in text
     assert "Start-Process" not in text
+
+def test_controller_restart_budget_limits_rate_not_runtime_uptime():
+    text = _read("deployment/start_controlador_runtime.ps1")
+    assert "[int]$MaxRestartsPerHour = 6" in text
+    assert "$restartTimes.Count -ge $MaxRestartsPerHour" in text
+    assert "RESTART_LIMIT_EXCEEDED; aguardando cooldown para nova tentativa" in text
+    assert "$retryAt = $restartTimes[0].AddHours(1)" in text
+    assert "while ((Get-Date) -lt $retryAt)" in text
+    assert "continue" in text.split("if ($restartTimes.Count -ge $MaxRestartsPerHour)", 1)[1].split("$restartTimes.Add($now)", 1)[0]
+    assert "while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf))" in text
