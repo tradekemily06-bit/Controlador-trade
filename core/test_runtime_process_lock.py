@@ -244,3 +244,49 @@ def test_lock_set_retains_failed_release_for_a_later_retry(tmp_path):
     assert lock.is_acquired is False
     assert lock_set._acquired == []
     assert lock_set.is_acquired is False
+
+
+def test_lock_set_retries_only_locks_whose_release_failed(tmp_path):
+    lock_set = RuntimeProcessLockSet(tmp_path / "runtime.lock")
+
+    class _TrackedLock:
+        def __init__(self, fail_first_release=False):
+            self.is_acquired = True
+            self.fail_first_release = fail_first_release
+            self.release_calls = 0
+
+        def acquire(self):
+            self.is_acquired = True
+
+        def release(self):
+            self.release_calls += 1
+            if self.fail_first_release and self.release_calls == 1:
+                raise OSError("temporary unlock failure")
+            self.is_acquired = False
+
+    already_released = _TrackedLock()
+    retry_required = _TrackedLock(fail_first_release=True)
+    lock_set._locks = [already_released, retry_required]
+    lock_set._acquired = [already_released, retry_required]
+
+    try:
+        lock_set.release()
+    except RuntimeError as exc:
+        assert "liberar" in str(exc)
+    else:
+        raise AssertionError("the partial release failure must be reported")
+
+    assert already_released.release_calls == 1
+    assert already_released.is_acquired is False
+    assert retry_required.release_calls == 1
+    assert retry_required.is_acquired is True
+    assert lock_set._acquired == [retry_required]
+    assert lock_set.is_acquired is False
+
+    lock_set.release()
+
+    assert already_released.release_calls == 1
+    assert retry_required.release_calls == 2
+    assert retry_required.is_acquired is False
+    assert lock_set._acquired == []
+    assert lock_set.is_acquired is False
