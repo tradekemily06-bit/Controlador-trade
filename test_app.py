@@ -133,12 +133,24 @@ def test_runtime_cycle_rejects_boolean_sizing_and_invalid_limits_before_service(
         assert status.startswith("400"), (payload, status, data)
 
 
-def test_runtime_close_validates_cycle_before_mt5_side_effect(monkeypatch):
+def test_runtime_close_uses_cycle_bound_durable_close_service(monkeypatch):
     import app
 
     calls = []
-    monkeypatch.setattr(app.SERVICE, "validate_mt5_cycle_identity", lambda **kwargs: calls.append(("validate", kwargs)))
-    monkeypatch.setattr(app.SERVICE, "close_mt5_position", lambda **kwargs: calls.append(("close", kwargs)) or SimpleNamespace(accepted=False, message="blocked", external_id=None))
+    monkeypatch.setattr(
+        app.SERVICE,
+        "close_mt5_position",
+        lambda **kwargs: calls.append(kwargs) or SimpleNamespace(
+            accepted=False,
+            message="resposta ambígua; reconciliação necessária",
+            external_id=None,
+        ),
+    )
+    monkeypatch.setattr(
+        app.SERVICE,
+        "reconcile_mt5_cycle",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("opening-order reconciliation is not close evidence")),
+    )
 
     status, data = call_app(
         "/api/runtime/close",
@@ -147,11 +159,48 @@ def test_runtime_close_validates_cycle_before_mt5_side_effect(monkeypatch):
     )
 
     assert status.startswith("200")
-    assert calls == [
-        ("validate", {"cycle_id": "cycle-1", "external_id": "external-1"}),
-        ("close", {"external_id": "external-1"}),
-    ]
+    assert calls == [{"cycle_id": "cycle-1", "external_id": "external-1"}]
     assert data["closed"] is False
+    assert data["close_state"] == "UNKNOWN"
+    assert data["reconciliation"] is None
+
+
+def test_runtime_close_reconciliation_route_is_read_only(monkeypatch):
+    import app
+
+    observed = {}
+    monkeypatch.setattr(
+        app.SERVICE,
+        "reconcile_mt5_position_close",
+        lambda **kwargs: observed.update(kwargs) or {
+            "request_id": "request-1",
+            "external_id": "ticket-1",
+            "state": "OPEN",
+            "message": "position still open",
+            "read_only": True,
+            "order_sent": False,
+        },
+    )
+
+    status, data = call_app(
+        "/api/runtime/close/reconcile",
+        "POST",
+        {"cycle_id": "cycle-1", "external_id": "ticket-1"},
+    )
+    assert status.startswith("200")
+    assert observed == {"cycle_id": "cycle-1", "external_id": "ticket-1"}
+    assert data["close_reconciliation"]["read_only"] is True
+    assert data["close_reconciliation"]["order_sent"] is False
+
+
+def test_runtime_close_reconciliation_rejects_coerced_identity_types():
+    status, data = call_app(
+        "/api/runtime/close/reconcile",
+        "POST",
+        {"cycle_id": None, "external_id": "ticket-1"},
+    )
+    assert status.startswith("400")
+    assert "cycle_id" in data["error"]
 
 def test_runtime_reconcile_forwards_cycle_lineage(monkeypatch):
     import app
