@@ -43,27 +43,40 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
         self._terminal_path = terminal_path or os.environ.get("CONTROLADOR_MT5_TERMINAL_PATH") or None
 
     def initialize_terminal(self, mt5: Any) -> bool:
+        """Initialize and verify the configured terminal, cleaning up on failure."""
         if not self._terminal_path:
-            return bool(mt5.initialize())
-        if not mt5.initialize(path=self._terminal_path):
-            return False
-        terminal = mt5.terminal_info()
-        expected = os.path.normcase(os.path.realpath(self._terminal_path))
-        actual = (
-            os.path.normcase(
-                os.path.realpath(
-                    os.path.join(getattr(terminal, "path", ""), os.path.basename(self._terminal_path))
+            try:
+                return bool(mt5.initialize())
+            except Exception:
+                try:
+                    mt5.shutdown()
+                except Exception:
+                    pass
+                return False
+        try:
+            if not mt5.initialize(path=self._terminal_path):
+                return False
+            terminal = mt5.terminal_info()
+            expected = os.path.normcase(os.path.realpath(self._terminal_path))
+            actual = (
+                os.path.normcase(
+                    os.path.realpath(
+                        os.path.join(getattr(terminal, "path", ""), os.path.basename(self._terminal_path))
+                    )
                 )
+                if terminal is not None
+                else ""
             )
-            if terminal is not None
-            else ""
-        )
-        if actual != expected:
-            mt5.shutdown()
-            raise MT5MarketDataError(
-                "terminal MT5 conectado não corresponde ao caminho configurado; leitura bloqueada."
-            )
-        return True
+            if actual != expected:
+                mt5.shutdown()
+                return False
+            return True
+        except Exception:
+            try:
+                mt5.shutdown()
+            except Exception:
+                pass
+            return False
 
     def _module(self) -> Any:
         if self._mt5 is None:
