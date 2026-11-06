@@ -67,6 +67,9 @@ st.markdown("""
 .st-key-control-hub-shell .hub-title { color: #E9EEF3; font-size: 1.35rem; font-weight: 800; padding: .35rem 0 .9rem; }
 .st-key-control-hub-shell .demo-pill-wrap { display: flex; justify-content: flex-end; padding-top: .3rem; }
 .st-key-control-hub-shell .system-state-value { color: #7F8B97; text-align: right; font-size: .78rem; font-weight: 800; }
+.st-key-control-hub-shell .open-signal-strip { display: flex; flex-wrap: wrap; align-items: center; gap: .7rem; margin: .2rem 0 .8rem; padding: .65rem .8rem; border: 1px solid #25303B; border-radius: 12px; background: #0D1218; }
+.st-key-control-hub-shell .open-signal { font-size: .82rem; font-weight: 900; letter-spacing: .025em; }
+.st-key-control-hub-shell .open-score { color: #E9EEF3; font-size: .76rem; font-weight: 800; }
 .st-key-control-hub-shell .st-key-main_area_navigation [role="radiogroup"] { display: flex; flex-wrap: wrap; gap: .4rem; padding: .35rem 0 .65rem; border-bottom: 1px solid #25303B; }
 .st-key-control-hub-shell .st-key-main_area_navigation [role="radiogroup"] label > div:first-child, .st-key-control-hub-shell .st-key-module_navigation [role="radiogroup"] label > div:first-child { display: none; }
 .st-key-control-hub-shell .st-key-main_area_navigation [role="radiogroup"] label { flex: 1 1 7rem; justify-content: center; text-align: center; border-color: transparent; background: transparent; }
@@ -2611,6 +2614,25 @@ with st.container(key="control-hub-shell"):
         st.markdown('<div class="hub-title">Controlador-Trader</div>', unsafe_allow_html=True)
     with header_right:
         st.markdown('<div class="demo-pill-wrap"><span class="demo-pill">DEMO</span></div>', unsafe_allow_html=True)
+
+    # The signal and score belong to this same Streamlit panel in both states.
+    try:
+        open_latest_payload = api("/api/runtime/analysis/latest")
+        open_latest_analysis = (
+            open_latest_payload.get("analysis")
+            if isinstance(open_latest_payload, dict) and open_latest_payload.get("available") is True
+            else None
+        )
+    except Exception:
+        open_latest_analysis = None
+    open_signal_label, open_score_label, open_signal_color = closed_panel_signal(open_latest_analysis)
+    st.markdown(
+        f'<div class="open-signal-strip">'
+        f'<span class="open-signal" style="color:{open_signal_color}">{open_signal_label}</span>'
+        f'<span class="open-score">{open_score_label}</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
     area = st.radio("Áreas principais", list(AREAS), horizontal=True, key="main_area_navigation", label_visibility="collapsed")
     st.divider()
