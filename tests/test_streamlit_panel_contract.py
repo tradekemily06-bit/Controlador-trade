@@ -1863,6 +1863,17 @@ def test_closed_panel_health_uses_only_online_or_unavailable_labels():
     assert '"WARNING": "ATENÇÃO"' not in helper
 
 
+def test_open_panel_health_uses_only_online_or_unavailable_labels():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    health_start = source.index('health_label = {', source.index('st.markdown("**Estado do sistema**")'))
+    health_end = source.index("\n", health_start)
+    mapping = source[health_start:health_end]
+    assert '"OK": "SISTEMA ONLINE"' in mapping
+    assert '"WARNING": "INDISPONÍVEL"' in mapping
+    assert '"CRITICAL": "INDISPONÍVEL"' in mapping
+    assert '"WARNING": "ATENÇÃO"' not in mapping
+
+
 def test_streamlit_signal_strip_refreshes_periodically_in_both_panel_states():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     helper_start = source.index("def render_latest_signal(")
