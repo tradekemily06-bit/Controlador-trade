@@ -9,7 +9,7 @@ from finance.fiscal_reserve import FiscalReserve
 from finance.fiscal_schema import migrate_fiscal_schema
 
 
-def _request(path, *, query="", method="GET", payload=None):
+def _request(path, *, query="", method="GET", payload=None, identity="owner@example.com"):
     raw = json.dumps(payload or {}).encode("utf-8")
     environ = {
         "REQUEST_METHOD": method,
@@ -17,7 +17,7 @@ def _request(path, *, query="", method="GET", payload=None):
         "QUERY_STRING": query,
         "REMOTE_ADDR": "203.0.113.10",
         "HTTP_HOST": "control.example",
-        "HTTP_X_AUTH_USER": "owner@example.com",
+        "HTTP_X_AUTH_USER": identity,
         "CONTENT_LENGTH": str(len(raw)),
         "wsgi.input": io.BytesIO(raw),
     }
@@ -28,6 +28,30 @@ def _request(path, *, query="", method="GET", payload=None):
 
     body = b"".join(app_module.application(environ, start_response))
     return response["status"], json.loads(body)
+
+
+def test_fiscal_api_rejects_malformed_trusted_identity_before_schema_or_store_access(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "X-Auth-User")
+    monkeypatch.setattr(app_module.SECURITY, "allow", lambda environ: True)
+    monkeypatch.setattr(app_module.SECURITY, "headers", lambda request_id, **kwargs: [])
+    monkeypatch.setattr(app_module, "_audit", lambda *args, **kwargs: None)
+
+    def unexpected_schema_access(*args, **kwargs):
+        raise AssertionError("fiscal schema/store access must not happen before identity authorization")
+
+    monkeypatch.setattr(app_module, "migrate_fiscal_schema", unexpected_schema_access)
+
+    for malformed_identity in ("x" * 321, "owner@example.com\\r\\nX-Injected: yes", "owner@example.com\\x00"):
+        status, body = _request(
+            "/api/fiscal-reserve",
+            identity=malformed_identity,
+        )
+        assert status.startswith(("401", "403"))
+        assert "total_reserved_brl" not in body
 
 
 def test_fiscal_and_assistant_read_routes_ignore_forged_owner_parameters(
