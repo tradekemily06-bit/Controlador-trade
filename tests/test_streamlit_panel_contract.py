@@ -563,6 +563,8 @@ def test_streamlit_simulator_discloses_backtest_assumptions_and_no_execution():
 
     assert "Multiplicador do contrato" in source
     assert "Spread total em unidades de preço" in source
+    assert "or spread_price_units < 0:" in source
+    assert "or spread_price_units <= 0:" not in source
     assert "Execução permitida: NÃO" in source
     assert "O backtest não integra o Risk Manager" in source
 
