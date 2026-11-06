@@ -297,3 +297,134 @@ def test_notification_quarantine_preserves_binary_corrupt_payload(tmp_path):
     assert original == raw
     assert archived == raw
     assert archive["payload_sha256"] == hashlib.sha256(raw).hexdigest()
+
+
+def test_notification_quarantine_restore_requires_confirmation_and_keeps_archive(tmp_path):
+    import sqlite3
+    import pytest
+
+    path = tmp_path / "notification-quarantine-restore.sqlite3"
+    store = EcosystemStateStore(path)
+    raw = '[{"notification_id":"n1","kind":"SECURITY","severity":"CRITICAL","title":"Alerta","message":"Verificar","requires_attention":true,"blocking":true}]'
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "INSERT INTO ecosystem_state(key, value_json) VALUES (?, ?)",
+            ("notifications", raw),
+        )
+
+    assert store.load_notifications() == [
+        {
+            "notification_id": "n1",
+            "kind": "SECURITY",
+            "severity": "CRITICAL",
+            "title": "Alerta",
+            "message": "Verificar",
+            "requires_attention": True,
+            "blocking": True,
+        }
+    ]
+    store.mark_notifications_unavailable("invalid_records")
+    archive = store.archive_notifications_for_recovery(confirmed=True)
+
+    with pytest.raises(ValueError, match="confirmação explícita"):
+        store.restore_notifications_from_quarantine(archive["archive_id"], confirmed=False)
+
+    result = store.restore_notifications_from_quarantine(
+        archive["archive_id"], confirmed=True
+    )
+    assert result == {
+        "archive_id": archive["archive_id"],
+        "restored_count": 1,
+        "integrity_verified": True,
+        "archive_preserved": True,
+    }
+    assert store.notifications_load_error is None
+    assert store.load_notifications()[0]["notification_id"] == "n1"
+
+    with sqlite3.connect(path) as db:
+        archived = db.execute(
+            "SELECT raw_payload, payload_sha256 FROM notification_history_quarantine WHERE archive_id = ?",
+            (archive["archive_id"],),
+        ).fetchone()
+    assert archived == (raw, archive["payload_sha256"])
+
+
+def test_notification_quarantine_restore_rejects_invalid_records_without_partial_restore(tmp_path):
+    import sqlite3
+    import pytest
+    from core.ecosystem_state_store import NotificationHistoryUnavailableError
+
+    path = tmp_path / "notification-quarantine-invalid.sqlite3"
+    store = EcosystemStateStore(path)
+    raw = '[{"notification_id":"valid","kind":"SECURITY","severity":"CRITICAL","title":"A","message":"B"},{"notification_id":"bad","kind":"UNKNOWN","severity":"CRITICAL","title":"C","message":"D"}]'
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "INSERT INTO ecosystem_state(key, value_json) VALUES (?, ?)",
+            ("notifications", raw),
+        )
+
+    store.load_notifications()
+    store.mark_notifications_unavailable("invalid_records")
+    archive = store.archive_notifications_for_recovery(confirmed=True)
+    with pytest.raises(NotificationHistoryUnavailableError, match="inválidas"):
+        store.restore_notifications_from_quarantine(archive["archive_id"], confirmed=True)
+
+    with sqlite3.connect(path) as db:
+        assert db.execute(
+            "SELECT value_json FROM ecosystem_state WHERE key = ?",
+            ("notifications",),
+        ).fetchone()[0] == raw
+
+
+def test_notification_quarantine_restore_rejects_changed_original(tmp_path):
+    import sqlite3
+    import pytest
+    from core.ecosystem_state_store import NotificationHistoryUnavailableError
+
+    path = tmp_path / "notification-quarantine-changed.sqlite3"
+    store = EcosystemStateStore(path)
+    raw = '[{"notification_id":"n1","kind":"SECURITY","severity":"CRITICAL","title":"A","message":"B"}]'
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "INSERT INTO ecosystem_state(key, value_json) VALUES (?, ?)",
+            ("notifications", raw),
+        )
+
+    store.load_notifications()
+    store.mark_notifications_unavailable("invalid_records")
+    archive = store.archive_notifications_for_recovery(confirmed=True)
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "UPDATE ecosystem_state SET value_json = ? WHERE key = ?",
+            ('[{"notification_id":"new","kind":"SECURITY","severity":"CRITICAL","title":"X","message":"Y"}]', "notifications"),
+        )
+
+    with pytest.raises(NotificationHistoryUnavailableError, match="mudou desde o arquivamento"):
+        store.restore_notifications_from_quarantine(archive["archive_id"], confirmed=True)
+
+
+def test_notification_quarantine_inspection_detects_archive_tampering(tmp_path):
+    import sqlite3
+    import pytest
+    from core.ecosystem_state_store import NotificationHistoryUnavailableError
+
+    path = tmp_path / "notification-quarantine-tampered.sqlite3"
+    store = EcosystemStateStore(path)
+    raw = '[{"notification_id":"n1","kind":"SECURITY","severity":"CRITICAL","title":"A","message":"B"}]'
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "INSERT INTO ecosystem_state(key, value_json) VALUES (?, ?)",
+            ("notifications", raw),
+        )
+
+    store.load_notifications()
+    store.mark_notifications_unavailable("invalid_records")
+    archive = store.archive_notifications_for_recovery(confirmed=True)
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "UPDATE notification_history_quarantine SET raw_payload = ? WHERE archive_id = ?",
+            (raw + " ", archive["archive_id"]),
+        )
+
+    with pytest.raises(NotificationHistoryUnavailableError, match="integridade"):
+        store.inspect_notification_quarantine(archive["archive_id"])
