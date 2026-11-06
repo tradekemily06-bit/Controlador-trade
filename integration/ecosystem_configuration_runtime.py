@@ -4,6 +4,7 @@ from dataclasses import asdict
 from typing import Any
 from pathlib import Path
 from threading import RLock
+import uuid
 import tempfile
 
 from core.ecosystem_notifications import EcosystemNotification, EcosystemNotificationCenter, NotificationKind, NotificationSeverity, UpdateKind
@@ -1204,7 +1205,7 @@ class ConfiguredEcosystemService(EcosystemService):
 
     def publish_ecosystem_update(self, title: str, message: str, *, update_kind: UpdateKind = UpdateKind.ECOSYSTEM) -> dict[str, Any]:
         with self._notification_history_lock:
-            notification_id = f"update-{len(self.notifications.all()) + 1}"
+            notification_id = f"update-{uuid.uuid4().hex}"
             candidate = EcosystemNotification(notification_id, NotificationKind.SYSTEM_UPDATE, NotificationSeverity.IMPORTANT, title, message, requires_attention=True)
             snapshot = [asdict(notification) | {"kind": notification.kind.value, "severity": notification.severity.value} for notification in (*self.notifications.all(), candidate)]
             self.state_store.save_notifications(snapshot)
@@ -1216,7 +1217,7 @@ class ConfiguredEcosystemService(EcosystemService):
         with self._notification_history_lock:
             notification_kind = NotificationKind(str(kind).upper())
             severity = NotificationSeverity.CRITICAL if critical else NotificationSeverity.IMPORTANT
-            notification_id = f"event-{len(self.notifications.all()) + 1}"
+            notification_id = f"event-{uuid.uuid4().hex}"
             candidate = EcosystemNotification(notification_id, notification_kind, severity, title, message, requires_attention=critical or blocking, blocking=blocking)
             snapshot = [asdict(notification) | {"kind": notification.kind.value, "severity": notification.severity.value} for notification in (*self.notifications.all(), candidate)]
             self.state_store.save_notifications(snapshot)
