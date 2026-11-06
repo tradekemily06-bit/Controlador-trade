@@ -65,6 +65,9 @@ class FiscalReserve:
             connection = sqlite3.connect(self.database_path, timeout=10)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA busy_timeout = 10000")
+        # SQLite disables foreign-key enforcement on every new connection by default.
+        # Enable it here so every repository operation honors the migrated schema.
+        connection.execute("PRAGMA foreign_keys = ON")
         try:
             yield connection
             connection.commit()
