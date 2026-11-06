@@ -27,7 +27,7 @@ from core.ecosystem_state_store import NotificationHistoryUnavailableError
 from integration.execution_provider import build_demo_execution_port
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
-from finance.fiscal_reserve import FiscalReserve
+from finance.fiscal_reserve import FiscalReserve, MAX_FISCAL_HISTORY_OFFSET
 from finance.fiscal_taxonomy import fiscal_classification_catalog
 from finance.fiscal_pending_queue import CURRENCIES, FiscalPendingQueue
 from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
@@ -854,8 +854,10 @@ def application(environ, start_response):
                 raise ValueError("limit e offset devem ser inteiros") from exc
             if not 1 <= history_limit <= 500:
                 raise ValueError("limit deve estar entre 1 e 500")
-            if history_offset < 0:
-                raise ValueError("offset deve ser não negativo")
+            if not 0 <= history_offset <= MAX_FISCAL_HISTORY_OFFSET:
+                raise ValueError(
+                    f"offset deve estar entre 0 e {MAX_FISCAL_HISTORY_OFFSET}"
+                )
             fiscal_summary = FISCAL_RESERVE.summary(
                 fiscal_owner_id, history_limit=history_limit, history_offset=history_offset
             )
