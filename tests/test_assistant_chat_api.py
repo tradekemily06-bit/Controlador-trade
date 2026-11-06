@@ -7,10 +7,11 @@ from assistant.chat_service import AssistantUnavailableError
 
 def _request(path, *, method="GET", payload=None, identity="owner@example.com"):
     raw = json.dumps(payload or {}).encode("utf-8")
+    route, separator, query = path.partition("?")
     environ = {
         "REQUEST_METHOD": method,
-        "PATH_INFO": path,
-        "QUERY_STRING": "",
+        "PATH_INFO": route,
+        "QUERY_STRING": query if separator else "",
         "REMOTE_ADDR": "203.0.113.10",
         "HTTP_HOST": "control.example",
         "HTTP_X_AUTH_USER": identity,
@@ -171,9 +172,8 @@ def test_every_assistant_endpoint_requires_trusted_identity_before_access(tmp_pa
         ("/api/assistant/conversations?conversation_id=conversation-1", "DELETE", None),
         ("/api/assistant/chat", "POST", {"message": "pergunta", "consent_to_openai": True}),
     ):
-        route, separator, query = path.partition("?")
         status, response = _request(
-            route + (separator + query if separator else ""),
+            path,
             method=method,
             payload=payload,
             identity="",
