@@ -16,6 +16,7 @@ from typing import Any
 import streamlit as st
 
 from trusted_identity import trusted_identity_from_headers
+from presentation import closed_panel_signal
 
 ROOT = Path(__file__).resolve().parent
 CONFIG = json.loads((ROOT / "controlador_trader_referencia_visual.json").read_text(encoding="utf-8"))
@@ -60,6 +61,8 @@ st.markdown("""
 .st-key-panel-toggle { position: relative; width: max-content; max-width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 2rem 0 1rem; }
 .st-key-panel-toggle .stButton > button { width: 64px; min-width: 64px; height: 64px; min-height: 64px; padding: 0; border-radius: 50%; background: #080B0F; color: #46D6AD; border: 1px solid #46D6AD; box-shadow: 0 0 10px #46D6AD33; font-weight: 800; font-size: 1.25rem; }
 .st-key-panel-toggle .closed-status { color: #7F8B97; font-size: 12px; font-weight: 800; letter-spacing: .06em; padding-left: 4px; }
+.st-key-panel-toggle .closed-signal { max-width: 190px; font-size: 13px; line-height: 1.25; font-weight: 900; letter-spacing: .025em; white-space: nowrap; }
+.st-key-panel-toggle .closed-score { color: #E9EEF3; font-size: 11px; line-height: 1.2; font-weight: 700; white-space: nowrap; }
 .st-key-control-hub-shell { width: min(100%, 980px); margin: 1rem auto 2rem; padding: clamp(1rem, 2vw, 1.5rem); background: #10151B; border: 1px solid #25303B; border-radius: 24px; }
 .st-key-control-hub-shell .hub-title { color: #E9EEF3; font-size: 1.35rem; font-weight: 800; padding: .35rem 0 .9rem; }
 .st-key-control-hub-shell .demo-pill-wrap { display: flex; justify-content: flex-end; padding-top: .3rem; }
@@ -2588,7 +2591,18 @@ if not st.session_state.panel_open:
             closed_status = {"OK": "SISTEMA ONLINE", "WARNING": "ATENÇÃO", "CRITICAL": "INDISPONÍVEL"}.get(closed_health, "INDISPONÍVEL")
         except Exception:
             closed_status = "INDISPONÍVEL"
-        st.markdown(f'<div class="closed-status">{closed_status}</div>', unsafe_allow_html=True)
+        try:
+            latest_payload = api("/api/runtime/analysis/latest")
+            latest_analysis = latest_payload.get("analysis") if isinstance(latest_payload, dict) and latest_payload.get("available") is True else None
+        except Exception:
+            latest_analysis = None
+        signal_label, score_label, signal_color = closed_panel_signal(latest_analysis)
+        st.markdown(
+            f'<div class="closed-signal" style="color:{signal_color}">{signal_label}</div>'
+            f'<div class="closed-score">{score_label}</div>'
+            f'<div class="closed-status">{closed_status}</div>',
+            unsafe_allow_html=True,
+        )
     st.stop()
 
 with st.container(key="control-hub-shell"):
