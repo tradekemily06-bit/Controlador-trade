@@ -62,8 +62,19 @@ class SecurityAudit:
         self._events: deque[SecurityEvent] = deque(maxlen=max_events)
         self._database_path = database_path if database_path is not None else os.environ.get("CONTROLADOR_SECURITY_AUDIT_DB")
         self._db_lock = Lock()
+        self._persistence_error: str | None = None
         if self._database_path:
             self._initialize_database()
+
+    @property
+    def persistence_available(self) -> bool:
+        """Whether the configured SQLite audit store is currently usable."""
+        return bool(self._database_path) and self._persistence_error is None
+
+    @property
+    def persistence_error(self) -> str | None:
+        """Return a safe error category; never expose database paths or exception text."""
+        return self._persistence_error
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self._database_path or ":memory:", timeout=5)
@@ -87,8 +98,25 @@ class SecurityAudit:
                     )
                     """
                 )
+                columns = {
+                    row[1]
+                    for row in connection.execute("PRAGMA table_info(security_events)").fetchall()
+                }
+                required = {
+                    "id",
+                    "timestamp",
+                    "request_id",
+                    "method",
+                    "path",
+                    "status",
+                    "client_hash",
+                }
+                if not required.issubset(columns):
+                    self._database_path = None
+                    self._persistence_error = "schema_invalid"
         except (OSError, sqlite3.Error):
             self._database_path = None
+            self._persistence_error = "unavailable"
 
     def record(self, *, request_id: str, method: str, path: str, status: int, client_key: str) -> None:
         digest = hashlib.sha256(self._salt + client_key.encode("utf-8", "replace")).hexdigest()
@@ -106,8 +134,9 @@ class SecurityAudit:
                     "DELETE FROM security_events WHERE id NOT IN (SELECT id FROM security_events ORDER BY id DESC LIMIT ?)",
                     (self.max_events,),
                 )
+            self._persistence_error = None
         except sqlite3.Error:
-            pass
+            self._persistence_error = "write_failed"
 
     def snapshot(self) -> list[dict[str, object]]:
         if self._database_path:
