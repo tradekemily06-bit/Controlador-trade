@@ -6,13 +6,12 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import math
 import hashlib
 import os
-import threading
-from functools import wraps
 from typing import Any
 
 from core.models import Signal
 from core.operational_state import OperationalState
 from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
+from execution.mt5_session_lock import MT5_TERMINAL_SESSION_LOCK, serialized_mt5_session
 from execution.ports import (
     ExecutionMode, ExecutionRequest, ExecutionResult,
     PositionCloseObservation, PositionCloseObservationStatus,
@@ -25,15 +24,6 @@ class MT5AdapterError(RuntimeError):
 
 class MT5DealNotFoundError(MT5AdapterError):
     """Raised when MT5 is available but the requested closed deal is absent."""
-
-
-def _serialized_mt5_session(method):
-    """Serialize terminal access; nested adapter calls share a reentrant lock."""
-    @wraps(method)
-    def wrapped(self, *args, **kwargs):
-        with self.session_lock:
-            return method(self, *args, **kwargs)
-    return wrapped
 
 
 @dataclass(frozen=True)
@@ -59,7 +49,7 @@ class ICMarketsMT5DemoAdapter:
 
     def __init__(self, config: ICMarketsMT5DemoConfig | None = None, mt5_module: Any = None) -> None:
         self.config = config or ICMarketsMT5DemoConfig()
-        self._session_lock = threading.RLock()
+        self._session_lock = MT5_TERMINAL_SESSION_LOCK
         try:
             # UTC has no daylight-saving rules and is available directly from
             # the standard library. Keep the default runtime independent of
@@ -118,7 +108,7 @@ class ICMarketsMT5DemoAdapter:
                 pass
             return False
 
-    @_serialized_mt5_session
+    @serialized_mt5_session
     def is_available(self) -> bool:
         mt5 = None
         try:
@@ -184,7 +174,7 @@ class ICMarketsMT5DemoAdapter:
         steps = (amount - minimum) / step
         return math.isclose(steps, round(steps), rel_tol=0.0, abs_tol=1e-9)
 
-    @_serialized_mt5_session
+    @serialized_mt5_session
     def read_operational_state(self) -> OperationalState:
         """Read a fail-closed DEMO operational snapshot from MT5.
 
@@ -392,7 +382,7 @@ class ICMarketsMT5DemoAdapter:
         finally:
             mt5.shutdown()
 
-    @_serialized_mt5_session
+    @serialized_mt5_session
     def read_closed_deal_candidates(self, lookback_days: int = 30, *, include_private: bool = False) -> dict[str, Any]:
         """Return complete, fully closed DEMO position results for human fiscal review."""
         if not isinstance(lookback_days, int) or isinstance(lookback_days, bool) or not 1 <= lookback_days <= 365:
@@ -553,7 +543,7 @@ class ICMarketsMT5DemoAdapter:
         finally:
             mt5.shutdown()
 
-    @_serialized_mt5_session
+    @serialized_mt5_session
     def read_closed_deal_candidate(self, ticket: str) -> dict[str, Any]:
         """Re-read one exact final closing ticket and its complete DEMO position history."""
         raw_ticket = str(ticket or "").strip()
@@ -575,7 +565,7 @@ class ICMarketsMT5DemoAdapter:
             "notice": preview.get("notice"),
         }
 
-    @_serialized_mt5_session
+    @serialized_mt5_session
     def query_order(self, external_id: str) -> ExternalOrderObservation:
         """Read external DEMO order/deal status for P121; never resubmits."""
         if not isinstance(external_id, str) or not external_id.strip():
@@ -610,7 +600,7 @@ class ICMarketsMT5DemoAdapter:
         finally:
             mt5.shutdown()
 
-    @_serialized_mt5_session
+    @serialized_mt5_session
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
         if request.mode is not ExecutionMode.DEMO:
             return ExecutionResult(False, "IC Markets MT5 adapter aceita somente DEMO.")
@@ -696,7 +686,7 @@ class ICMarketsMT5DemoAdapter:
         finally:
             mt5.shutdown()
 
-    @_serialized_mt5_session
+    @serialized_mt5_session
     def close_position(
         self,
         external_id: str,
@@ -809,7 +799,7 @@ class ICMarketsMT5DemoAdapter:
         finally:
             mt5.shutdown()
 
-    @_serialized_mt5_session
+    @serialized_mt5_session
     def reconcile_position_close(
         self,
         external_id: str,
