@@ -166,9 +166,9 @@ def test_chat_api_rejects_malformed_trusted_identity_before_assistant_call(tmp_p
 
     for identity in (
         "x" * 321,
-        "owner@example.com\\r\\nX-Admin: true",
-        "owner@example.com\\x00",
-        "owner@example.com\\x7f",
+        "owner@example.com\r\nX-Admin: true",
+        "owner@example.com\x00",
+        "owner@example.com\x7f",
     ):
         status, response = _request(
             "/api/assistant/chat",
