@@ -124,3 +124,35 @@ def test_runtime_lock_set_rolls_back_partial_acquisition(tmp_path):
     fresh.acquire()
     assert fresh.is_acquired is True
     fresh.release()
+
+
+def test_lock_set_preserves_acquisition_error_when_rollback_also_fails(tmp_path):
+    lock_set = RuntimeProcessLockSet(tmp_path / "runtime.lock")
+    released = []
+
+    class _AcquiredLock:
+        def acquire(self):
+            return None
+
+        def release(self):
+            released.append("release")
+            raise OSError("rollback release failed")
+
+    class _FailingLock:
+        def acquire(self):
+            raise ValueError("original acquisition failure")
+
+        def release(self):
+            raise AssertionError("unacquired lock must not be released")
+
+    lock_set._locks = [_AcquiredLock(), _FailingLock()]
+
+    try:
+        lock_set.acquire()
+    except ValueError as exc:
+        assert str(exc) == "original acquisition failure"
+    else:
+        raise AssertionError("the original acquisition error must be propagated")
+
+    assert released == ["release"]
+    assert lock_set.is_acquired is False
