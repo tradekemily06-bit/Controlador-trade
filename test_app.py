@@ -406,3 +406,30 @@ def test_mt5_position_recovery_api_is_authenticated_and_read_only(monkeypatch):
     assert data["orders_sent"] is False
 
 
+
+
+def test_mt5_timed_exit_status_api_is_authenticated_and_read_only(monkeypatch):
+    import app
+
+    expected = [{
+        "request_id": "request-1",
+        "cycle_id": "cycle-1",
+        "external_id": "12345",
+        "due_at": "2026-11-05T12:01:00+00:00",
+        "next_attempt_at": "2026-11-05T12:01:00+00:00",
+        "state": "SCHEDULED",
+        "attempts": 0,
+        "message": "",
+        "best_effort": True,
+    }]
+    monkeypatch.setattr(app, "_authorize_remote_mutation", lambda environ: (True, "trusted"))
+    monkeypatch.setattr(app.SERVICE, "list_mt5_timed_exits", lambda: expected)
+
+    status, data = call_app("/api/runtime/timed-exits")
+
+    assert status.startswith("200")
+    assert data["timed_exits"] == expected
+    assert data["read_only"] is True
+    assert data["orders_sent"] is False
+
+
