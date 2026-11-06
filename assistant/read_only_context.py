@@ -183,8 +183,8 @@ def _operations_summary(value: Any) -> dict[str, Any]:
         },
         "reconciliation": {
             "state": _safe_state_token(reconciliation.get("state")),
-            "pending_count": len(reconciliation.get("pending_request_ids", [])) if isinstance(reconciliation.get("pending_request_ids", []), list) else 0,
-            "unknown_count": len(reconciliation.get("unknown_request_ids", [])) if isinstance(reconciliation.get("unknown_request_ids", []), list) else 0,
+            "pending_count": _count(len(reconciliation.get("pending_request_ids", []))) if isinstance(reconciliation.get("pending_request_ids", []), list) else 0,
+            "unknown_count": _count(len(reconciliation.get("unknown_request_ids", []))) if isinstance(reconciliation.get("unknown_request_ids", []), list) else 0,
         },
         "recovery": {
             "state": _safe_state_token(recovery.get("state")),
