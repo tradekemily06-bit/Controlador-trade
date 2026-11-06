@@ -46,8 +46,8 @@ No host Windows remoto, `deployment/bootstrap_windows_runtime.ps1` também insta
 
 ## Módulos no painel
 
-- A Reserva Fiscal aparece como módulo próprio em MAIS / ADMIN e também permanece acessível por Financeiro para compatibilidade. Categorias sem cálculo validado ficam pendentes e fora dos totais; a estimativa brasileira identificada na interface é planejamento, não apuração de imposto devido.
-- O Assistente do Ecossistema é acrescentado como módulo funcional próprio em MAIS / ADMIN. A interface lista até 30 conversas salvas, permite abrir o histórico recente e excluir uma conversa somente após ação explícita do usuário.
+- A Reserva Fiscal e o Assistente do Ecossistema ficam agrupados dentro de Financeiro, sem criar novos grupos de navegação. Categorias sem cálculo validado ficam pendentes e fora dos totais; a estimativa brasileira identificada na interface é planejamento, não apuração de imposto devido.
+- O Assistente do Ecossistema é acessado pelo seletor interno de Financeiro. A interface lista até 30 conversas salvas, permite abrir o histórico recente e excluir uma conversa somente após ação explícita do usuário.
 - A pergunta, as mensagens recentes da conversa e um resumo operacional filtrado são enviados à OpenAI quando o usuário envia uma consulta. As mensagens também ficam armazenadas no histórico local do Assistente no servidor do Ecossistema. A chave OpenAI permanece no servidor; não envie senhas, códigos de acesso ou dados bancários sensíveis.
 - A consulta de status do Assistente verifica a configuração local do cliente, mas não testa conectividade nem validade da chave. A conexão real não é considerada validada até um teste autorizado.
 - Replay e Simulador têm limitações descritas na própria interface. O backtest atual não integra Risk Manager, margem, alavancagem, swap ou conversão para a moeda da conta. Não o trate como previsão nem como backtest financeiro completo.
@@ -57,7 +57,7 @@ No host Windows remoto, `deployment/bootstrap_windows_runtime.ps1` também insta
 
 - O JSON contém a estrutura de navegação e tokens visuais extraídos das referências.
 - **As cinco imagens originais listadas no JSON (8870.jpg, 8871.jpg, 8872.jpg, 8873.jpg e 8878.jpg) não estão presentes neste branch do repositório.** Portanto, ainda não é possível fazer a comparação visual final.
-- As quatro áreas visuais do Figma permanecem como referência; o Assistente é um módulo funcional próprio em MAIS / ADMIN, sem alterar o JSON ou inventar uma quinta área visual.
+- As quatro áreas visuais do Figma permanecem intactas; Financeiro contém as duas funções solicitadas, sem alterar o JSON ou inventar uma quinta área visual.
 - Não modificar nem recriar as imagens ou o arquivo original do Figma. A validação visual só poderá avançar quando as cinco imagens originais forem disponibilizadas para comparação, mantendo os arquivos intactos.
 - O Streamlit é acessado como painel web e conversa com o runtime do Ecossistema; não é desenhado nativamente sobre o gráfico MT5. A conexão funcional com MT5 deve ser validada no runtime DEMO antes do uso operacional.
 
