@@ -642,7 +642,7 @@ def show_fiscal() -> None:
             st.error("Resumo fiscal incompleto ou inválido. Os lançamentos e alterações de percentual ficam bloqueados até a leitura ser validada.")
     except Exception as exc:
         summary = {}
-        st.error(f"Resumo fiscal indisponível. Os lançamentos e alterações de percentual ficam bloqueados. {exc}")
+        st.error("Resumo fiscal indisponível. Os lançamentos e alterações de percentual ficam bloqueados. Verifique a disponibilidade do serviço e os registros técnicos locais.")
     st.subheader("Reserva Fiscal")
     st.caption("Planejamento e separação estimada. Operações MT5 cuja elegibilidade fiscal não foi verificada ficam em fila brasileira separada, sem cálculo e fora dos totais. Registros estrangeiros não classificados também ficam fora dos totais; nenhuma alíquota genérica é aplicada.")
     if not summary_available:
@@ -757,7 +757,7 @@ def show_fiscal() -> None:
             col.metric(label, money(item.get("reserve_amount_brl")))
             col.caption("Resultado: " + money(item.get("realized_result_brl")))
     except Exception as exc:
-        st.error(str(exc))
+        st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
         summary = {}
 
     with st.expander("Percentual de planejamento · Brasil day trade"):
@@ -771,7 +771,7 @@ def show_fiscal() -> None:
                 st.success("Percentual atualizado para novos registros. O histórico preserva o percentual usado em cada lançamento.")
                 st.rerun()
             except Exception as exc:
-                st.error(str(exc))
+                st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
 
     with st.expander("Registrar estimativa · Brasil day trade"):
         st.caption("Use somente se você puder confirmar os critérios abaixo. É uma estimativa de planejamento baseada na sua declaração; não valida o enquadramento nem confirma imposto devido. Se houver dúvida, registre na fila brasileira pendente.")
@@ -807,7 +807,7 @@ def show_fiscal() -> None:
                 st.success("Estimativa de planejamento registrada. Ela não representa imposto apurado ou devido.")
                 st.rerun()
             except Exception as exc:
-                st.error(str(exc))
+                st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
 
     st.markdown("#### Brasil · pendente de classificação")
     st.caption("Esta fila é separada do exterior. Guarda evidências brasileiras sem aplicar alíquota ou incluir valores na reserva.")
@@ -830,7 +830,7 @@ def show_fiscal() -> None:
             st.success("Pendência brasileira guardada separadamente. Nenhum cálculo foi realizado.")
             st.rerun()
         except Exception as exc:
-            st.error(str(exc))
+            st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
     try:
         if "domestic_pending_offset" not in st.session_state:
             st.session_state.domestic_pending_offset = 0
@@ -914,7 +914,7 @@ def show_fiscal() -> None:
                         st.success("Evidência guardada. A operação continua pendente, sem cálculo ou inclusão nos totais.")
                         st.rerun()
                     except Exception as exc:
-                        st.error(str(exc))
+                        st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
                 try:
                     review_data = api(
                         "/api/fiscal-reserve/domestic-pending/" + urllib.parse.quote(selected_pending_id) + "/reviews"
@@ -933,11 +933,11 @@ def show_fiscal() -> None:
                     else:
                         st.caption("Nenhuma evidência de revisão registrada para esta pendência.")
                 except Exception as exc:
-                    st.warning(f"Histórico de revisão indisponível. {exc}")
+                    st.warning("Histórico de revisão indisponível. Nenhuma alteração foi confirmada.")
         else:
             st.caption("Nenhuma pendência brasileira cadastrada.")
     except Exception as exc:
-        st.warning(f"Fila brasileira indisponível; nenhum registro foi incluído nos totais. {exc}")
+        st.warning("Fila brasileira indisponível; nenhum registro foi incluído nos totais. Verifique os registros técnicos locais.")
 
     st.markdown("#### Exterior · pendente de classificação")
     st.caption("O registro abaixo guarda evidências; não calcula imposto nem entra na reserva.")
@@ -977,7 +977,7 @@ def show_fiscal() -> None:
             st.success("Registro guardado como pendente. Nenhum cálculo foi feito.")
             st.rerun()
         except Exception as exc:
-            st.error(str(exc))
+            st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
 
     st.markdown("#### Resultado realizado no exterior")
     st.caption("Informe lucro positivo ou prejuízo negativo. O valor original fica pendente e não entra na reserva.")
@@ -1010,7 +1010,7 @@ def show_fiscal() -> None:
             st.success("Resultado guardado com o sinal original; continua fora dos totais.")
             st.rerun()
         except Exception as exc:
-            st.error(str(exc))
+            st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
 
 
     st.caption("Resultados estrangeiros com sinal original serão mantidos em pendência, fora dos totais até revisão.")
@@ -1115,7 +1115,7 @@ def show_fiscal() -> None:
                         st.success("Evidência guardada. A operação continua pendente, sem cálculo ou inclusão nos totais.")
                         st.rerun()
                     except Exception as exc:
-                        st.error(str(exc))
+                        st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
                 try:
                     foreign_review_data = api(
                         "/api/fiscal-reserve/pending/" + urllib.parse.quote(selected_foreign_pending_id) + "/reviews"
@@ -1136,11 +1136,11 @@ def show_fiscal() -> None:
                     else:
                         st.caption("Nenhuma evidência de revisão registrada para esta pendência.")
                 except Exception as exc:
-                    st.warning(f"Histórico de revisão estrangeira indisponível. {exc}")
+                    st.warning("Histórico de revisão estrangeira indisponível. Nenhuma alteração foi confirmada.")
         else:
             st.caption("Nenhuma pendência estrangeira cadastrada.")
     except Exception as exc:
-        st.warning(f"Fila estrangeira indisponível; nenhum registro foi incluído nos totais. {exc}")
+        st.warning("Fila estrangeira indisponível; nenhum registro foi incluído nos totais. Verifique os registros técnicos locais.")
 
     with st.expander("Prévia de negócios encerrados · MT5 DEMO"):
         lookback = st.number_input("Período de consulta (dias)", min_value=1, max_value=365, value=30, step=1)
@@ -1150,7 +1150,7 @@ def show_fiscal() -> None:
                 st.session_state.fiscal_mt5_preview = preview
                 st.session_state.fiscal_mt5_confirmed_tickets = set()
             except Exception as exc:
-                st.error(str(exc))
+                st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
 
         preview = st.session_state.get("fiscal_mt5_preview")
         if preview:
@@ -1182,7 +1182,7 @@ def show_fiscal() -> None:
                                     st.session_state.fiscal_mt5_confirmed_tickets = set(st.session_state.get("fiscal_mt5_confirmed_tickets", set())) | {ticket}
                                     st.rerun()
                                 except Exception as exc:
-                                    st.error(str(exc))
+                                    st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
                 else:
                     st.warning("A conta não está em BRL. As posições conciliadas podem ser guardadas somente como pendências, com moeda e resultado original; nenhum imposto ou conversão será calculado.")
                     for candidate in candidates:
@@ -1203,7 +1203,7 @@ def show_fiscal() -> None:
                                     st.success(f"Posição {ticket} guardada como pendência. Resultado original preservado; sem cálculo fiscal.")
                                     st.rerun()
                                 except Exception as exc:
-                                    st.error(str(exc))
+                                    st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
             else:
                 st.caption("Nenhuma posição elegível encontrada. Se houver posições retidas, consulte o motivo antes de qualquer lançamento.")
 
