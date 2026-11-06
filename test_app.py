@@ -102,6 +102,13 @@ def test_runtime_cycle_exposes_authoritative_cycle_lineage(monkeypatch):
     )
 
     assert status.startswith("200")
+    assert received == {
+        "symbol": "EURUSD",
+        "timeframe": "5m",
+        "limit": 20,
+        "amount": 0.01,
+        "duration_seconds": 60,
+    }
     assert data["runtime"]["cycle_id"] == "senior-cycle-001"
     assert data["runtime"]["request_id"] == "req-001"
     assert data["execution_allowed"] is False
