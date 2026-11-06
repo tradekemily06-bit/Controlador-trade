@@ -118,10 +118,21 @@ class ICMarketsMT5DemoAdapter:
     def _account_fingerprint(account: Any) -> str | None:
         """Return a stable pseudonymous key; never return the raw login or server."""
         login = getattr(account, "login", None)
+        login_text = str(login).strip() if login is not None else ""
         server = str(getattr(account, "server", "") or "").strip()
-        if login is None or not str(login).strip() or not server:
+        # MT5 account logins are positive numeric identifiers. Refuse partial or
+        # malformed identity rather than creating a weak, collision-prone key.
+        if (
+            not login_text.isascii()
+            or not login_text.isdigit()
+            or len(login_text) > 20
+            or int(login_text or "0") <= 0
+            or not server
+            or len(server) > 255
+            or any(ord(char) < 32 or ord(char) == 127 for char in server)
+        ):
             return None
-        raw = f"{server.casefold()}|{str(login).strip()}".encode("utf-8")
+        raw = f"{server.casefold()}|{login_text}".encode("utf-8")
         return hashlib.sha256(raw).hexdigest()[:32]
 
     @staticmethod
