@@ -186,6 +186,96 @@ class EcosystemStateStore:
             "payload_sha256": digest,
         }
 
+    def inspect_notification_quarantine(self, archive_id: str) -> dict[str, Any]:
+        """Verify an archived payload and report whether every record is restorable."""
+        if not isinstance(archive_id, str) or not archive_id.strip():
+            raise ValueError("archive_id inválido")
+        with self._lock, self._connect() as db:
+            row = db.execute(
+                "SELECT corruption_category, payload_sha256, raw_payload "
+                "FROM notification_history_quarantine WHERE archive_id = ?",
+                (archive_id.strip(),),
+            ).fetchone()
+        if row is None:
+            raise NotificationHistoryUnavailableError("arquivo de quarentena não encontrado")
+        category, expected_digest, raw_payload = row
+        payload_bytes = raw_payload if isinstance(raw_payload, bytes) else raw_payload.encode("utf-8") if isinstance(raw_payload, str) else None
+        if payload_bytes is None:
+            raise NotificationHistoryUnavailableError("payload arquivado possui formato não suportado")
+        actual_digest = hashlib.sha256(payload_bytes).hexdigest()
+        if actual_digest != expected_digest:
+            raise NotificationHistoryUnavailableError("integridade do arquivo de quarentena não confere")
+        try:
+            decoded = json.loads(payload_bytes)
+        except (json.JSONDecodeError, UnicodeDecodeError, TypeError) as exc:
+            raise NotificationHistoryUnavailableError("payload arquivado não contém JSON válido") from exc
+        if not isinstance(decoded, list):
+            raise NotificationHistoryUnavailableError("payload arquivado não contém uma lista de notificações")
+        from core.ecosystem_notifications import EcosystemNotificationCenter
+        center = EcosystemNotificationCenter()
+        center.restore(decoded)
+        if center.restore_had_invalid_records or len(center.all()) != len(decoded):
+            raise NotificationHistoryUnavailableError("arquivo contém notificações inválidas; restauração integral bloqueada")
+        normalized = [
+            {
+                "notification_id": item.notification_id,
+                "kind": item.kind.value,
+                "severity": item.severity.value,
+                "title": item.title,
+                "message": item.message,
+                "requires_attention": item.requires_attention,
+                "blocking": item.blocking,
+            }
+            for item in center.all()
+        ]
+        return {
+            "archive_id": archive_id.strip(),
+            "corruption_category": category,
+            "payload_sha256": actual_digest,
+            "notification_count": len(normalized),
+            "notifications": normalized,
+            "integrity_verified": True,
+            "fully_valid": True,
+        }
+
+    def restore_notifications_from_quarantine(
+        self, archive_id: str, *, confirmed: bool = False
+    ) -> dict[str, Any]:
+        """Restore only a fully verified archive, preserving the archive as evidence."""
+        if confirmed is not True:
+            raise ValueError("confirmação explícita é obrigatória para restaurar o histórico")
+        inspected = self.inspect_notification_quarantine(archive_id)
+        encoded = json.dumps(
+            inspected["notifications"],
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        with self._lock, self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            current = db.execute(
+                "SELECT value_json FROM ecosystem_state WHERE key = ?",
+                ("notifications",),
+            ).fetchone()
+            if current is None:
+                raise NotificationHistoryUnavailableError("histórico original ausente; restauração bloqueada")
+            raw_current = current[0]
+            current_bytes = raw_current if isinstance(raw_current, bytes) else raw_current.encode("utf-8") if isinstance(raw_current, str) else None
+            if current_bytes is None or hashlib.sha256(current_bytes).hexdigest() != inspected["payload_sha256"]:
+                raise NotificationHistoryUnavailableError(
+                    "histórico original mudou desde o arquivamento; restauração bloqueada"
+                )
+            db.execute(
+                "UPDATE ecosystem_state SET value_json = ? WHERE key = ?",
+                (encoded, "notifications"),
+            )
+        self._notifications_load_error = None
+        return {
+            "archive_id": inspected["archive_id"],
+            "restored_count": inspected["notification_count"],
+            "integrity_verified": True,
+            "archive_preserved": True,
+        }
+
     def save_notifications(self, notifications: list[dict[str, Any]]) -> None:
         # Preserve damaged evidence until an explicit recovery procedure has
         # inspected it. A routine publish must not silently replace corrupt data.
