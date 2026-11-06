@@ -241,8 +241,19 @@ class ConfiguredEcosystemService(EcosystemService):
 
     def run_mt5_cycle(self, *, symbol: str, timeframe: str = "5m", limit: int = 100, amount: float = 0.01, duration_seconds: int = 60, senior_context=None) -> Any:
         """Run one unified DEMO runtime cycle from live MT5 observations."""
-        if not isinstance(confirmed, bool) or not isinstance(filters_ok, bool):
-            raise ValueError("confirmed e filters_ok devem ser booleanos")
+        if not isinstance(symbol, str) or not symbol.strip():
+            raise ValueError("symbol é obrigatório")
+        if not isinstance(timeframe, str) or not timeframe.strip():
+            raise ValueError("timeframe é obrigatório")
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 20 <= limit <= 500:
+            raise ValueError("limit deve estar entre 20 e 500")
+        if not isinstance(amount, (int, float)) or isinstance(amount, bool):
+            raise ValueError("amount deve ser um número válido em lotes")
+        import math
+        if not math.isfinite(float(amount)) or float(amount) <= 0:
+            raise ValueError("amount deve ser finito e maior que zero")
+        if not isinstance(duration_seconds, int) or isinstance(duration_seconds, bool) or not 1 <= duration_seconds <= 86400:
+            raise ValueError("duration_seconds deve estar entre 1 e 86400")
         if self.trading_runtime is None or self.operational_runtime is None:
             raise RuntimeError("runtime operacional não conectado")
         if self.execution_provider != "ic_markets_mt5_demo":
