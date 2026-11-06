@@ -26,3 +26,19 @@ def test_trusted_identity_header_lookup_rejects_missing_or_non_string_values():
     assert trusted_identity_from_headers({}, "X-Auth-User") == ""
     assert trusted_identity_from_headers({"X-Auth-User": ["owner@example.com"]}, "X-Auth-User") == ""
     assert trusted_identity_from_headers({"X-Auth-User": "owner@example.com"}, "") == ""
+
+
+def test_trusted_identity_header_lookup_rejects_malformed_duplicate_even_with_valid_value():
+    headers = {
+        "X-Auth-User": "owner@example.com",
+        "x-auth-user": None,
+    }
+    assert trusted_identity_from_headers(headers, "X-Auth-User") == ""
+
+
+def test_trusted_identity_header_lookup_accepts_identical_duplicate_spellings():
+    headers = {
+        "X-Auth-User": " owner@example.com ",
+        "x-auth-user": "owner@example.com",
+    }
+    assert trusted_identity_from_headers(headers, "X-Auth-User") == "owner@example.com"
