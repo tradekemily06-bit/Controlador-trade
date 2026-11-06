@@ -1,3 +1,5 @@
+from threading import RLock
+
 from core.ecosystem_notifications import EcosystemNotificationCenter
 from core.ecosystem_state_store import NotificationHistoryUnavailableError
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
@@ -26,6 +28,7 @@ def _service_with_store(store):
     service = ConfiguredEcosystemService.__new__(ConfiguredEcosystemService)
     service.state_store = store
     service.notifications = EcosystemNotificationCenter()
+    service._notification_history_lock = RLock()
     return service
 
 
