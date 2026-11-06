@@ -16,6 +16,7 @@ from execution.execution_lifecycle import ExecutionLifecycleStore
 from execution.gateway import ExecutionGateway
 from execution.ports import ExecutionPort
 from execution.position_close_store import PositionCloseStore
+from execution.timed_exit_store import TimedExitStore
 from execution.paper import PaperExecutor
 
 
@@ -34,6 +35,7 @@ class OperationalRuntime:
     market_data: MarketDataRuntimeState
     automation_lifecycle: AutomationLifecycleStore
     position_closes: PositionCloseStore | None = None
+    timed_exits: TimedExitStore | None = None
 
 
 def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None) -> OperationalRuntime:
@@ -50,6 +52,7 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
     checkpoint = RuntimeCheckpointStore(root / "runtime-checkpoint.json")
     automation_lifecycle = AutomationLifecycleStore(root / "automation-lifecycle.json")
     position_closes = PositionCloseStore(root / "demo-position-closes.json")
+    timed_exits = TimedExitStore(root / "demo-timed-exits.json")
     memory = operational_recorder.memory
     recovery = RecoveryCoordinator(
         checkpoint_store=checkpoint,
@@ -84,4 +87,5 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         market_data=market_data,
         automation_lifecycle=automation_lifecycle,
         position_closes=position_closes,
+        timed_exits=timed_exits,
     )
