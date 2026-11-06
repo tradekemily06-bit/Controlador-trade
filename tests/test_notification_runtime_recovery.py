@@ -11,6 +11,10 @@ class _StateStore:
         self.notifications_load_error = load_error
         self.marked_unavailable = []
         self.restored = []
+        self.saved = []
+
+    def save_notifications(self, items):
+        self.saved.append(items)
 
     def restore_notifications_from_quarantine(self, archive_id, *, confirmed=False):
         self.restored.append((archive_id, confirmed))
@@ -80,3 +84,14 @@ def test_recovery_keeps_history_unavailable_when_reload_reports_storage_error():
 
     assert service.notifications is original_center
     assert [item.notification_id for item in service.notifications.all()] == ["existing-1"]
+
+
+def test_publish_uses_unique_id_after_recovered_history():
+    items = [{"notification_id": "event-2", "kind": "SECURITY", "severity": "CRITICAL", "title": "Recuperado", "message": "Histórico", "requires_attention": True, "blocking": True}]
+    store = _StateStore(items)
+    service = _service_with_store(store)
+    service.notifications.restore(items)
+    published = service.publish_material_event("RISK", "Novo", "Após recuperação", critical=True)
+    assert published["notification_id"] != "event-2"
+    assert published["notification_id"].startswith("event-")
+    assert len({item["notification_id"] for item in store.saved[-1]}) == 2
