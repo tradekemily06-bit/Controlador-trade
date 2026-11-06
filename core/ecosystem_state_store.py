@@ -51,7 +51,7 @@ class EcosystemStateStore:
             ).fetchone()
         return None if row is None else json.loads(row[0])
 
-    def save(self, key: str, value: Any) -> None:
+    def _write_state(self, key: str, value: Any) -> None:
         encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=lambda item: item.value if isinstance(item, Enum) else str(item))
         with self._lock, self._connect() as db:
             db.execute(
@@ -62,6 +62,14 @@ class EcosystemStateStore:
                 """,
                 (key, encoded),
             )
+
+    def save(self, key: str, value: Any) -> None:
+        # Notification history has a dedicated guarded writer. Keeping the
+        # generic state API from writing that key prevents bypassing corruption
+        # protection after a damaged history has been detected.
+        if key == "notifications":
+            raise ValueError("use save_notifications para persistir o histórico")
+        self._write_state(key, value)
 
     def load_learning(self) -> dict[str, Any] | None:
         value = self.load("learning")
@@ -117,7 +125,7 @@ class EcosystemStateStore:
                 "histórico de notificações exige recuperação explícita antes de nova gravação"
             )
         try:
-            self.save("notifications", notifications)
+            self._write_state("notifications", notifications)
         except sqlite3.Error as exc:
             raise NotificationHistoryUnavailableError(
                 "persistência do histórico de notificações indisponível"
