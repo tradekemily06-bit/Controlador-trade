@@ -38,6 +38,25 @@ def _has_composite_review_foreign_key(db: sqlite3.Connection) -> bool:
     return False
 
 
+def _has_composite_foreign_key(db: sqlite3.Connection, child: str, parent: str, pairs: tuple[tuple[str, str], ...]) -> bool:
+    grouped: dict[int, list[sqlite3.Row]] = {}
+    for row in db.execute(f'PRAGMA foreign_key_list("{child}")').fetchall():
+        grouped.setdefault(int(row["id"]), []).append(row)
+    for rows in grouped.values():
+        ordered = sorted(rows, key=lambda row: int(row["seq"]))
+        if len(ordered) == len(pairs) and ordered[0]["table"] == parent:
+            if tuple((row["from"], row["to"]) for row in ordered) == pairs:
+                return True
+    return False
+
+
+def _domestic_schema_constraints_valid(db: sqlite3.Connection) -> bool:
+    return (
+        _has_unique_index(db, "fiscal_reserve_pending_domestic", ("owner_id", "reference"))
+        and _has_unique_index(db, "fiscal_reserve_pending_domestic", ("owner_id", "pending_id"))
+        and _has_composite_foreign_key(db, "fiscal_domestic_pending_reviews", "fiscal_reserve_pending_domestic", (("owner_id", "owner_id"), ("pending_id", "pending_id")))
+    )
+
 def _owner_schema_constraints_valid(db: sqlite3.Connection) -> bool:
     return (
         _has_unique_index(db, "fiscal_reserve_settings", ("owner_id", "category"))
@@ -123,6 +142,14 @@ def migrate_fiscal_schema(database_path: str) -> str:
             ).fetchall()}
             if review_owners and review_owners != {owner_id}:
                 raise RuntimeError("A identidade fiscal configurada não corresponde às revisões brasileiras; migração automática bloqueada.")
+        domestic_tables_present = {
+            "fiscal_reserve_pending_domestic", "fiscal_domestic_pending_reviews"
+        }.issubset(existing)
+        if domestic_tables_present and not _domestic_schema_constraints_valid(db):
+            raise RuntimeError(
+                "Esquema da fila brasileira pendente inválido: restrições de proprietário ou "
+                "chave estrangeira composta ausentes; acesso bloqueado para preservar os dados."
+            )
         if all(table in existing for table in TABLES):
             owner_columns = {
                 table: {row["name"] for row in db.execute(f'PRAGMA table_info("{table}")')}
