@@ -115,6 +115,7 @@ def test_runtime_cycle_exposes_authoritative_cycle_lineage(monkeypatch):
     assert data["runtime"]["position_close_policy"] == "MANUAL_EXPLICIT"
     assert data["runtime"]["duration_seconds_applied"] is False
     assert data["runtime"]["timed_exit"]["state"] == "NOT_APPLICABLE"
+    assert data["runtime"]["timed_exit_scheduled"] is False
     assert data["execution_allowed"] is False
 
 
