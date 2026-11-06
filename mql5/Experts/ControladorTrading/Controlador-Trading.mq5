@@ -11,6 +11,7 @@ input int    InpPanelHeight = 440;
 string P="CTP_";
 string last_cycle_id="";
 string last_external_id="";
+bool cycle_identity_store_valid=true;
 string active_view="COCKPIT";
 string selected_mode="DEMO";
 bool leverage_enabled=false;
@@ -30,28 +31,45 @@ double panel_sy=1.0;
 string CycleIdentityFileName(){
    return P+"cycle-"+IntegerToString(ChartID())+".txt";
 }
-void PersistCycleIdentity(){
-   if(last_cycle_id=="" || last_external_id=="") return;
+bool PersistCycleIdentity(){
+   if(last_cycle_id=="" || last_external_id=="") return false;
+   string payload=last_cycle_id+"\r\n"+last_external_id;
    int handle=FileOpen(CycleIdentityFileName(),FILE_WRITE|FILE_TXT|FILE_ANSI);
-   if(handle==INVALID_HANDLE) return;
-   FileWriteString(handle,last_cycle_id+"\r\n"+last_external_id);
+   if(handle==INVALID_HANDLE){
+      cycle_identity_store_valid=false;
+      Print("Controlador: falha ao abrir arquivo local de identidade do ciclo.");
+      return false;
+   }
+   uint written=FileWriteString(handle,payload);
    FileClose(handle);
+   cycle_identity_store_valid=(written==(uint)StringLen(payload));
+   if(!cycle_identity_store_valid) Print("Controlador: identidade do ciclo não foi persistida integralmente.");
+   return cycle_identity_store_valid;
 }
 void LoadCycleIdentity(){
+   if(!FileIsExist(CycleIdentityFileName())) return;
    int handle=FileOpen(CycleIdentityFileName(),FILE_READ|FILE_TXT|FILE_ANSI);
-   if(handle==INVALID_HANDLE) return;
+   if(handle==INVALID_HANDLE){
+      cycle_identity_store_valid=false;
+      Print("Controlador: arquivo de identidade do ciclo existe, mas não pôde ser lido.");
+      return;
+   }
    string cycle_id=FileReadString(handle);
    string external_id=FileReadString(handle);
    FileClose(handle);
    if(cycle_id!="" && external_id!=""){
       last_cycle_id=cycle_id;
       last_external_id=external_id;
+   }else{
+      cycle_identity_store_valid=false;
+      Print("Controlador: arquivo de identidade do ciclo está incompleto; novas execuções bloqueadas.");
    }
 }
 void ClearCycleIdentity(){
    last_cycle_id="";
    last_external_id="";
    FileDelete(CycleIdentityFileName());
+   cycle_identity_store_valid=!FileIsExist(CycleIdentityFileName());
 }
 
 string Obj(string suffix){ return P+suffix; }
@@ -590,6 +608,10 @@ void Analyze(bool render=true){
    ChartRedraw();
 }
 void RunCycle(){
+   if(!cycle_identity_store_valid){
+      SetLabel(Obj("INFO1"),"Arquivo de ciclo indisponivel; novas execucoes bloqueadas.",20,361,9,C'255,118,118');
+      return;
+   }
    if(last_cycle_id!="" && last_external_id!=""){
       SetLabel(Obj("INFO1"),"Feche/reconcilie a posicao DEMO atual antes de novo ciclo.",20,361,9,C'255,209,102');
       return;
