@@ -206,6 +206,8 @@ def test_notification_quarantine_preserves_exact_payload_without_repairing(tmp_p
         )
 
     store.load_notifications()
+    # The notification center detects invalid enum/field values during restore.
+    store.mark_notifications_unavailable("invalid_records")
     archive = store.archive_notifications_for_recovery(confirmed=True)
 
     assert archive["corruption_category"] == "invalid_records"
