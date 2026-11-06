@@ -25,10 +25,21 @@ def configured_fiscal_owner_id() -> str:
     single-user identity intentionally resolve to the same key. The raw
     configured identity is never persisted in fiscal tables.
     """
-    configured = os.getenv(_ENV_NAME, "").strip().casefold()
+    raw_configured = os.getenv(_ENV_NAME, "")
+    if not isinstance(raw_configured, str):
+        raise FiscalOwnerIdentityError(f"{_ENV_NAME} possui formato inválido")
+    configured = raw_configured.strip()
     if not configured:
         raise FiscalOwnerIdentityError(
             f"{_ENV_NAME} precisa estar configurada antes de acessar ou migrar dados fiscais"
         )
+    if len(configured) > 320 or any(
+        ord(character) < 32 or ord(character) == 127
+        for character in configured
+    ):
+        raise FiscalOwnerIdentityError(
+            f"{_ENV_NAME} possui formato inválido; use até 320 caracteres sem controles"
+        )
+    configured = configured.casefold()
     digest = hashlib.sha256(_DOMAIN_SEPARATOR + configured.encode("utf-8")).hexdigest()
     return f"single:{digest}"
