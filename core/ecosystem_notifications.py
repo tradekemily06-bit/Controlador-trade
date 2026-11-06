@@ -52,8 +52,7 @@ class EcosystemNotificationCenter:
 
     def __init__(self) -> None:
         self._notifications: list[EcosystemNotification] = []
-
-
+        self._restore_had_invalid_records = False
 
     def restore(self, items: list[dict]) -> None:
         """Restore persisted notifications; invalid records are ignored safely."""
