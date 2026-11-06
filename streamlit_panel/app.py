@@ -407,6 +407,52 @@ def _valid_review_history(data: Any) -> bool:
     return True
 
 
+
+def _valid_fiscal_history_page(summary: Any, expected_offset: int, page_size: int = 50) -> bool:
+    """Reject malformed fiscal ledger rows and pagination metadata before display."""
+    if not isinstance(summary, dict):
+        return False
+    history = summary.get("history")
+    page = summary.get("history_page")
+    if not isinstance(history, list) or not isinstance(page, dict):
+        return False
+    total, limit, offset = page.get("total"), page.get("limit"), page.get("offset")
+    returned, has_more = page.get("returned"), page.get("has_more")
+    if (isinstance(total, bool) or not isinstance(total, int) or not 0 <= total <= 1_000_000_000
+            or isinstance(limit, bool) or limit != page_size
+            or isinstance(offset, bool) or not isinstance(offset, int) or offset != expected_offset
+            or isinstance(returned, bool) or not isinstance(returned, int) or returned != len(history)
+            or not isinstance(has_more, bool) or has_more is not (offset + returned < total)
+            or len(history) > page_size or offset > total or (offset == total and history)):
+        return False
+    seen_ids = set()
+    for item in history:
+        if not isinstance(item, dict) or "owner_id" in item:
+            return False
+        entry_id = item.get("entry_id")
+        category = item.get("category")
+        reference = item.get("reference")
+        occurred_on = item.get("occurred_on")
+        if not isinstance(entry_id, str) or not entry_id.strip() or entry_id in seen_ids:
+            return False
+        if not isinstance(category, str) or not category.strip():
+            return False
+        if not isinstance(reference, str) or not reference.strip() or len(reference) > 160:
+            return False
+        if not isinstance(occurred_on, str) or len(occurred_on) != 10:
+            return False
+        try:
+            if date.fromisoformat(occurred_on).isoformat() != occurred_on:
+                return False
+        except ValueError:
+            return False
+        notes = item.get("notes")
+        if notes is not None and not isinstance(notes, str):
+            return False
+        seen_ids.add(entry_id)
+    return True
+
+
 def _valid_fiscal_summary(summary: Any) -> bool:
     """Enable fiscal writes only when every required aggregate is structurally valid."""
     if not isinstance(summary, dict):
@@ -571,7 +617,16 @@ def show_fiscal() -> None:
     summary_available = False
     try:
         summary = api("/api/fiscal-reserve?limit=50&offset=" + str(int(st.session_state.fiscal_history_offset)))
-        summary_available = _valid_fiscal_summary(summary)
+        summary_available = (
+            _valid_fiscal_summary(summary)
+            and _valid_fiscal_history_page(summary, int(st.session_state.fiscal_history_offset))
+        )
+        if summary_available:
+            page = summary["history_page"]
+            recovered_offset = _recovered_pending_offset(page["total"], int(st.session_state.fiscal_history_offset))
+            if recovered_offset != st.session_state.fiscal_history_offset:
+                st.session_state.fiscal_history_offset = recovered_offset
+                st.rerun()
         if not summary_available:
             st.error("Resumo fiscal incompleto ou inválido. Os lançamentos e alterações de percentual ficam bloqueados até a leitura ser validada.")
     except Exception as exc:
