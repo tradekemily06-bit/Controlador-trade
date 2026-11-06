@@ -15,6 +15,39 @@ TABLES = (
 )
 
 
+def _has_unique_index(db: sqlite3.Connection, table: str, columns: tuple[str, ...]) -> bool:
+    """Return whether an exact ordered UNIQUE index/primary key exists."""
+    for index in db.execute(f'PRAGMA index_list("{table}")').fetchall():
+        if not index["unique"]:
+            continue
+        indexed_columns = tuple(row["name"] for row in db.execute(f'PRAGMA index_info("{index["name"]}")').fetchall())
+        if indexed_columns == columns:
+            return True
+    return False
+
+
+def _has_composite_review_foreign_key(db: sqlite3.Connection) -> bool:
+    grouped: dict[int, list[sqlite3.Row]] = {}
+    for row in db.execute('PRAGMA foreign_key_list("fiscal_pending_reviews")').fetchall():
+        grouped.setdefault(int(row["id"]), []).append(row)
+    for rows in grouped.values():
+        ordered = sorted(rows, key=lambda row: int(row["seq"]))
+        if (len(ordered) == 2 and ordered[0]["table"] == "fiscal_reserve_pending_foreign"
+            and [(row["from"], row["to"]) for row in ordered] == [("owner_id", "owner_id"), ("pending_id", "pending_id")]):
+            return True
+    return False
+
+
+def _owner_schema_constraints_valid(db: sqlite3.Connection) -> bool:
+    return (
+        _has_unique_index(db, "fiscal_reserve_settings", ("owner_id", "category"))
+        and _has_unique_index(db, "fiscal_reserve_entries", ("owner_id", "category", "reference"))
+        and _has_unique_index(db, "fiscal_reserve_pending_foreign", ("owner_id", "pending_id"))
+        and _has_unique_index(db, "fiscal_reserve_pending_foreign", ("owner_id", "reference"))
+        and _has_composite_review_foreign_key(db)
+    )
+
+
 def migrate_fiscal_schema(database_path: str) -> str:
     """Migrate all four fiscal tables in one transaction; abort if owner is unset.
 
@@ -96,6 +129,8 @@ def migrate_fiscal_schema(database_path: str) -> str:
                 for table in TABLES
             }
             if all("owner_id" in columns for columns in owner_columns.values()):
+                # owner_id columns alone do not guarantee owner-scoped uniqueness or review linkage.
+                constraints_valid = _owner_schema_constraints_valid(db)
                 pending_columns = owner_columns["fiscal_reserve_pending_foreign"]
                 if "original_result" not in pending_columns:
                     db.execute("ALTER TABLE fiscal_reserve_pending_foreign ADD COLUMN original_result REAL")
@@ -139,8 +174,10 @@ def migrate_fiscal_schema(database_path: str) -> str:
                     raise RuntimeError(
                         "Migração fiscal interrompida: integridade referencial inválida no esquema existente"
                     )
-                db.commit()
-                return owner_id
+                if constraints_valid:
+                    db.commit()
+                    return owner_id
+                # Rebuild atomically when owner-scoped constraints are incomplete.
 
         # Capture the old layouts before replacing anything. A missing table is
         # treated as an empty table, which supports clean first-time installs.
