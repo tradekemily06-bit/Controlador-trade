@@ -42,3 +42,27 @@ def test_trusted_identity_header_lookup_accepts_identical_duplicate_spellings():
         "x-auth-user": "owner@example.com",
     }
     assert trusted_identity_from_headers(headers, "X-Auth-User") == "owner@example.com"
+
+
+def test_trusted_identity_ignores_unconfigured_forwarding_and_auth_aliases():
+    headers = {
+        "X-Forwarded-Email": "attacker@example.com",
+        "X-Auth-Request-Email": "attacker@example.com",
+        "Remote-User": "attacker@example.com",
+        "Authorization": "Bearer attacker-token",
+    }
+    assert trusted_identity_from_headers(
+        headers, "Cf-Access-Authenticated-User-Email"
+    ) == ""
+
+
+def test_trusted_identity_uses_only_the_exact_configured_header():
+    headers = {
+        "Cf-Access-Authenticated-User-Email": "owner@example.com",
+        "X-Forwarded-Email": "attacker@example.com",
+        "X-Auth-Request-Email": "attacker@example.com",
+        "Remote-User": "attacker@example.com",
+    }
+    assert trusted_identity_from_headers(
+        headers, "Cf-Access-Authenticated-User-Email"
+    ) == "owner@example.com"
