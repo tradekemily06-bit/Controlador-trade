@@ -298,7 +298,7 @@ def test_provider_configuration_failure_preserves_persisted_conversation_id(monk
     assistant = _assistant(store, completion, monkeypatch)
 
     def unavailable_client():
-        raise AssistantUnavailableError("Assistente não configurado: chave OpenAI ausente no servidor.")
+        raise AssistantUnavailableError("Assistente não configurado: chave OpenAI ausente no servidor.", conversation_id="unrelated-conversation")
 
     monkeypatch.setattr(assistant, "_client", unavailable_client)
 
