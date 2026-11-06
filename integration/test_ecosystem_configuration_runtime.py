@@ -788,3 +788,65 @@ def test_demo_open_position_is_rechecked_again_before_timed_close(tmp_path):
     assert runtime.position_closes.get("request-demo-1").state.value == "CLOSED"
 
 
+
+
+def test_timed_exit_worker_does_not_mark_closed_when_close_is_not_confirmed(tmp_path):
+    from datetime import timezone
+    from execution.ports import ExecutionResult
+    from execution.timed_exit_worker import TimedExitWorker
+
+    service, runtime = _service_with_accepted_demo_position(tmp_path)
+    runtime.timed_exits.schedule(
+        request_id="request-demo-1",
+        cycle_id="cycle-demo-1",
+        external_id="123456",
+        account_fingerprint="a" * 32,
+        delay_seconds=1,
+        now=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+
+    class FakeService:
+        def reconcile_mt5_position_close(self, *, cycle_id, external_id):
+            return {"state": "OPEN"}
+
+        def close_mt5_position(self, *, cycle_id, external_id):
+            return ExecutionResult(False, "MT5 não confirmou o fechamento", None)
+
+    worker = TimedExitWorker(FakeService(), runtime)
+    assert worker.run_once() == 1
+    record = runtime.timed_exits.record_for("request-demo-1")
+    assert record.state == "SCHEDULED"
+    assert record.attempts == 1
+    assert "não confirmou" in record.message
+
+
+def test_timed_exit_worker_marks_closed_from_broker_observation_without_sending_close(tmp_path):
+    from datetime import timezone
+    from execution.timed_exit_worker import TimedExitWorker
+
+    service, runtime = _service_with_accepted_demo_position(tmp_path)
+    runtime.timed_exits.schedule(
+        request_id="request-demo-1",
+        cycle_id="cycle-demo-1",
+        external_id="123456",
+        account_fingerprint="a" * 32,
+        delay_seconds=1,
+        now=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    calls = []
+
+    class FakeService:
+        def reconcile_mt5_position_close(self, *, cycle_id, external_id):
+            calls.append("reconcile")
+            return {"state": "CLOSED"}
+
+        def close_mt5_position(self, *, cycle_id, external_id):
+            calls.append("close")
+            raise AssertionError("broker already confirmed CLOSED; no close order may be sent")
+
+    worker = TimedExitWorker(FakeService(), runtime)
+    assert worker.run_once() == 1
+    assert calls == ["reconcile"]
+    assert runtime.timed_exits.record_for("request-demo-1").state == "CLOSED"
+
+
