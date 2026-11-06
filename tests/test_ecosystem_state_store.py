@@ -227,3 +227,40 @@ def test_notification_quarantine_preserves_exact_payload_without_repairing(tmp_p
 
     assert original == raw
     assert archived == (raw, archive["payload_sha256"], "invalid_records")
+
+
+def test_notification_quarantine_can_preserve_payload_after_transient_read_failure(tmp_path, monkeypatch):
+    import sqlite3
+
+    path = tmp_path / "notification-quarantine-read-failure.sqlite3"
+    store = EcosystemStateStore(path)
+    raw = '[{"notification_id":"original"}]'
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "INSERT INTO ecosystem_state(key, value_json) VALUES (?, ?)",
+            ("notifications", raw),
+        )
+
+    def fail_read(_key):
+        raise sqlite3.OperationalError("temporary read failure")
+
+    monkeypatch.setattr(store, "load", fail_read)
+    assert store.load_notifications() == []
+    assert store.notifications_load_error == "read_failed"
+
+    archive = store.archive_notifications_for_recovery(confirmed=True)
+    assert archive["corruption_category"] == "read_failed"
+
+    with sqlite3.connect(path) as db:
+        original = db.execute(
+            "SELECT value_json FROM ecosystem_state WHERE key = ?",
+            ("notifications",),
+        ).fetchone()[0]
+        archived = db.execute(
+            "SELECT raw_payload FROM notification_history_quarantine WHERE archive_id = ?",
+            (archive["archive_id"],),
+        ).fetchone()[0]
+
+    assert original == raw
+    assert archived == raw
+    assert store.notifications_load_error == "read_failed"
