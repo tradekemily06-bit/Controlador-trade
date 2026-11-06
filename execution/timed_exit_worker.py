@@ -22,8 +22,16 @@ class TimedExitWorker:
         if self._thread is not None and self._thread.is_alive():
             return
         self._stop.clear()
-        self._thread = Thread(target=self._run, name="controlador-demo-timed-exit", daemon=True)
-        self._thread.start()
+        thread = Thread(target=self._run, name="controlador-demo-timed-exit", daemon=True)
+        self._thread = thread
+        try:
+            thread.start()
+        except BaseException:
+            # A failed Thread.start() must not leave an unstarted Thread object
+            # behind: stop() cannot join a thread that never started.
+            self._thread = None
+            self._stop.set()
+            raise
 
     def stop(self, timeout: float = 5.0) -> None:
         self._stop.set()
