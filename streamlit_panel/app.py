@@ -15,7 +15,6 @@ from typing import Any
 
 import streamlit as st
 
-from presentation import closed_panel_signal
 from trusted_identity import trusted_identity_from_headers
 
 ROOT = Path(__file__).resolve().parent
@@ -55,7 +54,7 @@ st.set_page_config(page_title="Controlador-Trader · Streamlit", page_icon="C", 
 st.markdown("""
 <style>
 :root { color-scheme: dark; }
-.stApp { background: #080B0F; color: #E9EEF3; }
+.stApp { background: #080B0F; color: #E9EEF3; background-image: linear-gradient(rgb(255 255 255 / .025) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / .025) 1px, transparent 1px); background-size: 3rem 3rem; }
 [data-testid="stHeader"] { background: transparent; }
 .block-container { width: 100%; max-width: none; padding: 1rem clamp(.75rem, 2vw, 1.5rem) 6rem; }
 .st-key-panel-toggle { position: relative; width: max-content; max-width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 2rem 0 1rem; }
@@ -64,7 +63,15 @@ st.markdown("""
 .st-key-control-hub-shell { width: min(100%, 980px); margin: 1rem auto 2rem; padding: clamp(1rem, 2vw, 1.5rem); background: #10151B; border: 1px solid #25303B; border-radius: 24px; }
 .st-key-control-hub-shell .hub-title { color: #E9EEF3; font-size: 1.35rem; font-weight: 800; padding: .35rem 0 .9rem; }
 .st-key-control-hub-shell .demo-pill-wrap { display: flex; justify-content: flex-end; padding-top: .3rem; }
-.st-key-control-hub-shell [data-testid="stRadio"] [role="radiogroup"] { gap: .5rem; }
+.st-key-control-hub-shell .system-state-value { color: #7F8B97; text-align: right; font-size: .78rem; font-weight: 800; }
+.st-key-control-hub-shell .st-key-main_area_navigation [role="radiogroup"] { display: flex; flex-wrap: wrap; gap: .4rem; padding: .35rem 0 .65rem; border-bottom: 1px solid #25303B; }
+.st-key-control-hub-shell .st-key-main_area_navigation [role="radiogroup"] label { flex: 1 1 7rem; justify-content: center; text-align: center; border-color: transparent; background: transparent; }
+.st-key-control-hub-shell .st-key-main_area_navigation [role="radiogroup"] label p { font-size: .72rem; font-weight: 800; }
+.st-key-control-hub-shell .st-key-module_navigation [role="radiogroup"] { display: flex; flex-direction: column; gap: .45rem; }
+.st-key-control-hub-shell .st-key-module_navigation [role="radiogroup"] label { width: 100%; display: flex; align-items: center; justify-content: space-between; border: 1px solid transparent; border-radius: 12px; background: #161C24; padding: .85rem 1rem; min-height: 58px; }
+.st-key-control-hub-shell .st-key-module_navigation [role="radiogroup"] label::after { content: "›"; color: #7F8B97; font-size: 1.3rem; margin-left: auto; }
+.st-key-control-hub-shell .st-key-module_navigation [role="radiogroup"] label p { color: #E9EEF3; font-size: .9rem; font-weight: 500; }
+.st-key-control-hub-shell .st-key-module_navigation [role="radiogroup"] label:has(input:checked) { border-color: #25303B; background: #1A222B; }
 .st-key-control-hub-shell [data-testid="stRadio"] label { background: #161C24; border: 1px solid #202A34; border-radius: 12px; padding: .65rem .8rem; min-height: 48px; }
 .st-key-control-hub-shell [data-testid="stRadio"] label p { color: #E9EEF3; font-weight: 600; }
 .st-key-control-hub-shell [data-testid="stRadio"] [role="radiogroup"] label:has(input:checked) { border-color: #46D6AD; background: #1A292B; }
@@ -2613,10 +2620,11 @@ with st.container(key="control-hub-shell"):
         mode_state = str(runtime_status.get("mode") or "UNKNOWN").upper()
         real_state = str(runtime_status.get("real") or "DESABILITADO").upper()
         health_label = {"OK": "SISTEMA ONLINE", "WARNING": "ATENÇÃO", "CRITICAL": "INDISPONÍVEL"}.get(health_state, "INDISPONÍVEL")
-        status_cols = st.columns(3)
-        status_cols[0].metric("Saúde do sistema", health_label)
-        status_cols[1].metric("Modo", mode_state)
-        status_cols[2].metric("MT5 DEMO", mt5_state)
+        state_left, state_right = st.columns([3, 1])
+        with state_left:
+            st.caption("Estado do sistema")
+        with state_right:
+            st.markdown(f'<div class="system-state-value">{health_label}</div>', unsafe_allow_html=True)
         if runtime_status.get("execution_allowed") is not False or real_state not in {"DESABILITADO", "DISABLED"}:
             st.error("Estado de segurança inesperado. Operações bloqueadas na interface; verifique o runtime antes de continuar.")
         if runtime_status.get("alerts"):
@@ -2628,7 +2636,7 @@ with st.container(key="control-hub-shell"):
 
     leverage_left, leverage_right = st.columns([3, 1])
     with leverage_left:
-        st.caption("REAL — DESABILITADO")
+        st.button("REAL — DESABILITADO", key="real_mode_disabled", disabled=True, use_container_width=True)
         st.caption("Execução REAL permanece bloqueada.")
     with leverage_right:
         if "leverage_enabled" not in st.session_state:
