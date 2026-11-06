@@ -331,6 +331,26 @@ def test_streamlit_uses_non_overlapping_c_toggle_in_open_and_closed_states():
     assert 'key="main_area_navigation"' in source
     assert 'key="module_navigation"' in source
 
+def test_closed_panel_signal_helper_validates_signal_and_score_bands():
+    helper_path = PANEL_DIR / "presentation.py"
+    helper_source = helper_path.read_text(encoding="utf-8")
+    tree = ast.parse(helper_source)
+    function = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "closed_panel_signal"
+    )
+    namespace = {"Any": Any}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), str(helper_path), "exec"), namespace)
+    render = namespace["closed_panel_signal"]
+
+    assert render({"signal": "BUY", "analysis": {"score": 69}}) == ("↑ COMPRAR", "69% · FRACA", "#46D6AD")
+    assert render({"signal": "SELL", "analysis": {"score": 70}}) == ("↓ VENDER", "70% · MODERADA", "#FF667A")
+    assert render({"signal": "WAIT", "analysis": {"score": 80}}) == ("AGUARDAR", "80% · FORTE", "#E8C66A")
+    assert render({"signal": "BUY", "analysis": {"score": 0}}) == ("INDISPONÍVEL", "—", "#7F8B97")
+    assert render({"signal": "UNKNOWN", "analysis": {"score": 99}}) == ("INDISPONÍVEL", "—", "#7F8B97")
+    assert render({"signal": "BUY", "analysis": {"score": True}}) == ("INDISPONÍVEL", "—", "#7F8B97")
+
+
 def test_streamlit_closed_panel_shows_signal_score_and_system_availability():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     start = source.index("if not st.session_state.panel_open:")
