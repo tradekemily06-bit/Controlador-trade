@@ -423,7 +423,7 @@ def _valid_fiscal_history_page(summary: Any, expected_offset: int, page_size: in
             or isinstance(offset, bool) or not isinstance(offset, int) or offset != expected_offset
             or isinstance(returned, bool) or not isinstance(returned, int) or returned != len(history)
             or not isinstance(has_more, bool) or has_more is not (offset + returned < total)
-            or len(history) > page_size or offset > total or (offset == total and history)):
+            or len(history) > page_size or (offset >= total and history)):
         return False
     seen_ids = set()
     for item in history:
