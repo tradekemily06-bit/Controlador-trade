@@ -50,7 +50,7 @@ def test_fiscal_api_rejects_malformed_trusted_identity_before_schema_or_store_ac
             "/api/fiscal-reserve",
             identity=malformed_identity,
         )
-        assert status.startswith(("401", "403"))
+        assert status.startswith("401")
         assert "total_reserved_brl" not in body
 
 
