@@ -843,3 +843,24 @@ def test_permission_error_response_does_not_expose_internal_exception_details(
     assert private_detail not in json.dumps(body)
     assert "fiscal.sqlite3" not in json.dumps(body)
     assert "secret_column" not in json.dumps(body)
+
+
+def test_fiscal_history_api_rejects_offsets_outside_supported_range(tmp_path, monkeypatch):
+    database = tmp_path / "fiscal-history-offset.sqlite3"
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "X-Auth-User")
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", database)
+    monkeypatch.setattr(app_module.SECURITY, "allow", lambda environ: True)
+    monkeypatch.setattr(app_module.SECURITY, "headers", lambda request_id, **kwargs: [])
+    monkeypatch.setattr(app_module, "_audit", lambda *args, **kwargs: None)
+    owner_id = migrate_fiscal_schema(str(database))
+    reserve = FiscalReserve(str(database))
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE", reserve)
+
+    for offset in ("-1", "1000000001", "9223372036854775808"):
+        status, response = _request("/api/fiscal-reserve", query=f"limit=50&offset={offset}")
+        assert status.startswith("400")
+        assert response["error"] == "Entrada inválida"
+        assert "history" not in response
+    assert reserve.summary(owner_id)["history_page"]["total"] == 0
