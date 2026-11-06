@@ -442,3 +442,32 @@ def test_migration_fails_closed_on_malformed_domestic_queue_constraints(tmp_path
             "SELECT owner_id,reference FROM fiscal_reserve_pending_domestic WHERE pending_id='br-p1'"
         ).fetchone()
         assert row == (owner, "BR-KEEP-001")
+
+
+def test_migration_fails_closed_when_only_one_domestic_queue_table_exists(tmp_path, monkeypatch):
+    from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
+
+    path = str(tmp_path / "partial-domestic.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "partial-domestic-owner")
+    queue = FiscalDomesticPendingQueue(path)
+    owner = migrate_fiscal_schema(path)
+    queue.add(owner, {
+        "reference": "BR-PARTIAL-KEEP",
+        "instrument": "ETF",
+        "occurred_on": "2026-11-05",
+    })
+
+    # Simulate an interrupted/manual schema change that removed only the
+    # review table while leaving the owner-scoped pending records in place.
+    with sqlite3.connect(path) as db:
+        db.execute("DROP TABLE fiscal_domestic_pending_reviews")
+
+    with pytest.raises(RuntimeError, match="Esquema da fila brasileira pendente incompleto"):
+        migrate_fiscal_schema(path)
+
+    with sqlite3.connect(path) as db:
+        row = db.execute(
+            "SELECT owner_id,reference FROM fiscal_reserve_pending_domestic "
+            "WHERE reference='BR-PARTIAL-KEEP'"
+        ).fetchone()
+        assert row == (owner, "BR-PARTIAL-KEEP")
