@@ -67,6 +67,7 @@ class TimedExitWorker:
                     store.retry_later(
                         schedule.request_id,
                         message=f"estado MT5 inconclusivo ({state}); nova consulta somente leitura será tentada",
+                        delay_seconds=30,
                     )
                     continue
 
@@ -83,12 +84,14 @@ class TimedExitWorker:
                     store.retry_later(
                         schedule.request_id,
                         message=f"fechamento não confirmado: {getattr(close_result, 'message', 'resultado desconhecido')}",
+                        delay_seconds=30,
                     )
             except Exception as exc:
                 try:
                     store.retry_later(
                         schedule.request_id,
                         message=f"saída temporizada inconclusiva ({type(exc).__name__}); reconciliação será repetida",
+                        delay_seconds=30,
                     )
                 except Exception:
                     # Preserve the worker: the persistent schedule remains due
