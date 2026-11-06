@@ -33,7 +33,8 @@ def _has_composite_review_foreign_key(db: sqlite3.Connection) -> bool:
     for rows in grouped.values():
         ordered = sorted(rows, key=lambda row: int(row["seq"]))
         if (len(ordered) == 2 and ordered[0]["table"] == "fiscal_reserve_pending_foreign"
-            and [(row["from"], row["to"]) for row in ordered] == [("owner_id", "owner_id"), ("pending_id", "pending_id")]):
+            and [(row["from"], row["to"]) for row in ordered] == [("owner_id", "owner_id"), ("pending_id", "pending_id")]
+            and all(str(row["on_delete"]).upper() == "RESTRICT" for row in ordered)):
             return True
     return False
 
@@ -45,7 +46,8 @@ def _has_composite_foreign_key(db: sqlite3.Connection, child: str, parent: str, 
     for rows in grouped.values():
         ordered = sorted(rows, key=lambda row: int(row["seq"]))
         if len(ordered) == len(pairs) and ordered[0]["table"] == parent:
-            if tuple((row["from"], row["to"]) for row in ordered) == pairs:
+            if (tuple((row["from"], row["to"]) for row in ordered) == pairs
+                and all(str(row["on_delete"]).upper() == "RESTRICT" for row in ordered)):
                 return True
     return False
 
