@@ -1,6 +1,27 @@
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 
 
+class _ObservedMt5Lock:
+    def __init__(self):
+        self.held = False
+
+    def __enter__(self):
+        assert not self.held, "test lock is intentionally non-reentrant"
+        self.held = True
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        self.held = False
+
+
+def _install_observed_mt5_lock(monkeypatch):
+    import execution.mt5_session_lock as session_lock_module
+
+    lock = _ObservedMt5Lock()
+    monkeypatch.setattr(session_lock_module, "MT5_TERMINAL_SESSION_LOCK", lock)
+    return lock
+
+
 def test_configured_service_exposes_safe_preferences_and_notification_summary():
     service = ConfiguredEcosystemService()
     preferences = service.get_preferences()
@@ -60,7 +81,7 @@ def test_mt5_senior_context_uses_only_observed_risk_domains():
     assert {item.domain.value for item in context.risk_assessment.observations} == {"CAPITAL", "POSITION", "DATA_QUALITY"}
 
 
-def test_mt5_cycle_wires_controlled_automation_into_canonical_runtime():
+def test_mt5_cycle_wires_controlled_automation_into_canonical_runtime(monkeypatch):
     from core.operational_state import OperationalState
     from execution.gateway import GatewayResult, GatewayStatus
 
@@ -68,9 +89,11 @@ def test_mt5_cycle_wires_controlled_automation_into_canonical_runtime():
         def __init__(self):
             self.kwargs = None
         def run(self, *args, **kwargs):
+            assert lock.held, "MT5 lock must cover runtime execution"
             self.kwargs = kwargs
             return "runtime-result"
 
+    lock = _install_observed_mt5_lock(monkeypatch)
     service = ConfiguredEcosystemService(execution_provider="ic_markets_mt5_demo")
     # User-facing analysis preferences must not weaken an execution cycle.
     service.preferences.update(require_closed_candle=False, require_filters=False)
@@ -78,19 +101,24 @@ def test_mt5_cycle_wires_controlled_automation_into_canonical_runtime():
     from types import SimpleNamespace
     service.operational_runtime = SimpleNamespace(checkpoint_store=object())
     service.trading_runtime = fake
-    service.mt5_operational_adapter.read_operational_state = lambda: OperationalState(
-        realized_pnl=0.0,
-        trades_today=0,
-        consecutive_losses=0,
-        balance=1000.0,
-        equity=1000.0,
-        open_positions=0,
-        net_position=0.0,
-        exposure=0.0,
-    )
+    def read_state_while_locked():
+        assert lock.held, "MT5 lock must cover the operational-state read"
+        return OperationalState(
+            realized_pnl=0.0,
+            trades_today=0,
+            consecutive_losses=0,
+            balance=1000.0,
+            equity=1000.0,
+            open_positions=0,
+            net_position=0.0,
+            exposure=0.0,
+        )
+
+    service.mt5_operational_adapter.read_operational_state = read_state_while_locked
 
     result = service.run_mt5_cycle(symbol="EURUSD", timeframe="5m", limit=20)
     assert result == "runtime-result"
+    assert lock.held is False
     assert fake.kwargs["automation_policy"].enabled is True
     assert fake.kwargs["confirmed"] is True
     assert fake.kwargs["filters_ok"] is True
