@@ -90,21 +90,22 @@ class ConfiguredEcosystemService(EcosystemService):
 
     def restore_notification_history(self, archive_id: str, *, confirmed: bool = False) -> dict[str, Any]:
         """Restore durable history and atomically replace the validated live center."""
-        result = self.state_store.restore_notifications_from_quarantine(
-            archive_id, confirmed=confirmed
-        )
-        restored_items = self.state_store.load_notifications()
-        load_error = self.state_store.notifications_load_error
-        candidate_center = EcosystemNotificationCenter()
-        candidate_center.restore(restored_items)
-        if load_error is not None or candidate_center.restore_had_invalid_records:
-            category = load_error or "invalid_records"
-            self.state_store.mark_notifications_unavailable(category)
-            raise NotificationHistoryUnavailableError(
-                "histórico restaurado não passou pela validação em memória"
+        with self._notification_history_lock:
+            result = self.state_store.restore_notifications_from_quarantine(
+                archive_id, confirmed=confirmed
             )
-        self.notifications = candidate_center
-        return result
+            restored_items = self.state_store.load_notifications()
+            load_error = self.state_store.notifications_load_error
+            candidate_center = EcosystemNotificationCenter()
+            candidate_center.restore(restored_items)
+            if load_error is not None or candidate_center.restore_had_invalid_records:
+                category = load_error or "invalid_records"
+                self.state_store.mark_notifications_unavailable(category)
+                raise NotificationHistoryUnavailableError(
+                    "histórico restaurado não passou pela validação em memória"
+                )
+            self.notifications = candidate_center
+            return result
 
     def analyze(self, payload: dict[str, Any]):
         """Require senior context and operational risk for actionable analysis."""
