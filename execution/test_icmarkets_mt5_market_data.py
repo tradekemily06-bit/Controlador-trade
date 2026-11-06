@@ -214,3 +214,44 @@ def test_market_data_holds_process_wide_mt5_lock_for_entire_terminal_session(rat
     assert len(candles) == 2
     assert lock.depth == 0
     assert mt5.shutdown_called is True
+
+
+def test_process_wide_mt5_lock_serializes_distinct_adapter_instances():
+    import threading
+
+    from execution.mt5_session_lock import serialized_mt5_session
+
+    first_inside = threading.Event()
+    second_started = threading.Event()
+    second_inside = threading.Event()
+    release_first = threading.Event()
+
+    class AdapterA:
+        @serialized_mt5_session
+        def use_terminal(self):
+            first_inside.set()
+            assert release_first.wait(timeout=2)
+
+    class AdapterB:
+        @serialized_mt5_session
+        def use_terminal(self):
+            second_inside.set()
+
+    first = threading.Thread(target=AdapterA().use_terminal)
+    second = threading.Thread(
+        target=lambda: (second_started.set(), AdapterB().use_terminal())
+    )
+
+    first.start()
+    assert first_inside.wait(timeout=2)
+    second.start()
+    assert second_started.wait(timeout=2)
+    assert not second_inside.wait(timeout=0.05)
+
+    release_first.set()
+    first.join(timeout=2)
+    second.join(timeout=2)
+
+    assert not first.is_alive()
+    assert not second.is_alive()
+    assert second_inside.is_set()
