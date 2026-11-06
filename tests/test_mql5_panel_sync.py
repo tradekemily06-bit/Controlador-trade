@@ -300,7 +300,7 @@ def test_mql5_preserves_active_cycle_ticket_across_analysis_and_ea_restart():
     assert "FileOpen(CycleIdentityFileName(),FILE_READ|FILE_TXT|FILE_ANSI)" in panel
     assert 'if(allowed=="true" && accepted=="true" && cid!="" && eid!="")' in run_cycle
     assert "last_cycle_id=cid; last_external_id=eid;" not in run_cycle
-    assert 'if(last_cycle_id!="" && last_external_id!="")' in run_cycle
+    assert 'if(last_cycle_id!="" && last_external_id!="" && !RefreshActiveCycleState())' in run_cycle
     assert "RefreshActiveCycleState()" in run_cycle
     refresh = panel.split("bool RefreshActiveCycleState()", 1)[1].split("void RunCycle()", 1)[0]
     assert 'JsonObjectValue(response,"close_reconciliation","state")' in refresh
