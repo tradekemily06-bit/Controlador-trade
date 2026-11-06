@@ -142,3 +142,41 @@ def test_chat_api_rejects_missing_or_false_openai_consent_before_assistant_call(
         assert response["error"] == (
             "Consentimento explícito para envio do contexto à OpenAI é obrigatório."
         )
+
+
+def test_every_assistant_endpoint_requires_trusted_identity_before_access(tmp_path, monkeypatch):
+    class Assistant:
+        def readiness(self):
+            raise AssertionError("status must not be exposed without identity")
+
+        def conversations(self, identity):
+            raise AssertionError("conversation list must not be exposed without identity")
+
+        def history(self, identity, conversation_id):
+            raise AssertionError("history must not be exposed without identity")
+
+        def delete_conversation(self, identity, conversation_id):
+            raise AssertionError("delete must not run without identity")
+
+        def ask(self, *args, **kwargs):
+            raise AssertionError("provider must not be called without identity")
+
+    _configure(monkeypatch, Assistant())
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", tmp_path / "fiscal.sqlite3")
+
+    for path, method, payload in (
+        ("/api/assistant/status", "GET", None),
+        ("/api/assistant/conversations", "GET", None),
+        ("/api/assistant/history?conversation_id=conversation-1", "GET", None),
+        ("/api/assistant/conversations?conversation_id=conversation-1", "DELETE", None),
+        ("/api/assistant/chat", "POST", {"message": "pergunta", "consent_to_openai": True}),
+    ):
+        route, separator, query = path.partition("?")
+        status, response = _request(
+            route + (separator + query if separator else ""),
+            method=method,
+            payload=payload,
+            identity="",
+        )
+        assert status.startswith("401")
+        assert response["error"] == "trusted identity is required"
