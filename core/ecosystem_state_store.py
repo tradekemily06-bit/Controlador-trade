@@ -98,4 +98,10 @@ class EcosystemStateStore:
         return value
 
     def save_notifications(self, notifications: list[dict[str, Any]]) -> None:
+        # Preserve damaged evidence until an explicit recovery procedure has
+        # inspected it. A routine publish must not silently replace corrupt data.
+        if self._notifications_load_error is not None:
+            raise RuntimeError(
+                "notification history requires explicit recovery before it can be overwritten"
+            )
         self.save("notifications", notifications)
