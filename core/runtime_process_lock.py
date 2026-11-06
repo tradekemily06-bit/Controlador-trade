@@ -106,7 +106,13 @@ class RuntimeProcessLockSet:
                 lock.acquire()
                 self._acquired.append(lock)
         except Exception:
-            self.release()
+            # Preserve the acquisition failure as the primary error. Rollback
+            # still attempts every acquired lock; a cleanup failure must not
+            # disguise the original reason acquisition failed.
+            try:
+                self.release()
+            except Exception:
+                pass
             raise
 
     def release(self) -> None:
