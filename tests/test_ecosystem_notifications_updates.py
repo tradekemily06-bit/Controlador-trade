@@ -212,3 +212,36 @@ def test_configured_service_persists_notifications_across_service_restart(monkey
         and item["blocking"] is True
         for item in restored
     )
+
+
+
+def test_configured_service_surfaces_corrupt_notification_history_as_critical(monkeypatch, tmp_path):
+    import integration.ecosystem_configuration_runtime as configured_service
+    from core.ecosystem_state_store import EcosystemStateStore as RealStateStore
+    from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
+
+    database = tmp_path / "ecosystem-state.sqlite"
+    store = RealStateStore(database)
+    with store._connect() as connection:
+        connection.execute(
+            "INSERT INTO ecosystem_state(key, value_json) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json",
+            ("notifications", "{broken-json"),
+        )
+    monkeypatch.setattr(
+        configured_service,
+        "EcosystemStateStore",
+        lambda _path: RealStateStore(database),
+    )
+
+    service = ConfiguredEcosystemService()
+    summary = service.notification_summary()
+
+    incidents = [
+        item for item in summary["items"]
+        if item["title"] == "NOTIFICATION_STORE_CORRUPT"
+    ]
+    assert len(incidents) == 1
+    assert incidents[0]["severity"] == "CRITICAL"
+    assert incidents[0]["blocking"] is True
+    assert summary["execution_allowed"] is False
