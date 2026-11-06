@@ -864,3 +864,41 @@ def test_timed_exit_worker_marks_closed_from_broker_observation_without_sending_
     assert runtime.timed_exits.record_for("request-demo-1").state == "CLOSED"
 
 
+
+
+def test_demo_close_rejects_stale_open_when_fresh_broker_observation_is_closed(tmp_path):
+    from execution.ports import PositionCloseObservation, PositionCloseObservationStatus
+    from execution.position_close_store import PositionCloseState
+
+    service, runtime = _service_with_accepted_demo_position(tmp_path)
+    runtime.position_closes.observe_initial(
+        "request-demo-1",
+        "123456",
+        PositionCloseState.OPEN,
+        message="old OPEN observation",
+    )
+    close_calls = []
+
+    class FakeAdapter:
+        def reconcile_position_close(self, external_id, *, expected_account_fingerprint=None):
+            return PositionCloseObservation(
+                PositionCloseObservationStatus.CLOSED,
+                "MT5 confirms ticket is already closed",
+            )
+
+        def close_position(self, external_id, *, expected_account_fingerprint=None):
+            close_calls.append(external_id)
+            raise AssertionError("no close order after fresh CLOSED observation")
+
+    service.mt5_operational_adapter = FakeAdapter()
+    try:
+        service.close_mt5_position(cycle_id="cycle-demo-1", external_id="123456")
+    except ValueError as exc:
+        assert "não confirmou a posição OPEN" in str(exc)
+    else:
+        raise AssertionError("stale OPEN must not authorize a broker close")
+
+    assert close_calls == []
+    assert runtime.position_closes.get("request-demo-1").state is PositionCloseState.CLOSED
+
+
