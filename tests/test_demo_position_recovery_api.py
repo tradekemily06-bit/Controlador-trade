@@ -148,3 +148,16 @@ def test_local_runtime_authorization_supports_bracketed_ipv6_loopback(monkeypatc
         "HTTP_HOST": "[::1]:8000",
     })
     assert (allowed, reason) == (True, "local")
+
+
+def test_local_runtime_authorization_fails_closed_when_mutations_are_not_enabled(monkeypatch):
+    monkeypatch.delenv("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", raising=False)
+    monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATION_HOSTS", "localhost,127.0.0.1,[::1]")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "Cf-Access-Authenticated-User-Email")
+
+    allowed, reason = app_module._authorize_local_runtime({
+        "REMOTE_ADDR": "127.0.0.1",
+        "HTTP_HOST": "127.0.0.1:8000",
+    })
+    assert allowed is False
+    assert reason == "local mutations are disabled"
