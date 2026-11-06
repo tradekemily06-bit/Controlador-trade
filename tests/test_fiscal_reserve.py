@@ -495,3 +495,12 @@ def test_history_offset_is_bounded_before_sqlite_binding(tmp_path):
     valid = reserve.summary(OWNER, history_offset=1_000_000_000)
     assert valid["history_page"]["offset"] == 1_000_000_000
     assert valid["history"] == []
+
+
+def test_fiscal_reserve_rejects_non_text_owner_identity(tmp_path):
+    import pytest
+
+    reserve = make_reserve(tmp_path / "strict-owner-identity.sqlite3")
+    for invalid_owner in (None, 123, True, [], {}, object()):
+        with pytest.raises(ValueError, match="identidade proprietária"):
+            reserve.settings(invalid_owner)
