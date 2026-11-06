@@ -1552,7 +1552,10 @@ def application(environ, start_response):
         if path == "/manifest.webmanifest" and method == "GET":
             return _file_response(start_response, WEB_DIR / "manifest.webmanifest", "application/manifest+json; charset=utf-8", request_id, environ)
     except AssistantUnavailableError as exc:
-        return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": str(exc), "request_id": request_id}, request_id, environ)
+        payload = {"error": str(exc), "request_id": request_id}
+        if isinstance(exc.conversation_id, str) and exc.conversation_id:
+            payload["conversation_id"] = exc.conversation_id
+        return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, payload, request_id, environ)
     except PermissionError as exc:
         return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "request_id": request_id}, request_id, environ)
     except (TypeError, ValueError, json.JSONDecodeError):
