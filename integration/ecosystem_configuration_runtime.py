@@ -320,13 +320,22 @@ class ConfiguredEcosystemService(EcosystemService):
         store = getattr(self.operational_runtime, "timed_exits", None)
         if store is None:
             return {"state": "BLOCKED", "scheduled": False, "message": "armazenamento persistente de saída temporizada indisponível"}
-        record = store.schedule(
-            request_id=request_id,
-            cycle_id=identity.cycle_id,
-            external_id=identity.external_id,
-            account_fingerprint=fingerprint,
-            delay_seconds=duration_seconds,
-        )
+        try:
+            record = store.schedule(
+                request_id=request_id,
+                cycle_id=identity.cycle_id,
+                external_id=identity.external_id,
+                account_fingerprint=fingerprint,
+                delay_seconds=duration_seconds,
+            )
+        except Exception as exc:
+            # The opening order may already be accepted. Do not disguise that
+            # fact as a successful timed exit if local persistence failed.
+            return {
+                "state": "BLOCKED",
+                "scheduled": False,
+                "message": f"persistência da saída temporizada falhou ({type(exc).__name__}); fechamento manual explícito necessário",
+            }
         return {
             "state": record.state,
             "scheduled": True,
