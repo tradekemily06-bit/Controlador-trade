@@ -1,5 +1,6 @@
 import io
 import json
+import sqlite3
 
 import app as app_module
 from assistant.conversation_store import AssistantConversationStore
@@ -864,3 +865,30 @@ def test_fiscal_history_api_rejects_offsets_outside_supported_range(tmp_path, mo
         assert response["error"] == "Entrada inválida"
         assert "history" not in response
     assert reserve.summary(owner_id)["history_page"]["total"] == 0
+
+
+
+def test_fiscal_summary_returns_sanitized_unavailable_when_sqlite_fails(tmp_path, monkeypatch):
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "X-Auth-User")
+    monkeypatch.setattr(app_module.SECURITY, "allow", lambda environ: True)
+    monkeypatch.setattr(app_module.SECURITY, "headers", lambda request_id, **kwargs: [])
+    monkeypatch.setattr(app_module, "_audit", lambda *args, **kwargs: None)
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", tmp_path / "fiscal.sqlite3")
+    monkeypatch.setattr(app_module, "migrate_fiscal_schema", lambda _path: "single:canonical-owner")
+
+    class BrokenFiscalReserve:
+        def summary(self, *args, **kwargs):
+            raise sqlite3.OperationalError("database is locked: /private/runtime/fiscal.sqlite3")
+
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE", BrokenFiscalReserve())
+
+    status, payload = _request("/api/fiscal-reserve")
+
+    assert status.startswith("503")
+    assert payload["error"] == (
+        "Persistência temporariamente indisponível; nenhuma alteração foi confirmada."
+    )
+    assert "database is locked" not in json.dumps(payload)
+    assert str(tmp_path) not in json.dumps(payload)
