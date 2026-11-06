@@ -927,6 +927,31 @@ def application(environ, start_response):
                 "close_external_id": close.external_id,
                 "reconciled": bool(close.accepted),
             }, request_id, environ)
+        if path == "/api/runtime/positions/recovery" and method == "GET":
+            authorized, reason = _authorize_remote_mutation(environ)
+            if not authorized:
+                status = HTTPStatus.UNAUTHORIZED if reason == "trusted identity is required" else HTTPStatus.SERVICE_UNAVAILABLE
+                return _json_response(
+                    start_response,
+                    status,
+                    {"error": "identidade autorizada necessária para recuperar posições DEMO", "execution_allowed": False},
+                    request_id,
+                    environ,
+                )
+            positions = SERVICE.list_mt5_position_recovery()
+            return _json_response(
+                start_response,
+                HTTPStatus.OK,
+                {
+                    "positions": positions,
+                    "count": len(positions),
+                    "read_only": True,
+                    "broker_query_performed": False,
+                    "orders_sent": False,
+                },
+                request_id,
+                environ,
+            )
         if path == "/api/runtime/close/reconcile" and method == "POST":
             data = _read_json(environ)
             cycle_id = data.get("cycle_id")
