@@ -66,6 +66,15 @@ function Write-PanelStatus([string]$State, [string]$Reason) {
     Move-Item -LiteralPath $tmp -Destination $statusPath -Force
 }
 
+function Test-PanelHealth {
+    try {
+        $response = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8501/_stcore/health' -TimeoutSec 5 -ErrorAction Stop
+        return ([int]$response.StatusCode -eq 200 -and ([string]$response.Content).Trim() -eq 'ok')
+    } catch {
+        return $false
+    }
+}
+
 $finalState = 'STOPPED'
 $finalReason = 'Supervisor finalizado.'
 try {
@@ -83,8 +92,28 @@ try {
 
         Write-PanelStatus 'STARTING' 'Iniciando Streamlit somente em 127.0.0.1:8501.'
         $arguments = '-m streamlit run "' + $panelScript + '" --server.address 127.0.0.1 --server.port 8501 --server.headless true --browser.gatherUsageStats false'
-        $process = Start-Process -FilePath $PythonExe -ArgumentList $arguments -WorkingDirectory $ProjectRoot -PassThru -Wait -NoNewWindow -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
-        $exitCode = $process.ExitCode
+        $process = Start-Process -FilePath $PythonExe -ArgumentList $arguments -WorkingDirectory $ProjectRoot -PassThru -NoNewWindow -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+        $startedAt = Get-Date
+        $failedHealthChecks = 0
+        while ($true) {
+            Start-Sleep -Seconds 10
+            $process.Refresh()
+            if ($process.HasExited) { break }
+            if (((Get-Date) - $startedAt).TotalSeconds -lt 45) { continue }
+            if (Test-PanelHealth) {
+                $failedHealthChecks = 0
+            } else {
+                $failedHealthChecks++
+                if ($failedHealthChecks -ge 3) {
+                    $finalReason = 'Streamlit permaneceu sem health HTTP após três verificações consecutivas.'
+                    Stop-Process -Id $process.Id -Force
+                    $process.WaitForExit()
+                    break
+                }
+            }
+        }
+        $process.Refresh()
+        $exitCode = if ($process.HasExited) { $process.ExitCode } else { -1 }
         $restartTimes.Add((Get-Date))
         $finalReason = "Streamlit encerrou com código $exitCode."
         Write-PanelStatus 'RESTARTING' $finalReason
