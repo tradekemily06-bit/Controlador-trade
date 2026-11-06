@@ -239,7 +239,7 @@ class ConfiguredEcosystemService(EcosystemService):
             proposed_loss,
         )
 
-    def run_mt5_cycle(self, *, symbol: str, timeframe: str = "5m", limit: int = 100, amount: float = 0.01, duration_seconds: int = 60, senior_context=None, confirmed: bool = False, filters_ok: bool = True, entry_conditions: tuple[str, ...] = ()) -> Any:
+    def run_mt5_cycle(self, *, symbol: str, timeframe: str = "5m", limit: int = 100, amount: float = 0.01, duration_seconds: int = 60, senior_context=None) -> Any:
         """Run one unified DEMO runtime cycle from live MT5 observations."""
         if not isinstance(confirmed, bool) or not isinstance(filters_ok, bool):
             raise ValueError("confirmed e filters_ok devem ser booleanos")
@@ -255,9 +255,15 @@ class ConfiguredEcosystemService(EcosystemService):
         return self.trading_runtime.run(
             request, operational_state=state, market_context=None, senior_context=senior_context,
             amount=amount, duration_seconds=duration_seconds, max_cycles=1,
-            confirmed=confirmed, filters_ok=filters_ok,
-            filters_required=self.preferences.preferences.require_filters,
-            entry_conditions=entry_conditions,
+            # The MT5 market adapter fetches only completed candles (start_pos=1).
+            # These are server-derived facts, never client-supplied assertions.
+            confirmed=True,
+            # AdvancedFilters evaluates the actual candle-derived components.
+            # Execution cycles always require those filters, even if a display/
+            # analysis preference has been disabled by the user.
+            filters_ok=True,
+            filters_required=True,
+            entry_conditions=(),
             checkpoint_store=self.operational_runtime.checkpoint_store,
             session_id=f"mt5-{symbol}-{timeframe}",
             automation_policy=AutomationPolicy(enabled=True, minimum_interval_seconds=0),
