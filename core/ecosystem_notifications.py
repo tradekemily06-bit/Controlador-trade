@@ -59,18 +59,38 @@ class EcosystemNotificationCenter:
         """Restore persisted notifications; invalid records are ignored safely."""
         restored: list[EcosystemNotification] = []
         for item in items:
+            if not isinstance(item, dict):
+                continue
             try:
+                notification_id = item["notification_id"]
+                kind = item["kind"]
+                severity = item["severity"]
+                title = item["title"]
+                message = item["message"]
+                requires_attention = item.get("requires_attention", False)
+                blocking = item.get("blocking", False)
+                # Persisted JSON is untrusted input: do not coerce strings such
+                # as "false" to True or arbitrary objects into display text.
+                if not all(isinstance(value, str) for value in (
+                    notification_id, kind, severity, title, message
+                )):
+                    continue
+                if type(requires_attention) is not bool or type(blocking) is not bool:
+                    continue
+                if not notification_id.strip() or not title.strip() or not message.strip():
+                    continue
+                if len(notification_id) > 160 or len(title) > 240 or len(message) > 4000:
+                    continue
                 notification = EcosystemNotification(
-                    notification_id=str(item["notification_id"]),
-                    kind=NotificationKind(str(item["kind"])),
-                    severity=NotificationSeverity(str(item["severity"])),
-                    title=str(item["title"]),
-                    message=str(item["message"]),
-                    requires_attention=bool(item.get("requires_attention", False)),
-                    blocking=bool(item.get("blocking", False)),
+                    notification_id=notification_id,
+                    kind=NotificationKind(kind),
+                    severity=NotificationSeverity(severity),
+                    title=title,
+                    message=message,
+                    requires_attention=requires_attention,
+                    blocking=blocking,
                 )
-                if notification.title.strip() and notification.message.strip():
-                    restored.append(notification)
+                restored.append(notification)
             except (KeyError, TypeError, ValueError):
                 continue
         self._notifications = restored
