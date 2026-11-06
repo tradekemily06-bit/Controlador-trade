@@ -27,8 +27,16 @@ class TimedExitWorker:
 
     def stop(self, timeout: float = 5.0) -> None:
         self._stop.set()
-        if self._thread is not None:
-            self._thread.join(timeout=timeout)
+        thread = self._thread
+        if thread is None:
+            return
+        thread.join(timeout=timeout)
+        if thread.is_alive():
+            # Do not report shutdown complete while a worker may still access MT5.
+            # The API's finally block must retain RuntimeProcessLock in this case.
+            raise RuntimeError(
+                "worker de saída temporizada ainda está ativo; exclusividade do runtime deve ser mantida"
+            )
         self._thread = None
 
     def run_once(self) -> int:
