@@ -359,3 +359,40 @@ def test_malformed_notification_history_cannot_be_overwritten_by_publish(monkeyp
     assert service.notifications.all() == before
     assert EcosystemStateStore(database).load("notifications") == damaged
     assert service.state_store.notifications_load_error == "invalid_records"
+
+
+def test_duplicate_notification_ids_after_process_restart_mark_history_corrupt(monkeypatch, tmp_path):
+    import integration.ecosystem_configuration_runtime as configured_service
+    from core.ecosystem_state_store import EcosystemStateStore as RealStateStore
+    from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
+
+    database = tmp_path / "ecosystem-state.sqlite"
+    store = RealStateStore(database)
+    duplicate = {
+        "notification_id": "duplicate-id",
+        "kind": "SECURITY",
+        "severity": "CRITICAL",
+        "title": "Alerta",
+        "message": "Registro duplicado",
+        "requires_attention": True,
+        "blocking": True,
+    }
+    store.save_notifications([duplicate, dict(duplicate)])
+    monkeypatch.setattr(
+        configured_service,
+        "EcosystemStateStore",
+        lambda _path: RealStateStore(database),
+    )
+
+    service = ConfiguredEcosystemService()
+    summary = service.notification_summary()
+
+    assert service.state_store.notifications_load_error == "invalid_records"
+    assert service.notifications.restore_had_invalid_records is True
+    assert len(service.notifications.all()) == 1
+    assert any(
+        item["title"] == "NOTIFICATION_STORE_CORRUPT"
+        and item["severity"] == "CRITICAL"
+        and item["blocking"] is True
+        for item in summary["items"]
+    )
