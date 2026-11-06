@@ -1627,6 +1627,16 @@ def application(environ, start_response):
         return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, payload, request_id, environ)
     except NotificationHistoryUnavailableError:
         return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Histórico de notificações indisponível; nenhuma nova notificação foi publicada.", "request_id": request_id}, request_id, environ)
+    except sqlite3.Error:
+        # Database lock/corruption/unavailability must never look like a
+        # successful operation or leak SQL/path details to the client.
+        return _json_response(
+            start_response,
+            HTTPStatus.SERVICE_UNAVAILABLE,
+            {"error": "Persistência temporariamente indisponível; nenhuma alteração foi confirmada.", "request_id": request_id},
+            request_id,
+            environ,
+        )
     except PermissionError as exc:
         return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": "Ação não autorizada.", "request_id": request_id}, request_id, environ)
     except (TypeError, ValueError, json.JSONDecodeError):
