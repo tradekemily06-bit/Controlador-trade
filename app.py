@@ -207,6 +207,14 @@ def _authorize_local_runtime(environ) -> tuple[bool, str]:
     client = str(environ.get("REMOTE_ADDR") or "").strip()
     if client not in {"127.0.0.1", "::1"}:
         return False, "local runtime requires loopback"
+    # A reverse proxy/tunnel may itself connect from loopback. If the request
+    # carries the configured trusted Access identity, it is a proxied remote
+    # request and must not use the native-terminal exception.
+    identity_header = os.environ.get("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "").strip()
+    if identity_header:
+        identity_key = "HTTP_" + identity_header.upper().replace("-", "_")
+        if str(environ.get(identity_key) or "").strip():
+            return False, "trusted remote identity cannot use local runtime routes"
     enabled = os.environ.get("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "").strip().lower() in {"1", "true", "yes"}
     if not enabled:
         return False, "local mutations are disabled"
