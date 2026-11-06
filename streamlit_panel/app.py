@@ -310,7 +310,12 @@ def show_assistant() -> None:
             answer = response.get("answer", "Sem resposta.")
             st.session_state.assistant_history.append({"role": "assistant", "content": answer})
             st.rerun()
-        except Exception as exc:
+        except RuntimeError as exc:
+            # api() converts HTTP and transport failures into safe, user-facing
+            # messages. Preserve those actionable statuses without exposing
+            # backend exception details or credentials.
+            st.error("Falha no Assistente: " + str(exc))
+        except Exception:
             st.error("Não foi possível enviar a consulta ao Assistente. Verifique a conexão e tente novamente. Detalhes técnicos não são exibidos no painel.")
 
 
