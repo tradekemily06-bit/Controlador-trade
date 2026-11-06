@@ -229,7 +229,7 @@ class TimedExitStore:
         ], ensure_ascii=False, indent=2, sort_keys=True)
         # Flush the complete temporary file before replacing the previous
         # schedule. The account fingerprint is private runtime metadata.
-        with temporary.open("w", encoding="utf-8", newline="\\n") as handle:
+        with temporary.open("w", encoding="utf-8", newline="\n") as handle:
             handle.write(serialized)
             handle.flush()
             os.fsync(handle.fileno())
