@@ -347,6 +347,17 @@ class EcosystemStateStore:
                     "histórico de notificações exige recuperação explícita antes de nova gravação"
                 )
             try:
+                from core.ecosystem_notifications import EcosystemNotificationCenter
+                candidate = EcosystemNotificationCenter()
+                candidate.restore(notifications)
+                if (
+                    candidate.restore_had_invalid_records
+                    or len(candidate.all()) != len(notifications)
+                ):
+                    self._notifications_load_error = "invalid_records"
+                    raise NotificationHistoryUnavailableError(
+                        "novas notificações inválidas ou duplicadas; gravação bloqueada"
+                    )
                 with self._connect() as db:
                     db.execute("BEGIN IMMEDIATE")
                     row = db.execute(
@@ -366,7 +377,6 @@ class EcosystemStateStore:
                             raise NotificationHistoryUnavailableError(
                                 "formato do histórico persistido inválido; recuperação explícita obrigatória"
                             )
-                        from core.ecosystem_notifications import EcosystemNotificationCenter
                         center = EcosystemNotificationCenter()
                         center.restore(persisted)
                         if center.restore_had_invalid_records or len(center.all()) != len(persisted):
