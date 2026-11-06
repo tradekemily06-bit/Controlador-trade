@@ -19,6 +19,10 @@ def test_latest_market_analysis_survives_store_recreation(tmp_path):
 
     assert restored.latest("EURUSD", "5m") == snapshot
     assert restored.latest() == snapshot
+    record = restored.latest_record("EURUSD", "5m")
+    assert record is not None
+    assert record["analysis"] == snapshot
+    assert record["updated_at"].endswith("+00:00")
 
 
 def test_latest_market_analysis_keeps_symbols_and_timeframes_isolated(tmp_path):
