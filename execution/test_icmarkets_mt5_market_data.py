@@ -199,12 +199,18 @@ def test_market_data_holds_process_wide_mt5_lock_for_entire_terminal_session(rat
     monkeypatch.setattr(session_module, "MT5_TERMINAL_SESSION_LOCK", lock)
     mt5 = FakeMT5(rates=rates)
     original_initialize = mt5.initialize
+    original_shutdown = mt5.shutdown
 
     def initialize_while_locked(path=None):
         assert lock.depth > 0, "terminal initialization must be serialized"
         return original_initialize(path)
 
+    def shutdown_while_locked():
+        assert lock.depth > 0, "terminal shutdown must be serialized"
+        return original_shutdown()
+
     mt5.initialize = initialize_while_locked
+    mt5.shutdown = shutdown_while_locked
     adapter = ICMarketsMT5DemoMarketDataAdapter(mt5)
 
     candles = adapter.fetch_market_data(
