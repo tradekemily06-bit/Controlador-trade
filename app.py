@@ -190,15 +190,25 @@ def _authorize_remote_mutation(environ) -> tuple[bool, str]:
     if not identity_header:
         return False, "trusted identity header is not configured"
 
-    identity = str(environ.get("HTTP_" + identity_header.upper().replace("-", "_")) or "").strip()
-    if not identity:
+    identity_value = environ.get("HTTP_" + identity_header.upper().replace("-", "_"))
+    if not isinstance(identity_value, str) or not identity_value.strip():
         return False, "trusted identity is required"
+    identity = identity_value.strip()
+    # Enforce the same bounded, control-character-free identity contract at
+    # the API boundary; the API must not rely solely on Streamlit validation.
+    if len(identity) > 320 or any(ord(character) < 32 or ord(character) == 127 for character in identity):
+        return False, "trusted identity is invalid"
 
     # Optional single-user pin: when configured, every remote fiscal/assistant
     # request must resolve to this exact normalized Access identity.
     expected_identity = os.environ.get("CONTROLADOR_SINGLE_USER_IDENTITY", "").strip()
     if not expected_identity:
         return False, "single-user identity is not configured"
+    if len(expected_identity) > 320 or any(
+        ord(character) < 32 or ord(character) == 127
+        for character in expected_identity
+    ):
+        return False, "single-user identity configuration is invalid"
     if identity.casefold() != expected_identity.casefold():
         return False, "authenticated identity is not authorized for this single-user runtime"
 
