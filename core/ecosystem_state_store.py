@@ -85,6 +85,9 @@ class EcosystemStateStore:
         except (json.JSONDecodeError, UnicodeDecodeError):
             self._notifications_load_error = "invalid_json"
             return []
+        except sqlite3.Error:
+            self._notifications_load_error = "read_failed"
+            return []
         if value is None:
             return []
         if not isinstance(value, list):
