@@ -1909,3 +1909,15 @@ def test_assistant_openai_consent_is_bound_to_authenticated_identity():
     assert 'st.session_state.pop("saved_assistant_conversation", None)' in assistant
     assert 'st.session_state["assistant_consent_scope"] = consent_scope' in assistant
     assert "disabled=not bool(consent_scope)" in assistant
+
+
+
+def test_operation_overview_does_not_claim_continuous_realtime_refresh():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index('if module_name == "Operação":')
+    end = source.index('if module_name == "Motor de Decisão":', start)
+    operation = source[start:end]
+    assert 'Estado operacional · última consulta' in operation
+    assert 'não representam transmissão contínua' in operation
+    assert 'Atualizar painel de operação' in operation
+    assert 'Estado operacional · leitura em tempo real' not in operation
