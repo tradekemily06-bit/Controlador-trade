@@ -574,6 +574,8 @@ def application(environ, start_response):
             if data.get("confirmed") is not True:
                 raise ValueError("confirmação explícita obrigatória para guardar como pendente")
             ticket = str(data.get("ticket") or "").strip()
+            if not ticket or len(ticket) > 80:
+                raise ValueError("ticket MT5 é obrigatório e deve ter até 80 caracteres")
             try:
                 candidate = SERVICE.mt5_operational_adapter.read_closed_deal_candidate(ticket)
             except RuntimeError as exc:
@@ -582,6 +584,11 @@ def application(environ, start_response):
                                        "detail": str(exc), "registered": False,
                                        "reserve_calculated": False, "execution_allowed": False},
                                       request_id, environ)
+            if not isinstance(candidate, dict) or not candidate:
+                return _json_response(start_response, HTTPStatus.UNPROCESSABLE_ENTITY,
+                                      {"error": "Ticket não encontrado como posição encerrada no histórico MT5 DEMO.",
+                                       "registered": False, "reserve_calculated": False,
+                                       "execution_allowed": False}, request_id, environ)
             currency = str(candidate.get("account_currency") or "").strip().upper()
             if currency == "BRL":
                 return _json_response(start_response, HTTPStatus.UNPROCESSABLE_ENTITY,
@@ -661,6 +668,8 @@ def application(environ, start_response):
             if data.get("confirmed") is not True:
                 raise ValueError("confirmação explícita obrigatória")
             ticket = str(data.get("ticket") or "").strip()
+            if not ticket or len(ticket) > 80:
+                raise ValueError("ticket MT5 é obrigatório e deve ter até 80 caracteres")
             category = str(data.get("category") or "").strip().upper()
             if category != "BR_DAY_TRADE":
                 raise ValueError("categoria precisa ser confirmada explicitamente como BR_DAY_TRADE")
@@ -673,6 +682,12 @@ def application(environ, start_response):
                 return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE,
                                        {"error": "Negócio não pôde ser revalidado no MT5 DEMO.", "detail": str(exc),
                                         "registered": False, "execution_allowed": False}, request_id, environ)
+            if not isinstance(candidate, dict) or not candidate:
+                return _json_response(start_response, HTTPStatus.UNPROCESSABLE_ENTITY,
+                                      {"error": "Ticket não encontrado como posição encerrada no histórico MT5 DEMO.",
+                                       "registered": False, "classification_status": "PENDING_CLASSIFICATION",
+                                       "reserve_calculated": False, "execution_allowed": False},
+                                      request_id, environ)
             if str(candidate.get("account_currency", "")).upper() != "BRL":
                 return _json_response(start_response, HTTPStatus.UNPROCESSABLE_ENTITY,
                                       {"error": "Conta MT5 não está em BRL. O negócio deve permanecer pendente até classificação e conversão documentadas.",
