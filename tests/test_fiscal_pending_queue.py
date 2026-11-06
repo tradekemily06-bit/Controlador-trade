@@ -328,6 +328,46 @@ def test_summary_counts_entire_queue_and_is_scoped_to_owner(tmp_path):
     assert other["currencies"] == ["USD"]
 
 
+
+def test_database_composite_foreign_key_blocks_cross_owner_review_links(tmp_path):
+    import sqlite3
+
+    queue = make_queue(tmp_path / "foreign-review-owner-fk.sqlite3")
+    pending = queue.add(OWNER, sample("FOREIGN-OWNER-FK"))
+    payload = review_sample()
+    try:
+        with queue._connect() as db:
+            db.execute(
+                """INSERT INTO fiscal_pending_reviews
+                (review_id, owner_id, pending_id, candidate_classification,
+                 confirmed_jurisdiction, reviewer_name, reviewer_role,
+                 professional_registration, evidence_reference, reviewed_on,
+                 review_notes, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    "cross-owner-review",
+                    "different-owner",
+                    pending["pending_id"],
+                    payload["candidate_classification"],
+                    payload["confirmed_jurisdiction"],
+                    payload["reviewer_name"],
+                    payload["reviewer_role"],
+                    payload["professional_registration"],
+                    payload["evidence_reference"],
+                    payload["reviewed_on"],
+                    payload["review_notes"],
+                    "2026-11-06T12:00:00+00:00",
+                ),
+            )
+    except sqlite3.IntegrityError:
+        pass
+    else:
+        raise AssertionError(
+            "database composite foreign key must reject a review linked across owners"
+        )
+
+    assert queue.list_reviews(OWNER, pending["pending_id"]) == []
+
 def test_review_cannot_attach_to_another_owners_pending_item(tmp_path):
     queue = make_queue(tmp_path / "fiscal.sqlite3")
     pending = queue.add(OWNER, sample())
