@@ -22,6 +22,13 @@ def closed_panel_signal(result: Any) -> tuple[str, str, str]:
     score = analysis.get("score") if isinstance(analysis, dict) else None
     if isinstance(score, bool) or not isinstance(score, (int, float)) or not 1 <= score <= 100:
         return "INDISPONÍVEL", "—", "#7F8B97"
-    strength = "FRACA" if score <= 69 else "MODERADA" if score <= 79 else "FORTE"
+    # Normalize once so the displayed integer and its strength band can
+    # never disagree for fractional provider scores.
+    normalized_score = int(score)
+    strength = (
+        "FRACA" if normalized_score <= 69
+        else "MODERADA" if normalized_score <= 79
+        else "FORTE"
+    )
     signal_label, color = signals[raw_signal]
-    return signal_label, f"{int(score)}% · {strength}", color
+    return signal_label, f"{normalized_score}% · {strength}", color
