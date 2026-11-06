@@ -274,3 +274,15 @@ def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compil
     assert "Set-Content -LiteralPath $provenanceTemp -Encoding ASCII" in text
     assert text.count("Restore-File -Backup $backupProvenance -Target $provenance") == 7
     assert text.index("if ($binaryWriteTime -lt $compileStartedAt.AddSeconds(-2))") < text.index("binary_sha256 = $binaryHashAfter")
+
+
+def test_mql5_close_preserves_cycle_until_broker_confirms_position_closed():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    close = panel.split("void CloseCycle()", 1)[1].split("int OnInit()", 1)[0]
+    assert 'JsonValue(r,"closed")=="true"' in close
+    assert '"/api/runtime/close/reconcile"' in close
+    assert 'JsonObjectValue(reconciliation,"close_reconciliation","state")' in close
+    assert 'state=="CLOSED"' in close
+    assert 'state=="OPEN"' in close
+    assert 'last_cycle_id=""; last_external_id="";' in close
+    assert "Fechamento inconclusivo; ciclo preservado." in close
