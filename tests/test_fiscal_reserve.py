@@ -504,3 +504,9 @@ def test_fiscal_reserve_rejects_non_text_owner_identity(tmp_path):
     for invalid_owner in (None, 123, True, [], {}, object()):
         with pytest.raises(ValueError, match="identidade proprietária"):
             reserve.settings(invalid_owner)
+
+
+def test_every_reserve_connection_enables_sqlite_foreign_keys(tmp_path):
+    reserve = make_reserve(tmp_path / "foreign-keys.sqlite3")
+    with reserve._connect() as db:
+        assert db.execute("PRAGMA foreign_keys").fetchone()[0] == 1
