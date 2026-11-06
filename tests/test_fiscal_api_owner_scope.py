@@ -283,3 +283,68 @@ def test_domestic_pending_api_rejects_foreign_review_category(tmp_path, monkeypa
     assert response["error"] == "Entrada inválida"
     assert queue.list_pending(owner_id)["items"][0]["status"] == "PENDING_CLASSIFICATION"
     assert queue.list_reviews(owner_id, pending["pending_id"]) == []
+
+
+def test_domestic_pending_api_list_summary_and_reviews_are_owner_scoped(
+    tmp_path, monkeypatch
+):
+    database = tmp_path / "domestic-owner-api.sqlite3"
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "X-Auth-User")
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", database)
+    monkeypatch.setattr(app_module.SECURITY, "allow", lambda environ: True)
+    monkeypatch.setattr(app_module.SECURITY, "headers", lambda request_id, **kwargs: [])
+    monkeypatch.setattr(app_module, "_audit", lambda *args, **kwargs: None)
+
+    owner_id = migrate_fiscal_schema(str(database))
+    queue = FiscalDomesticPendingQueue(str(database))
+    own_item = queue.add(owner_id, {
+        "reference": "BR-OWNER-ONLY",
+        "category_candidate": "BR_FII",
+        "instrument": "FII",
+        "market_scope": "B3",
+        "occurred_on": "2026-11-04",
+        "realized_result_brl": 120.0,
+    })
+    foreign_owner_item = queue.add("single:other-owner", {
+        "reference": "BR-OTHER-OWNER-ONLY",
+        "category_candidate": "BR_FII",
+        "instrument": "FII",
+        "market_scope": "B3",
+        "occurred_on": "2026-11-04",
+        "realized_result_brl": 900.0,
+    })
+    monkeypatch.setattr(app_module, "FISCAL_DOMESTIC_PENDING_QUEUE", queue)
+
+    status, listing = _request(
+        "/api/fiscal-reserve/domestic-pending",
+        query="owner_id=single%3Aother-owner",
+    )
+    assert status.startswith("200")
+    assert listing["total"] == 1
+    assert [item["reference"] for item in listing["items"]] == ["BR-OWNER-ONLY"]
+    assert "BR-OTHER-OWNER-ONLY" not in json.dumps(listing)
+
+    status, summary = _request(
+        "/api/fiscal-reserve/domestic-pending/summary",
+        query="owner_id=single%3Aother-owner",
+    )
+    assert status.startswith("200")
+    assert summary["total"] == 1
+    assert summary["included_in_totals"] is False
+    assert summary["reserve_calculated"] is False
+
+    status, own_reviews = _request(
+        f"/api/fiscal-reserve/domestic-pending/{own_item['pending_id']}/reviews",
+        query="owner_id=single%3Aother-owner",
+    )
+    assert status.startswith("200")
+    assert own_reviews["reviews"] == []
+
+    status, other_reviews = _request(
+        f"/api/fiscal-reserve/domestic-pending/{foreign_owner_item['pending_id']}/reviews",
+        query="owner_id=single%3Aother-owner",
+    )
+    assert status.startswith("200")
+    assert other_reviews["reviews"] == []
