@@ -1554,10 +1554,13 @@ def application(environ, start_response):
 
 
 class ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
-    """Serve each request independently so a slow route cannot block local health probes."""
+    """Serve requests concurrently and drain them before runtime locks are released."""
 
-    daemon_threads = True
-    block_on_close = False
+    # Request handlers can touch SQLite and MT5. They must finish before
+    # server_close returns; otherwise run() could release process locks while
+    # a daemon request thread still has access to the shared runtime resources.
+    daemon_threads = False
+    block_on_close = True
 
 
 def run(host: str | None = None, port: int | None = None) -> None:
