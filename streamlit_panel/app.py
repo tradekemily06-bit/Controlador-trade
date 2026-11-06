@@ -81,15 +81,26 @@ def api(path: str, method: str = "GET", payload: dict[str, Any] | None = None) -
         detail = exc.read().decode("utf-8", errors="replace")
         try:
             error_payload = json.loads(detail)
-            message = error_payload.get("error", detail)
             failed_conversation_id = error_payload.get("conversation_id")
             if path == "/api/assistant/chat" and isinstance(failed_conversation_id, str) and failed_conversation_id:
                 st.session_state.assistant_conversation_id = failed_conversation_id
-        except Exception:
-            message = detail
-        raise RuntimeError(f"API {exc.code}: {message}") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"Runtime indisponível em {BASE_URL}: {exc.reason}") from exc
+        except (json.JSONDecodeError, UnicodeDecodeError, AttributeError):
+            pass
+        # Never surface backend exception text, SQL details, paths, or connector
+        # payloads in the browser. Preserve only the HTTP status category.
+        safe_messages = {
+            400: "Solicitação rejeitada. Confira os campos informados.",
+            401: "Autenticação necessária. Entre novamente.",
+            403: "Acesso não autorizado para esta operação.",
+            404: "Recurso solicitado não encontrado.",
+            409: "Conflito de estado. Atualize os dados antes de tentar novamente.",
+            429: "Limite temporário de solicitações atingido. Aguarde e tente novamente.",
+            503: "Serviço temporariamente indisponível. Nenhuma alteração foi confirmada.",
+        }
+        message = safe_messages.get(exc.code, "Falha de comunicação com o serviço.")
+        raise RuntimeError(f"API indisponível (HTTP {exc.code}): {message}") from None
+    except urllib.error.URLError:
+        raise RuntimeError("Runtime indisponível. Verifique a conexão com o serviço.") from None
 
 
 def money(value: Any) -> str:
