@@ -136,8 +136,8 @@ class EcosystemStateStore:
             self._notifications_load_error = normalized
 
     def archive_notifications_for_recovery(self, *, confirmed: bool = False) -> dict[str, str]:
+        """Preserve the exact damaged payload before any separately approved recovery."""
         with self._lock:
-            """Preserve the exact damaged payload before any separately approved recovery."""
             if confirmed is not True:
                 raise ValueError("confirmação explícita é obrigatória para arquivar o histórico")
             category = self._notifications_load_error
