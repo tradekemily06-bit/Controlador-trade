@@ -820,3 +820,26 @@ def test_fiscal_api_migration_failure_does_not_expose_internal_exception_details
     assert "detail" not in response
     assert "SECRET_DB_PATH" not in json.dumps(response)
     assert "private_table" not in json.dumps(response)
+
+
+def test_permission_error_response_does_not_expose_internal_exception_details(
+    monkeypatch,
+):
+    monkeypatch.setattr(app_module.SECURITY, "allow", lambda environ: True)
+    monkeypatch.setattr(app_module.SECURITY, "headers", lambda request_id, **kwargs: [])
+    monkeypatch.setattr(app_module, "_audit", lambda *args, **kwargs: None)
+
+    private_detail = "C:\\private\\runtime\\fiscal.sqlite3 SELECT secret_column"
+
+    def raise_private_permission_error(*args, **kwargs):
+        raise PermissionError(private_detail)
+
+    monkeypatch.setattr(app_module, "_file_response", raise_private_permission_error)
+
+    status, body = _request("/")
+
+    assert status.startswith("403")
+    assert body["error"] == "Ação não autorizada."
+    assert private_detail not in json.dumps(body)
+    assert "fiscal.sqlite3" not in json.dumps(body)
+    assert "secret_column" not in json.dumps(body)
