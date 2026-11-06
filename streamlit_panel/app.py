@@ -1792,6 +1792,69 @@ def show_readonly_module(module_name: str) -> None:
             st.metric("Execução REAL", str(data.get("real", "DESABILITADO")))
             st.caption("Esta tela informa o estado reportado pelo runtime. Ela não confirma que o terminal MT5 esteja aberto neste computador nem que o EA esteja instalado.")
             st.caption("Modo permitido: DEMO/SIMULAÇÃO · Execução automática: NÃO")
+            st.markdown("#### Recuperação de posições DEMO")
+            st.caption("A lista é recuperada do ledger persistente. A consulta ao MT5 é somente leitura; o fechamento exige confirmação explícita e só fica disponível depois que o MT5 confirmar que a posição continua aberta.")
+            try:
+                recovery_payload = api("/api/runtime/positions/recovery")
+                recovery_items = recovery_payload.get("positions", [])
+                if not isinstance(recovery_items, list):
+                    recovery_items = []
+                st.metric("Ciclos pendentes de recuperação", len(recovery_items))
+                if not recovery_items:
+                    st.success("Nenhum ciclo DEMO pendente de recuperação foi encontrado no ledger.")
+                for index, item in enumerate(recovery_items):
+                    if not isinstance(item, dict):
+                        continue
+                    cycle_id = item.get("cycle_id")
+                    external_id = item.get("external_id")
+                    state = str(item.get("recovery_state") or "UNKNOWN").upper()
+                    if not isinstance(cycle_id, str) or not cycle_id.strip() or not isinstance(external_id, str) or not external_id.strip():
+                        st.error("Registro de recuperação incompleto. Nenhuma ação foi habilitada.")
+                        continue
+                    with st.expander(f"Ticket {external_id} · {state}", expanded=(index == 0)):
+                        detail_cols = st.columns(2)
+                        detail_cols[0].write("**Ciclo**")
+                        detail_cols[0].code(cycle_id)
+                        detail_cols[1].write("**Ticket MT5**")
+                        detail_cols[1].code(external_id)
+                        st.caption("A listagem não consulta o broker e não afirma que a posição esteja aberta.")
+                        if state == "BLOCKED_ACCOUNT_IDENTITY":
+                            st.error("Fechamento bloqueado: a identidade da conta original não pode ser comprovada.")
+                        elif state == "BROKER_CONFIRMED_OPEN":
+                            st.success("MT5 confirmou anteriormente que esta posição continua aberta.")
+                        elif state == "RECONCILIATION_REQUIRED":
+                            if st.button("Consultar posição no MT5 · somente leitura", key=f"reconcile_demo_position_{cycle_id}"):
+                                try:
+                                    observed = api("/api/runtime/close/reconcile", "POST", {"cycle_id": cycle_id, "external_id": external_id}).get("close_reconciliation", {})
+                                    observed_state = str(observed.get("state") or "UNKNOWN").upper()
+                                    if observed_state == "CLOSED":
+                                        st.success("MT5 confirmou: posição encerrada.")
+                                    elif observed_state == "OPEN":
+                                        st.success("MT5 confirmou: posição ainda aberta. O fechamento explícito ficará disponível após atualizar a lista.")
+                                    else:
+                                        st.warning("MT5 não conseguiu confirmar o estado. Nenhum novo fechamento foi enviado.")
+                                    st.rerun()
+                                except Exception as exc:
+                                    st.error(f"Reconciliação não concluída: {exc}")
+                        elif state != "BROKER_CONFIRMED_OPEN":
+                            st.warning(f"Estado de recuperação: {state}. Ação de fechamento indisponível.")
+                        if state == "BROKER_CONFIRMED_OPEN":
+                            with st.form(f"close_demo_position_form_{cycle_id}"):
+                                confirmed = st.checkbox("Confirmo que desejo solicitar o fechamento desta posição DEMO específica.", key=f"confirm_close_demo_{cycle_id}")
+                                submitted = st.form_submit_button("Fechar esta posição DEMO", disabled=not confirmed)
+                            if submitted:
+                                try:
+                                    closed = api("/api/runtime/close", "POST", {"cycle_id": cycle_id, "external_id": external_id})
+                                    if closed.get("closed") is True and closed.get("close_state") == "CLOSED":
+                                        st.success("Fechamento confirmado pelo runtime.")
+                                    else:
+                                        st.warning("Fechamento inconclusivo. A posição permanece no inventário para reconciliação.")
+                                    st.rerun()
+                                except Exception as exc:
+                                    st.error(f"Fechamento não confirmado: {exc}")
+            except Exception as exc:
+                st.warning(f"Inventário de recuperação indisponível: {exc}")
+            st.caption("Nenhuma posição é fechada automaticamente. REAL permanece DESABILITADO.")
             return
 
         if module_name == "Conexões":
