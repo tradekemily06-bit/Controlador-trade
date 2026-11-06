@@ -83,7 +83,8 @@ def test_chat_api_returns_sanitized_provider_unavailable_response(tmp_path, monk
     class Assistant:
         def ask(self, *args, **kwargs):
             raise AssistantUnavailableError(
-                "Não foi possível obter resposta agora; sua mensagem ficou no histórico."
+                "Não foi possível obter resposta agora; sua mensagem ficou no histórico.",
+                conversation_id="conversation-after-provider-failure",
             )
 
     _configure(monkeypatch, Assistant())
@@ -97,6 +98,7 @@ def test_chat_api_returns_sanitized_provider_unavailable_response(tmp_path, monk
 
     assert status.startswith("503")
     assert "histórico" in payload["error"]
+    assert payload["conversation_id"] == "conversation-after-provider-failure"
     assert "OPENAI_API_KEY" not in json.dumps(payload)
 
 
