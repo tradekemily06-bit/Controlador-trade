@@ -824,8 +824,40 @@ class ConfiguredEcosystemService(EcosystemService):
                 external_id=external_id,
             )
             record = store.get(request_id)
-            if record is None or record.external_id != external_id.strip():
+            if record is not None and record.external_id != external_id.strip():
                 raise ValueError("tentativa de fechamento DEMO não encontrada para este ciclo/ticket")
+            if record is None:
+                # Initial inventory reconciliation is read-only; do not create
+                # a fake close REQUESTED record before the operator asks to close.
+                observation = self.mt5_operational_adapter.reconcile_position_close(
+                    external_id.strip(),
+                    expected_account_fingerprint=fingerprint,
+                )
+                if (
+                    not isinstance(observation, PositionCloseObservation)
+                    or not isinstance(observation.status, PositionCloseObservationStatus)
+                    or not isinstance(observation.message, str)
+                ):
+                    raise RuntimeError("adaptador retornou observação de posição DEMO inválida")
+                initial_mapping = {
+                    PositionCloseObservationStatus.CLOSED: PositionCloseState.CLOSED,
+                    PositionCloseObservationStatus.OPEN: PositionCloseState.OPEN,
+                    PositionCloseObservationStatus.UNKNOWN: PositionCloseState.UNKNOWN,
+                }
+                resolved = store.observe_initial(
+                    request_id,
+                    external_id.strip(),
+                    initial_mapping[observation.status],
+                    message=observation.message,
+                )
+                return {
+                    "request_id": resolved.request_id,
+                    "external_id": resolved.external_id,
+                    "state": resolved.state.value,
+                    "message": resolved.message,
+                    "read_only": True,
+                    "order_sent": False,
+                }
             if record.state in (PositionCloseState.CLOSED, PositionCloseState.OPEN):
                 return {
                     "request_id": request_id,
