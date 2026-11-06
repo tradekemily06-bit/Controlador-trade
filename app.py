@@ -39,6 +39,10 @@ from execution.icmarkets_mt5_demo_adapter import MT5DealNotFoundError
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
 RUNTIME_DIR = Path(os.environ.get("CONTROLADOR_RUNTIME_DIR", str(ROOT / ".runtime")))
+# Acquire exclusivity before constructing runtime services or running fiscal migrations.
+# A second process must fail before touching shared SQLite/runtime state.
+_RUNTIME_PROCESS_LOCK = RuntimeProcessLock(RUNTIME_DIR / "controlador-runtime.lock")
+_RUNTIME_PROCESS_LOCK.acquire()
 EXECUTION_PROVIDER = os.environ.get("CONTROLADOR_EXECUTION_PROVIDER", "paper")
 EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
 DECISION_DB = Path(os.environ.get("CONTROLADOR_DECISION_DB", str(RUNTIME_DIR / "decision-memory.sqlite")))
@@ -1556,22 +1560,23 @@ class ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
 def run(host: str | None = None, port: int | None = None) -> None:
     selected_host = host or os.environ.get("CONTROLADOR_BIND_HOST", "127.0.0.1")
     selected_port = port or int(os.environ.get("PORT", "8000"))
-    lock = RuntimeProcessLock(RUNTIME_DIR / "controlador-runtime.lock")
-    with lock:
-        from execution.timed_exit_worker import TimedExitWorker
-        timed_exit_worker = TimedExitWorker(SERVICE, OPERATIONAL_RUNTIME)
+    if not _RUNTIME_PROCESS_LOCK.is_acquired:
+        _RUNTIME_PROCESS_LOCK.acquire()
+    from execution.timed_exit_worker import TimedExitWorker
+    timed_exit_worker = TimedExitWorker(SERVICE, OPERATIONAL_RUNTIME)
+    try:
         timed_exit_worker.start()
-        try:
-            with make_server(
-                selected_host,
-                selected_port,
-                application,
-                server_class=ThreadingWSGIServer,
-            ) as server:
-                print(f"Controlador Trading em http://{selected_host}:{selected_port}")
-                server.serve_forever()
-        finally:
-            timed_exit_worker.stop()
+        with make_server(
+            selected_host,
+            selected_port,
+            application,
+            server_class=ThreadingWSGIServer,
+        ) as server:
+            print(f"Controlador Trading em http://{selected_host}:{selected_port}")
+            server.serve_forever()
+    finally:
+        timed_exit_worker.stop()
+        _RUNTIME_PROCESS_LOCK.release()
 
 
 if __name__ == "__main__":
