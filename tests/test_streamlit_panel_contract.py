@@ -1586,3 +1586,23 @@ def test_windows_bootstrap_installs_and_supervises_the_streamlit_panel():
     assert "hostname do painel" in runbook
     assert "porta 8000 não deve ser publicada" in runbook
     assert "0.0.0.0" not in supervisor
+
+
+def test_remote_panel_identity_boundary_requires_cloudflared_jwt_validation_and_private_api():
+    root = Path(__file__).resolve().parents[1]
+    runbook = (root / "deployment" / "WINDOWS_MT5_REMOTE_RUNTIME.md").read_text(encoding="utf-8")
+    supervisor = (root / "deployment" / "start_streamlit_panel.ps1").read_text(encoding="utf-8")
+    panel = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+
+    assert "originRequest:" in runbook
+    assert "access:" in runbook
+    assert "required: true" in runbook
+    assert "teamName:" in runbook
+    assert "audTag:" in runbook
+    assert "Cf-Access-Jwt-Assertion" in runbook
+    assert "127.0.0.1:8501" in runbook
+    assert "127.0.0.1:8000" in runbook
+    assert "porta 8000 permanece privada" in runbook
+    assert "127.0.0.1" in supervisor
+    assert "headers[IDENTITY_HEADER] = identity" in panel
+    assert "X-Forwarded-Email" not in panel
