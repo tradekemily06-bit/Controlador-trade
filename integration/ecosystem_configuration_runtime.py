@@ -1131,12 +1131,15 @@ class ConfiguredEcosystemService(EcosystemService):
                     message="persistência da trilha de auditoria indisponível; verifique o armazenamento local",
                 )
             )
-        if self.state_store.notifications_load_error is not None:
+        notification_store_error = self.state_store.notifications_load_error
+        if notification_store_error is None and self.notifications.restore_had_invalid_records:
+            notification_store_error = "invalid_records"
+        if notification_store_error is not None:
             incidents.append(
                 OperationalIncident(
                     code="NOTIFICATION_STORE_CORRUPT",
                     severity="CRITICAL",
-                    status=str(self.state_store.notifications_load_error).upper(),
+                    status=str(notification_store_error).upper(),
                     source="notifications",
                     message="O histórico persistido de notificações está corrompido; registros inválidos não foram restaurados.",
                 )
