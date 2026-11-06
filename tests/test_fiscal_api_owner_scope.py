@@ -124,6 +124,61 @@ def test_fiscal_and_assistant_read_routes_ignore_forged_owner_parameters(
     assert "conversa de outra identidade" not in json.dumps(conversations)
 
 
+def test_fiscal_pending_intake_ignores_forged_owner_id_in_request_bodies(tmp_path, monkeypatch):
+    database = tmp_path / "forged-owner-body.sqlite3"
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "X-Auth-User")
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", database)
+    monkeypatch.setattr(app_module.SECURITY, "allow", lambda environ: True)
+    monkeypatch.setattr(app_module.SECURITY, "headers", lambda request_id, **kwargs: [])
+    monkeypatch.setattr(app_module, "_audit", lambda *args, **kwargs: None)
+
+    owner_id = migrate_fiscal_schema(str(database))
+    foreign_queue = FiscalPendingQueue(str(database))
+    domestic_queue = FiscalDomesticPendingQueue(str(database))
+    monkeypatch.setattr(app_module, "FISCAL_PENDING_QUEUE", foreign_queue)
+    monkeypatch.setattr(app_module, "FISCAL_DOMESTIC_PENDING_QUEUE", domestic_queue)
+
+    status, foreign = _request(
+        "/api/fiscal-reserve/pending",
+        method="POST",
+        payload={
+            "owner_id": "single:attacker-selected-owner",
+            "reference": "OWNER-BODY-FOREIGN-001",
+            "original_amount": 50,
+            "original_currency": "USD",
+            "instrument": "ETF",
+            "jurisdiction": "PENDING_REVIEW",
+            "occurred_on": "2026-11-05",
+            "tax_residency_at_event": "NOT_INFORMED",
+            "income_nature": "INVESTMENT_INCOME",
+            "event_type": "ACQUISITION",
+            "fx_conversion_method": "NOT_CONVERTED",
+        },
+    )
+    assert status.startswith("201")
+    assert foreign_queue.list_pending(owner_id)["total"] == 1
+    assert foreign_queue.list_pending("single:attacker-selected-owner")["total"] == 0
+
+    status, domestic = _request(
+        "/api/fiscal-reserve/domestic-pending",
+        method="POST",
+        payload={
+            "owner_id": "single:attacker-selected-owner",
+            "reference": "OWNER-BODY-DOMESTIC-001",
+            "category_candidate": "BR_FII",
+            "instrument": "FII",
+            "market_scope": "B3",
+            "occurred_on": "2026-11-05",
+            "realized_result_brl": 75,
+        },
+    )
+    assert status.startswith("201")
+    assert domestic_queue.list_pending(owner_id)["total"] == 1
+    assert domestic_queue.list_pending("single:attacker-selected-owner")["total"] == 0
+
+
 def test_assistant_readiness_api_requires_trusted_identity_and_returns_no_secret(tmp_path, monkeypatch):
     from types import SimpleNamespace
 
