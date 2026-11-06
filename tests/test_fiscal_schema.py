@@ -391,3 +391,54 @@ def test_owner_fast_path_rebuilds_global_reference_uniqueness(tmp_path, monkeypa
                 (pending_id,owner_id,reference,original_amount,original_currency,instrument,jurisdiction,occurred_on,notes,status,created_at)
                 VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
                 ("p2", owner, "kept-ref", 10, "USD", "ETF", "US", "2026-11-05", "", "PENDING_CLASSIFICATION", "now"))
+
+
+def test_migration_fails_closed_on_malformed_domestic_queue_constraints(tmp_path, monkeypatch):
+    from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
+
+    path = str(tmp_path / "malformed-domestic.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner-a")
+    queue = FiscalDomesticPendingQueue(path)
+    from finance.fiscal_identity import configured_fiscal_owner_id
+    owner = configured_fiscal_owner_id()
+    queue.add(owner, {
+        "reference": "BR-KEEP-001",
+        "instrument": "ETF",
+        "occurred_on": "2026-11-05",
+    })
+    migrate_fiscal_schema(path)
+
+    # Simulate a historical schema with globally unique references and a
+    # review FK that checks pending_id but does not bind owner_id.
+    with sqlite3.connect(path) as db:
+        db.execute("PRAGMA foreign_keys=OFF")
+        db.execute("DROP TABLE fiscal_domestic_pending_reviews")
+        db.execute("DROP TABLE fiscal_reserve_pending_domestic")
+        db.execute("""CREATE TABLE fiscal_reserve_pending_domestic (
+            pending_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, reference TEXT NOT NULL UNIQUE,
+            category_candidate TEXT NOT NULL DEFAULT '', instrument TEXT NOT NULL,
+            market_scope TEXT NOT NULL DEFAULT '', occurred_on TEXT NOT NULL,
+            realized_result_brl REAL, notes TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL, created_at TEXT NOT NULL
+        )""")
+        db.execute("""INSERT INTO fiscal_reserve_pending_domestic
+            (pending_id,owner_id,reference,instrument,occurred_on,status,created_at)
+            VALUES('br-p1',?,'BR-KEEP-001','ETF','2026-11-05','PENDING_CLASSIFICATION','now')""",
+            (owner,))
+        db.execute("""CREATE TABLE fiscal_domestic_pending_reviews (
+            review_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, pending_id TEXT NOT NULL,
+            candidate_classification TEXT NOT NULL, confirmed_jurisdiction TEXT NOT NULL,
+            reviewer_name TEXT NOT NULL, reviewer_role TEXT NOT NULL, professional_registration TEXT NOT NULL,
+            evidence_reference TEXT NOT NULL, reviewed_on TEXT NOT NULL, review_notes TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(pending_id) REFERENCES fiscal_reserve_pending_domestic(pending_id)
+        )""")
+
+    with pytest.raises(RuntimeError, match="Esquema da fila brasileira pendente inválido"):
+        migrate_fiscal_schema(path)
+
+    with sqlite3.connect(path) as db:
+        row = db.execute(
+            "SELECT owner_id,reference FROM fiscal_reserve_pending_domestic WHERE pending_id='br-p1'"
+        ).fetchone()
+        assert row == (owner, "BR-KEEP-001")
