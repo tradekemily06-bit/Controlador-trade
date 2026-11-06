@@ -158,10 +158,9 @@ class EcosystemAssistant:
             if not isinstance(answer,str) or not answer.strip(): raise ValueError("resposta vazia")
         except AssistantUnavailableError as exc:
             # Provider setup can fail after the user message has already been
-            # persisted. Keep the conversation ID so the UI can resume it.
-            if not isinstance(exc.conversation_id, str) or not exc.conversation_id:
-                raise AssistantUnavailableError(str(exc), conversation_id=cid) from exc
-            raise
+            # persisted. The active request's ID is authoritative; never let an
+            # exception replace it with an unrelated conversation identifier.
+            raise AssistantUnavailableError(str(exc), conversation_id=cid) from exc
         except Exception as exc: raise AssistantUnavailableError("Não foi possível obter resposta agora; sua mensagem ficou no histórico.", conversation_id=cid) from exc
         self.store.append(identity,cid,"assistant",answer)
         return {
