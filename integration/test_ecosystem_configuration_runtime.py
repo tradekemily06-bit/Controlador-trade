@@ -474,6 +474,7 @@ def test_demo_close_persists_attempt_and_uses_opening_account_fingerprint(tmp_pa
     record = runtime.position_closes.get("request-demo-1")
     assert record.state.value == "CLOSED"
     assert record.close_external_id == "close-999"
+    assert record.attempt == 1
 
 
 def test_demo_close_fails_closed_without_opening_account_fingerprint(tmp_path):
@@ -640,7 +641,7 @@ def test_demo_position_recovery_can_reconcile_first_observation_without_fake_clo
     assert adapter.close_calls == 0
     stored = runtime.position_closes.get("request-demo-1")
     assert stored.state.value == "OPEN"
-    assert stored.attempt == 1
+    assert stored.attempt == 0  # initial read-only observation is not a close attempt
     assert service.list_mt5_position_recovery()[0]["recovery_state"] == "BROKER_CONFIRMED_OPEN"
 
 
