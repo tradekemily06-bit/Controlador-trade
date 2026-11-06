@@ -634,6 +634,9 @@ def show_fiscal() -> None:
         st.error(f"Resumo fiscal indisponível. Os lançamentos e alterações de percentual ficam bloqueados. {exc}")
     st.subheader("Reserva Fiscal")
     st.caption("Planejamento e separação estimada. Operações MT5 cuja elegibilidade fiscal não foi verificada ficam em fila brasileira separada, sem cálculo e fora dos totais. Registros estrangeiros não classificados também ficam fora dos totais; nenhuma alíquota genérica é aplicada.")
+    if not summary_available:
+        st.info("Os dados fiscais não foram validados nesta consulta. Totais, histórico e formulários permanecem ocultos até a leitura ser recuperada.")
+        return
     with st.expander("Categorias fiscais e estado da automação", expanded=False):
         try:
             catalog = summary.get("classification_catalog", {})
