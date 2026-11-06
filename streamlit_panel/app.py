@@ -2634,7 +2634,7 @@ def render_latest_signal(closed: bool = False) -> None:
             health = "UNKNOWN"
         status_label = {
             "OK": "SISTEMA ONLINE",
-            "WARNING": "ATENÇÃO",
+            "WARNING": "INDISPONÍVEL",
             "CRITICAL": "INDISPONÍVEL",
         }.get(health, "INDISPONÍVEL")
         st.markdown(
