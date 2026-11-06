@@ -419,7 +419,7 @@ def _valid_fiscal_history_page(summary: Any, expected_offset: int, page_size: in
     total, limit, offset = page.get("total"), page.get("limit"), page.get("offset")
     returned, has_more = page.get("returned"), page.get("has_more")
     if (isinstance(total, bool) or not isinstance(total, int) or not 0 <= total <= 1_000_000_000
-            or isinstance(limit, bool) or limit != page_size
+            or isinstance(limit, bool) or not isinstance(limit, int) or limit != page_size
             or isinstance(offset, bool) or not isinstance(offset, int) or offset != expected_offset
             or isinstance(returned, bool) or not isinstance(returned, int) or returned != len(history)
             or not isinstance(has_more, bool) or has_more is not (offset + returned < total)
