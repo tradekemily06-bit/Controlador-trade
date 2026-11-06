@@ -84,10 +84,19 @@ try {
             if ($restartTimes[$i] -lt $cutoff) { $restartTimes.RemoveAt($i) }
         }
         if ($restartTimes.Count -ge $MaxRestartsPerHour) {
-            $finalState = 'ATTENTION'
-            $finalReason = "Orçamento de reinícios excedido: $MaxRestartsPerHour por hora."
+            # The restart budget limits retry frequency, never total service uptime.
+            # Keep this supervisor alive and resume after the oldest retry exits
+            # the rolling one-hour window.
+            $retryAt = $restartTimes[0].AddHours(1)
+            $finalState = 'RECOVERING'
+            $finalReason = "Orçamento de reinícios atingido ($MaxRestartsPerHour/h); aguardando cooldown até $($retryAt.ToString('o'))."
             Write-PanelStatus $finalState $finalReason
-            break
+            while ((Get-Date) -lt $retryAt) {
+                $remainingSeconds = [int][Math]::Ceiling(($retryAt - (Get-Date)).TotalSeconds)
+                if ($remainingSeconds -le 0) { break }
+                Start-Sleep -Seconds ([Math]::Min(60, $remainingSeconds))
+            }
+            continue
         }
 
         Write-PanelStatus 'STARTING' 'Iniciando Streamlit somente em 127.0.0.1:8501.'
