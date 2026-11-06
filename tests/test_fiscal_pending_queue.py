@@ -113,6 +113,10 @@ def test_pending_queue_rejects_invalid_pagination(tmp_path):
         else:
             raise AssertionError("invalid pending pagination must be rejected")
 
+    boundary = queue.list_pending(OWNER, limit=10, offset=1_000_000_000)
+    assert boundary["offset"] == 1_000_000_000
+    assert boundary["items"] == []
+
 
 def review_sample():
     return {
