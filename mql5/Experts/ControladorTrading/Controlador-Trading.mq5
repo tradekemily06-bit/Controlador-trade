@@ -337,6 +337,7 @@ bool ExtractJsonArrayObjects(string json,string arrayKey,string &objects[]){
          after_comma=true; pos++; continue;
       }
       if(c!='{') return false;
+      if(have_item && !after_comma) return false;
       int objectStart=pos,depth=0;
       bool inString=false,escaped=false;
       for(;pos<length;pos++){
