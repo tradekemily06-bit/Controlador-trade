@@ -379,7 +379,7 @@ void RenderRecoverySelection(){
 }
 bool RefreshRecoveryInventory(){
    string response; int code=0;
-   if(!Http("GET","/api/runtime/positions/recovery","",response,code)){
+   if(!Http("GET","/api/runtime/positions/recovery/local","",response,code)){
       recovery_inventory_valid=false; recovery_message="Falha HTTP ao consultar inventario."; RenderRecoverySelection(); return false;
    }
    if(!ParseRecoveryInventory(response)){
@@ -394,7 +394,7 @@ void ReconcileSelectedRecovery(){
    if(item.state=="BLOCKED_ACCOUNT_IDENTITY"){ recovery_message="Identidade original bloqueada; sem fechamento."; RenderRecoverySelection(); return; }
    string body="{\"cycle_id\":\""+JsonEscape(item.cycle_id)+"\",\"external_id\":\""+JsonEscape(item.external_id)+"\"}";
    string response; int code=0;
-   if(!Http("POST","/api/runtime/close/reconcile",body,response,code)){
+   if(!Http("POST","/api/runtime/close/local/reconcile",body,response,code)){
       recovery_message="MT5 nao confirmou; nenhuma ordem enviada."; RenderRecoverySelection(); return;
    }
    string state=JsonObjectValue(response,"close_reconciliation","state");
@@ -412,7 +412,7 @@ void CloseSelectedRecovery(){
    recovery_close_armed=false;
    string body="{\"cycle_id\":\""+JsonEscape(item.cycle_id)+"\",\"external_id\":\""+JsonEscape(item.external_id)+"\"}";
    string response; int code=0;
-   if(!Http("POST","/api/runtime/close",body,response,code)){
+   if(!Http("POST","/api/runtime/close/local",body,response,code)){
       recovery_message="Fechamento inconclusivo; reconciliacao necessaria."; RefreshRecoveryInventory(); return;
    }
    if(JsonValue(response,"closed")=="true" && JsonValue(response,"close_state")=="CLOSED"){
@@ -742,7 +742,7 @@ bool RefreshActiveCycleState(){
    if(last_cycle_id=="" || last_external_id=="") return true;
    string body="{\"cycle_id\":\""+JsonEscape(last_cycle_id)+"\",\"external_id\":\""+JsonEscape(last_external_id)+"\"}";
    string response; int code=0;
-   if(!Http("POST","/api/runtime/close/reconcile",body,response,code)){
+   if(!Http("POST","/api/runtime/close/local/reconcile",body,response,code)){
       SetLabel(Obj("INFO1"),"Estado da posicao inconclusivo; ciclo bloqueado.",20,361,9,C'255,118,118');
       return false;
    }
@@ -817,14 +817,14 @@ void CloseCycle(){
    }
    string body="{\"cycle_id\":\""+JsonEscape(last_cycle_id)+"\",\"external_id\":\""+JsonEscape(last_external_id)+"\"}";
    string r; int code=0;
-   if(Http("POST","/api/runtime/close",body,r,code)){
+   if(Http("POST","/api/runtime/close/local",body,r,code)){
       if(JsonValue(r,"closed")=="true"){
          SetLabel(Obj("INFO1"),"Posicao DEMO fechada e confirmada.",20,361,9,C'88,214,141');
          ClearCycleIdentity();
          return;
       }
       string reconciliation; int reconcile_code=0;
-      if(Http("POST","/api/runtime/close/reconcile",body,reconciliation,reconcile_code)){
+      if(Http("POST","/api/runtime/close/local/reconcile",body,reconciliation,reconcile_code)){
          string state=JsonObjectValue(reconciliation,"close_reconciliation","state");
          if(state=="CLOSED"){
             SetLabel(Obj("INFO1"),"MT5 confirmou o fechamento.",20,361,9,C'88,214,141');
@@ -837,7 +837,7 @@ void CloseCycle(){
       }else SetLabel(Obj("INFO1"),"Sem evidencia de fechamento; ciclo preservado.",20,361,9,C'255,118,118');
    }else{
       string reconciliation; int reconcile_code=0;
-      if(Http("POST","/api/runtime/close/reconcile",body,reconciliation,reconcile_code)){
+      if(Http("POST","/api/runtime/close/local/reconcile",body,reconciliation,reconcile_code)){
          string state=JsonObjectValue(reconciliation,"close_reconciliation","state");
          if(state=="CLOSED"){
             SetLabel(Obj("INFO1"),"MT5 confirmou o fechamento.",20,361,9,C'88,214,141');
