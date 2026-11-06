@@ -479,8 +479,11 @@ def test_streamlit_local_quickstart_configures_the_required_fiscal_owner_identit
     readme = (PANEL_DIR / "README.md").read_text(encoding="utf-8")
     command = '$env:CONTROLADOR_SINGLE_USER_IDENTITY="local-dev-owner"'
     runtime_start = 'py -3.12 app.py'
+    panel_start = '$env:CONTROLADOR_SINGLE_USER_IDENTITY="local-dev-owner"; py -3.12 -m streamlit run streamlit_panel/app.py'
     assert command in readme
     assert readme.index(command) < readme.index(runtime_start)
+    assert panel_start in readme
+    assert readme.index(panel_start) > readme.index(runtime_start)
     assert "Configure `CONTROLADOR_SINGLE_USER_IDENTITY` com a identidade autorizada pelo Cloudflare Access." in readme
 
 
