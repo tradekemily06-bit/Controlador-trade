@@ -436,7 +436,7 @@ def test_notification_quarantine_restore_verifies_archive_without_separate_inspe
 
     path = tmp_path / "notification-quarantine-atomic-restore.sqlite3"
     store = EcosystemStateStore(path)
-    raw = '[{"notification_id":"n1","kind":"SECURITY","severity":"CRITICAL","title":"A","message":"B"}]'
+    raw = '[{"notification_id":"n1","kind":"SECURITY","severity":"CRITICAL","title":"A","message":"B","requires_attention":false,"blocking":false}]'
     with sqlite3.connect(path) as db:
         db.execute(
             "INSERT INTO ecosystem_state(key, value_json) VALUES (?, ?)",
