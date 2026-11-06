@@ -82,7 +82,10 @@ class FiscalPendingQueue:
 
     @staticmethod
     def _require_owner(owner_id: str) -> str:
-        owner = str(owner_id or "").strip()
+        # Never coerce caller-controlled objects into an authorization key.
+        if not isinstance(owner_id, str):
+            raise ValueError("identidade proprietária obrigatória e inválida")
+        owner = owner_id.strip()
         if not owner or len(owner) > 160:
             raise ValueError("identidade proprietária obrigatória e inválida")
         return owner
