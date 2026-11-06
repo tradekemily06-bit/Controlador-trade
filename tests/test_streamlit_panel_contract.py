@@ -1663,3 +1663,4 @@ def test_streamlit_fiscal_history_page_validation_rejects_malformed_rows_and_rec
     assert validate({**valid, "history_page": {**valid["history_page"], "returned": 2}}, 0) is False
     assert validate({**valid, "history_page": {**valid["history_page"], "has_more": False}}, 0) is False
     assert validate({**valid, "history_page": {**valid["history_page"], "offset": True}}, 0) is False
+    assert validate({**valid, "history_page": {**valid["history_page"], "limit": 50.0}}, 0) is False
