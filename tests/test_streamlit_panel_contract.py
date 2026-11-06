@@ -205,7 +205,23 @@ def test_streamlit_restores_assistant_conversation_id_after_provider_failure():
     assert 'failed_conversation_id = error_payload.get("conversation_id")' in api_helper
     assert 'path == "/api/assistant/chat"' in api_helper
     assert 'st.session_state.assistant_conversation_id = failed_conversation_id' in api_helper
-    assert 'raise RuntimeError(f"API {exc.code}: {message}") from exc' in api_helper
+    assert 'raise RuntimeError(f"API indisponível (HTTP {exc.code}): {message}") from None' in api_helper
+    assert 'error_payload.get("error"' not in api_helper
+    assert 'safe_messages = {' in api_helper
+    assert 'raise RuntimeError("Runtime indisponível. Verifique a conexão com o serviço.") from None' in api_helper
+
+
+def test_streamlit_api_errors_do_not_expose_backend_details():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    api_start = source.index("def api(")
+    api_end = source.index(chr(10) + "def money(", api_start)
+    api_helper = source[api_start:api_end]
+
+    assert "detail = exc.read().decode" in api_helper
+    assert "message = safe_messages.get(exc.code" in api_helper
+    assert "BASE_URL" not in api_helper
+    assert "exc.reason" not in api_helper
+    assert "detail)" not in api_helper
 
 
 def test_streamlit_requires_explicit_openai_consent_before_chat_submission():
