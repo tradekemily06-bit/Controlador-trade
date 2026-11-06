@@ -709,6 +709,58 @@ class ConfiguredEcosystemService(EcosystemService):
             raise ValueError("fechamento DEMO bloqueado: impressão digital da conta de abertura ausente ou inválida.")
         return request_id, fingerprint
 
+    def list_mt5_position_recovery(self) -> list[dict[str, Any]]:
+        """List accepted DEMO cycles needing operator recovery; never claims live OPEN state."""
+        from execution.execution_ledger import ExecutionLedgerStatus
+        from execution.execution_lifecycle import ExecutionLifecycleState
+        from execution.position_close_store import PositionCloseState
+
+        if self.operational_runtime is None:
+            raise RuntimeError("runtime operacional não conectado")
+        ledger = self.operational_runtime.execution_ledger
+        lifecycle = self.operational_runtime.execution_lifecycle
+        close_store = getattr(self.operational_runtime, "position_closes", None)
+        if close_store is None:
+            raise RuntimeError("armazenamento persistente de fechamento DEMO não configurado")
+
+        results: list[dict[str, Any]] = []
+        for request_id, identity in ledger.entries():
+            if identity.status not in (
+                ExecutionLedgerStatus.ACCEPTED,
+                ExecutionLedgerStatus.RECONCILED_EXECUTED,
+            ):
+                continue
+            if not identity.cycle_id or not identity.external_id:
+                continue
+            opening = lifecycle.get(request_id)
+            if opening is None or opening.state is not ExecutionLifecycleState.ACCEPTED:
+                continue
+            fingerprint = identity.account_fingerprint
+            if (
+                not isinstance(fingerprint, str)
+                or len(fingerprint) != 32
+                or any(char not in "0123456789abcdef" for char in fingerprint)
+            ):
+                recovery_state = "BLOCKED_ACCOUNT_IDENTITY"
+            else:
+                close_record = close_store.get(request_id)
+                if close_record is not None and close_record.state is PositionCloseState.CLOSED:
+                    continue
+                if close_record is not None and close_record.state is PositionCloseState.OPEN:
+                    recovery_state = "BROKER_CONFIRMED_OPEN"
+                else:
+                    # This endpoint does not query MT5. OPEN must never be inferred
+                    # merely because a cycle was accepted or a close was attempted.
+                    recovery_state = "RECONCILIATION_REQUIRED"
+            results.append({
+                "cycle_id": identity.cycle_id,
+                "external_id": identity.external_id,
+                "recovery_state": recovery_state,
+                "broker_query_performed": False,
+                "order_sent": False,
+            })
+        return results
+
     def close_mt5_position(self, *, cycle_id: str, external_id: str) -> Any:
         """Persist and close only the cycle's DEMO position on its original account."""
         from execution.ports import ExecutionResult
