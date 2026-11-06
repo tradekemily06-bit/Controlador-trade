@@ -10,6 +10,9 @@ from pathlib import Path
 from typing import Any, Iterator
 
 
+MAX_PENDING_OFFSET = 1_000_000_000
+
+
 CURRENCIES = frozenset({"USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "BRL"})
 FOREIGN_REVIEW_CANDIDATES = frozenset({
     "FOREIGN_FINANCIAL_INVESTMENT",
@@ -440,8 +443,14 @@ class FiscalPendingQueue:
         owner_id = self._require_owner(owner_id)
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
             raise ValueError("limit deve estar entre 1 e 500")
-        if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
-            raise ValueError("offset deve ser não negativo")
+        if (
+            isinstance(offset, bool)
+            or not isinstance(offset, int)
+            or not 0 <= offset <= MAX_PENDING_OFFSET
+        ):
+            raise ValueError(
+                f"offset deve estar entre 0 e {MAX_PENDING_OFFSET}"
+            )
         with self._connect() as db:
             total = int(db.execute("SELECT COUNT(*) FROM fiscal_reserve_pending_foreign WHERE owner_id = ?", (owner_id,)).fetchone()[0])
             rows = db.execute("SELECT * FROM fiscal_reserve_pending_foreign WHERE owner_id = ? "
