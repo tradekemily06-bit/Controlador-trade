@@ -541,12 +541,25 @@ def test_real_pending_queues_reach_assistant_without_entering_fiscal_reserve(tmp
     domestic_queue = FiscalDomesticPendingQueue(str(database))
     today = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
 
-    reserve.record_realized_result(owner_id, {
-        "category": "BR_DAY_TRADE",
-        "realized_result_brl": 1000.0,
-        "reference": "E2E-BR-RESERVE",
-        "occurred_on": today.isoformat(),
-    })
+    from datetime import timedelta
+
+    week_start = today - timedelta(days=today.weekday())
+    previous_week = week_start - timedelta(days=1)
+    previous_month = today.replace(day=1) - timedelta(days=1)
+    previous_year = today.replace(month=1, day=1) - timedelta(days=1)
+
+    for amount, reference, occurred_on in (
+        (1000.0, "E2E-BR-RESERVE", today),
+        (500.0, "E2E-BR-PREVIOUS-WEEK", previous_week),
+        (300.0, "E2E-BR-PREVIOUS-MONTH", previous_month),
+        (200.0, "E2E-BR-PREVIOUS-YEAR", previous_year),
+    ):
+        reserve.record_realized_result(owner_id, {
+            "category": "BR_DAY_TRADE",
+            "realized_result_brl": amount,
+            "reference": reference,
+            "occurred_on": occurred_on.isoformat(),
+        })
     foreign_queue.add_realized_result(owner_id, {
         "reference": "E2E-FOREIGN-RESULT",
         "original_result": 250.0,
@@ -589,8 +602,11 @@ def test_real_pending_queues_reach_assistant_without_entering_fiscal_reserve(tmp
     )
 
     fiscal = context["fiscal_reserve"]
-    assert fiscal["total_reserved_brl"] == 200.0
+    assert fiscal["total_reserved_brl"] == 400.0
     assert fiscal["periods"]["day"]["realized_result_brl"] == 1000.0
+    assert fiscal["periods"]["week"]["realized_result_brl"] == 1000.0
+    assert fiscal["periods"]["month"]["realized_result_brl"] == 1500.0
+    assert fiscal["periods"]["year"]["realized_result_brl"] == 1800.0
     assert fiscal["foreign_pending"]["total"] == 2
     assert fiscal["foreign_pending"]["realized_results"] == 1
     assert fiscal["foreign_pending"]["asset_amounts"] == 1
@@ -605,6 +621,9 @@ def test_real_pending_queues_reach_assistant_without_entering_fiscal_reserve(tmp
     serialized = str(fiscal)
     for private_value in (
         "E2E-BR-RESERVE",
+        "E2E-BR-PREVIOUS-WEEK",
+        "E2E-BR-PREVIOUS-MONTH",
+        "E2E-BR-PREVIOUS-YEAR",
         "E2E-FOREIGN-RESULT",
         "E2E-FOREIGN-ASSET",
         "E2E-DOMESTIC-PENDING",
