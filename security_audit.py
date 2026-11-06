@@ -145,9 +145,10 @@ class SecurityAudit:
                     rows = connection.execute(
                         "SELECT timestamp, request_id, method, path, status, client_hash FROM security_events ORDER BY id ASC"
                     ).fetchall()
+                self._persistence_error = None
                 return [asdict(SecurityEvent(*row)) for row in rows]
             except sqlite3.Error:
-                pass
+                self._persistence_error = "read_failed"
         return [asdict(event) for event in self._events]
 
 
