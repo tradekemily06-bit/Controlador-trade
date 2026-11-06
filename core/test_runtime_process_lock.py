@@ -290,3 +290,36 @@ def test_lock_set_retries_only_locks_whose_release_failed(tmp_path):
     assert retry_required.is_acquired is False
     assert lock_set._acquired == []
     assert lock_set.is_acquired is False
+
+
+
+def test_lock_set_rolls_back_partial_acquisition_on_keyboard_interrupt(tmp_path):
+    lock_set = RuntimeProcessLockSet(tmp_path / "runtime.lock")
+    released = []
+
+    class _AcquiredLock:
+        def acquire(self):
+            return None
+
+        def release(self):
+            released.append("released")
+
+    class _InterruptedLock:
+        def acquire(self):
+            raise KeyboardInterrupt("cancelled during lock acquisition")
+
+        def release(self):
+            raise AssertionError("interrupted lock was never acquired")
+
+    lock_set._locks = [_AcquiredLock(), _InterruptedLock()]
+
+    try:
+        lock_set.acquire()
+    except KeyboardInterrupt as exc:
+        assert str(exc) == "cancelled during lock acquisition"
+    else:
+        raise AssertionError("KeyboardInterrupt must propagate after rollback")
+
+    assert released == ["released"]
+    assert lock_set._acquired == []
+    assert lock_set.is_acquired is False
