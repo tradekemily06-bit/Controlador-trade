@@ -489,5 +489,55 @@ class AppSecurityTests(unittest.TestCase):
                 else:
                     os.environ[name] = value
 
+
+    def test_native_ea_local_runtime_requires_loopback_host_and_no_access_identity(self):
+        from app import _authorize_local_runtime
+        names = {
+            "CONTROLADOR_LOCAL_MUTATIONS_ALLOWED",
+            "CONTROLADOR_LOCAL_MUTATION_HOSTS",
+            "CONTROLADOR_TRUSTED_IDENTITY_HEADER",
+        }
+        old = {name: os.environ.get(name) for name in names}
+        try:
+            os.environ["CONTROLADOR_LOCAL_MUTATIONS_ALLOWED"] = "true"
+            os.environ["CONTROLADOR_LOCAL_MUTATION_HOSTS"] = "localhost,127.0.0.1,[::1]"
+            os.environ["CONTROLADOR_TRUSTED_IDENTITY_HEADER"] = "Cf-Access-Authenticated-User-Email"
+
+            ea_allowed, reason = _authorize_local_runtime({
+                "REMOTE_ADDR": "127.0.0.1",
+                "HTTP_HOST": "127.0.0.1:8000",
+            })
+            remote_denied, _ = _authorize_local_runtime({
+                "REMOTE_ADDR": "203.0.113.10",
+                "HTTP_HOST": "127.0.0.1:8000",
+            })
+            public_host_denied, _ = _authorize_local_runtime({
+                "REMOTE_ADDR": "127.0.0.1",
+                "HTTP_HOST": "controlador.example.com",
+            })
+            proxied_access_identity_denied, _ = _authorize_local_runtime({
+                "REMOTE_ADDR": "127.0.0.1",
+                "HTTP_HOST": "127.0.0.1:8000",
+                "HTTP_CF_ACCESS_AUTHENTICATED_USER_EMAIL": "owner@example.com",
+            })
+
+            self.assertTrue(ea_allowed, reason)
+            self.assertFalse(remote_denied)
+            self.assertFalse(public_host_denied)
+            self.assertFalse(proxied_access_identity_denied)
+
+            os.environ["CONTROLADOR_LOCAL_MUTATIONS_ALLOWED"] = "false"
+            disabled_denied, _ = _authorize_local_runtime({
+                "REMOTE_ADDR": "127.0.0.1",
+                "HTTP_HOST": "localhost:8000",
+            })
+            self.assertFalse(disabled_denied)
+        finally:
+            for name, value in old.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
 if __name__ == "__main__":
     unittest.main()
