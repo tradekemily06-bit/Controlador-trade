@@ -45,6 +45,18 @@ def test_streamlit_api_uses_case_insensitive_trusted_identity_extraction():
     assert "from trusted_identity import trusted_identity_from_headers" in source
     assert "identity = trusted_identity_from_headers(incoming, IDENTITY_HEADER)" in source
 
+def test_streamlit_api_blocks_redirects_before_forwarding_trusted_identity():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    api_start = source.index("class _NoRedirectHandler")
+    api_end = source.index("\ndef api(", api_start)
+    redirect_guard = source[api_start:api_end]
+    assert "urllib.request.HTTPRedirectHandler" in redirect_guard
+    assert "def redirect_request(" in redirect_guard
+    assert "return None" in redirect_guard
+    assert "_API_OPENER = urllib.request.build_opener(_NoRedirectHandler)" in redirect_guard
+    assert "with _API_OPENER.open(request, timeout=TIMEOUT)" in source
+    assert "urllib.request.urlopen(request, timeout=TIMEOUT)" not in source
+
 def test_streamlit_fiscal_panel_records_losses_and_pages_the_ledger():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert "min_value=-1000000000000.0" in source
