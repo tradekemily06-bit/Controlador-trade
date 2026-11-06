@@ -1577,6 +1577,7 @@ def test_windows_bootstrap_installs_and_supervises_the_streamlit_panel():
     workflow = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert "'start_streamlit_panel.ps1'" in workflow
     assert '"$TaskPrefix-Streamlit"' in installer
+    assert "GetEnvironmentVariable('CONTROLADOR_SINGLE_USER_IDENTITY', 'Machine')" in installer
     assert "127.0.0.1" in supervisor
     assert "8501" in supervisor
     assert "http://127.0.0.1:8000" in supervisor
