@@ -25,6 +25,7 @@ from core.automation_risk_policy import AutomationRiskPolicy
 from core.p41_controlled_automation import AutomationPolicy
 from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
 from execution.icmarkets_mt5_market_data import ICMarketsMT5DemoMarketDataAdapter
+from execution.mt5_session_lock import serialized_mt5_session
 from core.ecosystem_preferences import ChartTheme, EcosystemPreferencesStore
 from core.ecosystem_state_store import EcosystemStateStore
 from core.models import AnalysisResult, Signal
@@ -704,6 +705,7 @@ class ConfiguredEcosystemService(EcosystemService):
             "simulation_kind": result.simulation_kind,
         }
 
+    @serialized_mt5_session
     def get_mt5_assets(self, *, include_invisible: bool = False) -> tuple[dict[str, Any], ...]:
         """Return the broker-observed MT5 universe with session and 24/7 evidence."""
         if self.execution_provider != "ic_markets_mt5_demo":
