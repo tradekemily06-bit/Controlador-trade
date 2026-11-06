@@ -54,13 +54,16 @@ if ($AutostartMode -eq 'AtStartupS4U') {
 }
 $mt5Arguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $mt5Script + '" -Mt5TerminalPath "' + $Mt5TerminalPath + '" -ProjectRoot "' + $ProjectRoot + '" -PythonExe "' + $PythonExe + '" -RuntimeDir "' + $RuntimeDir + '"'
 $controllerArguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $controllerScript + '" -ProjectRoot "' + $ProjectRoot + '" -PythonExe "' + $PythonExe + '" -RuntimeDir "' + $RuntimeDir + '" -Mt5TerminalPath "' + $Mt5TerminalPath + '"'
+$streamlitArguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $streamlitScript + '" -ProjectRoot "' + $ProjectRoot + '" -PythonExe "' + $PythonExe + '"'
 
 $mt5Action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $mt5Arguments
 $controllerAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $controllerArguments
+$streamlitAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $streamlitArguments
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Seconds 0)
 
 Register-ScheduledTask -TaskName "$TaskPrefix-MT5" -Action $mt5Action -Trigger $trigger -Principal $principalTask -Settings $settings -Description 'Supervisiona o MetaTrader 5 usado pelo Controlador Trading.' -Force | Out-Null
 Register-ScheduledTask -TaskName "$TaskPrefix-Controlador" -Action $controllerAction -Trigger $trigger -Principal $principalTask -Settings $settings -Description 'Supervisiona o Controlador Trading e aguarda o MT5 DEMO.' -Force | Out-Null
+Register-ScheduledTask -TaskName "$TaskPrefix-Streamlit" -Action $streamlitAction -Trigger $trigger -Principal $principalTask -Settings $settings -Description 'Supervisiona o painel web Streamlit em loopback.' -Force | Out-Null
 
 if ($AutostartMode -eq 'AtStartupS4U') {
     Write-Host 'Inicialização 24/7 configurada para iniciar no boot sem depender de logon interativo (S4U).'
@@ -69,6 +72,7 @@ if ($AutostartMode -eq 'AtStartupS4U') {
     Write-Host 'Inicialização automática instalada para a sessão Windows atual (modo interativo).'
     Write-Host 'Este modo NÃO garante operação após logoff/reboot sem novo logon; use -AutostartMode AtStartupS4U no host 24/7 após validar o MT5.'
 }
-Write-Host 'MT5 e Controlador serão supervisionados; quedas são recuperadas com limite e backoff.'
+Write-Host 'MT5, Controlador e Streamlit serão supervisionados; o painel web permanece em 127.0.0.1:8501.'
+Write-Host 'Configure o Tunnel para o hostname do painel apontar à porta 8501; mantenha a API 8000 privada.'
 Write-Host 'O painel MQL5 é sincronizado e compilado automaticamente pelo supervisor do Controlador após o MT5 DEMO ficar válido; não há uma segunda tarefa concorrente de compilação.'
 Write-Host 'Nenhuma senha, token ou credencial foi gravada por este instalador.'
