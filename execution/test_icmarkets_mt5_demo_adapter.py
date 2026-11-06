@@ -574,3 +574,42 @@ def test_closed_deal_preview_withholds_position_still_reported_open_by_mt5():
     assert preview["count"] == 0
     assert preview["candidates"] == []
     assert preview["withheld_incomplete_positions"] == 1
+
+def test_closed_deal_preview_withholds_malformed_ticket_and_timestamp_metadata():
+    def run_case(closing_overrides):
+        mt5 = FakeMT5()
+        mt5.account_info = lambda: SimpleNamespace(
+            trade_mode=mt5.ACCOUNT_TRADE_MODE_DEMO, currency="BRL"
+        )
+        mt5.positions_get = lambda: ()
+        opening = SimpleNamespace(
+            entry=mt5.DEAL_ENTRY_IN, ticket=40, position_id=903,
+            symbol="WIN$", volume=1.0, profit=0.0,
+            commission=0.0, swap=0.0, fee=0.0, time=1793318300,
+        )
+        closing_values = {
+            "entry": mt5.DEAL_ENTRY_OUT, "ticket": 41, "position_id": 903,
+            "symbol": "WIN$", "volume": 1.0, "profit": 5.0,
+            "commission": 0.0, "swap": 0.0, "fee": 0.0,
+            "time": 1793318400, "time_msc": 1793318400000,
+        }
+        closing_values.update(closing_overrides)
+        closing = SimpleNamespace(**closing_values)
+
+        def history_deals_get(*args, **kwargs):
+            if kwargs.get("position") == 903:
+                return (opening, closing)
+            return (closing,)
+
+        mt5.history_deals_get = history_deals_get
+        return ICMarketsMT5DemoAdapter(mt5_module=mt5).read_closed_deal_candidates()
+
+    for malformed in (
+        {"ticket": None},
+        {"time_msc": "not-a-number"},
+        {"time": 10**30},
+    ):
+        preview = run_case(malformed)
+        assert preview["count"] == 0
+        assert preview["candidates"] == []
+        assert preview["withheld_incomplete_positions"] == 1
