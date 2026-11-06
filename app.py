@@ -50,24 +50,36 @@ _RUNTIME_PROCESS_LOCK = RuntimeProcessLockSet(
     RUNTIME_DIR / "controlador-runtime.lock",
     [DECISION_DB, FISCAL_RESERVE_DB, ASSISTANT_DB],
 )
-_RUNTIME_PROCESS_LOCK.acquire()
-EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL)
-OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
-SERVICE = ConfiguredEcosystemService(
-    operational_runtime=OPERATIONAL_RUNTIME,
-    execution_provider=EXECUTION_PROVIDER,
-    decision_store=DecisionStore(str(DECISION_DB)),
-)
-REAL_RUNTIME = RealRuntimeController(runtime=OPERATIONAL_RUNTIME, root=RUNTIME_DIR, symbol=EXECUTION_SYMBOL)
-ONBOARDING = EcosystemOnboarding()
-# Apply the owner-scoped schema before any fiscal repository creates or queries tables.
-# This fails closed when the configured single-owner identity is absent or mismatched.
-migrate_fiscal_schema(str(FISCAL_RESERVE_DB))
-FISCAL_RESERVE = FiscalReserve(str(FISCAL_RESERVE_DB))
-FISCAL_PENDING_QUEUE = FiscalPendingQueue(str(FISCAL_RESERVE_DB))
-FISCAL_DOMESTIC_PENDING_QUEUE = FiscalDomesticPendingQueue(str(FISCAL_RESERVE_DB))
-ASSISTANT_STORE = AssistantConversationStore(ASSISTANT_DB)
-ASSISTANT = EcosystemAssistant(ASSISTANT_STORE, SERVICE, FISCAL_RESERVE, fiscal_pending_queue=FISCAL_PENDING_QUEUE, fiscal_domestic_pending_queue=FISCAL_DOMESTIC_PENDING_QUEUE)
+try:
+    _RUNTIME_PROCESS_LOCK.acquire()
+    EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL)
+    OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
+    SERVICE = ConfiguredEcosystemService(
+        operational_runtime=OPERATIONAL_RUNTIME,
+        execution_provider=EXECUTION_PROVIDER,
+        decision_store=DecisionStore(str(DECISION_DB)),
+    )
+    REAL_RUNTIME = RealRuntimeController(runtime=OPERATIONAL_RUNTIME, root=RUNTIME_DIR, symbol=EXECUTION_SYMBOL)
+    ONBOARDING = EcosystemOnboarding()
+    # Apply the owner-scoped schema before any fiscal repository creates or queries tables.
+    # This fails closed when the configured single-owner identity is absent or mismatched.
+    migrate_fiscal_schema(str(FISCAL_RESERVE_DB))
+    FISCAL_RESERVE = FiscalReserve(str(FISCAL_RESERVE_DB))
+    FISCAL_PENDING_QUEUE = FiscalPendingQueue(str(FISCAL_RESERVE_DB))
+    FISCAL_DOMESTIC_PENDING_QUEUE = FiscalDomesticPendingQueue(str(FISCAL_RESERVE_DB))
+    ASSISTANT_STORE = AssistantConversationStore(ASSISTANT_DB)
+    ASSISTANT = EcosystemAssistant(ASSISTANT_STORE, SERVICE, FISCAL_RESERVE, fiscal_pending_queue=FISCAL_PENDING_QUEUE, fiscal_domestic_pending_queue=FISCAL_DOMESTIC_PENDING_QUEUE)
+except BaseException:
+    # Import-time startup can fail under a WSGI supervisor that keeps its
+    # process alive. Release every acquired sidecar lock before propagating
+    # the original initialization failure; never leave a half-built runtime
+    # holding shared SQLite/runtime locks indefinitely.
+    try:
+        _RUNTIME_PROCESS_LOCK.release()
+    except Exception:
+        # Preserve the initialization exception as the primary failure.
+        pass
+    raise
 
 # Latest read-only market snapshots are shared by the API and Streamlit process.
 # This cache is intentionally process-local; restart clears it and clients must show unavailable.
