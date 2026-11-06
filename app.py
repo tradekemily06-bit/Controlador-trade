@@ -962,10 +962,8 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {"runtime_reconciliation": payload}, request_id, environ)
         if path == "/api/runtime/cycle" and method == "POST":
             data = _read_json(environ)
-            confirmed = data.get("confirmed", False)
-            filters_ok = data.get("filters_ok", True)
-            if not isinstance(confirmed, bool) or not isinstance(filters_ok, bool):
-                raise ValueError("confirmed e filters_ok devem ser booleanos JSON")
+            # Confirmation and filter evidence are derived by the server from
+            # the pinned MT5 DEMO feed; client booleans are not trusted here.
             mode_block_reason = _mode_execution_block_reason(SERVICE.get_preferences())
             if mode_block_reason:
                 from execution.icmarkets_mt5_market_data import MT5MarketDataError
@@ -974,8 +972,6 @@ def application(environ, start_response):
                         symbol=str(data.get("symbol", "")),
                         timeframe=str(data.get("timeframe", "5m")),
                         limit=int(data.get("limit", 100)),
-                        confirmed=confirmed,
-                        filters_ok=filters_ok,
                     )
                 except (MT5MarketDataError, RuntimeError) as exc:
                     return _json_response(
@@ -998,9 +994,6 @@ def application(environ, start_response):
                 limit=int(data.get("limit", 100)),
                 amount=float(data.get("amount", 0.01)),
                 duration_seconds=int(data.get("duration_seconds", 60)),
-                confirmed=confirmed,
-                filters_ok=filters_ok,
-                entry_conditions=tuple(data.get("entry_conditions", ()) or ()),
             )
             if not result.cycles:
                 return _json_response(
