@@ -1664,3 +1664,16 @@ def test_streamlit_fiscal_history_page_validation_rejects_malformed_rows_and_rec
     assert validate({**valid, "history_page": {**valid["history_page"], "has_more": False}}, 0) is False
     assert validate({**valid, "history_page": {**valid["history_page"], "offset": True}}, 0) is False
     assert validate({**valid, "history_page": {**valid["history_page"], "limit": 50.0}}, 0) is False
+
+
+def test_streamlit_hides_fiscal_totals_history_and_forms_when_summary_is_unavailable():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index("def show_fiscal()")
+    end = source.index("\ndef ", start + 1)
+    fiscal = source[start:end]
+    guard = fiscal.index("if not summary_available:")
+    return_position = fiscal.index("        return", guard)
+    assert "Os dados fiscais não foram validados nesta consulta" in fiscal[guard:return_position]
+    assert return_position < fiscal.index('st.markdown("#### Histórico da Reserva Fiscal")')
+    assert return_position < fiscal.index('with st.form("fiscal_rate_form")')
+    assert return_position < fiscal.index('with st.form("fiscal_result_form")')
