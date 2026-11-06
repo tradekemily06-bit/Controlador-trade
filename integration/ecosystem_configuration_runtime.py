@@ -1136,7 +1136,7 @@ class ConfiguredEcosystemService(EcosystemService):
                 OperationalIncident(
                     code="NOTIFICATION_STORE_CORRUPT",
                     severity="CRITICAL",
-                    status="INVALID_JSON",
+                    status=str(self.state_store.notifications_load_error).upper(),
                     source="notifications",
                     message="O histórico persistido de notificações está corrompido; registros inválidos não foram restaurados.",
                 )
