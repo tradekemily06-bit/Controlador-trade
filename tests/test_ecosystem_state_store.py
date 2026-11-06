@@ -428,3 +428,43 @@ def test_notification_quarantine_inspection_detects_archive_tampering(tmp_path):
 
     with pytest.raises(NotificationHistoryUnavailableError, match="integridade"):
         store.inspect_notification_quarantine(archive["archive_id"])
+
+
+def test_notification_quarantine_restore_rechecks_archive_inside_atomic_transaction(tmp_path, monkeypatch):
+    import sqlite3
+    import pytest
+    from core.ecosystem_state_store import NotificationHistoryUnavailableError
+
+    path = tmp_path / "notification-quarantine-restore-toctou.sqlite3"
+    store = EcosystemStateStore(path)
+    raw = '[{"notification_id":"n1","kind":"SECURITY","severity":"CRITICAL","title":"A","message":"B"}]'
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "INSERT INTO ecosystem_state(key, value_json) VALUES (?, ?)",
+            ("notifications", raw),
+        )
+
+    store.load_notifications()
+    store.mark_notifications_unavailable("invalid_records")
+    archive = store.archive_notifications_for_recovery(confirmed=True)
+    original_inspect = store.inspect_notification_quarantine
+
+    def inspect_then_tamper(archive_id):
+        inspected = original_inspect(archive_id)
+        with sqlite3.connect(path) as db:
+            db.execute(
+                "UPDATE notification_history_quarantine SET raw_payload = ? WHERE archive_id = ?",
+                (raw + " ", archive_id),
+            )
+        return inspected
+
+    monkeypatch.setattr(store, "inspect_notification_quarantine", inspect_then_tamper)
+
+    with pytest.raises(NotificationHistoryUnavailableError, match="integridade"):
+        store.restore_notifications_from_quarantine(archive["archive_id"], confirmed=True)
+
+    with sqlite3.connect(path) as db:
+        assert db.execute(
+            "SELECT value_json FROM ecosystem_state WHERE key = ?",
+            ("notifications",),
+        ).fetchone()[0] == raw
