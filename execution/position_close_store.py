@@ -56,8 +56,8 @@ class PositionCloseStore:
             raise ValueError("estado de fechamento inválido.")
         if not isinstance(record.updated_at, datetime):
             raise ValueError("timestamp de fechamento inválido.")
-        if isinstance(record.attempt, bool) or not isinstance(record.attempt, int) or record.attempt < 1:
-            raise ValueError("número da tentativa de fechamento inválido.")
+        if isinstance(record.attempt, bool) or not isinstance(record.attempt, int) or record.attempt < 0:
+            raise ValueError("número da observação/tentativa de fechamento inválido.")
         if record.close_external_id is not None and (
             not isinstance(record.close_external_id, str) or not record.close_external_id.strip()
         ):
@@ -216,10 +216,10 @@ class PositionCloseStore:
                 state=state,
                 updated_at=datetime.now(timezone.utc),
                 message=message,
-                attempt=1,
+                attempt=0,
             )
             self._validate(result)
-            self._records[(request_id, 1)] = result
+            self._records[(request_id, 0)] = result
 
         self._mutate_locked(mutation)
         assert result is not None
