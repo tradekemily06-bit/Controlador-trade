@@ -1619,3 +1619,13 @@ def test_remote_panel_identity_boundary_requires_cloudflared_jwt_validation_and_
     assert "127.0.0.1" in supervisor
     assert "headers[IDENTITY_HEADER] = identity" in panel
     assert "X-Forwarded-Email" not in panel
+
+
+def test_streamlit_audit_module_discloses_persistence_state_and_memory_fallback():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'persistence = str(data.get("persistence") or "UNKNOWN").upper()' in source
+    assert '"DURABLE": "PERSISTENTE"' in source
+    assert '"WRITE_FAILED": "FALHA DE GRAVAÇÃO"' in source
+    assert '"READ_FAILED": "FALHA DE LEITURA"' in source
+    assert "O histórico em memória pode não sobreviver a uma reinicialização." in source
+    assert "Persistência SQLite não configurada." in source
