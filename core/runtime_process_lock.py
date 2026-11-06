@@ -21,6 +21,11 @@ class RuntimeProcessLock:
         self.path = Path(path)
         self._file = None
 
+    @property
+    def is_acquired(self) -> bool:
+        """Return whether this instance currently owns the process lock."""
+        return self._file is not None
+
     def acquire(self) -> None:
         if self._file is not None:
             raise RuntimeError("runtime lock já está adquirido nesta instância.")
