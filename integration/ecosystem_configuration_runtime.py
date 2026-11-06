@@ -1203,12 +1203,13 @@ class ConfiguredEcosystemService(EcosystemService):
         return persisted + self._operational_notifications()
 
     def publish_ecosystem_update(self, title: str, message: str, *, update_kind: UpdateKind = UpdateKind.ECOSYSTEM) -> dict[str, Any]:
-        notification_id = f"update-{len(self.notifications.all()) + 1}"
-        candidate = EcosystemNotification(notification_id, NotificationKind.SYSTEM_UPDATE, NotificationSeverity.IMPORTANT, title, message, requires_attention=True)
-        snapshot = [asdict(notification) | {"kind": notification.kind.value, "severity": notification.severity.value} for notification in (*self.notifications.all(), candidate)]
-        self.state_store.save_notifications(snapshot)
-        item = self.notifications.publish(candidate)
-        return asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}
+        with self._notification_history_lock:
+            notification_id = f"update-{len(self.notifications.all()) + 1}"
+            candidate = EcosystemNotification(notification_id, NotificationKind.SYSTEM_UPDATE, NotificationSeverity.IMPORTANT, title, message, requires_attention=True)
+            snapshot = [asdict(notification) | {"kind": notification.kind.value, "severity": notification.severity.value} for notification in (*self.notifications.all(), candidate)]
+            self.state_store.save_notifications(snapshot)
+            item = self.notifications.publish(candidate)
+            return asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}
 
     def publish_material_event(self, kind: str, title: str, message: str, *, critical: bool = False, blocking: bool = False) -> dict[str, Any]:
         """Route a material runtime event into the notification center."""
