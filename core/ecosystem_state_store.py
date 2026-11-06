@@ -325,8 +325,10 @@ class EcosystemStateStore:
                 "UPDATE ecosystem_state SET value_json = ? WHERE key = ?",
                 (encoded, "notifications"),
             )
+            # Clear the in-memory failure flag before releasing the same lock
+            # that serializes loads, marks and guarded writes.
+            self._notifications_load_error = None
 
-        self._notifications_load_error = None
         return {
             "archive_id": normalized_archive_id,
             "restored_count": len(normalized),
