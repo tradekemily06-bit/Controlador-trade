@@ -1762,7 +1762,8 @@ def show_readonly_module(module_name: str) -> None:
             return
 
         if module_name == "Operação":
-            st.markdown("#### Estado operacional · leitura em tempo real")
+            st.markdown("#### Estado operacional · última consulta")
+            st.caption("Os indicadores abaixo são consultados ao abrir esta tela ou ao clicar em Atualizar; não representam transmissão contínua.")
             if st.button("Atualizar painel de operação", key="refresh_operation_overview"):
                 for cache_key in ("operation_health", "operation_connections", "operation_risk", "latest_operation_analysis"):
                     st.session_state.pop(cache_key, None)
