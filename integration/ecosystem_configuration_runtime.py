@@ -679,9 +679,141 @@ class ConfiguredEcosystemService(EcosystemService):
             execution_lifecycle=self.operational_runtime.execution_lifecycle,
         )
 
-    def close_mt5_position(self, *, external_id: str) -> Any:
-        """Close only the identified DEMO position through the existing MT5 safety boundary."""
-        return self.mt5_operational_adapter.close_position(external_id)
+    @staticmethod
+    def _mt5_close_identity(*, operational_runtime, cycle_id: str, external_id: str):
+        from core.trading_runtime import TradingRuntime
+        from execution.execution_ledger import ExecutionLedgerStatus
+        from execution.execution_lifecycle import ExecutionLifecycleState
+
+        request_id, identity, execution_record = TradingRuntime.validate_external_cycle_identity(
+            cycle_id=cycle_id,
+            external_id=external_id,
+            ledger=operational_runtime.execution_ledger,
+            execution_lifecycle=operational_runtime.execution_lifecycle,
+        )
+        if identity.external_id != external_id.strip():
+            raise ValueError("fechamento DEMO exige external_id já vinculado ao ciclo no ledger.")
+        if identity.status not in (
+            ExecutionLedgerStatus.ACCEPTED,
+            ExecutionLedgerStatus.RECONCILED_EXECUTED,
+        ):
+            raise ValueError("somente posição DEMO com abertura confirmada pode ser fechada.")
+        if execution_record.state is not ExecutionLifecycleState.ACCEPTED:
+            raise ValueError("ciclo de abertura não está confirmado como ACCEPTED.")
+        fingerprint = identity.account_fingerprint
+        if (
+            not isinstance(fingerprint, str)
+            or len(fingerprint) != 32
+            or any(char not in "0123456789abcdef" for char in fingerprint)
+        ):
+            raise ValueError("fechamento DEMO bloqueado: impressão digital da conta de abertura ausente ou inválida.")
+        return request_id, fingerprint
+
+    def close_mt5_position(self, *, cycle_id: str, external_id: str) -> Any:
+        """Persist and close only the cycle's DEMO position on its original account."""
+        from execution.ports import ExecutionResult
+        from execution.position_close_store import PositionCloseState
+
+        if self.operational_runtime is None or self.trading_runtime is None:
+            raise RuntimeError("runtime operacional não conectado")
+        store = getattr(self.operational_runtime, "position_closes", None)
+        if store is None:
+            raise RuntimeError("armazenamento persistente de fechamento DEMO não configurado")
+
+        with self.operational_runtime.kill_switch.execution_lock():
+            request_id, fingerprint = self._mt5_close_identity(
+                operational_runtime=self.operational_runtime,
+                cycle_id=cycle_id,
+                external_id=external_id,
+            )
+            store.begin(request_id, external_id.strip())
+            try:
+                close = self.mt5_operational_adapter.close_position(
+                    external_id.strip(),
+                    expected_account_fingerprint=fingerprint,
+                )
+            except Exception as exc:
+                store.finish(
+                    request_id,
+                    PositionCloseState.UNKNOWN,
+                    message=f"resultado do fechamento DEMO incerto após erro do adaptador: {type(exc).__name__}",
+                )
+                raise
+            if not isinstance(close, ExecutionResult):
+                store.finish(
+                    request_id,
+                    PositionCloseState.UNKNOWN,
+                    message="adaptador retornou resultado de fechamento inválido",
+                )
+                raise RuntimeError("adaptador MT5 retornou resultado de fechamento inválido")
+            store.finish(
+                request_id,
+                PositionCloseState.CLOSED if close.accepted else PositionCloseState.UNKNOWN,
+                message=close.message,
+                close_external_id=close.external_id if close.accepted else None,
+            )
+            return close
+
+    def reconcile_mt5_position_close(self, *, cycle_id: str, external_id: str) -> dict[str, Any]:
+        """Reconcile a DEMO close from broker evidence without sending another order."""
+        from execution.ports import PositionCloseObservation, PositionCloseObservationStatus
+        from execution.position_close_store import PositionCloseState
+
+        if self.operational_runtime is None or self.trading_runtime is None:
+            raise RuntimeError("runtime operacional não conectado")
+        store = getattr(self.operational_runtime, "position_closes", None)
+        if store is None:
+            raise RuntimeError("armazenamento persistente de fechamento DEMO não configurado")
+
+        with self.operational_runtime.kill_switch.execution_lock():
+            request_id, fingerprint = self._mt5_close_identity(
+                operational_runtime=self.operational_runtime,
+                cycle_id=cycle_id,
+                external_id=external_id,
+            )
+            record = store.get(request_id)
+            if record is None or record.external_id != external_id.strip():
+                raise ValueError("tentativa de fechamento DEMO não encontrada para este ciclo/ticket")
+            if record.state in (PositionCloseState.CLOSED, PositionCloseState.OPEN):
+                return {
+                    "request_id": request_id,
+                    "external_id": external_id.strip(),
+                    "state": record.state.value,
+                    "message": record.message,
+                    "read_only": True,
+                    "order_sent": False,
+                }
+            if record.state not in (PositionCloseState.REQUESTED, PositionCloseState.UNKNOWN):
+                raise ValueError("estado de fechamento DEMO não pode ser reconciliado")
+
+            observation = self.mt5_operational_adapter.reconcile_position_close(
+                external_id.strip(),
+                expected_account_fingerprint=fingerprint,
+            )
+            if (
+                not isinstance(observation, PositionCloseObservation)
+                or not isinstance(observation.status, PositionCloseObservationStatus)
+                or not isinstance(observation.message, str)
+            ):
+                raise RuntimeError("adaptador retornou observação de fechamento DEMO inválida")
+            mapping = {
+                PositionCloseObservationStatus.CLOSED: PositionCloseState.CLOSED,
+                PositionCloseObservationStatus.OPEN: PositionCloseState.OPEN,
+                PositionCloseObservationStatus.UNKNOWN: PositionCloseState.UNKNOWN,
+            }
+            resolved = store.reconcile(
+                request_id,
+                mapping[observation.status],
+                message=observation.message,
+            )
+            return {
+                "request_id": resolved.request_id,
+                "external_id": resolved.external_id,
+                "state": resolved.state.value,
+                "message": resolved.message,
+                "read_only": True,
+                "order_sent": False,
+            }
 
     def reconcile_mt5_cycle(self, *, cycle_id: str, external_id: str) -> Any:
         """Reconcile one DEMO external order and close only its factual lifecycle."""
