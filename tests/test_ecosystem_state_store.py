@@ -525,3 +525,44 @@ def test_notification_corruption_flag_and_writer_are_serialized(tmp_path, monkey
             ("notifications",),
         ).fetchone() is None
     assert store.notifications_load_error == "invalid_json"
+
+def test_stale_store_instance_cannot_overwrite_corruption_written_by_another_instance(tmp_path):
+    import sqlite3
+    import pytest
+    from core.ecosystem_state_store import NotificationHistoryUnavailableError
+
+    path = tmp_path / "notification-cross-instance-guard.sqlite3"
+    stale_writer = EcosystemStateStore(path)
+    observer = EcosystemStateStore(path)
+    valid = [{
+        "notification_id": "initial",
+        "kind": "SECURITY",
+        "severity": "CRITICAL",
+        "title": "Inicial",
+        "message": "Histórico válido",
+        "requires_attention": True,
+        "blocking": True,
+    }]
+    stale_writer.save_notifications(valid)
+
+    # Simulate another process damaging the row after stale_writer initialized.
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "UPDATE ecosystem_state SET value_json = ? WHERE key = ?",
+            ("{broken-json", "notifications"),
+        )
+
+    assert observer.load_notifications() == []
+    assert observer.notifications_load_error == "invalid_json"
+
+    with pytest.raises(NotificationHistoryUnavailableError, match="inválido"):
+        stale_writer.save_notifications([])
+
+    with sqlite3.connect(path) as db:
+        stored = db.execute(
+            "SELECT value_json FROM ecosystem_state WHERE key = ?",
+            ("notifications",),
+        ).fetchone()[0]
+    assert stored == "{broken-json"
+    assert stale_writer.notifications_load_error == "invalid_json"
+
