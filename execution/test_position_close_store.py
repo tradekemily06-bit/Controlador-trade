@@ -70,3 +70,21 @@ def test_legacy_accepted_close_is_recovered_as_unknown_and_requires_reconciliati
     store.reconcile("legacy-1", PositionCloseState.OPEN, message="broker confirms position remains open")
     retry = store.begin("legacy-1", "ticket-legacy")
     assert retry.attempt == 2
+
+
+def test_initial_read_only_observation_does_not_consume_close_attempt_number(tmp_path):
+    path = tmp_path / "initial-observation.json"
+    store = PositionCloseStore(path)
+    observed = store.observe_initial(
+        "req-initial",
+        "ticket-initial",
+        PositionCloseState.OPEN,
+        message="broker confirms OPEN",
+    )
+    assert observed.attempt == 0
+
+    reloaded = PositionCloseStore(path)
+    assert reloaded.get("req-initial").attempt == 0
+    first_close = reloaded.begin("req-initial", "ticket-initial")
+    assert first_close.attempt == 1
+    assert [item.attempt for item in reloaded.history("req-initial")] == [0, 1]
