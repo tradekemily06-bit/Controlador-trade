@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
+import uuid
+from datetime import datetime, timezone
 from dataclasses import asdict
 from enum import Enum
 from pathlib import Path
@@ -39,6 +42,17 @@ class EcosystemStateStore:
                 CREATE TABLE IF NOT EXISTS ecosystem_state (
                     key TEXT PRIMARY KEY,
                     value_json TEXT NOT NULL
+                )
+                """
+            )
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS notification_history_quarantine (
+                    archive_id TEXT PRIMARY KEY,
+                    archived_at TEXT NOT NULL,
+                    corruption_category TEXT NOT NULL,
+                    payload_sha256 TEXT NOT NULL,
+                    raw_payload TEXT NOT NULL
                 )
                 """
             )
@@ -116,6 +130,53 @@ class EcosystemStateStore:
         if normalized not in allowed:
             raise ValueError("categoria de histórico inválida")
         self._notifications_load_error = normalized
+
+    def archive_notifications_for_recovery(self, *, confirmed: bool = False) -> dict[str, str]:
+        """Preserve the exact damaged payload before any separately approved recovery."""
+        if confirmed is not True:
+            raise ValueError("confirmação explícita é obrigatória para arquivar o histórico")
+        category = self._notifications_load_error
+        allowed = {"invalid_json", "read_failed", "invalid_shape", "invalid_records"}
+        if category not in allowed:
+            raise NotificationHistoryUnavailableError(
+                "não há histórico marcado para recuperação"
+            )
+
+        archive_id = str(uuid.uuid4())
+        archived_at = datetime.now(timezone.utc).isoformat()
+        try:
+            with self._lock, self._connect() as db:
+                db.execute("BEGIN IMMEDIATE")
+                row = db.execute(
+                    "SELECT value_json FROM ecosystem_state WHERE key = ?",
+                    ("notifications",),
+                ).fetchone()
+                if row is None:
+                    raise NotificationHistoryUnavailableError(
+                        "payload original de notificações não encontrado; nada foi alterado"
+                    )
+                raw_payload = row[0]
+                digest = hashlib.sha256(raw_payload.encode("utf-8")).hexdigest()
+                db.execute(
+                    """
+                    INSERT INTO notification_history_quarantine
+                    (archive_id, archived_at, corruption_category, payload_sha256, raw_payload)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (archive_id, archived_at, category, digest, raw_payload),
+                )
+        except sqlite3.Error as exc:
+            raise NotificationHistoryUnavailableError(
+                "não foi possível preservar o histórico original; nenhum reparo foi aplicado"
+            ) from exc
+
+        # Deliberately keep the original row and the unavailable flag untouched.
+        return {
+            "archive_id": archive_id,
+            "archived_at": archived_at,
+            "corruption_category": category,
+            "payload_sha256": digest,
+        }
 
     def save_notifications(self, notifications: list[dict[str, Any]]) -> None:
         # Preserve damaged evidence until an explicit recovery procedure has
