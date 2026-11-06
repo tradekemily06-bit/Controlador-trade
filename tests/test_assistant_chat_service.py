@@ -158,6 +158,7 @@ def test_ask_provider_error_is_sanitized_and_user_message_remains_in_history(mon
         )
         assert "secret-provider-detail" not in str(exc)
         assert "OPENAI_API_KEY" not in str(exc)
+        assert exc.conversation_id == "conversation-test"
     else:
         raise AssertionError("provider errors must be returned as a sanitized failure")
 
