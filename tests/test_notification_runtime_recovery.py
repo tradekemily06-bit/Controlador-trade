@@ -95,3 +95,13 @@ def test_publish_uses_unique_id_after_recovered_history():
     assert published["notification_id"] != "event-2"
     assert published["notification_id"].startswith("event-")
     assert len({item["notification_id"] for item in store.saved[-1]}) == 2
+
+
+def test_restore_marks_duplicate_notification_ids_as_invalid():
+    duplicate = {"notification_id": "same-id", "kind": "SECURITY", "severity": "CRITICAL", "title": "Alerta", "message": "Registro", "requires_attention": True, "blocking": True}
+    center = EcosystemNotificationCenter()
+
+    center.restore([duplicate, dict(duplicate)])
+
+    assert center.restore_had_invalid_records is True
+    assert len(center.all()) == 1
