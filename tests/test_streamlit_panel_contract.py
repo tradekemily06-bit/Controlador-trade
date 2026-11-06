@@ -1693,3 +1693,16 @@ def test_streamlit_hides_fiscal_totals_history_and_forms_when_summary_is_unavail
     assert return_position < fiscal.index('st.markdown("#### Histórico da Reserva Fiscal")')
     assert return_position < fiscal.index('with st.form("fiscal_rate_form")')
     assert return_position < fiscal.index('with st.form("fiscal_result_form")')
+
+
+def test_streamlit_fiscal_panel_never_displays_raw_exception_details():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index("def show_fiscal()")
+    end = source.index("\\ndef ", start + 1)
+    fiscal = source[start:end]
+
+    assert "st.error(str(exc))" not in fiscal
+    assert "st.warning(str(exc))" not in fiscal
+    assert "{exc}" not in fiscal
+    assert "exc.reason" not in fiscal
+    assert "details técnicos não são exibidos no painel" in fiscal
