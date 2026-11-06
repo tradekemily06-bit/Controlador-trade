@@ -435,7 +435,15 @@ def application(environ, start_response):
                 start_response,
                 HTTPStatus.OK,
                 {"events": events, "count": len(snapshot), "returned": len(events),
-                 "retention_limit": AUDIT.max_events, "execution_allowed": False},
+                 "retention_limit": AUDIT.max_events,
+                 "persistence": (
+                     "NOT_CONFIGURED"
+                     if not AUDIT.persistence_available and AUDIT.persistence_error is None
+                     else "DURABLE"
+                     if AUDIT.persistence_available
+                     else str(AUDIT.persistence_error or "unavailable").upper()
+                 ),
+                 "execution_allowed": False},
                 request_id,
                 environ,
             )
