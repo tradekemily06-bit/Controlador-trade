@@ -1574,6 +1574,8 @@ def test_windows_bootstrap_installs_and_supervises_the_streamlit_panel():
 
     assert "pip install -r streamlit_panel/requirements.txt" in bootstrap
     assert "start_streamlit_panel.ps1" in installer
+    workflow = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "'start_streamlit_panel.ps1'" in workflow
     assert '"$TaskPrefix-Streamlit"' in installer
     assert "127.0.0.1" in supervisor
     assert "8501" in supervisor
