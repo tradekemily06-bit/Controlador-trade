@@ -65,6 +65,7 @@ st.markdown("""
 .st-key-control-hub-shell .demo-pill-wrap { display: flex; justify-content: flex-end; padding-top: .3rem; }
 .st-key-control-hub-shell .system-state-value { color: #7F8B97; text-align: right; font-size: .78rem; font-weight: 800; }
 .st-key-control-hub-shell .st-key-main_area_navigation [role="radiogroup"] { display: flex; flex-wrap: wrap; gap: .4rem; padding: .35rem 0 .65rem; border-bottom: 1px solid #25303B; }
+.st-key-control-hub-shell .st-key-main_area_navigation [role="radiogroup"] label > div:first-child, .st-key-control-hub-shell .st-key-module_navigation [role="radiogroup"] label > div:first-child { display: none; }
 .st-key-control-hub-shell .st-key-main_area_navigation [role="radiogroup"] label { flex: 1 1 7rem; justify-content: center; text-align: center; border-color: transparent; background: transparent; }
 .st-key-control-hub-shell .st-key-main_area_navigation [role="radiogroup"] label p { font-size: .72rem; font-weight: 800; }
 .st-key-control-hub-shell .st-key-module_navigation [role="radiogroup"] { display: flex; flex-direction: column; gap: .45rem; }
