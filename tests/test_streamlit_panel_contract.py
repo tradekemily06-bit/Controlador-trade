@@ -355,6 +355,24 @@ def test_streamlit_open_panel_is_rendered_inside_a_single_shell():
     assert '<span class="demo-pill">DEMO</span>' in source
     assert '["Reserva Fiscal", "Assistente do Ecossistema"]' in source
 
+
+def test_streamlit_open_and_closed_panel_share_the_latest_signal_and_score():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    closed_start = source.index("if not st.session_state.panel_open:")
+    closed_end = source.index("st.stop()", closed_start)
+    closed = source[closed_start:closed_end]
+    open_start = source.index('with st.container(key="control-hub-shell"):')
+    open_end = source.index('if st.button("Fechar painel"', open_start)
+    opened = source[open_start:open_end]
+
+    assert 'api("/api/runtime/analysis/latest")' in closed
+    assert 'api("/api/runtime/analysis/latest")' in opened
+    assert "closed_panel_signal(latest_analysis)" in closed
+    assert "closed_panel_signal(open_latest_analysis)" in opened
+    assert "closed-signal" in closed and "closed-score" in closed
+    assert "open-signal-strip" in opened and "open-score" in opened
+    assert "position: fixed;" not in source[source.index(".st-key-panel-toggle {"):source.index("*, *::before")]
+
 def test_streamlit_does_not_fill_unimplemented_modules_with_placeholder_copy():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert 'st.info(f"Módulo {module} selecionado.' not in source
