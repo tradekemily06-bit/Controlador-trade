@@ -1,5 +1,5 @@
 param(
-    [string]$ProjectRoot = 'C:\\Controlador-trade',
+    [string]$ProjectRoot = 'C:\Controlador-trade',
     [string]$PythonExe = 'python',
     [int]$RestartDelaySeconds = 10,
     [int]$MaxRestartsPerHour = 6
@@ -24,8 +24,8 @@ if (-not (Test-Path -LiteralPath $PythonExe -PathType Leaf)) {
     throw "Python não encontrado: $PythonExe"
 }
 
-$panelScript = Join-Path $ProjectRoot 'streamlit_panel\\app.py'
-$panelRequirements = Join-Path $ProjectRoot 'streamlit_panel\\requirements.txt'
+$panelScript = Join-Path $ProjectRoot 'streamlit_panel\app.py'
+$panelRequirements = Join-Path $ProjectRoot 'streamlit_panel\requirements.txt'
 if (-not (Test-Path -LiteralPath $panelScript -PathType Leaf)) {
     throw "Aplicação Streamlit não encontrada: $panelScript"
 }
@@ -82,13 +82,7 @@ try {
         }
 
         Write-PanelStatus 'STARTING' 'Iniciando Streamlit somente em 127.0.0.1:8501.'
-        $arguments = @(
-            '-m', 'streamlit', 'run', $panelScript,
-            '--server.address', '127.0.0.1',
-            '--server.port', '8501',
-            '--server.headless', 'true',
-            '--browser.gatherUsageStats', 'false'
-        )
+        $arguments = '-m streamlit run "' + $panelScript + '" --server.address 127.0.0.1 --server.port 8501 --server.headless true --browser.gatherUsageStats false'
         $process = Start-Process -FilePath $PythonExe -ArgumentList $arguments -WorkingDirectory $ProjectRoot -PassThru -Wait -NoNewWindow -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
         $exitCode = $process.ExitCode
         $restartTimes.Add((Get-Date))
