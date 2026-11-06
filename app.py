@@ -978,6 +978,41 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, SERVICE.notification_summary(), request_id, environ)
         if path == "/api/notifications/all" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, {"items": SERVICE.all_notifications()}, request_id, environ)
+        if path == "/api/notifications/recovery/inspect" and method == "GET":
+            authorized, reason = _authorize_remote_mutation(environ)
+            if not authorized:
+                return _json_response(start_response, _remote_identity_http_status(reason),
+                                      {"error": "Identidade autenticada necessária para inspecionar a quarentena."},
+                                      request_id, environ)
+            archive_ids = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True).get("archive_id", [])
+            archive_id = archive_ids[-1].strip() if archive_ids else ""
+            if not archive_id:
+                raise ValueError("archive_id obrigatório")
+            inspected = SERVICE.state_store.inspect_notification_quarantine(archive_id)
+            inspected.pop("notifications", None)
+            return _json_response(start_response, HTTPStatus.OK,
+                                  {"archive": inspected, "execution_allowed": False}, request_id, environ)
+        if path == "/api/notifications/recovery/archive" and method == "POST":
+            data = _read_json(environ)
+            if data.get("confirmed") is not True:
+                raise ValueError("confirmação explícita obrigatória")
+            archived = SERVICE.state_store.archive_notifications_for_recovery(confirmed=True)
+            return _json_response(start_response, HTTPStatus.CREATED,
+                                  {"archive": archived, "original_preserved": True,
+                                   "execution_allowed": False}, request_id, environ)
+        if path == "/api/notifications/recovery/restore" and method == "POST":
+            data = _read_json(environ)
+            archive_id = data.get("archive_id")
+            if not isinstance(archive_id, str) or not archive_id.strip():
+                raise ValueError("archive_id obrigatório")
+            if data.get("confirmed") is not True:
+                raise ValueError("confirmação explícita obrigatória")
+            restored = SERVICE.state_store.restore_notifications_from_quarantine(
+                archive_id.strip(), confirmed=True
+            )
+            return _json_response(start_response, HTTPStatus.OK,
+                                  {"restoration": restored, "execution_allowed": False},
+                                  request_id, environ)
         if path == "/api/updates" and method == "POST":
             authorized, reason = _authorize_internal_update(environ)
             if not authorized:
