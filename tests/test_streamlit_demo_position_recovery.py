@@ -31,3 +31,13 @@ def test_streamlit_demo_recovery_disables_close_when_account_identity_is_unverif
     )[0]
     assert "st.error(" in blocked
     assert 'state == "BROKER_CONFIRMED_OPEN"' in branch
+
+
+def test_streamlit_mt5_demo_module_displays_timed_exit_status():
+    panel = (ROOT / "streamlit_panel" / "app.py").read_text(encoding="utf-8")
+    branch = panel.split('if module_name == "MT5 DEMO / Simulação":', 1)[1].split(
+        'if module_name == "Conexões":', 1
+    )[0]
+    assert 'api("/api/runtime/timed-exits")' in branch
+    assert "Saídas temporizadas DEMO" in branch
+    assert "Horários best-effort" in branch
