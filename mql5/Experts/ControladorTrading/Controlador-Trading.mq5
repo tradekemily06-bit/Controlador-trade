@@ -27,6 +27,33 @@ bool compact_available=false;
 double panel_sx=1.0;
 double panel_sy=1.0;
 
+string CycleIdentityFileName(){
+   return P+"cycle-"+IntegerToString(ChartID())+".txt";
+}
+void PersistCycleIdentity(){
+   if(last_cycle_id=="" || last_external_id=="") return;
+   int handle=FileOpen(CycleIdentityFileName(),FILE_WRITE|FILE_TXT|FILE_ANSI|FILE_COMMON);
+   if(handle==INVALID_HANDLE) return;
+   FileWriteString(handle,last_cycle_id+"\\r\\n"+last_external_id);
+   FileClose(handle);
+}
+void LoadCycleIdentity(){
+   int handle=FileOpen(CycleIdentityFileName(),FILE_READ|FILE_TXT|FILE_ANSI|FILE_COMMON);
+   if(handle==INVALID_HANDLE) return;
+   string cycle_id=FileReadString(handle);
+   string external_id=FileReadString(handle);
+   FileClose(handle);
+   if(cycle_id!="" && external_id!=""){
+      last_cycle_id=cycle_id;
+      last_external_id=external_id;
+   }
+}
+void ClearCycleIdentity(){
+   last_cycle_id="";
+   last_external_id="";
+   FileDelete(CycleIdentityFileName(),FILE_COMMON);
+}
+
 string Obj(string suffix){ return P+suffix; }
 string PanelVisibilityKey(){ return P+IntegerToString(ChartID())+"_PANEL_VISIBLE"; }
 
@@ -563,6 +590,10 @@ void Analyze(bool render=true){
    ChartRedraw();
 }
 void RunCycle(){
+   if(last_cycle_id!="" && last_external_id!=""){
+      SetLabel(Obj("INFO1"),"Feche/reconcilie a posicao DEMO atual antes de novo ciclo.",20,361,9,C'255,209,102');
+      return;
+   }
    string sym=ObjectGetString(0,Obj("SYM"),OBJPROP_TEXT);
    string tf=ObjectGetString(0,Obj("TF"),OBJPROP_TEXT);
    if(sym=="") sym=_Symbol;
@@ -585,13 +616,19 @@ void RunCycle(){
    string cid=JsonValue(r,"cycle_id");
    string eid=JsonValue(r,"external_id");
    string allowed=JsonValue(r,"execution_allowed");
+   string accepted=JsonObjectValue(r,"execution","accepted");
+   if(allowed=="true" && accepted=="true" && cid!="" && eid!=""){
+      last_cycle_id=cid;
+      last_external_id=eid;
+      PersistCycleIdentity();
+   }
    color c=signal=="COMPRA"?C'88,214,141':signal=="VENDA"?C'255,118,118':C'255,209,102';
    SetLabel(Obj("SIGNAL"),CompactSignalText(signal),20,154,22,c);
    SetLabel(Obj("SCORE"),"Qualidade: "+(score==""?"—":DoubleToString(StringToDouble(score),0))+"%",20,184,10,clrWhite);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Ciclo concluido.":reason,0,62),20,204,9,C'180,190,205');
    last_cycle_id=cid; last_external_id=eid;
-   SetLabel(Obj("CYCLEID"),"Ciclo DEMO: "+(cid==""?"concluido":"atualizado"),20,465,8,C'145,160,180');
-   SetLabel(Obj("EXTID"),"Execucao: "+(eid==""?"sem atividade":"registrada"),20,483,8,C'145,160,180');
+   SetLabel(Obj("CYCLEID"),"Ciclo DEMO: "+(last_cycle_id==""?"sem posicao":"registrado"),20,465,8,C'145,160,180');
+   SetLabel(Obj("EXTID"),"Execucao: "+(last_external_id==""?"sem atividade":"registrada"),20,483,8,C'145,160,180');
    SetLabel(Obj("INFO1"),"Ciclo DEMO; fechamento manual",20,361,9,C'255,209,102');
 }
 void CloseCycle(){
@@ -604,7 +641,7 @@ void CloseCycle(){
    if(Http("POST","/api/runtime/close",body,r,code)){
       if(JsonValue(r,"closed")=="true"){
          SetLabel(Obj("INFO1"),"Posicao DEMO fechada e confirmada.",20,361,9,C'88,214,141');
-         last_cycle_id=""; last_external_id="";
+         ClearCycleIdentity();
          return;
       }
       string reconciliation; int reconcile_code=0;
@@ -636,6 +673,7 @@ void CloseCycle(){
 }
 int OnInit(){
    active_view="COCKPIT";
+   LoadCycleIdentity();
    LoadPanelVisibility();
    if(panel_visible){
       Panel();
