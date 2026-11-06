@@ -62,6 +62,8 @@ class ConfiguredEcosystemService(EcosystemService):
         self.preferences = EcosystemPreferencesStore.from_dict(persisted_preferences) if persisted_preferences else EcosystemPreferencesStore()
         self.notifications = EcosystemNotificationCenter()
         self.notifications.restore(self.state_store.load_notifications())
+        if self.notifications.restore_had_invalid_records:
+            self.state_store.mark_notifications_unavailable("invalid_records")
         self.state_store.save_preferences(self.preferences.preferences)
         self.senior_analysis_gate = SeniorAnalysisGate()
         self.operational_risk_bridge = OperationalRiskBridge(self.risk)
