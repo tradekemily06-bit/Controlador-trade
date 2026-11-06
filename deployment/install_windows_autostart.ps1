@@ -24,8 +24,12 @@ if (-not (Test-Path -LiteralPath $PythonExe -PathType Leaf)) {
 if (-not (Test-Path -LiteralPath $ProjectRoot -PathType Container)) {
     throw "Diretório do projeto não encontrado: $ProjectRoot"
 }
-if ([string]::IsNullOrWhiteSpace([string]$env:CONTROLADOR_SINGLE_USER_IDENTITY)) {
-    throw 'Defina CONTROLADOR_SINGLE_USER_IDENTITY no ambiente do Windows antes de instalar as tarefas. Use exatamente a identidade individual permitida no Cloudflare Access.'
+$machineIdentity = [Environment]::GetEnvironmentVariable('CONTROLADOR_SINGLE_USER_IDENTITY', 'Machine')
+if ([string]::IsNullOrWhiteSpace([string]$machineIdentity)) {
+    throw 'Defina CONTROLADOR_SINGLE_USER_IDENTITY no escopo de Máquina do Windows antes de instalar as tarefas. Use exatamente a identidade individual permitida no Cloudflare Access.'
+}
+if (-not [string]::Equals([string]$env:CONTROLADOR_SINGLE_USER_IDENTITY, [string]$machineIdentity, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw 'A identidade do processo não corresponde à identidade persistida no escopo de Máquina. Abra um novo PowerShell elevado após definir a variável.'
 }
 if ([string]::IsNullOrWhiteSpace($RuntimeDir)) {
     $RuntimeDir = Join-Path $ProjectRoot '.runtime'
