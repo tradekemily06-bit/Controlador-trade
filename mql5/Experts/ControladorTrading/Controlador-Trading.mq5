@@ -697,7 +697,7 @@ void CloseCycle(){
          string state=JsonObjectValue(reconciliation,"close_reconciliation","state");
          if(state=="CLOSED"){
             SetLabel(Obj("INFO1"),"MT5 confirmou o fechamento.",20,361,9,C'88,214,141');
-            last_cycle_id=""; last_external_id="";
+            ClearCycleIdentity();
          }else if(state=="OPEN"){
             SetLabel(Obj("INFO1"),"MT5 confirma: posicao continua aberta.",20,361,9,C'255,209,102');
          }else{
@@ -710,7 +710,7 @@ void CloseCycle(){
          string state=JsonObjectValue(reconciliation,"close_reconciliation","state");
          if(state=="CLOSED"){
             SetLabel(Obj("INFO1"),"MT5 confirmou o fechamento.",20,361,9,C'88,214,141');
-            last_cycle_id=""; last_external_id="";
+            ClearCycleIdentity();
          }else if(state=="OPEN"){
             SetLabel(Obj("INFO1"),"MT5 confirma: posicao continua aberta.",20,361,9,C'255,209,102');
          }else{
