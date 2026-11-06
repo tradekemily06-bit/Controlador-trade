@@ -336,6 +336,28 @@ def test_application_migrates_owner_schema_before_fiscal_repositories_are_create
     )
 
 
+
+def test_schema_validator_rejects_partial_unique_index_as_full_owner_constraint():
+    from finance.fiscal_schema import _has_unique_index
+
+    db = sqlite3.connect(":memory:")
+    try:
+        db.execute(
+            "CREATE TABLE fiscal_reserve_pending_foreign "
+            "(owner_id TEXT NOT NULL, reference TEXT, status TEXT NOT NULL)"
+        )
+        db.execute(
+            "CREATE UNIQUE INDEX ux_partial_owner_reference "
+            "ON fiscal_reserve_pending_foreign(owner_id, reference) "
+            "WHERE status = 'PENDING_CLASSIFICATION'"
+        )
+
+        assert _has_unique_index(
+            db, "fiscal_reserve_pending_foreign", ("owner_id", "reference")
+        ) is False
+    finally:
+        db.close()
+
 def test_owner_fast_path_rebuilds_global_reference_uniqueness(tmp_path, monkeypatch):
     path = str(tmp_path / "wrong-owner-constraints.sqlite3")
     monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner-a")
