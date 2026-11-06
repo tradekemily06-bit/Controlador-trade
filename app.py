@@ -1007,7 +1007,7 @@ def application(environ, start_response):
                 raise ValueError("archive_id obrigatório")
             if data.get("confirmed") is not True:
                 raise ValueError("confirmação explícita obrigatória")
-            restored = SERVICE.state_store.restore_notifications_from_quarantine(
+            restored = SERVICE.restore_notification_history(
                 archive_id.strip(), confirmed=True
             )
             return _json_response(start_response, HTTPStatus.OK,
