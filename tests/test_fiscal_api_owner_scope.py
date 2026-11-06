@@ -10,6 +10,20 @@ from finance.fiscal_schema import migrate_fiscal_schema
 from execution.icmarkets_mt5_demo_adapter import MT5DealNotFoundError
 
 
+class _ObservedSessionLock:
+    def __init__(self):
+        self.held = False
+
+    def __enter__(self):
+        assert not self.held
+        self.held = True
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        self.held = False
+
+
+
 def _request(path, *, query="", method="GET", payload=None, identity="owner@example.com"):
     raw = json.dumps(payload or {}).encode("utf-8")
     environ = {
@@ -86,6 +100,16 @@ def test_fiscal_and_assistant_read_routes_ignore_forged_owner_parameters(
     monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", database)
     monkeypatch.setattr(app_module, "FISCAL_RESERVE", reserve)
     monkeypatch.setattr(app_module, "FISCAL_PENDING_QUEUE", queue)
+    adapter = app_module.SERVICE.mt5_operational_adapter
+    session_lock = _ObservedSessionLock()
+    monkeypatch.setattr(adapter, "_session_lock", session_lock)
+    original_add = queue.add_realized_result
+
+    def add_while_session_locked(*args, **kwargs):
+        assert session_lock.held, "MT5 session lock must cover fiscal persistence"
+        return original_add(*args, **kwargs)
+
+    monkeypatch.setattr(queue, "add_realized_result", add_while_session_locked)
 
     store = AssistantConversationStore(tmp_path / "assistant.sqlite3")
     store.append(owner_id, None, "user", "conversa do titular")
@@ -398,6 +422,16 @@ def test_mt5_brazil_confirmation_is_owner_scoped_and_ticket_deduplicated(
     owner_id = migrate_fiscal_schema(str(database))
     queue = FiscalDomesticPendingQueue(str(database))
     monkeypatch.setattr(app_module, "FISCAL_DOMESTIC_PENDING_QUEUE", queue)
+    adapter = app_module.SERVICE.mt5_operational_adapter
+    session_lock = _ObservedSessionLock()
+    monkeypatch.setattr(adapter, "_session_lock", session_lock)
+    original_add = queue.add
+
+    def add_while_session_locked(*args, **kwargs):
+        assert session_lock.held, "MT5 session lock must cover fiscal persistence"
+        return original_add(*args, **kwargs)
+
+    monkeypatch.setattr(queue, "add", add_while_session_locked)
 
     candidate = {
         "account_currency": "BRL",
