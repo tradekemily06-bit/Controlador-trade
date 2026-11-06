@@ -613,3 +613,33 @@ def test_closed_deal_preview_withholds_malformed_ticket_and_timestamp_metadata()
         assert preview["count"] == 0
         assert preview["candidates"] == []
         assert preview["withheld_incomplete_positions"] == 1
+
+def test_mt5_account_fingerprint_requires_complete_positive_numeric_identity():
+    fingerprint = ICMarketsMT5DemoAdapter._account_fingerprint
+    valid = SimpleNamespace(login=12345678, server=" ICMarketsSC-Demo ")
+    equivalent = SimpleNamespace(login="12345678", server="icmarketssc-demo")
+    assert fingerprint(valid) is not None
+    assert len(fingerprint(valid)) == 32
+    assert fingerprint(valid) == fingerprint(equivalent)
+
+    invalid_accounts = (
+        SimpleNamespace(login=None, server="ICMarketsSC-Demo"),
+        SimpleNamespace(login=0, server="ICMarketsSC-Demo"),
+        SimpleNamespace(login=-1, server="ICMarketsSC-Demo"),
+        SimpleNamespace(login="not-a-login", server="ICMarketsSC-Demo"),
+        SimpleNamespace(login="１２３４", server="ICMarketsSC-Demo"),
+        SimpleNamespace(login=12345678, server=""),
+        SimpleNamespace(login=12345678, server="S" * 256),
+    )
+    for account in invalid_accounts:
+        assert fingerprint(account) is None
+
+
+def test_mt5_account_fingerprint_separates_login_and_server_pairs():
+    fingerprint = ICMarketsMT5DemoAdapter._account_fingerprint
+    first = fingerprint(SimpleNamespace(login=12345678, server="ICMarketsSC-Demo"))
+    other_login = fingerprint(SimpleNamespace(login=87654321, server="ICMarketsSC-Demo"))
+    other_server = fingerprint(SimpleNamespace(login=12345678, server="ICMarketsSC-Live"))
+    assert first != other_login
+    assert first != other_server
+    assert other_login != other_server
