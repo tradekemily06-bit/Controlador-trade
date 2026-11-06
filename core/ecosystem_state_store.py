@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from dataclasses import asdict
 from enum import Enum
 from pathlib import Path
-from threading import Lock
+from threading import RLock
 from typing import Any
 
 
@@ -28,7 +28,7 @@ class EcosystemStateStore:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._lock = Lock()
+        self._lock = RLock()
         self._notifications_load_error: str | None = None
         self._initialize()
 
@@ -105,23 +105,25 @@ class EcosystemStateStore:
         return self._notifications_load_error
 
     def load_notifications(self) -> list[dict[str, Any]]:
-        self._notifications_load_error = None
-        try:
-            value = self.load("notifications")
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            self._notifications_load_error = "invalid_json"
-            return []
-        except sqlite3.Error:
-            self._notifications_load_error = "read_failed"
-            return []
-        if value is None:
-            return []
-        if not isinstance(value, list):
-            self._notifications_load_error = "invalid_shape"
-            return []
-        if any(not isinstance(item, dict) for item in value):
-            self._notifications_load_error = "invalid_records"
-        return value
+        # Serialize the corruption flag transition with every guarded writer.
+        with self._lock:
+            self._notifications_load_error = None
+            try:
+                value = self.load("notifications")
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                self._notifications_load_error = "invalid_json"
+                return []
+            except sqlite3.Error:
+                self._notifications_load_error = "read_failed"
+                return []
+            if value is None:
+                return []
+            if not isinstance(value, list):
+                self._notifications_load_error = "invalid_shape"
+                return []
+            if any(not isinstance(item, dict) for item in value):
+                self._notifications_load_error = "invalid_records"
+            return value
 
     def mark_notifications_unavailable(self, category: str) -> None:
         """Prevent routine writes after validation detects damaged history."""
@@ -129,7 +131,8 @@ class EcosystemStateStore:
         normalized = str(category).strip().lower()
         if normalized not in allowed:
             raise ValueError("categoria de histórico inválida")
-        self._notifications_load_error = normalized
+        with self._lock:
+            self._notifications_load_error = normalized
 
     def archive_notifications_for_recovery(self, *, confirmed: bool = False) -> dict[str, str]:
         """Preserve the exact damaged payload before any separately approved recovery."""
@@ -330,15 +333,16 @@ class EcosystemStateStore:
         }
 
     def save_notifications(self, notifications: list[dict[str, Any]]) -> None:
-        # Preserve damaged evidence until an explicit recovery procedure has
-        # inspected it. A routine publish must not silently replace corrupt data.
-        if self._notifications_load_error is not None:
-            raise NotificationHistoryUnavailableError(
-                "histórico de notificações exige recuperação explícita antes de nova gravação"
-            )
-        try:
-            self._write_state("notifications", notifications)
-        except sqlite3.Error as exc:
-            raise NotificationHistoryUnavailableError(
-                "persistência do histórico de notificações indisponível"
-            ) from exc
+        # Hold the same re-entrant lock across the guard and SQLite write so a
+        # concurrent load/mark cannot change the corruption state in between.
+        with self._lock:
+            if self._notifications_load_error is not None:
+                raise NotificationHistoryUnavailableError(
+                    "histórico de notificações exige recuperação explícita antes de nova gravação"
+                )
+            try:
+                self._write_state("notifications", notifications)
+            except sqlite3.Error as exc:
+                raise NotificationHistoryUnavailableError(
+                    "persistência do histórico de notificações indisponível"
+                ) from exc
