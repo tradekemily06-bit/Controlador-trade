@@ -258,8 +258,6 @@ def test_notification_restore_reports_malformed_dictionary_records():
 
 
 def test_configured_service_surfaces_malformed_notification_records_as_critical(monkeypatch, tmp_path):
-    import json
-
     import integration.ecosystem_configuration_runtime as configured_service
     from core.ecosystem_state_store import EcosystemStateStore as RealStateStore
     from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
