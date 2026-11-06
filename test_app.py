@@ -94,6 +94,7 @@ def test_runtime_cycle_exposes_authoritative_cycle_lineage(monkeypatch):
     monkeypatch.setattr(app.SERVICE, "get_preferences", lambda: {"selected_mode": "DEMO", "leverage_enabled": False})
     received = {}
     monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **kwargs: received.update(kwargs) or fake_result)
+    monkeypatch.setattr(app.SERVICE, "schedule_mt5_timed_exit", lambda cycle, duration_seconds: {"state": "NOT_APPLICABLE", "scheduled": False, "message": "sem execução aceita"})
 
     status, data = call_app(
         "/api/runtime/cycle",
@@ -113,6 +114,7 @@ def test_runtime_cycle_exposes_authoritative_cycle_lineage(monkeypatch):
     assert data["runtime"]["request_id"] == "req-001"
     assert data["runtime"]["position_close_policy"] == "MANUAL_EXPLICIT"
     assert data["runtime"]["duration_seconds_applied"] is False
+    assert data["runtime"]["timed_exit"]["state"] == "NOT_APPLICABLE"
     assert data["execution_allowed"] is False
 
 
