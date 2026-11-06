@@ -145,7 +145,7 @@ def api(path: str, method: str = "GET", payload: dict[str, Any] | None = None) -
             except (UnicodeDecodeError, json.JSONDecodeError):
                 raise RuntimeError("Resposta inválida do serviço do Ecossistema.") from None
             if not isinstance(result, dict):
-                raise RuntimeError("Resposta inválida do serviço do Ecossistema.")
+                raise RuntimeError("Resposta inválida do serviço do Ecossistema.") from None
             return result
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
