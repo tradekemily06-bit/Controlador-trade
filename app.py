@@ -927,25 +927,43 @@ def application(environ, start_response):
                 "close_external_id": close.external_id,
                 "reconciled": bool(close.accepted),
             }, request_id, environ)
+        if path == "/api/runtime/close/reconcile" and method == "POST":
+            data = _read_json(environ)
+            cycle_id = data.get("cycle_id")
+            external_id = data.get("external_id")
+            if not isinstance(cycle_id, str) or not cycle_id.strip():
+                raise ValueError("cycle_id é obrigatório")
+            if not isinstance(external_id, str) or not external_id.strip():
+                raise ValueError("external_id é obrigatório")
+            result = SERVICE.reconcile_mt5_position_close(
+                cycle_id=cycle_id,
+                external_id=external_id,
+            )
+            return _json_response(
+                start_response,
+                HTTPStatus.OK,
+                {"close_reconciliation": result},
+                request_id,
+                environ,
+            )
         if path == "/api/runtime/close" and method == "POST":
             data = _read_json(environ)
-            external_id = str(data.get("external_id", ""))
-            cycle_id = str(data.get("cycle_id", ""))
-            SERVICE.validate_mt5_cycle_identity(cycle_id=cycle_id, external_id=external_id)
-            close_result = SERVICE.close_mt5_position(external_id=external_id)
-            reconciliation = None
-            if close_result.accepted:
-                snapshot = SERVICE.reconcile_mt5_cycle(cycle_id=cycle_id, external_id=external_id)
-                reconciliation = None if snapshot is None else {
-                    "cycle_id": snapshot.cycle_id,
-                    "terminal_state": snapshot.terminal_state,
-                    "reconciliation_state": snapshot.reconciliation_state.value,
-                }
+            external_id = data.get("external_id")
+            cycle_id = data.get("cycle_id")
+            if not isinstance(cycle_id, str) or not cycle_id.strip():
+                raise ValueError("cycle_id é obrigatório")
+            if not isinstance(external_id, str) or not external_id.strip():
+                raise ValueError("external_id é obrigatório")
+            close_result = SERVICE.close_mt5_position(
+                cycle_id=cycle_id,
+                external_id=external_id,
+            )
             return _json_response(start_response, HTTPStatus.OK, {
                 "closed": close_result.accepted,
+                "close_state": "CLOSED" if close_result.accepted else "UNKNOWN",
                 "message": close_result.message,
                 "close_external_id": close_result.external_id,
-                "reconciliation": reconciliation,
+                "reconciliation": None,
             }, request_id, environ)
         if path == "/api/runtime/reconcile" and method == "POST":
             data = _read_json(environ)
