@@ -384,6 +384,10 @@ class ICMarketsMT5DemoAdapter:
             account = mt5.account_info()
             if account is None or not self._is_demo_account(account, mt5):
                 raise MT5AdapterError("conta MT5 não confirmada como DEMO; consulta fiscal bloqueada.")
+            account_fingerprint = self._account_fingerprint(account)
+            account_currency = str(getattr(account, "currency", "") or "UNKNOWN").strip().upper()
+            if include_private and not account_fingerprint:
+                raise MT5AdapterError("identidade da conta MT5 DEMO incompleta; consulta fiscal bloqueada.")
             history_fn = getattr(mt5, "history_deals_get", None)
             if not callable(history_fn):
                 raise MT5AdapterError("histórico de negócios MT5 indisponível.")
@@ -503,10 +507,22 @@ class ICMarketsMT5DemoAdapter:
                     "closing_deal_count": len(closing),
                     "result_scope": "FULL_CLOSED_POSITION",
                 })
+            # Re-read account identity after all history queries. MT5 can switch
+            # accounts while the terminal remains initialized; never return a
+            # fiscal candidate if the account changed during this scan.
+            final_account = mt5.account_info()
+            if (
+                final_account is None
+                or not self._is_demo_account(final_account, mt5)
+                or self._account_fingerprint(final_account) != account_fingerprint
+                or str(getattr(final_account, "currency", "") or "UNKNOWN").strip().upper()
+                != account_currency
+            ):
+                raise MT5AdapterError("conta MT5 mudou ou não pôde ser reconfirmada durante a consulta; resultado fiscal bloqueado.")
             return {
                 "source": "IC Markets MT5 DEMO",
-                "account_currency": str(getattr(account, "currency", "") or "UNKNOWN"),
-                **({"account_fingerprint": self._account_fingerprint(account)} if include_private else {}),
+                "account_currency": account_currency,
+                **({"account_fingerprint": account_fingerprint} if include_private else {}),
                 "lookback_days": lookback_days,
                 "count": len(candidates),
                 "withheld_incomplete_positions": withheld,
