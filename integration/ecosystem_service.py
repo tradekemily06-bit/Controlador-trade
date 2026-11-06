@@ -428,13 +428,24 @@ class EcosystemService:
             "market_data": NotificationKind.MARKET,
             "runtime_health": NotificationKind.SYSTEM_UPDATE,
             "kill_switch": NotificationKind.RISK,
+            "security_audit": NotificationKind.SYSTEM_UPDATE,
         }
         severity_by_incident = {
             "CRITICAL": NotificationSeverity.CRITICAL,
             "WARNING": NotificationSeverity.IMPORTANT,
         }
         items: list[dict[str, Any]] = []
-        for incident in build_operational_incidents(self.operational_observability()):
+        incidents = build_operational_incidents(self.operational_observability())
+        if not AUDIT.persistence_available and AUDIT.persistence_error is not None:
+            incidents.append(
+                type("AuditPersistenceIncident", (), {
+                    "code": "SECURITY_AUDIT_PERSISTENCE_FAILED",
+                    "severity": "CRITICAL",
+                    "source": "security_audit",
+                    "message": "persistência da trilha de auditoria indisponível; verifique o armazenamento local",
+                })()
+            )
+        for incident in incidents:
             items.append(
                 {
                     "notification_id": f"operational-{incident.code}",
