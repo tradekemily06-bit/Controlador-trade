@@ -2492,8 +2492,10 @@ def show_readonly_module(module_name: str) -> None:
             st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
             return
 
-    except Exception as exc:
-        st.warning(f"Não foi possível carregar este módulo do runtime: {exc}")
+    except Exception:
+        # Runtime exceptions can contain filesystem paths, SQL details, or
+        # connector payloads. Keep those diagnostics out of the user-facing panel.
+        st.warning("Não foi possível carregar este módulo do runtime. Verifique a disponibilidade do serviço e os registros técnicos locais.")
 
 
 # The Figma reference defines four visual areas. The Assistant is an additional
