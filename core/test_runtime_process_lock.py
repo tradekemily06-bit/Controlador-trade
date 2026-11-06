@@ -205,3 +205,42 @@ def test_runtime_lock_closes_descriptor_when_lock_backend_setup_fails(tmp_path, 
     assert len(opened) == 1
     assert opened[0].closed is True
     assert lock.is_acquired is False
+
+
+def test_lock_set_retains_failed_release_for_a_later_retry(tmp_path):
+    lock_set = RuntimeProcessLockSet(tmp_path / "runtime.lock")
+
+    class _RetryableLock:
+        def __init__(self):
+            self.is_acquired = True
+            self.calls = 0
+
+        def acquire(self):
+            self.is_acquired = True
+
+        def release(self):
+            self.calls += 1
+            if self.calls == 1:
+                raise OSError("temporary close failure")
+            self.is_acquired = False
+
+    lock = _RetryableLock()
+    lock_set._locks = [lock]
+    lock_set._acquired = [lock]
+
+    try:
+        lock_set.release()
+    except RuntimeError as exc:
+        assert "liberar" in str(exc)
+    else:
+        raise AssertionError("the first release failure must be reported")
+
+    assert lock_set._acquired == [lock]
+    assert lock.is_acquired is True
+    assert lock_set.is_acquired is True
+
+    lock_set.release()
+    assert lock.calls == 2
+    assert lock.is_acquired is False
+    assert lock_set._acquired == []
+    assert lock_set.is_acquired is False
