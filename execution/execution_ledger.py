@@ -242,6 +242,11 @@ class ExecutionLedger:
         self._load()
         return tuple(sorted(self._records))
 
+    def entries(self) -> tuple[tuple[str, ExecutionLedgerRecord], ...]:
+        """Return a stable snapshot of request identities for read-only recovery views."""
+        self._load()
+        return tuple((key, self._records[key]) for key in sorted(self._records))
+
     @staticmethod
     def _validate_id(request_id: str) -> None:
         if not isinstance(request_id, str) or not request_id.strip():
