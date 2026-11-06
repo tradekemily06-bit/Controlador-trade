@@ -566,3 +566,30 @@ def test_stale_store_instance_cannot_overwrite_corruption_written_by_another_ins
     assert stored == "{broken-json"
     assert stale_writer.notifications_load_error == "invalid_json"
 
+def test_notification_writer_rejects_invalid_or_duplicate_new_batches(tmp_path):
+    import sqlite3
+    import pytest
+    from core.ecosystem_state_store import NotificationHistoryUnavailableError
+
+    path = tmp_path / "notification-invalid-new-batch.sqlite3"
+    store = EcosystemStateStore(path)
+    valid = {
+        "notification_id": "same",
+        "kind": "SECURITY",
+        "severity": "CRITICAL",
+        "title": "Alerta",
+        "message": "Conteúdo válido",
+        "requires_attention": True,
+        "blocking": True,
+    }
+    with pytest.raises(NotificationHistoryUnavailableError, match="inválidas ou duplicadas"):
+        store.save_notifications([valid, dict(valid)])
+
+    with sqlite3.connect(path) as db:
+        row = db.execute(
+            "SELECT value_json FROM ecosystem_state WHERE key = ?",
+            ("notifications",),
+        ).fetchone()
+    assert row is None
+    assert store.notifications_load_error == "invalid_records"
+
