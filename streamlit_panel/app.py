@@ -1775,10 +1775,23 @@ def show_readonly_module(module_name: str) -> None:
 
         if module_name == "Auditoria":
             events = data.get("events", [])
-            cols = st.columns(3)
+            persistence = str(data.get("persistence") or "UNKNOWN").upper()
+            cols = st.columns(4)
             cols[0].metric("Eventos retidos", data.get("count", len(events)))
             cols[1].metric("Eventos exibidos", data.get("returned", len(events)))
             cols[2].metric("Limite de retenção", data.get("retention_limit", "—"))
+            cols[3].metric("Persistência", {
+                "DURABLE": "PERSISTENTE",
+                "NOT_CONFIGURED": "NÃO CONFIGURADA",
+                "WRITE_FAILED": "FALHA DE GRAVAÇÃO",
+                "READ_FAILED": "FALHA DE LEITURA",
+                "SCHEMA_INVALID": "ESQUEMA INVÁLIDO",
+                "UNAVAILABLE": "INDISPONÍVEL",
+            }.get(persistence, "NÃO CONFIRMADA"))
+            if persistence not in {"DURABLE", "NOT_CONFIGURED"}:
+                st.error("A trilha de auditoria não confirmou persistência no SQLite. O histórico em memória pode não sobreviver a uma reinicialização.")
+            elif persistence == "NOT_CONFIGURED":
+                st.warning("Persistência SQLite não configurada. O histórico pode existir somente em memória.")
             if events:
                 st.dataframe(events, use_container_width=True, hide_index=True)
             else:
