@@ -32,6 +32,8 @@ A URL local padrão será `http://127.0.0.1:8501`. Mantenha os dois terminais ab
 
 A autorização local acima é somente para desenvolvimento no próprio computador. Não use essas variáveis como configuração de acesso remoto e não exponha as portas 8000 ou 8501 à internet.
 
+No host Windows remoto, `deployment/bootstrap_windows_runtime.ps1` também instala `streamlit_panel/requirements.txt`. Depois, `deployment/install_windows_autostart.ps1` registra três tarefas supervisionadas: MT5, API/runtime e Streamlit. O supervisor Streamlit mantém a interface em `127.0.0.1:8501`, encaminha chamadas à API privada em `127.0.0.1:8000` e grava estado/logs em `.runtime`. A tarefa não cria nem configura o Cloudflare Tunnel; a rota pública protegida deve apontar somente para a porta 8501.
+
 ## Integração e segurança
 
 - Por padrão, o painel chama `http://127.0.0.1:8000`. Altere `CONTROLADOR_API_BASE_URL` somente quando o runtime estiver publicado em um endereço confiável.
