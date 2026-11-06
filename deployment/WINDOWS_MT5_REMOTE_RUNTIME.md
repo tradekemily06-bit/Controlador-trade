@@ -66,7 +66,7 @@ CONTROLADOR_UPDATE_TOKEN continua sendo segredo de ambiente quando o endpoint in
 
 ## Supervisão e recuperação contínua
 
-Os launchers de MT5 e Controlador atuam como supervisores do processo, além do início no logon. Se um processo cair, o supervisor registra o evento, aplica um atraso de recuperação e tenta reiniciar dentro de um orçamento limitado de reinícios por hora. O limite evita loops agressivos em caso de falha persistente.
+Os launchers de MT5 e Controlador atuam como supervisores do processo, além do início no logon. O runtime não tem prazo de expiração nem encerra o supervisor ao atingir o orçamento de reinícios. Se um processo cair, o supervisor registra o evento, aplica um atraso de recuperação e tenta reiniciar dentro de um orçamento móvel de reinícios por hora (o Controlador usa 6/h por padrão). Ao atingir o orçamento, permanece ativo em estado `RECOVERING`, aguarda até que a tentativa mais antiga saia da janela móvel de uma hora e então retoma as tentativas automaticamente. Esse limite regula a frequência de reinícios, não o tempo total de disponibilidade, e evita loops agressivos em falhas persistentes. Falhas que não provem estado DEMO seguro e ausência de posições/ordens continuam bloqueadas e podem exigir intervenção humana.
 
 O Agendador de Tarefas também recebe uma política de reinício para falha da própria tarefa. Isso cria duas camadas complementares: recuperação do processo pelo supervisor e recuperação do host da tarefa pelo Windows.
 
