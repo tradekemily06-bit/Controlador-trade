@@ -74,3 +74,19 @@ def test_state_store_is_not_an_execution_authority(tmp_path: Path):
     restored = EcosystemPreferencesStore.from_dict(db.load_preferences())
     assert restored.preferences.real_execution_enabled is False
     assert restored.preferences.autonomous_operation_enabled is False
+
+
+
+def test_corrupt_notification_json_does_not_prevent_state_store_startup(tmp_path: Path):
+    db = EcosystemStateStore(tmp_path / "state.sqlite")
+    with db._connect() as connection:
+        connection.execute(
+            "INSERT INTO ecosystem_state(key, value_json) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json",
+            ("notifications", "{broken-json"),
+        )
+
+    restored = db.load_notifications()
+
+    assert restored == []
+    assert db.notifications_load_error == "invalid_json"
