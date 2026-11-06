@@ -184,6 +184,47 @@ class PositionCloseStore:
         assert result is not None
         return result
 
+    def observe_initial(
+        self,
+        request_id: str,
+        external_id: str,
+        state: PositionCloseState,
+        *,
+        message: str,
+    ) -> PositionCloseRecord:
+        """Persist first read-only broker observation without fabricating a close attempt."""
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("request_id de observação inválido.")
+        if not isinstance(external_id, str) or not external_id.strip():
+            raise ValueError("external_id de observação inválido.")
+        if state not in (PositionCloseState.CLOSED, PositionCloseState.OPEN, PositionCloseState.UNKNOWN):
+            raise ValueError("estado de observação inválido.")
+        if not isinstance(message, str):
+            raise ValueError("mensagem de observação inválida.")
+        result: PositionCloseRecord | None = None
+
+        def mutation() -> None:
+            nonlocal result
+            previous = self._latest(request_id)
+            if previous is not None:
+                if previous.external_id != external_id.strip():
+                    raise ValueError("observação já associada a outro external_id.")
+                raise ValueError("já existe observação; use reconciliação.")
+            result = PositionCloseRecord(
+                request_id=request_id,
+                external_id=external_id.strip(),
+                state=state,
+                updated_at=datetime.now(timezone.utc),
+                message=message,
+                attempt=1,
+            )
+            self._validate(result)
+            self._records[(request_id, 1)] = result
+
+        self._mutate_locked(mutation)
+        assert result is not None
+        return result
+
     def reconcile(
         self,
         request_id: str,
