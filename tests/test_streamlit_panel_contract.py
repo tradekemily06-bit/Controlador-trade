@@ -331,18 +331,22 @@ def test_streamlit_uses_non_overlapping_c_toggle_in_open_and_closed_states():
     assert 'key="main_area_navigation"' in source
     assert 'key="module_navigation"' in source
 
-def test_streamlit_closed_panel_shows_only_c_and_system_availability():
+def test_streamlit_closed_panel_shows_signal_score_and_system_availability():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     start = source.index("if not st.session_state.panel_open:")
     end = source.index("st.stop()", start) + len("st.stop()")
     closed_state = source[start:end]
     assert 'st.button("C", key="open_control_hub")' in closed_state
     assert 'api("/api/health")' in closed_state
+    assert 'api("/api/runtime/analysis/latest")' in closed_state
+    assert "closed_panel_signal(latest_analysis)" in closed_state
+    assert "closed-signal" in closed_state
+    assert "closed-score" in closed_state
     assert "closed-status" in closed_state
     assert "Controlador-Trader" not in closed_state
     assert "Histórico" not in closed_state
     assert "market_analysis_result" not in closed_state
-    assert "closed_panel_signal" not in closed_state
+    assert "conversation" not in closed_state
 
 def test_streamlit_open_panel_is_rendered_inside_a_single_shell():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
