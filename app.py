@@ -1553,7 +1553,7 @@ def application(environ, start_response):
             payload["conversation_id"] = exc.conversation_id
         return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, payload, request_id, environ)
     except PermissionError as exc:
-        return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "request_id": request_id}, request_id, environ)
+        return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": "Ação não autorizada.", "request_id": request_id}, request_id, environ)
     except (TypeError, ValueError, json.JSONDecodeError):
         return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": "Entrada inválida", "request_id": request_id}, request_id, environ)
 
