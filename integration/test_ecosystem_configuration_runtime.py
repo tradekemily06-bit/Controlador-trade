@@ -207,7 +207,7 @@ def test_healthy_operational_observability_does_not_create_incident_notification
 
 
 
-def test_mt5_historical_replay_uses_closed_candles_chronologically_without_side_effects():
+def test_mt5_historical_replay_uses_closed_candles_chronologically_without_side_effects(monkeypatch):
     from datetime import datetime, timedelta, timezone
     from data.models import Candle
 
@@ -217,6 +217,8 @@ def test_mt5_historical_replay_uses_closed_candles_chronologically_without_side_
             self.request = None
 
         def fetch_market_data(self, request):
+            if hasattr(self, "lock"):
+                assert self.lock.held, "MT5 lock must cover the complete replay"
             self.request = request
             return self.candles
 
@@ -227,8 +229,10 @@ def test_mt5_historical_replay_uses_closed_candles_chronologically_without_side_
         )
         for index in range(25)
     )
+    lock = _install_observed_mt5_lock(monkeypatch)
     service = ConfiguredEcosystemService(execution_provider="ic_markets_mt5_demo")
     adapter = FakeMarketAdapter(candles)
+    adapter.lock = lock
     service.mt5_market_adapter = adapter
     before_memory = list(service.memory)
 
@@ -374,7 +378,7 @@ def test_mt5_signal_scenario_rejects_out_of_order_history():
 
 
 
-def test_mt5_historical_backtest_is_side_effect_free_and_uses_demo_history():
+def test_mt5_historical_backtest_is_side_effect_free_and_uses_demo_history(monkeypatch):
     from datetime import datetime, timedelta, timezone
     from data.models import Candle
 
@@ -394,8 +398,10 @@ def test_mt5_historical_backtest_is_side_effect_free_and_uses_demo_history():
         )
         for index in range(25)
     )
+    lock = _install_observed_mt5_lock(monkeypatch)
     service = ConfiguredEcosystemService(execution_provider="ic_markets_mt5_demo")
     adapter = FakeMarketAdapter(candles)
+    adapter.lock = lock
     service.mt5_market_adapter = adapter
     before_memory = list(service.memory)
 
@@ -470,17 +476,19 @@ def _service_with_accepted_demo_position(tmp_path):
     return service, runtime
 
 
-def test_demo_close_persists_attempt_and_uses_opening_account_fingerprint(tmp_path):
+def test_demo_close_persists_attempt_and_uses_opening_account_fingerprint(tmp_path, monkeypatch):
     from execution.ports import (
         ExecutionResult,
         PositionCloseObservation,
         PositionCloseObservationStatus,
     )
+    lock = _install_observed_mt5_lock(monkeypatch)
     service, runtime = _service_with_accepted_demo_position(tmp_path)
     calls = []
 
     class FakeAdapter:
         def reconcile_position_close(self, external_id, *, expected_account_fingerprint=None):
+            assert lock.held, "MT5 lock must cover pre-close reconciliation"
             calls.append(("reconcile", external_id, expected_account_fingerprint))
             return PositionCloseObservation(
                 PositionCloseObservationStatus.OPEN,
@@ -488,6 +496,7 @@ def test_demo_close_persists_attempt_and_uses_opening_account_fingerprint(tmp_pa
             )
 
         def close_position(self, external_id, *, expected_account_fingerprint=None):
+            assert lock.held, "MT5 lock must cover the close side effect"
             calls.append(("close", external_id, expected_account_fingerprint))
             return ExecutionResult(True, "posição fechada e confirmada", "close-999")
 
@@ -495,6 +504,7 @@ def test_demo_close_persists_attempt_and_uses_opening_account_fingerprint(tmp_pa
     result = service.close_mt5_position(cycle_id="cycle-demo-1", external_id="123456")
 
     assert result.accepted is True
+    assert lock.held is False
     assert calls == [
         ("reconcile", "123456", "a" * 32),
         ("close", "123456", "a" * 32),
