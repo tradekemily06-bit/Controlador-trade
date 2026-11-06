@@ -539,3 +539,51 @@ def test_demo_close_unknown_requires_read_only_reconciliation_before_retry(tmp_p
     assert second.accepted is True
     assert adapter.close_calls == 2
     assert [item.attempt for item in runtime.position_closes.history("request-demo-1")] == [1, 2]
+
+def test_demo_position_recovery_lists_only_unresolved_accepted_cycles_without_claiming_open(tmp_path):
+    service, runtime = _service_with_accepted_demo_position(tmp_path)
+    runtime.position_closes.begin("request-demo-1", "123456")
+    runtime.position_closes.finish(
+        "request-demo-1",
+        __import__("execution.position_close_store", fromlist=["PositionCloseState"]).PositionCloseState.UNKNOWN,
+        message="resposta incerta",
+    )
+    result = service.list_mt5_position_recovery()
+    assert result == [{
+        "cycle_id": "cycle-demo-1",
+        "external_id": "123456",
+        "recovery_state": "RECONCILIATION_REQUIRED",
+        "broker_query_performed": False,
+        "order_sent": False,
+    }]
+
+
+def test_demo_position_recovery_blocks_missing_account_fingerprint(tmp_path):
+    from datetime import datetime, timezone
+    from core.operational_runtime import build_operational_runtime
+    from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState
+
+    runtime = build_operational_runtime(tmp_path)
+    service = ConfiguredEcosystemService(
+        operational_runtime=runtime,
+        execution_provider="ic_markets_mt5_demo",
+    )
+    runtime.execution_ledger.reserve("request-demo-no-fp", cycle_id="cycle-demo-no-fp")
+    runtime.execution_ledger.bind_external_id("request-demo-no-fp", "123458")
+    runtime.execution_ledger.mark_accepted("request-demo-no-fp")
+    runtime.execution_lifecycle.put(ExecutionLifecycleRecord(
+        "request-demo-no-fp",
+        ExecutionLifecycleState.ACCEPTED,
+        datetime.now(timezone.utc),
+        "accepted without fingerprint",
+    ))
+    result = service.list_mt5_position_recovery()
+    assert result == [{
+        "cycle_id": "cycle-demo-no-fp",
+        "external_id": "123458",
+        "recovery_state": "BLOCKED_ACCOUNT_IDENTITY",
+        "broker_query_performed": False,
+        "order_sent": False,
+    }]
+
+
