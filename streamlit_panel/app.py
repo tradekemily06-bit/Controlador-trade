@@ -80,7 +80,11 @@ def api(path: str, method: str = "GET", payload: dict[str, Any] | None = None) -
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
         try:
-            message = json.loads(detail).get("error", detail)
+            error_payload = json.loads(detail)
+            message = error_payload.get("error", detail)
+            failed_conversation_id = error_payload.get("conversation_id")
+            if path == "/api/assistant/chat" and isinstance(failed_conversation_id, str) and failed_conversation_id:
+                st.session_state.assistant_conversation_id = failed_conversation_id
         except Exception:
             message = detail
         raise RuntimeError(f"API {exc.code}: {message}") from exc
