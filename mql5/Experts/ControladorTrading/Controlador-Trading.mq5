@@ -609,7 +609,7 @@ void Analyze(bool render=true){
 }
 bool RefreshActiveCycleState(){
    if(last_cycle_id=="" || last_external_id=="") return true;
-   string body="{\\"cycle_id\\":\\""+JsonEscape(last_cycle_id)+"\\",\\"external_id\\":\\""+JsonEscape(last_external_id)+"\\"}";
+   string body="{\"cycle_id\":\""+JsonEscape(last_cycle_id)+"\",\"external_id\":\""+JsonEscape(last_external_id)+"\"}";
    string response; int code=0;
    if(!Http("POST","/api/runtime/close/reconcile",body,response,code)){
       SetLabel(Obj("INFO1"),"Estado da posicao inconclusivo; ciclo bloqueado.",20,361,9,C'255,118,118');
