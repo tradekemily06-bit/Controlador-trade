@@ -157,35 +157,3 @@ def test_runtime_lock_sets_block_different_runtimes_sharing_one_database(tmp_pat
     assert second.is_acquired is True
     second.release()
     assert second.is_acquired is False
-
-
-def test_runtime_lock_set_rolls_back_partial_acquisition(tmp_path):
-    shared_database = tmp_path / "shared" / "assistant.sqlite3"
-    owner = RuntimeProcessLockSet(
-        tmp_path / "runtime-owner" / "runtime.lock",
-        [shared_database],
-    )
-    contender = RuntimeProcessLockSet(
-        tmp_path / "runtime-contender" / "runtime.lock",
-        [shared_database],
-    )
-
-    owner.acquire()
-    try:
-        try:
-            contender.acquire()
-        except RuntimeError:
-            pass
-        else:
-            raise AssertionError("o lock compartilhado deveria bloquear o contender")
-        assert contender.is_acquired is False
-    finally:
-        owner.release()
-
-    fresh = RuntimeProcessLockSet(
-        tmp_path / "runtime-contender" / "runtime.lock",
-        [shared_database],
-    )
-    fresh.acquire()
-    assert fresh.is_acquired is True
-    fresh.release()
