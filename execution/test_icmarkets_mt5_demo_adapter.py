@@ -683,3 +683,14 @@ def test_closed_deal_scan_fails_closed_if_mt5_account_changes_during_history_rea
         assert "mudou" in str(exc) or "reconfirmada" in str(exc)
     else:
         raise AssertionError("account switch during history scan must block fiscal candidate")
+
+
+def test_mt5_adapter_exposes_shared_reentrant_session_lock():
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=FakeMT5())
+    lock = adapter.session_lock
+
+    # The API can hold this same lock across the MT5 read and fiscal DB write.
+    with lock:
+        with adapter.session_lock:
+            assert adapter.session_lock is lock
+
