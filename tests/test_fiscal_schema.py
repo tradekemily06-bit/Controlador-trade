@@ -304,14 +304,15 @@ def test_application_migrates_owner_schema_before_fiscal_repositories_are_create
             value = statement.value
         elif isinstance(statement, ast.Expr):
             value = statement.value
-        if not isinstance(value, ast.Call) or not isinstance(value.func, ast.Name):
+        if not isinstance(value, ast.Call):
             continue
-        if value.func.id == "migrate_fiscal_schema":
-            migration_index = index
-        elif value.func.id in {"FiscalReserve", "FiscalPendingQueue", "FiscalDomesticPendingQueue"}:
-            repository_indexes.append(index)
-        elif value.func.id == "build_demo_execution_port":
-            runtime_construction_index = index
+        if isinstance(value.func, ast.Name):
+            if value.func.id == "migrate_fiscal_schema":
+                migration_index = index
+            elif value.func.id in {"FiscalReserve", "FiscalPendingQueue", "FiscalDomesticPendingQueue"}:
+                repository_indexes.append(index)
+            elif value.func.id == "build_demo_execution_port":
+                runtime_construction_index = index
         elif (
             isinstance(value.func, ast.Attribute)
             and value.func.attr == "acquire"
@@ -322,13 +323,13 @@ def test_application_migrates_owner_schema_before_fiscal_repositories_are_create
 
     assert process_lock_acquire_index is not None, "app.py must acquire the process lock during startup"
     assert runtime_construction_index is not None, "app.py must construct the operational runtime"
+    assert migration_index is not None, "app.py must apply the owner-scoped fiscal migration"
     assert process_lock_acquire_index < runtime_construction_index, (
         "process exclusivity must be acquired before operational runtime construction"
     )
     assert process_lock_acquire_index < migration_index, (
         "process exclusivity must be acquired before fiscal schema migration"
     )
-    assert migration_index is not None, "app.py must apply the owner-scoped fiscal migration"
     assert repository_indexes, "app.py must initialize fiscal repositories"
     assert all(migration_index < index for index in repository_indexes), (
         "owner-scoped migration must run before any fiscal repository initialization"
