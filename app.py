@@ -1381,13 +1381,32 @@ def application(environ, start_response):
             timeframe = str(query.get("timeframe", [""])[-1]).strip().lower()
             if bool(symbol) != bool(timeframe):
                 raise ValueError("symbol e timeframe devem ser informados juntos")
-            snapshot = LATEST_MARKET_ANALYSIS.latest(symbol or None, timeframe or None)
+            record = LATEST_MARKET_ANALYSIS.latest_record(symbol or None, timeframe or None)
+            snapshot = record.get("analysis") if record else None
+            updated_at = record.get("updated_at") if record else None
+            max_age_seconds = max(60, min(86400, int(os.getenv("CONTROLADOR_ANALYSIS_MAX_AGE_SECONDS", "900"))))
+            age_seconds = None
+            fresh = False
+            if isinstance(updated_at, str):
+                try:
+                    saved_at = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+                    if saved_at.tzinfo is not None:
+                        age_seconds = max(0.0, (datetime.now(saved_at.tzinfo) - saved_at).total_seconds())
+                        fresh = age_seconds <= max_age_seconds
+                except ValueError:
+                    fresh = False
+            available = snapshot is not None and fresh
             return _json_response(
                 start_response,
                 HTTPStatus.OK,
                 {
-                    "available": snapshot is not None,
-                    "analysis": snapshot,
+                    "available": available,
+                    "analysis": snapshot if available else None,
+                    "saved_at": updated_at,
+                    "age_seconds": age_seconds,
+                    "max_age_seconds": max_age_seconds,
+                    "stale": snapshot is not None and not fresh,
+                    "unavailable_reason": "ANALYSIS_EXPIRED" if snapshot is not None and not fresh else None,
                     "cache_scope": "PERSISTENT_SQLITE",
                     "execution_allowed": False,
                     "real": "DESABILITADO",
