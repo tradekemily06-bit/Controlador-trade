@@ -334,3 +334,60 @@ def test_application_migrates_owner_schema_before_fiscal_repositories_are_create
     assert all(migration_index < index for index in repository_indexes), (
         "owner-scoped migration must run before any fiscal repository initialization"
     )
+
+
+def test_owner_fast_path_rebuilds_global_reference_uniqueness(tmp_path, monkeypatch):
+    path = str(tmp_path / "wrong-owner-constraints.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner-a")
+    owner = migrate_fiscal_schema(path)
+
+    # Simulate owner-tagged tables with global uniqueness and an incomplete FK.
+    with sqlite3.connect(path) as db:
+        db.execute("PRAGMA foreign_keys=OFF")
+        db.execute("DROP TABLE fiscal_pending_reviews")
+        db.execute("DROP TABLE fiscal_reserve_pending_foreign")
+        db.execute("""CREATE TABLE fiscal_reserve_pending_foreign (
+            pending_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, reference TEXT NOT NULL UNIQUE,
+            original_amount REAL NOT NULL, original_currency TEXT NOT NULL, instrument TEXT NOT NULL,
+            jurisdiction TEXT NOT NULL, occurred_on TEXT NOT NULL, fx_rate REAL, fx_date TEXT,
+            fx_source TEXT, notes TEXT NOT NULL DEFAULT '', status TEXT NOT NULL,
+            original_result REAL, record_kind TEXT NOT NULL DEFAULT 'ASSET_AMOUNT',
+            tax_residency_at_event TEXT NOT NULL DEFAULT 'NOT_INFORMED',
+            income_nature TEXT NOT NULL DEFAULT 'NOT_INFORMED', event_type TEXT NOT NULL DEFAULT 'NOT_INFORMED',
+            fx_conversion_method TEXT NOT NULL DEFAULT 'NOT_INFORMED', created_at TEXT NOT NULL
+        )""")
+        db.execute("""INSERT INTO fiscal_reserve_pending_foreign
+            (pending_id,owner_id,reference,original_amount,original_currency,instrument,jurisdiction,occurred_on,notes,status,created_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+            ("p1", owner, "kept-ref", 25, "USD", "ETF", "US", "2026-11-05", "", "PENDING_CLASSIFICATION", "now"))
+        db.execute("""CREATE TABLE fiscal_pending_reviews (
+            review_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, pending_id TEXT NOT NULL,
+            candidate_classification TEXT NOT NULL, confirmed_jurisdiction TEXT NOT NULL,
+            reviewer_name TEXT NOT NULL, reviewer_role TEXT NOT NULL, professional_registration TEXT NOT NULL,
+            evidence_reference TEXT NOT NULL, reviewed_on TEXT NOT NULL, review_notes TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL, FOREIGN KEY(pending_id) REFERENCES fiscal_reserve_pending_foreign(pending_id)
+        )""")
+
+    assert migrate_fiscal_schema(path) == owner
+    with sqlite3.connect(path) as db:
+        assert db.execute(
+            "SELECT owner_id,reference FROM fiscal_reserve_pending_foreign WHERE pending_id='p1'"
+        ).fetchone() == (owner, "kept-ref")
+        unique_indexes = [
+            row[1] for row in db.execute("PRAGMA index_list(fiscal_reserve_pending_foreign)") if row[2]
+        ]
+        indexed_columns = [
+            tuple(row[2] for row in db.execute(f"PRAGMA index_info('{name}')"))
+            for name in unique_indexes
+        ]
+        assert ("owner_id", "reference") in indexed_columns
+        assert ("owner_id", "pending_id") in indexed_columns
+        foreign_keys = list(db.execute("PRAGMA foreign_key_list(fiscal_pending_reviews)"))
+        assert {(row[3], row[4]) for row in foreign_keys} == {
+            ("owner_id", "owner_id"), ("pending_id", "pending_id")
+        }
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute("""INSERT INTO fiscal_reserve_pending_foreign
+                (pending_id,owner_id,reference,original_amount,original_currency,instrument,jurisdiction,occurred_on,notes,status,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                ("p2", owner, "kept-ref", 10, "USD", "ETF", "US", "2026-11-05", "", "PENDING_CLASSIFICATION", "now"))
