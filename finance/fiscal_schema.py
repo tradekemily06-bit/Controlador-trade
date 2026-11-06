@@ -18,7 +18,9 @@ TABLES = (
 def _has_unique_index(db: sqlite3.Connection, table: str, columns: tuple[str, ...]) -> bool:
     """Return whether an exact ordered UNIQUE index/primary key exists."""
     for index in db.execute(f'PRAGMA index_list("{table}")').fetchall():
-        if not index["unique"]:
+        # A partial UNIQUE index protects only rows matching its WHERE clause;
+        # it cannot enforce owner-scoped uniqueness for the complete table.
+        if not index["unique"] or index["partial"]:
             continue
         indexed_columns = tuple(row["name"] for row in db.execute(f'PRAGMA index_info("{index["name"]}")').fetchall())
         if indexed_columns == columns:
