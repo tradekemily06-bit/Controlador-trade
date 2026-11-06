@@ -22,6 +22,8 @@ CONTROLADOR_LOCAL_MUTATIONS_ALLOWED=true
 CONTROLADOR_LOCAL_MUTATION_HOSTS=localhost,127.0.0.1,[::1]
 CONTROLADOR_TRUSTED_IDENTITY_HEADER=Cf-Access-Authenticated-User-Email
 CONTROLADOR_SINGLE_USER_IDENTITY=usuario-individual-autorizado@example.com
+
+`CONTROLADOR_SINGLE_USER_IDENTITY` é uma configuração local obrigatória: defina-a no escopo de Máquina do Windows com o e-mail individual exato permitido na política Cloudflare Access, antes de instalar as tarefas agendadas. Não use domínio inteiro, grupo ou identidade compartilhada. O bootstrap não cria esse valor automaticamente e o instalador recusa registrar as tarefas quando ele está ausente. Não grave tokens ou senhas nesse valor.
 CONTROLADOR_RUNTIME_DIR=C:\\Controlador-trade\\.runtime
 CONTROLADOR_SECURITY_AUDIT_DB=C:\\Controlador-trade\\.runtime\\security-audit.sqlite
 
