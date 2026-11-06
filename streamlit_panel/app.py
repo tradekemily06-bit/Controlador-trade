@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import ipaddress
 import io
 import json
 import os
@@ -23,6 +24,31 @@ BASE_URL = os.environ.get("CONTROLADOR_API_BASE_URL", "http://127.0.0.1:8000").r
 IDENTITY_HEADER = os.environ.get("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "").strip()
 REMOTE_REQUIRED = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "false").strip().lower() in {"1", "true", "yes"}
 TIMEOUT = 20
+
+
+def _validate_api_base_url(value: str, remote_required: bool) -> None:
+    """Require TLS before forwarding authenticated identity to a remote API."""
+    parsed = urllib.parse.urlsplit(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise RuntimeError("CONTROLADOR_API_BASE_URL deve ser uma URL HTTP(S) válida.")
+    if parsed.username is not None or parsed.password is not None or parsed.query or parsed.fragment:
+        raise RuntimeError("CONTROLADOR_API_BASE_URL não pode conter credenciais, query ou fragmento.")
+    try:
+        parsed.port
+    except ValueError as exc:
+        raise RuntimeError("CONTROLADOR_API_BASE_URL contém uma porta inválida.") from exc
+    hostname = parsed.hostname.rstrip(".").lower()
+    try:
+        loopback = ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        loopback = hostname == "localhost"
+    if remote_required and not loopback and parsed.scheme != "https":
+        raise RuntimeError(
+            "A API remota exige HTTPS quando o encaminhamento da identidade confiável está ativado."
+        )
+
+
+_validate_api_base_url(BASE_URL, REMOTE_REQUIRED)
 
 st.set_page_config(page_title="Controlador-Trader · Streamlit", page_icon="C", layout="wide")
 
