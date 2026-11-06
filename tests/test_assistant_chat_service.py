@@ -312,10 +312,11 @@ def test_provider_configuration_failure_preserves_persisted_conversation_id(monk
         assert str(exc) == (
             "Assistente não configurado: chave OpenAI ausente no servidor."
         )
-        assert exc.conversation_id == "conversation-1"
+        assert exc.conversation_id == "conversation-test"
     else:
         raise AssertionError("provider setup failure must be reported")
 
-    assert store.messages[-1]["role"] == "user"
-    assert store.messages[-1]["content"] == "Pergunta privada"
+    assert store.messages[-1][2] == "user"
+    assert store.messages[-1][3] == "Pergunta privada"
+    assert store.messages[-1][1] == "conversation-test"
     assert completion.calls == []
