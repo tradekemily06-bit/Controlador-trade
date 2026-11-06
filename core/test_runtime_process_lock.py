@@ -156,3 +156,52 @@ def test_lock_set_preserves_acquisition_error_when_rollback_also_fails(tmp_path)
 
     assert released == ["release"]
     assert lock_set.is_acquired is False
+
+
+def test_runtime_lock_closes_descriptor_when_lock_backend_setup_fails(tmp_path, monkeypatch):
+    import core.runtime_process_lock as lock_module
+    from pathlib import Path
+
+    path = tmp_path / "runtime.lock"
+    path.touch()
+    original_open = Path.open
+    opened = []
+
+    class _TrackedHandle:
+        def __init__(self, handle):
+            self._handle = handle
+            self.closed = False
+
+        def __getattr__(self, name):
+            return getattr(self._handle, name)
+
+        def close(self):
+            self.closed = True
+            self._handle.close()
+
+    def tracked_open(self, *args, **kwargs):
+        handle = _TrackedHandle(original_open(self, *args, **kwargs))
+        opened.append(handle)
+        return handle
+
+    class _BrokenBackend:
+        LK_NBLCK = 1
+
+        @staticmethod
+        def locking(_fd, _mode, _count):
+            raise ValueError("backend initialization failed")
+
+    monkeypatch.setattr(Path, "open", tracked_open)
+    monkeypatch.setattr(lock_module, "msvcrt", _BrokenBackend)
+    lock = RuntimeProcessLock(path)
+
+    try:
+        lock.acquire()
+    except ValueError as exc:
+        assert str(exc) == "backend initialization failed"
+    else:
+        raise AssertionError("the original backend setup failure must propagate")
+
+    assert len(opened) == 1
+    assert opened[0].closed is True
+    assert lock.is_acquired is False
