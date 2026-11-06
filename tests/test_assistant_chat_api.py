@@ -34,6 +34,7 @@ def _configure(monkeypatch, assistant):
     monkeypatch.setattr(app_module.SECURITY, "allow", lambda environ: True)
     monkeypatch.setattr(app_module.SECURITY, "headers", lambda request_id, **kwargs: [])
     monkeypatch.setattr(app_module, "_audit", lambda *args, **kwargs: None)
+    monkeypatch.setattr(app_module, "configured_fiscal_owner_id", lambda: "single:canonical-owner")
     monkeypatch.setattr(app_module, "migrate_fiscal_schema", lambda _path: "single:canonical-owner")
     monkeypatch.setattr(app_module, "ASSISTANT", assistant)
 
@@ -248,3 +249,45 @@ def test_every_assistant_endpoint_requires_trusted_identity_before_access(tmp_pa
         )
         assert status.startswith("401")
         assert response["error"] == "trusted identity is required"
+
+def test_assistant_history_routes_do_not_migrate_or_access_fiscal_schema(tmp_path, monkeypatch):
+    calls = []
+
+    class Assistant:
+        def readiness(self):
+            return {"ready": True}
+
+        def conversations(self, identity):
+            calls.append(("conversations", identity))
+            return []
+
+        def history(self, identity, conversation_id):
+            calls.append(("history", identity, conversation_id))
+            return []
+
+        def delete_conversation(self, identity, conversation_id):
+            calls.append(("delete", identity, conversation_id))
+
+    _configure(monkeypatch, Assistant())
+    monkeypatch.setattr(
+        app_module,
+        "migrate_fiscal_schema",
+        lambda _path: (_ for _ in ()).throw(
+            AssertionError("rotas de histórico não devem migrar o banco fiscal")
+        ),
+    )
+
+    for path, method in (
+        ("/api/assistant/status", "GET"),
+        ("/api/assistant/conversations", "GET"),
+        ("/api/assistant/history?conversation_id=conversation-1", "GET"),
+        ("/api/assistant/conversations?conversation_id=conversation-1", "DELETE"),
+    ):
+        status, _ = _request(path, method=method)
+        assert status.startswith("200")
+
+    assert calls == [
+        ("conversations", "single:canonical-owner"),
+        ("history", "single:canonical-owner", "conversation-1"),
+        ("delete", "single:canonical-owner", "conversation-1"),
+    ]
