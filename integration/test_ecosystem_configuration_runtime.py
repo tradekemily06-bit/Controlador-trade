@@ -791,7 +791,7 @@ def test_demo_open_position_is_rechecked_again_before_timed_close(tmp_path):
 
 
 def test_timed_exit_worker_does_not_mark_closed_when_close_is_not_confirmed(tmp_path):
-    from datetime import timezone
+    from datetime import datetime, timezone
     from execution.ports import ExecutionResult
     from execution.timed_exit_worker import TimedExitWorker
 
@@ -821,7 +821,7 @@ def test_timed_exit_worker_does_not_mark_closed_when_close_is_not_confirmed(tmp_
 
 
 def test_timed_exit_worker_marks_closed_from_broker_observation_without_sending_close(tmp_path):
-    from datetime import timezone
+    from datetime import datetime, timezone
     from execution.timed_exit_worker import TimedExitWorker
 
     service, runtime = _service_with_accepted_demo_position(tmp_path)
