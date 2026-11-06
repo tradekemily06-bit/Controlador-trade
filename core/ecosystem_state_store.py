@@ -101,6 +101,14 @@ class EcosystemStateStore:
             self._notifications_load_error = "invalid_records"
         return value
 
+    def mark_notifications_unavailable(self, category: str) -> None:
+        """Prevent routine writes after validation detects damaged history."""
+        allowed = {"invalid_json", "read_failed", "invalid_shape", "invalid_records"}
+        normalized = str(category).strip().lower()
+        if normalized not in allowed:
+            raise ValueError("categoria de histórico inválida")
+        self._notifications_load_error = normalized
+
     def save_notifications(self, notifications: list[dict[str, Any]]) -> None:
         # Preserve damaged evidence until an explicit recovery procedure has
         # inspected it. A routine publish must not silently replace corrupt data.
