@@ -2704,7 +2704,7 @@ with st.container(key="control-hub-shell"):
         mt5_state = str(components.get("mt5_demo") or runtime_status.get("mt5_demo") or "UNKNOWN").upper()
         mode_state = str(runtime_status.get("mode") or "UNKNOWN").upper()
         real_state = str(runtime_status.get("real") or "DESABILITADO").upper()
-        health_label = {"OK": "SISTEMA ONLINE", "WARNING": "ATENÇÃO", "CRITICAL": "INDISPONÍVEL"}.get(health_state, "INDISPONÍVEL")
+        health_label = {"OK": "SISTEMA ONLINE", "WARNING": "INDISPONÍVEL", "CRITICAL": "INDISPONÍVEL"}.get(health_state, "INDISPONÍVEL")
         state_left, state_right = st.columns([3, 1])
         with state_left:
             st.caption("Estado do sistema")
