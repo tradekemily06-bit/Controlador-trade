@@ -323,7 +323,6 @@ def show_assistant() -> None:
         disabled=(not assistant_available) or (not consent_to_openai),
     )
     if prompt:
-        st.session_state.assistant_history.append({"role": "user", "content": prompt})
         try:
             response = api(
                 "/api/assistant/chat",
@@ -335,13 +334,20 @@ def show_assistant() -> None:
                 },
             )
             st.session_state.assistant_conversation_id = response.get("conversation_id")
+            st.session_state.assistant_history.append({"role": "user", "content": prompt})
             answer = response.get("answer", "Sem resposta.")
             st.session_state.assistant_history.append({"role": "assistant", "content": answer})
             st.rerun()
         except RuntimeError as exc:
-            # api() converts HTTP and transport failures into safe, user-facing
-            # messages. Preserve those actionable statuses without exposing
-            # backend exception details or credentials.
+            # Do not present an unanswered prompt as if the provider had replied.
+            # A 503 may still have persisted the user message locally; api() keeps
+            # its conversation ID so it remains recoverable from saved history.
+            if st.session_state.get("assistant_conversation_id"):
+                st.warning(
+                    "A consulta não recebeu resposta. Se o runtime informou que "
+                    "a mensagem ficou no histórico, abra essa conversa em "
+                    "“Conversas anteriores” depois de restabelecer o serviço."
+                )
             st.error("Falha no Assistente: " + str(exc))
         except Exception:
             st.error("Não foi possível enviar a consulta ao Assistente. Verifique a conexão e tente novamente. Detalhes técnicos não são exibidos no painel.")
