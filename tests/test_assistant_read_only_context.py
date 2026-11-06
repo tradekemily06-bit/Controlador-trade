@@ -943,3 +943,24 @@ def test_assistant_component_state_token_honors_bounded_field_limit():
     assert result["decision_engine"] == accepted
     assert result["memory"] == "UNKNOWN"
     assert result["mt5_demo"] == "UNKNOWN"
+
+def test_assistant_reconciliation_counts_are_capped_and_ignore_non_lists():
+    from assistant.read_only_context import _operations_summary
+
+    result = _operations_summary({
+        "reconciliation": {
+            "pending_request_ids": ["x"] * 3,
+            "unknown_request_ids": ["y"] * 1_000_000_001,
+        }
+    })
+    assert result["reconciliation"]["pending_count"] == 3
+    assert result["reconciliation"]["unknown_count"] == 1_000_000_000
+
+    malformed = _operations_summary({
+        "reconciliation": {
+            "pending_request_ids": "not-a-list",
+            "unknown_request_ids": {"count": 99},
+        }
+    })
+    assert malformed["reconciliation"]["pending_count"] == 0
+    assert malformed["reconciliation"]["unknown_count"] == 0
