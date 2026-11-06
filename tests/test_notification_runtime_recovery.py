@@ -54,6 +54,17 @@ def test_recovery_refreshes_live_notification_center_after_persistent_restore():
 def test_recovery_keeps_history_unavailable_when_reload_reports_storage_error():
     store = _StateStore([], load_error="read_failed")
     service = _service_with_store(store)
+    existing = {
+        "notification_id": "existing-1",
+        "kind": "SECURITY",
+        "severity": "CRITICAL",
+        "title": "Alerta anterior",
+        "message": "Não deve ser apagado por uma releitura com erro",
+        "requires_attention": True,
+        "blocking": True,
+    }
+    service.notifications.restore([existing])
+    original_center = service.notifications
 
     try:
         service.restore_notification_history("archive-1", confirmed=True)
@@ -63,3 +74,6 @@ def test_recovery_keeps_history_unavailable_when_reload_reports_storage_error():
         raise AssertionError("restoration must fail closed when reload reports an error")
 
     assert store.marked_unavailable == ["read_failed"]
+
+    assert service.notifications is original_center
+    assert [item.notification_id for item in service.notifications.all()] == ["existing-1"]
