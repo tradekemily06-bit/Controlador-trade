@@ -84,4 +84,5 @@ def test_web_close_ui_uses_read_only_reconciliation_and_reports_true_state():
     assert "Fechamento inconclusivo" in close
     assert "ciclo foi preservada" in close
     assert "fechamento manual explícito" in HTML
-    assert "duration_seconds como expiração automática" in HTML
+    assert "x.timed_exit?.scheduled" in HTML
+    assert "best-effort; pode atrasar se MT5/runtime estiver indisponível" in HTML
