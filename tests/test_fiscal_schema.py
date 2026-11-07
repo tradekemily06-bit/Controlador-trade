@@ -170,6 +170,58 @@ def test_migration_reinstalls_domestic_review_guards_if_missing(tmp_path, monkey
         } <= trigger_names
 
 
+def test_rebuild_path_reinstalls_domestic_review_guards_if_missing(tmp_path, monkeypatch):
+    from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
+    from finance.fiscal_identity import configured_fiscal_owner_id
+
+    path = str(tmp_path / "domestic-review-rebuild.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    owner = configured_fiscal_owner_id()
+    queue = FiscalDomesticPendingQueue(path)
+    queue.add(owner, {
+        "reference": "BR-REVIEW-REBUILD-1",
+        "instrument": "ETF",
+        "occurred_on": "2026-11-03",
+    })
+
+    # Force the legacy/rebuild path while preserving the domestic review tables.
+    with sqlite3.connect(path) as db:
+        db.execute("DROP TRIGGER fiscal_domestic_pending_reviews_no_update")
+        db.execute("DROP TRIGGER fiscal_domestic_pending_reviews_no_delete")
+        db.execute("DROP TABLE fiscal_reserve_settings")
+        db.execute(
+            "CREATE TABLE fiscal_reserve_settings(category TEXT PRIMARY KEY, rate REAL NOT NULL)"
+        )
+        db.execute("INSERT INTO fiscal_reserve_settings VALUES('BR_DAY_TRADE', 20)")
+
+    assert migrate_fiscal_schema(path) == owner
+
+    with sqlite3.connect(path) as db:
+        trigger_names = {
+            row[0] for row in db.execute(
+                "SELECT name FROM sqlite_master WHERE type='trigger'"
+            )
+        }
+        assert {
+            "fiscal_domestic_pending_reviews_no_update",
+            "fiscal_domestic_pending_reviews_no_delete",
+        } <= trigger_names
+        review = db.execute(
+            "SELECT review_id FROM fiscal_domestic_pending_reviews LIMIT 1"
+        ).fetchone()
+        assert review is not None
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            db.execute(
+                "UPDATE fiscal_domestic_pending_reviews SET review_notes='tampered' WHERE review_id=?",
+                (review[0],),
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            db.execute(
+                "DELETE FROM fiscal_domestic_pending_reviews WHERE review_id=?",
+                (review[0],),
+            )
+
+
 def test_migration_without_configured_identity_changes_nothing(tmp_path, monkeypatch):
     path = str(tmp_path / "legacy.sqlite3")
     _legacy_db(path)
