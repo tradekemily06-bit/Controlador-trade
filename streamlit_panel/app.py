@@ -1597,7 +1597,7 @@ def show_simulator() -> None:
 
 
 def show_readonly_module(module_name: str) -> None:
-    """Render existing runtime capabilities as clear, read-only Streamlit screens."""
+    """Render mapped runtime views and guarded controls for the selected module."""
     views = {
         "Operação": ("Estado operacional", "/api/health"),
         "Motor de Decisão": ("Motor de Decisão · última análise", "/api/runtime/analysis/latest"),
