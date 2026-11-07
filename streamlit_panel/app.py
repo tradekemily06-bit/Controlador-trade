@@ -1081,11 +1081,21 @@ def show_fiscal() -> None:
         fx_date = st.date_input("Data da cotação", key="foreign_fx_date")
         fx_source = st.text_input("Fonte da cotação (opcional)", max_chars=200)
         fx_conversion_method = st.selectbox("Método de conversão cambial", list(fx_method_options), format_func=lambda value: fx_method_options[value], key="foreign_fx_method")
+        institution = st.text_input("Corretora / instituição", max_chars=160, key="foreign_institution")
+        custody_location = st.text_input("Local de custódia (país, instituição ou autocustódia)", max_chars=120, key="foreign_custody")
+        contract_type = st.text_input("Tipo / especificação do contrato", max_chars=120, key="foreign_contract")
+        col_cost1, col_cost2, col_cost3 = st.columns(3)
+        has_acquisition_cost = col_cost1.checkbox("Informar custo de aquisição", key="foreign_has_acquisition_cost")
+        acquisition_cost = col_cost1.number_input("Custo na moeda original", min_value=0.0, max_value=1_000_000_000_000.0, format="%.8f", key="foreign_acquisition_cost") if has_acquisition_cost else None
+        has_transaction_fees = col_cost2.checkbox("Informar taxas/custos", key="foreign_has_transaction_fees")
+        transaction_fees = col_cost2.number_input("Taxas na moeda original", min_value=0.0, max_value=1_000_000_000_000.0, format="%.8f", key="foreign_transaction_fees") if has_transaction_fees else None
+        has_foreign_tax_paid = col_cost3.checkbox("Informar imposto pago fora", key="foreign_has_tax_paid")
+        foreign_tax_paid = col_cost3.number_input("Imposto na moeda original", min_value=0.0, max_value=1_000_000_000_000.0, format="%.8f", key="foreign_tax_paid") if has_foreign_tax_paid else None
         notes = st.text_area("Observações", max_chars=1000, key="foreign_notes")
         submitted = st.form_submit_button("Guardar como pendente")
     if submitted:
         try:
-            pending_payload = {"reference": reference, "original_amount": amount, "original_currency": currency, "instrument": instrument, "jurisdiction": jurisdiction, "occurred_on": occurred_on.isoformat(), "tax_residency_at_event": tax_residency, "income_nature": income_nature, "event_type": event_type, "fx_conversion_method": fx_conversion_method, "notes": notes}
+            pending_payload = {"reference": reference, "original_amount": amount, "original_currency": currency, "instrument": instrument, "jurisdiction": jurisdiction, "occurred_on": occurred_on.isoformat(), "tax_residency_at_event": tax_residency, "income_nature": income_nature, "event_type": event_type, "fx_conversion_method": fx_conversion_method, "institution": institution, "custody_location": custody_location, "contract_type": contract_type, "acquisition_cost": acquisition_cost, "transaction_fees": transaction_fees, "foreign_tax_paid": foreign_tax_paid, "notes": notes}
             if fx_rate or fx_source:
                 if not fx_rate or not fx_source:
                     raise ValueError("Para guardar a cotação, informe valor e fonte.")
@@ -1114,11 +1124,21 @@ def show_fiscal() -> None:
         fx_date_signed = st.date_input("Data da cotação", key="signed_foreign_fx_date")
         fx_source_signed = st.text_input("Fonte da cotação", max_chars=200)
         fx_method_signed = st.selectbox("Método de conversão cambial", list(fx_method_options), format_func=lambda value: fx_method_options[value], key="signed_fx_method")
+        institution_signed = st.text_input("Corretora / instituição", max_chars=160, key="signed_institution")
+        custody_signed = st.text_input("Local de custódia", max_chars=120, key="signed_custody")
+        contract_signed = st.text_input("Tipo / especificação do contrato", max_chars=120, key="signed_contract")
+        signed_cost1, signed_cost2, signed_cost3 = st.columns(3)
+        has_signed_acquisition_cost = signed_cost1.checkbox("Informar custo de aquisição", key="signed_has_acquisition_cost")
+        acquisition_cost_signed = signed_cost1.number_input("Custo na moeda original", min_value=0.0, max_value=1_000_000_000_000.0, format="%.8f", key="signed_acquisition_cost") if has_signed_acquisition_cost else None
+        has_signed_fees = signed_cost2.checkbox("Informar taxas/custos", key="signed_has_transaction_fees")
+        fees_signed = signed_cost2.number_input("Taxas na moeda original", min_value=0.0, max_value=1_000_000_000_000.0, format="%.8f", key="signed_transaction_fees") if has_signed_fees else None
+        has_signed_foreign_tax = signed_cost3.checkbox("Informar imposto pago fora", key="signed_has_tax_paid")
+        tax_paid_signed = signed_cost3.number_input("Imposto na moeda original", min_value=0.0, max_value=1_000_000_000_000.0, format="%.8f", key="signed_foreign_tax_paid") if has_signed_foreign_tax else None
         notes_signed = st.text_area("Observações", max_chars=1000)
         submit_signed = st.form_submit_button("Guardar como pendente")
     if submit_signed:
         try:
-            signed_payload = {"reference": ref_signed, "original_result": amount_signed, "original_currency": currency_signed, "instrument": instrument_signed, "jurisdiction": jurisdiction_signed, "occurred_on": date_signed.isoformat(), "tax_residency_at_event": residency_signed, "income_nature": income_signed, "event_type": event_signed, "fx_conversion_method": fx_method_signed, "notes": notes_signed}
+            signed_payload = {"reference": ref_signed, "original_result": amount_signed, "original_currency": currency_signed, "instrument": instrument_signed, "jurisdiction": jurisdiction_signed, "occurred_on": date_signed.isoformat(), "tax_residency_at_event": residency_signed, "income_nature": income_signed, "event_type": event_signed, "fx_conversion_method": fx_method_signed, "institution": institution_signed, "custody_location": custody_signed, "contract_type": contract_signed, "acquisition_cost": acquisition_cost_signed, "transaction_fees": fees_signed, "foreign_tax_paid": tax_paid_signed, "notes": notes_signed}
             if fx_signed or fx_source_signed:
                 if not fx_signed or not fx_source_signed:
                     raise ValueError("Informe cotação e fonte juntas.")
