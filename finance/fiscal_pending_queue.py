@@ -13,7 +13,7 @@ from typing import Any, Iterator
 MAX_PENDING_OFFSET = 1_000_000_000
 
 
-CURRENCIES = frozenset({"USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "BRL"})
+CURRENCY_CODE_LENGTH = 3
 FOREIGN_REVIEW_CANDIDATES = frozenset({
     "FOREIGN_FINANCIAL_INVESTMENT",
     "FOREIGN_ENTITY_CONTROLLED",
@@ -172,8 +172,8 @@ class FiscalPendingQueue:
             raise ValueError("instrument é obrigatório e deve ter até 80 caracteres")
         if not jurisdiction or len(jurisdiction) > 80:
             raise ValueError("jurisdiction é obrigatório e deve ter até 80 caracteres")
-        if currency not in CURRENCIES:
-            raise ValueError("moeda não suportada")
+        if len(currency) != CURRENCY_CODE_LENGTH or not currency.isascii() or not currency.isalpha():
+            raise ValueError("moeda deve ser um código alfabético de três letras")
         amount = self._positive(payload.get("original_amount"), "original_amount")
         occurred_on = self._date(payload.get("occurred_on"), "occurred_on")
         fx_rate = payload.get("fx_rate")
