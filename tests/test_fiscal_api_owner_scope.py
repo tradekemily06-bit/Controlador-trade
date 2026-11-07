@@ -960,12 +960,15 @@ def test_fiscal_api_to_assistant_context_flow_preserves_evidence_and_privacy(tmp
             "foreign_tax_paid": 0,
             "notes": "PRIVATE-E2E-NOTE",
         },
+        identity="fiscal-assistant-e2e-owner",
     )
     assert status.startswith("201")
     assert created["pending"]["status"] == "PENDING_CLASSIFICATION"
     assert created["reserve_calculated"] is False
 
-    status, fiscal = _request("/api/fiscal-reserve")
+    status, fiscal = _request(
+        "/api/fiscal-reserve", identity="fiscal-assistant-e2e-owner"
+    )
     assert status.startswith("200")
     assert fiscal["foreign_pending"]["evidence_completeness"]["missing_core_evidence"] == 0
 
