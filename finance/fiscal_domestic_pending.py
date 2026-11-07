@@ -76,6 +76,20 @@ class FiscalDomesticPendingQueue:
                 CREATE INDEX IF NOT EXISTS fiscal_domestic_pending_reviews_item
                 ON fiscal_domestic_pending_reviews(owner_id, pending_id, created_at DESC)
             """)
+            db.execute("""
+                CREATE TRIGGER IF NOT EXISTS fiscal_domestic_pending_reviews_no_update
+                BEFORE UPDATE ON fiscal_domestic_pending_reviews
+                BEGIN
+                    SELECT RAISE(ABORT, 'fiscal review history is append-only');
+                END
+            """)
+            db.execute("""
+                CREATE TRIGGER IF NOT EXISTS fiscal_domestic_pending_reviews_no_delete
+                BEFORE DELETE ON fiscal_domestic_pending_reviews
+                BEGIN
+                    SELECT RAISE(ABORT, 'fiscal review history is append-only');
+                END
+            """)
 
     @staticmethod
     def _require_owner(owner_id: str) -> str:
