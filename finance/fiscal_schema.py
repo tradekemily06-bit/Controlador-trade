@@ -15,6 +15,28 @@ TABLES = (
 )
 
 
+def _install_append_only_review_triggers(db: sqlite3.Connection) -> None:
+    """Install immutable review-history guards as part of the schema transaction."""
+    trigger_specs = (
+        ("fiscal_pending_reviews", "fiscal_pending_reviews_no_update", "UPDATE"),
+        ("fiscal_pending_reviews", "fiscal_pending_reviews_no_delete", "DELETE"),
+        ("fiscal_domestic_pending_reviews", "fiscal_domestic_pending_reviews_no_update", "UPDATE"),
+        ("fiscal_domestic_pending_reviews", "fiscal_domestic_pending_reviews_no_delete", "DELETE"),
+    )
+    for table, trigger, operation in trigger_specs:
+        exists = db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (table,),
+        ).fetchone()
+        if not exists:
+            continue
+        db.execute(
+            f"CREATE TRIGGER IF NOT EXISTS {trigger} "
+            f"BEFORE {operation} ON {table} "
+            "BEGIN SELECT RAISE(ABORT, 'fiscal review history is append-only'); END"
+        )
+
+
 def _has_unique_index(db: sqlite3.Connection, table: str, columns: tuple[str, ...]) -> bool:
     """Return whether an exact ordered UNIQUE index/primary key exists."""
     for index in db.execute(f'PRAGMA index_list("{table}")').fetchall():
@@ -224,6 +246,7 @@ def migrate_fiscal_schema(database_path: str) -> str:
                         "Migração fiscal interrompida: integridade referencial inválida no esquema existente"
                     )
                 if constraints_valid:
+                    _install_append_only_review_triggers(db)
                     db.commit()
                     return owner_id
                 # Rebuild atomically when owner-scoped constraints are incomplete.
@@ -392,6 +415,7 @@ def migrate_fiscal_schema(database_path: str) -> str:
         violations = db.execute("PRAGMA foreign_key_check").fetchall()
         if violations:
             raise RuntimeError("Migração fiscal interrompida: integridade referencial inválida")
+        _install_append_only_review_triggers(db)
         db.commit()
         return owner_id
     except Exception:
