@@ -188,11 +188,10 @@ def discover_mt5_instruments(
 
         asset_class = _asset_class(mt5, symbol, info)
         weekend_session = _has_weekend_session(mt5, symbol)
-        weekend_capable = (
-            weekend_session
-            if weekend_session is not None
-            else asset_class == "crypto"
-        )
+        # Do not infer weekend availability from the asset class alone.
+        # Crypto symbols may still be closed by this broker or account. If MT5
+        # does not expose session evidence, report capability as unconfirmed.
+        weekend_capable = weekend_session is True
         result.append(
             MT5InstrumentStatus(
                 symbol=symbol,
