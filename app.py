@@ -486,6 +486,20 @@ def application(environ, start_response):
             fiscal_owner_id = identity
             if path == "/api/assistant/status" and method == "GET":
                 return _json_response(start_response, HTTPStatus.OK, ASSISTANT.readiness(), request_id, environ)
+            if path == "/api/assistant/test-connection" and method == "POST":
+                try:
+                    test_result = ASSISTANT.test_connection()
+                except AssistantUnavailableError as exc:
+                    return _json_response(
+                        start_response,
+                        HTTPStatus.BAD_GATEWAY,
+                        {"success": False, "connection_tested": False, "status": "CONNECTION_TEST_FAILED",
+                         "message": str(exc), "context_sent": False, "history_sent": False,
+                         "conversation_saved": False},
+                        request_id,
+                        environ,
+                    )
+                return _json_response(start_response, HTTPStatus.OK, test_result, request_id, environ)
             if path == "/api/assistant/conversations" and method == "GET":
                 return _json_response(start_response, HTTPStatus.OK, {"conversations": ASSISTANT.conversations(identity)}, request_id, environ)
             if path == "/api/assistant/conversations" and method == "DELETE":
