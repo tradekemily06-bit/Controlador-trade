@@ -137,6 +137,38 @@ def test_owner_scoped_fast_path_keeps_foreign_review_history_append_only(tmp_pat
             db.execute("DELETE FROM fiscal_pending_reviews WHERE review_id='r1'")
 
 
+def test_migration_reinstalls_domestic_review_guards_if_missing(tmp_path, monkeypatch):
+    from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
+
+    path = str(tmp_path / "domestic-review-history.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    queue = FiscalDomesticPendingQueue(path)
+    owner = "owner@example.com"
+    queue.add(owner, {
+        "reference": "BR-REVIEW-1",
+        "instrument": "ETF",
+        "occurred_on": "2026-11-03",
+    })
+
+    # Simulate a legacy/external writer dropping the guards before startup migration.
+    with sqlite3.connect(path) as db:
+        db.execute("DROP TRIGGER fiscal_domestic_pending_reviews_no_update")
+        db.execute("DROP TRIGGER fiscal_domestic_pending_reviews_no_delete")
+
+    migrate_fiscal_schema(path)
+
+    with sqlite3.connect(path) as db:
+        trigger_names = {
+            row[0] for row in db.execute(
+                "SELECT name FROM sqlite_master WHERE type='trigger'"
+            )
+        }
+        assert {
+            "fiscal_domestic_pending_reviews_no_update",
+            "fiscal_domestic_pending_reviews_no_delete",
+        } <= trigger_names
+
+
 def test_migration_without_configured_identity_changes_nothing(tmp_path, monkeypatch):
     path = str(tmp_path / "legacy.sqlite3")
     _legacy_db(path)
