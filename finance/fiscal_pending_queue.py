@@ -133,6 +133,32 @@ class FiscalPendingQueue:
         return round(number, 8)
 
     @staticmethod
+    def _optional_nonnegative(payload: dict[str, Any], field: str) -> float | None:
+        raw = payload.get(field)
+        if raw is None or raw == "":
+            return None
+        if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+            raise ValueError(f"{field} deve ser numérico")
+        try:
+            value = float(raw)
+        except (OverflowError, TypeError, ValueError) as exc:
+            raise ValueError(f"{field} deve ser numérico") from exc
+        if value < 0 or value != value or value in (float("inf"), float("-inf")) or value > 1e12:
+            raise ValueError(f"{field} deve ser não negativo e finito")
+        return round(value, 8)
+
+    @classmethod
+    def _fiscal_details(cls, payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "institution": cls._text(payload, "institution", 160),
+            "custody_location": cls._text(payload, "custody_location", 120) or "NOT_INFORMED",
+            "contract_type": cls._text(payload, "contract_type", 120) or "NOT_INFORMED",
+            "acquisition_cost": cls._optional_nonnegative(payload, "acquisition_cost"),
+            "transaction_fees": cls._optional_nonnegative(payload, "transaction_fees"),
+            "foreign_tax_paid": cls._optional_nonnegative(payload, "foreign_tax_paid"),
+        }
+
+    @staticmethod
     def _text(payload: dict[str, Any], field: str, maximum: int, *, required: bool = False) -> str:
         raw = payload.get(field, "")
         if raw is None and not required:
@@ -192,12 +218,13 @@ class FiscalPendingQueue:
         if fx_rate is not None and declared["fx_conversion_method"] == "NOT_CONVERTED":
             raise ValueError("fx_conversion_method não pode ser NOT_CONVERTED quando houver cotação")
         notes = self._text(payload, "notes", 1000)
+        details = self._fiscal_details(payload)
         item = {
             "pending_id": str(uuid.uuid4()), "owner_id": owner_id, "reference": reference,
             "original_amount": amount, "original_currency": currency,
             "instrument": instrument, "jurisdiction": jurisdiction,
             "occurred_on": occurred_on, "fx_rate": fx_rate, "fx_date": fx_date,
-            "fx_source": fx_source or None, **declared, "notes": notes,
+            "fx_source": fx_source or None, **declared, **details, "notes": notes,
             "status": "PENDING_CLASSIFICATION",
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -205,10 +232,12 @@ class FiscalPendingQueue:
             db.execute("INSERT INTO fiscal_reserve_pending_foreign "
                        "(pending_id, owner_id, reference, original_amount, original_currency, instrument, "
                        "jurisdiction, occurred_on, fx_rate, fx_date, fx_source, tax_residency_at_event, income_nature, "
-                       "event_type, fx_conversion_method, notes, status, created_at) "
+                       "event_type, fx_conversion_method, institution, custody_location, contract_type, "
+                       "acquisition_cost, transaction_fees, foreign_tax_paid, notes, status, created_at) "
                        "VALUES (:pending_id, :owner_id, :reference, :original_amount, :original_currency, :instrument, "
                        ":jurisdiction, :occurred_on, :fx_rate, :fx_date, :fx_source, :tax_residency_at_event, "
-                       ":income_nature, :event_type, :fx_conversion_method, :notes, :status, :created_at)", item)
+                       ":income_nature, :event_type, :fx_conversion_method, :institution, :custody_location, "
+                       ":contract_type, :acquisition_cost, :transaction_fees, :foreign_tax_paid, :notes, :status, :created_at)", item)
         return {key: value for key, value in item.items() if key != "owner_id"}
 
     def add_realized_result(self, owner_id: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -254,12 +283,13 @@ class FiscalPendingQueue:
         declared = {field: self._declared_field(payload, field) for field in FIELD_OPTIONS}
         if fx_rate is not None and declared["fx_conversion_method"] == "NOT_CONVERTED":
             raise ValueError("fx_conversion_method não pode ser NOT_CONVERTED quando houver cotação")
+        details = self._fiscal_details(payload)
         item = {
             "pending_id": str(uuid.uuid4()), "owner_id": owner_id, "reference": reference,
             "original_amount": abs(result), "original_result": result, "record_kind": "REALIZED_RESULT",
             "original_currency": currency, "instrument": instrument, "jurisdiction": jurisdiction,
             "occurred_on": occurred_on, "fx_rate": fx_rate, "fx_date": fx_date,
-            "fx_source": fx_source or None, **declared, "notes": self._text(payload, "notes", 1000),
+            "fx_source": fx_source or None, **declared, **details, "notes": self._text(payload, "notes", 1000),
             "status": "PENDING_CLASSIFICATION", "created_at": datetime.now(timezone.utc).isoformat(),
         }
         with self._connect() as db:
@@ -267,12 +297,15 @@ class FiscalPendingQueue:
                 """INSERT INTO fiscal_reserve_pending_foreign
                 (pending_id, owner_id, reference, original_amount, original_currency, instrument,
                  jurisdiction, occurred_on, fx_rate, fx_date, fx_source, tax_residency_at_event,
-                 income_nature, event_type, fx_conversion_method, notes, status, created_at,
-                 original_result, record_kind)
+                 income_nature, event_type, fx_conversion_method, institution, custody_location,
+                 contract_type, acquisition_cost, transaction_fees, foreign_tax_paid,
+                 notes, status, created_at, original_result, record_kind)
                 VALUES (:pending_id, :owner_id, :reference, :original_amount, :original_currency,
                  :instrument, :jurisdiction, :occurred_on, :fx_rate, :fx_date, :fx_source,
                  :tax_residency_at_event, :income_nature, :event_type, :fx_conversion_method,
-                 :notes, :status, :created_at, :original_result, :record_kind)""",
+                 :institution, :custody_location, :contract_type, :acquisition_cost,
+                 :transaction_fees, :foreign_tax_paid, :notes, :status, :created_at,
+                 :original_result, :record_kind)""",
                 item,
             )
         return {key: value for key, value in item.items() if key != "owner_id"}
