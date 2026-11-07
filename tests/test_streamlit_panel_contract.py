@@ -2010,3 +2010,10 @@ def test_streamlit_fiscal_catalog_explains_required_and_recommended_evidence():
     assert "Dados necessários para triagem:" in source
     assert "Evidências recomendadas:" in source
     assert '"instituicao_ou_autocustodia": "instituição ou autocustódia"' in source
+
+
+def test_streamlit_fiscal_review_history_explicitly_shows_unverified_identity_and_registration():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert source.count('"Identidade verificada": "Não" if item.get("reviewer_identity_status") == "DECLARED_NOT_VERIFIED" else "Estado inválido"') == 2
+    assert source.count('"Registro profissional verificado": "Não" if item.get("professional_registration_verified") is False else "Estado inválido"') == 2
+    assert source.count('"Observações": item.get("review_notes", "")') == 2
