@@ -723,3 +723,35 @@ def test_foreign_queue_rejects_malformed_currency_codes(tmp_path):
             pass
         else:
             raise AssertionError(f"malformed currency code must be rejected: {code!r}")
+
+def test_foreign_realized_result_accepts_currency_outside_old_fixed_list(tmp_path):
+    queue = make_queue(tmp_path / "fiscal-open-realized-currency.sqlite3")
+    result = queue.add_realized_result(OWNER, {
+        "reference": "FOREIGN-RESULT-NZD",
+        "original_result": 18.25,
+        "original_currency": "NZD",
+        "instrument": "ETF",
+        "jurisdiction": "NZ",
+        "occurred_on": "2026-11-06",
+    })
+    assert result["original_currency"] == "NZD"
+    assert result["status"] == "PENDING_CLASSIFICATION"
+
+
+def test_foreign_realized_result_rejects_malformed_currency_codes(tmp_path):
+    queue = make_queue(tmp_path / "fiscal-invalid-realized-currency.sqlite3")
+    for code in ("US", "US1", "USDD", "ÄBC", "   "):
+        try:
+            queue.add_realized_result(OWNER, {
+                "reference": "BAD-RESULT-CURRENCY-" + code.encode("utf-8").hex(),
+                "original_result": 1.0,
+                "original_currency": code,
+                "instrument": "ETF",
+                "jurisdiction": "PENDING_REVIEW",
+                "occurred_on": "2026-11-06",
+            })
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"malformed realized currency code must be rejected: {code!r}")
+
