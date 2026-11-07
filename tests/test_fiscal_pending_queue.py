@@ -303,6 +303,7 @@ def test_summary_counts_entire_queue_and_is_scoped_to_owner(tmp_path):
         "fx_rate": None,
         "fx_date": None,
         "fx_source": None,
+        "fx_conversion_method": "NOT_INFORMED",
     })
 
     summary = queue.summary(OWNER, as_of=date(2026, 11, 3))
@@ -466,7 +467,14 @@ def test_foreign_pending_stores_structured_tax_and_event_declarations(tmp_path):
 
 def test_foreign_pending_structured_fields_default_to_unknown_and_reject_invalid_values(tmp_path):
     queue = make_queue(tmp_path / "fiscal.sqlite3")
-    item = queue.add(OWNER, sample("FOREIGN-DEFAULT-EVIDENCE"))
+    default_payload = sample("FOREIGN-DEFAULT-EVIDENCE")
+    default_payload.update({
+        "fx_rate": None,
+        "fx_date": None,
+        "fx_source": None,
+        "fx_conversion_method": "NOT_INFORMED",
+    })
+    item = queue.add(OWNER, default_payload)
     assert item["tax_residency_at_event"] == "NOT_INFORMED"
     assert item["income_nature"] == "NOT_INFORMED"
     assert item["event_type"] == "NOT_INFORMED"
