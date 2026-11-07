@@ -139,11 +139,12 @@ def test_owner_scoped_fast_path_keeps_foreign_review_history_append_only(tmp_pat
 
 def test_migration_reinstalls_domestic_review_guards_if_missing(tmp_path, monkeypatch):
     from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
+    from finance.fiscal_identity import configured_fiscal_owner_id
 
     path = str(tmp_path / "domestic-review-history.sqlite3")
     monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    owner = configured_fiscal_owner_id()
     queue = FiscalDomesticPendingQueue(path)
-    owner = "owner@example.com"
     queue.add(owner, {
         "reference": "BR-REVIEW-1",
         "instrument": "ETF",
