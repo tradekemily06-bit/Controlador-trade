@@ -1973,3 +1973,11 @@ def test_every_reference_navigation_module_has_a_real_panel_handler_or_view():
     custom_modules = {"Financeiro", "Análise de Mercado", "Replay", "Simulador"}
 
     assert modules == handlers.union(view_keys).union(custom_modules)
+
+
+
+def test_streamlit_fiscal_catalog_explains_required_and_recommended_evidence():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert "Dados necessários para triagem:" in source
+    assert "Evidências recomendadas:" in source
+    assert '"instituicao_ou_autocustodia": "instituição ou autocustódia"' in source
