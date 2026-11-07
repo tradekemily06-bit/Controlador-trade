@@ -66,7 +66,8 @@ def test_foreign_taxonomy_exposes_required_and_recommended_evidence_without_enab
     investment = catalog["foreign"]["FOREIGN_FINANCIAL_INVESTMENT"]
     crypto = catalog["foreign"]["FOREIGN_CRYPTO"]
 
-    assert "instituicao" in investment["requires"]
+    assert "instituicao_ou_autocustodia" in investment["requires"]
+    assert "local_custodia" in investment["requires"]
     assert "tipo_de_contrato" in investment["requires"]
     assert "custo_de_aquisicao" in investment["recommended_evidence"]
     assert "imposto_pago_no_exterior" in investment["recommended_evidence"]
