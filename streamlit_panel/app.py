@@ -894,7 +894,7 @@ def show_fiscal() -> None:
                     f"{_safe_fiscal_count(pending_period.get('asset_amounts', 0))} ativo(s) · sem cálculo"
                 )
             evidence_gaps = foreign_pending.get("evidence_completeness", {})
-            if isinstance(evidence_gaps, dict):
+            if isinstance(evidence_gaps, dict) and evidence_gaps:
                 st.caption(
                     "Triagem do exterior: "
                     f"{_safe_fiscal_count(evidence_gaps.get('missing_core_evidence', 0))} de "
