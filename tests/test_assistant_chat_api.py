@@ -419,3 +419,62 @@ def test_chat_api_returns_sanitized_unavailable_when_fiscal_sqlite_fails(tmp_pat
     )
     assert "database is locked" not in json.dumps(payload)
     assert str(tmp_path) not in json.dumps(payload)
+
+
+
+def test_assistant_connection_test_is_authenticated_and_sends_no_fiscal_context(monkeypatch):
+    calls = []
+
+    class Assistant:
+        def test_connection(self):
+            calls.append("provider_test")
+            return {
+                "success": True,
+                "connection_tested": True,
+                "context_sent": False,
+                "history_sent": False,
+                "conversation_saved": False,
+                "read_only": True,
+                "may_execute_orders": False,
+                "may_enable_real": False,
+                "may_move_money": False,
+            }
+
+    _configure(monkeypatch, Assistant())
+    monkeypatch.setattr(
+        app_module,
+        "migrate_fiscal_schema",
+        lambda _path: (_ for _ in ()).throw(
+            AssertionError("connection test must not read or migrate fiscal data")
+        ),
+    )
+
+    status, payload = _request(
+        "/api/assistant/test-connection",
+        method="POST",
+        payload={},
+    )
+
+    assert status.startswith("200")
+    assert payload["connection_tested"] is True
+    assert payload["context_sent"] is False
+    assert payload["history_sent"] is False
+    assert payload["conversation_saved"] is False
+    assert calls == ["provider_test"]
+
+
+def test_assistant_connection_test_rejects_missing_identity_before_provider(monkeypatch):
+    class Assistant:
+        def test_connection(self):
+            raise AssertionError("provider must not be reached without trusted identity")
+
+    _configure(monkeypatch, Assistant())
+    status, payload = _request(
+        "/api/assistant/test-connection",
+        method="POST",
+        payload={},
+        identity="",
+    )
+
+    assert status.startswith("401")
+    assert payload["error"] == "trusted identity is required"
