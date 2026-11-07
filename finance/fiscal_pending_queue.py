@@ -42,20 +42,20 @@ class FiscalPendingQueue:
         with self._connect() as db:
             columns = {row["name"] for row in db.execute("PRAGMA table_info(fiscal_reserve_pending_foreign)")}
             if "owner_id" in columns:
-            db.execute("""
-                CREATE TRIGGER IF NOT EXISTS fiscal_pending_reviews_no_update
-                BEFORE UPDATE ON fiscal_pending_reviews
-                BEGIN
-                    SELECT RAISE(ABORT, 'fiscal review history is append-only');
-                END
-            """)
-            db.execute("""
-                CREATE TRIGGER IF NOT EXISTS fiscal_pending_reviews_no_delete
-                BEFORE DELETE ON fiscal_pending_reviews
-                BEGIN
-                    SELECT RAISE(ABORT, 'fiscal review history is append-only');
-                END
-            """)
+                db.execute("""
+                    CREATE TRIGGER IF NOT EXISTS fiscal_pending_reviews_no_update
+                    BEFORE UPDATE ON fiscal_pending_reviews
+                    BEGIN
+                        SELECT RAISE(ABORT, 'fiscal review history is append-only');
+                    END
+                """)
+                db.execute("""
+                    CREATE TRIGGER IF NOT EXISTS fiscal_pending_reviews_no_delete
+                    BEFORE DELETE ON fiscal_pending_reviews
+                    BEGIN
+                        SELECT RAISE(ABORT, 'fiscal review history is append-only');
+                    END
+                """)
                 return
             db.execute("""
                 CREATE TABLE IF NOT EXISTS fiscal_reserve_pending_foreign (
