@@ -843,11 +843,16 @@ def test_foreign_pending_summary_reports_only_aggregate_missing_core_evidence(tm
         "custody_location": "NOT_INFORMED",
         "contract_type": "NOT_CONFIRMED",
     })
+    queue.add(OWNER, sample("EVIDENCE-SELF-CUSTODY-03") | {
+        "institution": "",
+        "custody_location": "Autocustódia própria",
+        "contract_type": "Spot",
+    })
 
     summary = queue.summary(OWNER)
 
     assert summary["evidence_completeness"] == {
-        "total": 2,
+        "total": 3,
         "missing_institution": 0,
         "missing_custody_location": 1,
         "missing_contract_type": 1,
