@@ -1118,8 +1118,10 @@ def show_fiscal() -> None:
                             "Atuação": item.get("reviewer_role"),
                             "Registro informado": item.get("professional_registration"),
                             "Evidência": item.get("evidence_reference"),
+                            "Observações": item.get("review_notes", ""),
                             "Data": item.get("reviewed_on"),
-                            "Identidade": item.get("reviewer_identity_status"),
+                            "Identidade verificada": "Não" if item.get("reviewer_identity_status") == "DECLARED_NOT_VERIFIED" else "Estado inválido",
+                            "Registro profissional verificado": "Não" if item.get("professional_registration_verified") is False else "Estado inválido",
                         } for item in review_data["reviews"]], use_container_width=True, hide_index=True)
                     else:
                         st.caption("Nenhuma evidência de revisão registrada para esta pendência.")
@@ -1347,8 +1349,10 @@ def show_fiscal() -> None:
                             "Atuação": item.get("reviewer_role"),
                             "Registro informado": item.get("professional_registration"),
                             "Evidência": item.get("evidence_reference"),
+                            "Observações": item.get("review_notes", ""),
                             "Data": item.get("reviewed_on"),
-                            "Identidade": "NÃO VERIFICADA",
+                            "Identidade verificada": "Não" if item.get("reviewer_identity_status") == "DECLARED_NOT_VERIFIED" else "Estado inválido",
+                            "Registro profissional verificado": "Não" if item.get("professional_registration_verified") is False else "Estado inválido",
                         } for item in foreign_review_data["reviews"]], use_container_width=True, hide_index=True)
                     else:
                         st.caption("Nenhuma evidência de revisão registrada para esta pendência.")
