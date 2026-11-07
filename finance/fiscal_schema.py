@@ -180,9 +180,9 @@ def migrate_fiscal_schema(database_path: str) -> str:
                     ("institution", "TEXT NOT NULL DEFAULT ''"),
                     ("custody_location", "TEXT NOT NULL DEFAULT 'NOT_INFORMED'"),
                     ("contract_type", "TEXT NOT NULL DEFAULT 'NOT_INFORMED'"),
-                    ("acquisition_cost", "REAL"),
-                    ("transaction_fees", "REAL"),
-                    ("foreign_tax_paid", "REAL"),
+                    ("acquisition_cost", "REAL CHECK(acquisition_cost IS NULL OR (acquisition_cost >= 0 AND acquisition_cost <= 1000000000000.0))"),
+                    ("transaction_fees", "REAL CHECK(transaction_fees IS NULL OR (transaction_fees >= 0 AND transaction_fees <= 1000000000000.0))"),
+                    ("foreign_tax_paid", "REAL CHECK(foreign_tax_paid IS NULL OR (foreign_tax_paid >= 0 AND foreign_tax_paid <= 1000000000000.0))"),
                 ):
                     if column not in pending_columns:
                         db.execute(
@@ -291,9 +291,9 @@ def migrate_fiscal_schema(database_path: str) -> str:
                 institution TEXT NOT NULL DEFAULT '',
                 custody_location TEXT NOT NULL DEFAULT 'NOT_INFORMED',
                 contract_type TEXT NOT NULL DEFAULT 'NOT_INFORMED',
-                acquisition_cost REAL,
-                transaction_fees REAL,
-                foreign_tax_paid REAL,
+                acquisition_cost REAL CHECK(acquisition_cost IS NULL OR (acquisition_cost >= 0 AND acquisition_cost <= 1000000000000.0)),
+                transaction_fees REAL CHECK(transaction_fees IS NULL OR (transaction_fees >= 0 AND transaction_fees <= 1000000000000.0)),
+                foreign_tax_paid REAL CHECK(foreign_tax_paid IS NULL OR (foreign_tax_paid >= 0 AND foreign_tax_paid <= 1000000000000.0)),
                 created_at TEXT NOT NULL,
                 UNIQUE(owner_id, pending_id),
                 UNIQUE(owner_id, reference)
