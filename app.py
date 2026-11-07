@@ -1356,7 +1356,9 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {"runtime": payload, "execution_allowed": bool(execution and execution.accepted)}, request_id, environ)
         if path == "/api/market/assets" and method == "GET":
             query = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
-            include_invisible = (query.get("include_invisible", ["false"])[-1].lower() in {"1", "true", "yes"})
+            # The ecosystem's default catalog must include every broker-listed symbol,
+            # including instruments hidden from the current Market Watch view.
+            include_invisible = (query.get("include_invisible", ["true"])[-1].lower() in {"1", "true", "yes"})
             assets = SERVICE.get_mt5_assets(include_invisible=include_invisible)
             return _json_response(
                 start_response,
