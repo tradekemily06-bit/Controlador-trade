@@ -541,3 +541,47 @@ def test_owner_fast_path_rebuilds_cascading_review_fk_as_restrict(tmp_path, monk
             db.execute(
                 "DELETE FROM fiscal_reserve_pending_foreign WHERE pending_id='p1'"
             )
+
+
+
+def test_migration_adds_and_preserves_structured_foreign_evidence_fields(tmp_path, monkeypatch):
+    from finance.fiscal_pending_queue import FiscalPendingQueue
+
+    path = str(tmp_path / "structured-evidence-migration.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "structured-owner")
+    owner = migrate_fiscal_schema(path)
+    queue = FiscalPendingQueue(path)
+    pending = queue.add(owner, {
+        "reference": "STRUCTURED-KEEP",
+        "original_amount": 500,
+        "original_currency": "USD",
+        "instrument": "ETF",
+        "jurisdiction": "US",
+        "occurred_on": "2026-11-05",
+        "institution": "Broker US",
+        "custody_location": "Foreign custodian",
+        "contract_type": "ETF spot",
+        "acquisition_cost": 450,
+        "transaction_fees": 3.25,
+        "foreign_tax_paid": 8,
+    })
+
+    # Force the atomic rebuild path; the pending table must retain all evidence.
+    with sqlite3.connect(path) as db:
+        db.execute("DROP TABLE fiscal_reserve_settings")
+        db.execute(
+            "CREATE TABLE fiscal_reserve_settings(category TEXT PRIMARY KEY, rate REAL NOT NULL)"
+        )
+        db.execute("INSERT INTO fiscal_reserve_settings VALUES('BR_DAY_TRADE', 20)")
+    assert migrate_fiscal_schema(path) == owner
+
+    stored = queue.list_pending(owner)["items"][0]
+    assert stored["pending_id"] == pending["pending_id"]
+    assert stored["institution"] == "Broker US"
+    assert stored["custody_location"] == "Foreign custodian"
+    assert stored["contract_type"] == "ETF spot"
+    assert stored["acquisition_cost"] == 450
+    assert stored["transaction_fees"] == 3.25
+    assert stored["foreign_tax_paid"] == 8
+    with sqlite3.connect(path) as db:
+        assert db.execute("PRAGMA foreign_key_check").fetchall() == []
