@@ -1185,6 +1185,12 @@ def show_fiscal() -> None:
                 "Data da cotação": item.get("fx_date"),
                 "Fonte da cotação": item.get("fx_source"),
                 "Método declarado": item.get("fx_conversion_method"),
+                "Instituição": item.get("institution"),
+                "Custódia declarada": item.get("custody_location"),
+                "Contrato": item.get("contract_type"),
+                "Custo de aquisição (moeda original)": item.get("acquisition_cost"),
+                "Taxas (moeda original)": item.get("transaction_fees"),
+                "Imposto pago fora (moeda original)": item.get("foreign_tax_paid"),
                 "Status": "PENDENTE DE CLASSIFICAÇÃO",
             } for item in foreign_items], use_container_width=True, hide_index=True)
             foreign_page_cols = st.columns(2)
