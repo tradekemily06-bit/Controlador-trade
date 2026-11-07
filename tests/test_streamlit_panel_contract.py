@@ -1946,3 +1946,12 @@ def test_streamlit_foreign_pending_forms_capture_and_display_institution_custody
     assert "Instituição" in source
     assert "Custódia declarada" in source
     assert "Imposto pago fora (moeda original)" in source
+
+
+
+def test_streamlit_fiscal_panel_displays_only_aggregate_foreign_evidence_gaps():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'foreign_pending.get("evidence_completeness", {})' in source
+    assert "missing_core_evidence" in source
+    assert "sem instituição" in source
+    assert "não altera classificação nem calcula imposto" in source
