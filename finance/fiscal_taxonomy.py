@@ -77,7 +77,7 @@ FOREIGN_CATEGORIES: dict[str, dict[str, Any]] = {
     "FOREIGN_FINANCIAL_INVESTMENT": {
         "label": "Exterior · aplicação financeira",
         "scope": "FOREIGN",
-        "requires": ["residencia_fiscal", "natureza_do_rendimento", "evento", "moeda", "fx_method", "instituicao", "tipo_de_contrato"],
+        "requires": ["residencia_fiscal", "natureza_do_rendimento", "evento", "moeda", "fx_method", "instituicao_ou_autocustodia", "local_custodia", "tipo_de_contrato"],
         "recommended_evidence": ["custo_de_aquisicao", "taxas_e_custos", "imposto_pago_no_exterior", "extrato_da_instituicao"],
         "calculation_status": "NOT_AUTOMATED",
         "booking_enabled": False,
