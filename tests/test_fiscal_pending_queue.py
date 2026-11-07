@@ -25,6 +25,7 @@ def sample(reference="FOREIGN-STATEMENT-001"):
         "fx_rate": 5.42,
         "fx_date": "2026-10-30",
         "fx_source": "Banco Central - cotação informada",
+        "fx_conversion_method": "PTAX_SELL",
     }
 
 
@@ -918,3 +919,53 @@ def test_foreign_queue_rejects_future_event_and_fx_dates_for_assets_and_results(
         assert "fx_date não pode estar no futuro" in str(exc)
     else:
         raise AssertionError("future FX evidence date on realized result must be rejected")
+
+
+def test_fx_conversion_method_must_match_quote_evidence_for_assets_and_results(tmp_path):
+    queue = make_queue(tmp_path / "fx-method-consistency.sqlite3")
+
+    asset_missing_method = sample("FX-ASSET-MISSING-METHOD")
+    asset_missing_method.pop("fx_conversion_method")
+    realized_missing_method = {
+        "reference": "FX-RESULT-MISSING-METHOD",
+        "original_result": 10.0,
+        "original_currency": "USD",
+        "instrument": "ETF",
+        "jurisdiction": "US",
+        "occurred_on": "2026-11-03",
+        "fx_rate": 5.0,
+        "fx_date": "2026-11-03",
+        "fx_source": "Extrato de teste",
+    }
+
+    asset_method_without_quote = {
+        **sample("FX-ASSET-METHOD-WITHOUT-QUOTE"),
+        "fx_rate": None,
+        "fx_date": None,
+        "fx_source": None,
+        "fx_conversion_method": "PTAX_SELL",
+    }
+    realized_method_without_quote = {
+        "reference": "FX-RESULT-METHOD-WITHOUT-QUOTE",
+        "original_result": 10.0,
+        "original_currency": "USD",
+        "instrument": "ETF",
+        "jurisdiction": "US",
+        "occurred_on": "2026-11-03",
+        "fx_conversion_method": "PTAX_SELL",
+    }
+
+    for payload, add_item, expected in (
+        (asset_missing_method, lambda value: queue.add(OWNER, value), "deve ser informado"),
+        (realized_missing_method, lambda value: queue.add_realized_result(OWNER, value), "deve ser informado"),
+        (asset_method_without_quote, lambda value: queue.add(OWNER, value), "exige fx_rate"),
+        (realized_method_without_quote, lambda value: queue.add_realized_result(OWNER, value), "exige fx_rate"),
+    ):
+        try:
+            add_item(payload)
+        except ValueError as exc:
+            assert expected in str(exc)
+        else:
+            raise AssertionError("FX method and quote evidence must be mutually consistent")
+
+    assert queue.list_pending(OWNER)["total"] == 0
