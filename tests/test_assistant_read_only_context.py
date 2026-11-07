@@ -964,3 +964,42 @@ def test_assistant_reconciliation_counts_are_capped_and_ignore_non_lists():
     })
     assert malformed["reconciliation"]["pending_count"] == 0
     assert malformed["reconciliation"]["unknown_count"] == 0
+
+
+
+def test_assistant_receives_aggregate_foreign_evidence_gaps_but_no_institution_details():
+    class ForeignQueue:
+        def summary(self, owner_id):
+            return {
+                "total": 4,
+                "realized_results": 2,
+                "asset_amounts": 2,
+                "currencies": ["USD"],
+                "as_of": "2026-11-06",
+                "periods": {},
+                "evidence_completeness": {
+                    "total": 4,
+                    "missing_institution": 2,
+                    "missing_custody_location": 3,
+                    "missing_contract_type": 1,
+                    "missing_core_evidence": 3,
+                    "institution_names": ["PRIVATE-BROKER"],
+                    "notes": "PRIVATE-NOTE",
+                },
+            }
+
+    context = collect_read_only_context(
+        FakeService(), FakeFiscalReserve(), "test-owner",
+        fiscal_pending_queue=ForeignQueue(),
+    )
+    pending = context["fiscal_reserve"]["foreign_pending"]
+
+    assert pending["evidence_completeness"] == {
+        "total": 4,
+        "missing_institution": 2,
+        "missing_custody_location": 3,
+        "missing_contract_type": 1,
+        "missing_core_evidence": 3,
+    }
+    assert "PRIVATE-BROKER" not in str(context)
+    assert "PRIVATE-NOTE" not in str(context)
