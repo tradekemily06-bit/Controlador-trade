@@ -283,3 +283,23 @@ def test_domestic_pending_rejects_future_event_date(tmp_path):
     with pytest.raises(ValueError, match="occurred_on não pode estar no futuro"):
         queue.add("owner-a", payload)
     assert queue.list_pending("owner-a")["total"] == 0
+
+
+def test_domestic_review_history_is_append_only_at_database_level(tmp_path):
+    import sqlite3
+
+    queue = FiscalDomesticPendingQueue(str(tmp_path / "append-only-domestic-review.sqlite3"))
+    pending = queue.add("owner-a", sample("BR-APPEND-ONLY"))
+    review = queue.record_review("owner-a", pending["pending_id"], review_payload())
+
+    for statement, params in (
+        ("UPDATE fiscal_domestic_pending_reviews SET reviewer_name = 'alterado' WHERE review_id = ?", (review["review_id"],)),
+        ("DELETE FROM fiscal_domestic_pending_reviews WHERE review_id = ?", (review["review_id"],)),
+    ):
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            with queue._connect() as db:
+                db.execute(statement, params)
+
+    history = queue.list_reviews("owner-a", pending["pending_id"])
+    assert len(history) == 1
+    assert history[0]["reviewer_name"] == review["reviewer_name"]
