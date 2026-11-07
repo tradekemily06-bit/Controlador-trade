@@ -701,6 +701,9 @@ def application(environ, start_response):
                     "original_currency": currency,
                     "instrument": str(candidate.get("symbol") or "MT5_INSTRUMENT_UNKNOWN")[:80],
                     "jurisdiction": "PENDING_REVIEW",
+                    "institution": "IC Markets MT5 DEMO",
+                    "custody_location": "NOT_INFORMED",
+                    "contract_type": "NOT_CONFIRMED",
                     "occurred_on": occurred_on,
                     "notes": json.dumps(components, ensure_ascii=False, separators=(",", ":"))[:1000],
                 }
