@@ -939,7 +939,9 @@ def test_fiscal_api_to_assistant_context_flow_preserves_evidence_and_privacy(tmp
     monkeypatch.setattr(app_module, "_audit", lambda *args, **kwargs: None)
 
     owner = migrate_fiscal_schema(str(database))
+    reserve = FiscalReserve(str(database))
     queue = FiscalPendingQueue(str(database))
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE", reserve)
     monkeypatch.setattr(app_module, "FISCAL_PENDING_QUEUE", queue)
 
     status, created = _request(
