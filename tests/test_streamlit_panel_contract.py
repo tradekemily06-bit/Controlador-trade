@@ -1955,3 +1955,21 @@ def test_streamlit_fiscal_panel_displays_only_aggregate_foreign_evidence_gaps():
     assert "missing_core_evidence" in source
     assert "sem instituição" in source
     assert "não altera classificação nem calcula imposto" in source
+
+
+
+def test_every_reference_navigation_module_has_a_real_panel_handler_or_view():
+    config = json.loads((PANEL_DIR / "controlador_trader_referencia_visual.json").read_text(encoding="utf-8"))
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    modules = {
+        module
+        for values in config["open_state"]["tabs"].values()
+        for module in values
+    }
+    handlers = set(re.findall(r'module_name == "([^"]+)"', source))
+    views_start = source.index("def show_readonly_module")
+    views_end = source.index('    if module_name == "Análise de Mercado":', views_start)
+    view_keys = set(re.findall(r'^\s*"([^"]+)": \(', source[views_start:views_end], re.MULTILINE))
+    custom_modules = {"Financeiro", "Análise de Mercado", "Replay", "Simulador"}
+
+    assert modules == handlers.union(view_keys).union(custom_modules)
