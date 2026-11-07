@@ -226,8 +226,8 @@ class FiscalPendingQueue:
             raise ValueError("instrument é obrigatório e deve ter até 80 caracteres")
         if not jurisdiction or len(jurisdiction) > 80:
             raise ValueError("jurisdiction é obrigatório e deve ter até 80 caracteres")
-        if currency not in CURRENCIES:
-            raise ValueError("moeda não suportada")
+        if len(currency) != CURRENCY_CODE_LENGTH or not currency.isascii() or not currency.isalpha():
+            raise ValueError("moeda deve ser um código alfabético de três letras")
         raw_result = payload.get("original_result")
         if isinstance(raw_result, bool) or not isinstance(raw_result, (int, float)):
             raise ValueError("original_result deve ser numérico")
