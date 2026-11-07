@@ -828,3 +828,31 @@ def test_optional_foreign_cost_fields_reject_negative_boolean_and_non_finite_val
             pass
         else:
             raise AssertionError(f"invalid {field} must be rejected")
+
+
+
+def test_foreign_pending_summary_reports_only_aggregate_missing_core_evidence(tmp_path):
+    queue = make_queue(tmp_path / "fiscal.sqlite3")
+    queue.add(OWNER, sample("EVIDENCE-COMPLETE-01") | {
+        "institution": "Broker A",
+        "custody_location": "Foreign custodian",
+        "contract_type": "ETF",
+    })
+    queue.add(OWNER, sample("EVIDENCE-MISSING-02") | {
+        "institution": "Broker B",
+        "custody_location": "NOT_INFORMED",
+        "contract_type": "NOT_CONFIRMED",
+    })
+
+    summary = queue.summary(OWNER)
+
+    assert summary["evidence_completeness"] == {
+        "total": 2,
+        "missing_institution": 0,
+        "missing_custody_location": 1,
+        "missing_contract_type": 1,
+        "missing_core_evidence": 1,
+    }
+    assert summary["included_in_totals"] is False
+    assert summary["reserve_calculated"] is False
+    assert "reference" not in summary["evidence_completeness"]
