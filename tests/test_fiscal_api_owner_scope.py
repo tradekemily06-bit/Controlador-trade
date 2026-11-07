@@ -923,3 +923,90 @@ def test_fiscal_summary_returns_sanitized_unavailable_when_sqlite_fails(tmp_path
     )
     assert "database is locked" not in json.dumps(payload)
     assert str(tmp_path) not in json.dumps(payload)
+
+
+
+def test_fiscal_api_to_assistant_context_flow_preserves_evidence_and_privacy(tmp_path, monkeypatch):
+    from assistant.read_only_context import collect_read_only_context
+
+    database = tmp_path / "fiscal-assistant-end-to-end.sqlite3"
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "fiscal-assistant-e2e-owner")
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "X-Auth-User")
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", database)
+    monkeypatch.setattr(app_module.SECURITY, "allow", lambda environ: True)
+    monkeypatch.setattr(app_module.SECURITY, "headers", lambda request_id, **kwargs: [])
+    monkeypatch.setattr(app_module, "_audit", lambda *args, **kwargs: None)
+
+    owner = migrate_fiscal_schema(str(database))
+    queue = FiscalPendingQueue(str(database))
+    monkeypatch.setattr(app_module, "FISCAL_PENDING_QUEUE", queue)
+
+    status, created = _request(
+        "/api/fiscal-reserve/pending",
+        method="POST",
+        payload={
+            "reference": "PRIVATE-E2E-REFERENCE",
+            "original_amount": 250,
+            "original_currency": "USD",
+            "instrument": "ETF",
+            "jurisdiction": "US",
+            "occurred_on": "2026-11-06",
+            "institution": "PRIVATE-E2E-BROKER",
+            "custody_location": "Custódia estrangeira",
+            "contract_type": "ETF à vista",
+            "acquisition_cost": 200,
+            "transaction_fees": 2,
+            "foreign_tax_paid": 0,
+            "notes": "PRIVATE-E2E-NOTE",
+        },
+    )
+    assert status.startswith("201")
+    assert created["pending"]["status"] == "PENDING_CLASSIFICATION"
+    assert created["reserve_calculated"] is False
+
+    status, fiscal = _request("/api/fiscal-reserve")
+    assert status.startswith("200")
+    assert fiscal["foreign_pending"]["evidence_completeness"]["missing_core_evidence"] == 0
+
+    class Service:
+        def system_status(self):
+            return {"mode": "SIMULACAO", "health": "OK", "components": {}}
+
+        def risk_status(self):
+            return {"allowed": False}
+
+        def operational_observability(self):
+            return {"execution": {"allowed": False, "mode": "DEMO"}}
+
+        def statistics(self):
+            return {"total_decisions": 0}
+
+        def memory_view(self, limit=5):
+            return []
+
+    class Reserve:
+        def summary(self, requested_owner):
+            assert requested_owner == owner
+            return {
+                "as_of": "2026-11-06",
+                "total_reserved_brl": 0.0,
+                "categories": {},
+                "periods": {},
+            }
+
+    context = collect_read_only_context(Service(), Reserve(), owner, queue)
+    pending = context["fiscal_reserve"]["foreign_pending"]
+
+    assert pending["total"] == 1
+    assert pending["evidence_completeness"]["missing_core_evidence"] == 0
+    assert pending["included_in_totals"] is False
+    assert pending["reserve_calculated"] is False
+    for private_value in (
+        "PRIVATE-E2E-REFERENCE",
+        "PRIVATE-E2E-BROKER",
+        "PRIVATE-E2E-NOTE",
+        "250",
+        "200",
+    ):
+        assert private_value not in json.dumps(context, ensure_ascii=False)
