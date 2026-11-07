@@ -347,6 +347,17 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
                 "realized_results": _count(pending_summary.get("realized_results")),
                 "asset_amounts": _count(pending_summary.get("asset_amounts")),
                 "currencies": _safe_currency_codes(pending_summary.get("currencies", [])),
+                "evidence_completeness": {
+                    key: _count(pending_summary.get("evidence_completeness", {}).get(key))
+                    for key in (
+                        "total",
+                        "missing_institution",
+                        "missing_custody_location",
+                        "missing_contract_type",
+                        "missing_core_evidence",
+                    )
+                    if isinstance(pending_summary.get("evidence_completeness"), dict)
+                },
                 "periods": {
                     str(period): {
                         "start": _iso_date(values.get("start")),
