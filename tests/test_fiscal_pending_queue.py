@@ -755,3 +755,76 @@ def test_foreign_realized_result_rejects_malformed_currency_codes(tmp_path):
         else:
             raise AssertionError(f"malformed realized currency code must be rejected: {code!r}")
 
+
+
+
+def test_foreign_pending_persists_institution_custody_contract_and_cost_evidence(tmp_path):
+    queue = make_queue(tmp_path / "fiscal.sqlite3")
+    payload = sample("FOREIGN-STRUCTURED-001")
+    payload.update({
+        "institution": "Broker International",
+        "custody_location": "Custódia em instituição estrangeira",
+        "contract_type": "ETF à vista",
+        "acquisition_cost": 100.25,
+        "transaction_fees": 2.5,
+        "foreign_tax_paid": 1.75,
+    })
+
+    item = queue.add(OWNER, payload)
+    stored = queue.list_pending(OWNER)["items"][0]
+
+    assert item["institution"] == stored["institution"] == "Broker International"
+    assert stored["custody_location"] == "Custódia em instituição estrangeira"
+    assert stored["contract_type"] == "ETF à vista"
+    assert stored["acquisition_cost"] == 100.25
+    assert stored["transaction_fees"] == 2.5
+    assert stored["foreign_tax_paid"] == 1.75
+    assert stored["status"] == "PENDING_CLASSIFICATION"
+
+
+def test_foreign_realized_result_persists_structured_evidence_without_calculation(tmp_path):
+    queue = make_queue(tmp_path / "fiscal.sqlite3")
+    payload = {
+        "reference": "FOREIGN-REALIZED-STRUCTURED",
+        "original_result": -125.5,
+        "original_currency": "EUR",
+        "instrument": "FUTURES",
+        "jurisdiction": "US",
+        "occurred_on": "2026-11-05",
+        "institution": "Broker EU",
+        "custody_location": "Custódia estrangeira",
+        "contract_type": "Contrato futuro",
+        "acquisition_cost": 1000,
+        "transaction_fees": 4.5,
+        "foreign_tax_paid": 0,
+    }
+
+    item = queue.add_realized_result(OWNER, payload)
+    stored = queue.list_pending(OWNER)["items"][0]
+
+    assert item["record_kind"] == stored["record_kind"] == "REALIZED_RESULT"
+    assert stored["original_result"] == -125.5
+    assert stored["institution"] == "Broker EU"
+    assert stored["contract_type"] == "Contrato futuro"
+    assert stored["acquisition_cost"] == 1000
+    assert stored["transaction_fees"] == 4.5
+    assert stored["foreign_tax_paid"] == 0
+    assert stored["status"] == "PENDING_CLASSIFICATION"
+    assert queue.summary(OWNER)["included_in_totals"] is False
+
+
+def test_optional_foreign_cost_fields_reject_negative_boolean_and_non_finite_values(tmp_path):
+    queue = make_queue(tmp_path / "fiscal.sqlite3")
+    for field, value in (
+        ("acquisition_cost", -1),
+        ("transaction_fees", True),
+        ("foreign_tax_paid", float("inf")),
+    ):
+        payload = sample("INVALID-COST-" + field)
+        payload[field] = value
+        try:
+            queue.add(OWNER, payload)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"invalid {field} must be rejected")
