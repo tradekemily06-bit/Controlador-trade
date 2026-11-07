@@ -1084,6 +1084,13 @@ def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid
             "total": 3,
             "realized_results": 1,
             "asset_amounts": 2,
+            "evidence_completeness": {
+                "total": 3,
+                "missing_institution": 1,
+                "missing_custody_location": 2,
+                "missing_contract_type": 1,
+                "missing_core_evidence": 2,
+            },
             "periods": {
                 "day": {"start": "2026-11-05", "end": "2026-11-05", "total": 1, "realized_results": 1, "asset_amounts": 0},
                 "week": {"start": "2026-11-02", "end": "2026-11-05", "total": 1, "realized_results": 1, "asset_amounts": 0},
@@ -1093,6 +1100,28 @@ def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid
         },
     }
     assert validate(valid_with_pending) is True
+    invalid_evidence_total = {
+        **valid_with_pending,
+        "foreign_pending": {
+            **valid_with_pending["foreign_pending"],
+            "evidence_completeness": {
+                **valid_with_pending["foreign_pending"]["evidence_completeness"],
+                "total": 2,
+            },
+        },
+    }
+    assert validate(invalid_evidence_total) is False
+    invalid_evidence_count = {
+        **valid_with_pending,
+        "foreign_pending": {
+            **valid_with_pending["foreign_pending"],
+            "evidence_completeness": {
+                **valid_with_pending["foreign_pending"]["evidence_completeness"],
+                "missing_core_evidence": 4,
+            },
+        },
+    }
+    assert validate(invalid_evidence_count) is False
     invalid_pending_period = {
         **valid_with_pending,
         "foreign_pending": {
