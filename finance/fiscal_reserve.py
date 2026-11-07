@@ -243,6 +243,9 @@ class FiscalReserve:
                 raise ValueError
         except ValueError as exc:
             raise ValueError("occurred_on deve usar YYYY-MM-DD") from exc
+        today = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
+        if parsed_date > today:
+            raise ValueError("occurred_on não pode estar no futuro")
         raw_notes = payload.get("notes", "")
         if not isinstance(raw_notes, str):
             raise ValueError("notes deve ser texto")
