@@ -178,10 +178,19 @@ def test_rebuild_path_reinstalls_domestic_review_guards_if_missing(tmp_path, mon
     monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
     owner = configured_fiscal_owner_id()
     queue = FiscalDomesticPendingQueue(path)
-    queue.add(owner, {
+    item = queue.add(owner, {
         "reference": "BR-REVIEW-REBUILD-1",
         "instrument": "ETF",
         "occurred_on": "2026-11-03",
+    })
+    queue.record_review(owner, item["pending_id"], {
+        "candidate_classification": "BR_DAY_TRADE",
+        "confirmed_jurisdiction": "BR",
+        "reviewer_name": "Reviewer",
+        "reviewer_role": "contador",
+        "professional_registration": "CRC-X",
+        "evidence_reference": "DOC-X",
+        "reviewed_on": "2026-11-03",
     })
 
     # Force the legacy/rebuild path while preserving the domestic review tables.
