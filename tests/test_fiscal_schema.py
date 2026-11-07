@@ -585,3 +585,42 @@ def test_migration_adds_and_preserves_structured_foreign_evidence_fields(tmp_pat
     assert stored["foreign_tax_paid"] == 8
     with sqlite3.connect(path) as db:
         assert db.execute("PRAGMA foreign_key_check").fetchall() == []
+
+
+
+def test_database_rejects_negative_or_out_of_range_foreign_cost_evidence(tmp_path, monkeypatch):
+    from finance.fiscal_pending_queue import FiscalPendingQueue
+
+    path = str(tmp_path / "cost-checks.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "cost-check-owner")
+    owner = migrate_fiscal_schema(path)
+    queue = FiscalPendingQueue(path)
+    pending = queue.add(owner, {
+        "reference": "COST-CHECK-RECORD",
+        "original_amount": 100,
+        "original_currency": "USD",
+        "instrument": "ETF",
+        "jurisdiction": "US",
+        "occurred_on": "2026-11-06",
+    })
+
+    with sqlite3.connect(path) as db:
+        for field in ("acquisition_cost", "transaction_fees", "foreign_tax_paid"):
+            try:
+                db.execute(
+                    f"UPDATE fiscal_reserve_pending_foreign SET {field}=-1 WHERE pending_id=?",
+                    (pending["pending_id"],),
+                )
+            except sqlite3.IntegrityError:
+                pass
+            else:
+                raise AssertionError(f"database must reject negative {field}")
+            try:
+                db.execute(
+                    f"UPDATE fiscal_reserve_pending_foreign SET {field}=1000000000001 WHERE pending_id=?",
+                    (pending["pending_id"],),
+                )
+            except sqlite3.IntegrityError:
+                pass
+            else:
+                raise AssertionError(f"database must reject out-of-range {field}")
