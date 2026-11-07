@@ -1336,6 +1336,12 @@ def show_market_analysis() -> None:
             asset_rows = [{
                 "Ativo": item.get("symbol") or "—",
                 "Classe": item.get("asset_class") or "—",
+                "Moeda base": item.get("currency_base") or "—",
+                "Moeda de resultado": item.get("currency_profit") or "—",
+                "Moeda de margem": item.get("currency_margin") or "—",
+                "Tamanho do contrato": item.get("contract_size") if item.get("contract_size") is not None else "—",
+                "Dígitos": item.get("digits") if item.get("digits") is not None else "—",
+                "Tick size": item.get("trade_tick_size") if item.get("trade_tick_size") is not None else "—",
                 "Visível": "SIM" if item.get("visible") is True else "NÃO",
                 "Negociável": "SIM" if item.get("tradeable") is True else "NÃO",
                 "Cotação": "DISPONÍVEL" if item.get("quote_available") is True else "INDISPONÍVEL",
