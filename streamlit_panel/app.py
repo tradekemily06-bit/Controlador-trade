@@ -268,6 +268,7 @@ def show_assistant() -> None:
         # conversation state too: it may contain messages loaded under the
         # previous identity even though the server store is owner-scoped.
         st.session_state["assistant_openai_consent"] = False
+        st.session_state["assistant_connection_tested"] = False
         _reset_assistant_conversation()
         st.session_state.pop("saved_assistant_conversation", None)
         st.session_state["assistant_consent_scope"] = consent_scope
@@ -278,9 +279,15 @@ def show_assistant() -> None:
         readiness = api("/api/assistant/status")
         assistant_available = readiness.get("available") is True
         if not assistant_available:
+            st.session_state["assistant_connection_tested"] = False
             st.warning("Assistente indisponível: " + str(readiness.get("message") or "configuração do provedor ausente"))
         else:
-            st.caption(str(readiness.get("message") or "Credenciais configuradas; conexão com a API ainda não testada.") + " · " + str(readiness.get("model") or "modelo configurado"))
+            readiness_message = (
+                "Conexão com a OpenAI testada nesta sessão."
+                if st.session_state.get("assistant_connection_tested") is True
+                else str(readiness.get("message") or "Credenciais configuradas; conexão com a API ainda não testada.")
+            )
+            st.caption(readiness_message + " · " + str(readiness.get("model") or "modelo configurado"))
     except Exception as exc:
         st.warning("Não foi possível verificar a configuração do Assistente. Detalhes técnicos não são exibidos no painel.")
 
