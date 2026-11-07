@@ -1059,7 +1059,7 @@ def show_fiscal() -> None:
         reference = col1.text_input("Referência / comprovante", max_chars=160)
         amount = col2.number_input("Valor original", min_value=0.00000001, max_value=1_000_000_000_000.0, step=1.0, format="%.8f")
         col3, col4 = st.columns(2)
-        currency = col3.selectbox("Moeda", ["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "BRL"])
+        currency = col3.text_input("Código da moeda (3 letras)", value="USD", max_chars=3).strip().upper()
         instrument = col4.text_input("Instrumento", placeholder="ETF, ação, Forex, CFD, cripto", max_chars=80)
         col5, col6 = st.columns(2)
         jurisdiction = col5.text_input("Jurisdição", placeholder="EUA, Brasil, outro", max_chars=80)
@@ -1093,7 +1093,7 @@ def show_fiscal() -> None:
     with st.form("foreign_signed_result"):
         ref_signed = st.text_input("Referência do extrato", max_chars=160)
         amount_signed = st.number_input("Resultado original (+ lucro / - prejuízo)", min_value=-1000000000000.0, max_value=1000000000000.0, value=0.0, format="%.8f")
-        currency_signed = st.selectbox("Moeda original", ["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "BRL"])
+        currency_signed = st.text_input("Código da moeda original (3 letras)", value="USD", max_chars=3).strip().upper()
         instrument_signed = st.text_input("Instrumento", max_chars=80)
         jurisdiction_signed = st.text_input("Jurisdição", max_chars=80)
         date_signed = st.date_input("Data do resultado", key="signed_foreign_date")
