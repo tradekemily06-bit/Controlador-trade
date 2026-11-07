@@ -304,7 +304,7 @@ def show_assistant() -> None:
             st.session_state["assistant_connection_tested"] = False
             st.error("Não foi possível testar a conexão. Nenhum contexto fiscal foi enviado; confira a configuração do provedor e tente novamente.")
     if assistant_available and st.session_state.get("assistant_connection_tested") is True:
-        st.caption("Conexão com a OpenAI foi testada nesta sessão. Isso não substitui o consentimento para enviar contexto em cada uso do Assistente.")
+        st.caption("O teste verifica somente o provedor. Cada envio de pergunta continua exigindo consentimento explícito para o contexto descrito abaixo.")
 
     st.caption(
         "Privacidade: a pergunta, as mensagens recentes desta conversa e um resumo operacional filtrado são enviados pelo servidor à OpenAI. "
