@@ -1,4 +1,5 @@
-from datetime import date
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -271,3 +272,14 @@ def test_domestic_pending_rejects_non_text_owner_identity(tmp_path):
     for invalid_owner in (None, 123, True, [], {}, object()):
         with pytest.raises(ValueError, match="identidade proprietária"):
             queue.list_pending(invalid_owner)
+
+
+def test_domestic_pending_rejects_future_event_date(tmp_path):
+    queue = FiscalDomesticPendingQueue(str(tmp_path / "future-domestic-event.sqlite3"))
+    payload = sample("BR-FUTURE-EVENT")
+    payload["occurred_on"] = (
+        datetime.now(ZoneInfo("America/Sao_Paulo")).date() + timedelta(days=1)
+    ).isoformat()
+    with pytest.raises(ValueError, match="occurred_on não pode estar no futuro"):
+        queue.add("owner-a", payload)
+    assert queue.list_pending("owner-a")["total"] == 0
