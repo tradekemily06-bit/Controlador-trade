@@ -17,6 +17,16 @@ class MT5InstrumentStatus:
     weekend_capable: bool
     state: str
     reason: str
+    currency_base: str | None = None
+    currency_profit: str | None = None
+    currency_margin: str | None = None
+    contract_size: float | None = None
+    digits: int | None = None
+    point: float | None = None
+    trade_tick_size: float | None = None
+    trade_tick_value: float | None = None
+    trade_calc_mode: int | None = None
+    trade_mode: int | None = None
 
 
 CRYPTO_KEYWORDS = frozenset(
@@ -26,6 +36,34 @@ CRYPTO_KEYWORDS = frozenset(
         "MTC", "XMR", "TRX",
     }
 )
+
+
+def _optional_currency(info: Any, field: str) -> str | None:
+    value = getattr(info, field, None)
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().upper()
+    return normalized if len(normalized) == 3 and normalized.isascii() and normalized.isalpha() else None
+
+
+def _optional_positive_number(info: Any, field: str) -> float | None:
+    value = getattr(info, field, None)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        number = float(value)
+    except (OverflowError, TypeError, ValueError):
+        return None
+    if number <= 0 or number != number or number in (float("inf"), float("-inf")):
+        return None
+    return number
+
+
+def _optional_nonnegative_int(info: Any, field: str) -> int | None:
+    value = getattr(info, field, None)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
 
 
 def _path_and_description(info: Any) -> str:
@@ -202,6 +240,16 @@ def discover_mt5_instruments(
                 weekend_capable=weekend_capable,
                 state=state,
                 reason=reason,
+                currency_base=_optional_currency(info, "currency_base"),
+                currency_profit=_optional_currency(info, "currency_profit"),
+                currency_margin=_optional_currency(info, "currency_margin"),
+                contract_size=_optional_positive_number(info, "trade_contract_size"),
+                digits=_optional_nonnegative_int(info, "digits"),
+                point=_optional_positive_number(info, "point"),
+                trade_tick_size=_optional_positive_number(info, "trade_tick_size"),
+                trade_tick_value=_optional_positive_number(info, "trade_tick_value"),
+                trade_calc_mode=_optional_nonnegative_int(info, "trade_calc_mode"),
+                trade_mode=_optional_nonnegative_int(info, "trade_mode"),
             )
         )
 
