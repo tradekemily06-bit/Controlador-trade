@@ -1921,3 +1921,28 @@ def test_operation_overview_does_not_claim_continuous_realtime_refresh():
     assert 'não representam transmissão contínua' in operation
     assert 'Atualizar painel de operação' in operation
     assert 'Estado operacional · leitura em tempo real' not in operation
+
+
+
+def test_streamlit_assistant_exposes_explicit_no_context_provider_connection_test():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert '"/api/assistant/test-connection"' in source
+    assert "Testar conexão com a OpenAI" in source
+    assert "Nenhuma pergunta, conversa ou dado fiscal foi enviado neste teste." in source
+    assert "assistant_connection_tested" in source
+
+
+def test_streamlit_foreign_pending_forms_capture_and_display_institution_custody_and_costs():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    for field in (
+        "institution",
+        "custody_location",
+        "contract_type",
+        "acquisition_cost",
+        "transaction_fees",
+        "foreign_tax_paid",
+    ):
+        assert field in source
+    assert "Instituição" in source
+    assert "Custódia declarada" in source
+    assert "Imposto pago fora (moeda original)" in source
