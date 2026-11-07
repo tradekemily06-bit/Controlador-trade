@@ -1,4 +1,6 @@
 import os
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from finance.fiscal_reserve import FiscalReserve
 from finance.fiscal_schema import migrate_fiscal_schema
 
@@ -510,3 +512,18 @@ def test_every_reserve_connection_enables_sqlite_foreign_keys(tmp_path):
     reserve = make_reserve(tmp_path / "foreign-keys.sqlite3")
     with reserve._connect() as db:
         assert db.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+
+
+def test_reserve_rejects_future_realized_event_date(tmp_path):
+    reserve = make_reserve(tmp_path / "future-reserve-event.sqlite3")
+    tomorrow = (
+        datetime.now(ZoneInfo("America/Sao_Paulo")).date() + timedelta(days=1)
+    ).isoformat()
+    with pytest.raises(ValueError, match="occurred_on não pode estar no futuro"):
+        reserve.record_realized_result(OWNER, {
+            "category": "BR_DAY_TRADE",
+            "realized_result_brl": 100,
+            "reference": "FUTURE-RESERVE-EVENT",
+            "occurred_on": tomorrow,
+        })
+    assert reserve.summary(OWNER)["total_reserved_brl"] == 0
