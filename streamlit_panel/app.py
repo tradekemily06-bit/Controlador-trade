@@ -168,7 +168,13 @@ def api(path: str, method: str = "GET", payload: dict[str, Any] | None = None) -
             429: "Limite temporário de solicitações atingido. Aguarde e tente novamente.",
             503: "Serviço temporariamente indisponível. Nenhuma alteração foi confirmada.",
         }
-        message = safe_messages.get(exc.code, "Falha de comunicação com o serviço.")
+        if exc.code == 503 and path == "/api/assistant/chat":
+            message = (
+                "A resposta não foi gerada. A pergunta pode ter sido salva no histórico; "
+                "abra a conversa antes de reenviar para evitar duplicidade."
+            )
+        else:
+            message = safe_messages.get(exc.code, "Falha de comunicação com o serviço.")
         raise RuntimeError(f"API indisponível (HTTP {exc.code}): {message}") from None
     except urllib.error.URLError:
         raise RuntimeError("Runtime indisponível. Verifique a conexão com o serviço.") from None
