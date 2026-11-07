@@ -1003,3 +1003,46 @@ def test_assistant_receives_aggregate_foreign_evidence_gaps_but_no_institution_d
     }
     assert "PRIVATE-BROKER" not in str(context)
     assert "PRIVATE-NOTE" not in str(context)
+
+
+
+def test_real_foreign_queue_evidence_summary_reaches_assistant_without_private_record_data(tmp_path, monkeypatch):
+    from finance.fiscal_identity import configured_fiscal_owner_id
+    from finance.fiscal_pending_queue import FiscalPendingQueue
+    from finance.fiscal_schema import migrate_fiscal_schema
+
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "assistant-foreign-evidence-owner")
+    owner = configured_fiscal_owner_id()
+    database = tmp_path / "assistant-foreign-evidence.sqlite3"
+    migrate_fiscal_schema(str(database))
+    queue = FiscalPendingQueue(str(database))
+    queue.add(owner, {
+        "reference": "PRIVATE-FOREIGN-EVIDENCE-REF",
+        "original_amount": 125,
+        "original_currency": "USD",
+        "instrument": "ETF",
+        "jurisdiction": "US",
+        "occurred_on": "2026-11-06",
+        "institution": "",
+        "custody_location": "NOT_INFORMED",
+        "contract_type": "NOT_CONFIRMED",
+        "notes": "PRIVATE-FOREIGN-EVIDENCE-NOTE",
+    })
+
+    context = collect_read_only_context(
+        FakeService(), FakeFiscalReserve(), owner,
+        fiscal_pending_queue=queue,
+    )
+    pending = context["fiscal_reserve"]["foreign_pending"]
+
+    assert pending["total"] == 1
+    assert pending["evidence_completeness"] == {
+        "total": 1,
+        "missing_institution": 1,
+        "missing_custody_location": 1,
+        "missing_contract_type": 1,
+        "missing_core_evidence": 1,
+    }
+    assert "PRIVATE-FOREIGN-EVIDENCE-REF" not in str(context)
+    assert "PRIVATE-FOREIGN-EVIDENCE-NOTE" not in str(context)
+    assert "125" not in str(pending)
