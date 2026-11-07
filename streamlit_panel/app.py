@@ -677,6 +677,32 @@ def _valid_fiscal_summary(summary: Any) -> bool:
                 foreign_pending["realized_results"] + foreign_pending["asset_amounts"]
             ):
                 return False
+            evidence_completeness = foreign_pending.get("evidence_completeness")
+            if evidence_completeness is not None:
+                if not isinstance(evidence_completeness, dict):
+                    return False
+                for field in (
+                    "total",
+                    "missing_institution",
+                    "missing_custody_location",
+                    "missing_contract_type",
+                    "missing_core_evidence",
+                ):
+                    count = evidence_completeness.get(field)
+                    if isinstance(count, bool) or not isinstance(count, int) or not 0 <= count <= 1_000_000_000:
+                        return False
+                if evidence_completeness["total"] != foreign_pending["total"]:
+                    return False
+                if any(
+                    evidence_completeness[field] > evidence_completeness["total"]
+                    for field in (
+                        "missing_institution",
+                        "missing_custody_location",
+                        "missing_contract_type",
+                        "missing_core_evidence",
+                    )
+                ):
+                    return False
             pending_periods = foreign_pending.get("periods")
             if not isinstance(pending_periods, dict):
                 return False
