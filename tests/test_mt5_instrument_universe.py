@@ -71,3 +71,14 @@ def test_weekend_capability_comes_from_broker_session_when_available():
     assert weekday_by_symbol["EURUSD"] is False
     assert weekend_by_symbol["EURUSD"] is True
     assert weekend_by_symbol["BTCUSD"] is True
+
+
+def test_missing_broker_session_metadata_does_not_claim_crypto_is_weekend_capable():
+    mt5 = FakeMT5(weekend=False)
+    mt5.symbol_info_session_trade = None
+
+    statuses = discover_mt5_instruments(mt5, include_invisible=True)
+    by_symbol = {item.symbol: item for item in statuses}
+
+    assert by_symbol["BTCUSD"].asset_class == "crypto"
+    assert by_symbol["BTCUSD"].weekend_capable is False
