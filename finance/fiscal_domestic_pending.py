@@ -113,6 +113,9 @@ class FiscalDomesticPendingQueue:
             raise ValueError("occurred_on deve usar YYYY-MM-DD") from exc
         if parsed.isoformat() != raw:
             raise ValueError("occurred_on deve usar YYYY-MM-DD")
+        today = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
+        if parsed > today:
+            raise ValueError("occurred_on não pode estar no futuro")
         return raw
 
     @staticmethod
