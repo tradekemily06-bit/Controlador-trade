@@ -284,6 +284,16 @@ def show_assistant() -> None:
     except Exception as exc:
         st.warning("Não foi possível verificar a configuração do Assistente. Detalhes técnicos não são exibidos no painel.")
 
+    if assistant_available and st.button("Testar conexão com a OpenAI", key="assistant_test_provider_connection"):
+        try:
+            connection_result = api("/api/assistant/test-connection", "POST", {})
+            if connection_result.get("success") is True and connection_result.get("connection_tested") is True:
+                st.success("Conexão com a OpenAI testada com sucesso. Nenhuma pergunta, conversa ou dado fiscal foi enviado neste teste.")
+            else:
+                st.error("O teste não confirmou a conexão. Nenhum contexto fiscal foi enviado.")
+        except Exception:
+            st.error("Não foi possível testar a conexão. Nenhum contexto fiscal foi enviado; confira a configuração do provedor e tente novamente.")
+
     st.caption(
         "Privacidade: a pergunta, as mensagens recentes desta conversa e um resumo operacional filtrado são enviados pelo servidor à OpenAI. "
         "As mensagens também ficam armazenadas no histórico local do Assistente no servidor do Ecossistema. "
