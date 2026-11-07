@@ -345,3 +345,44 @@ def test_provider_configuration_failure_preserves_persisted_conversation_id(monk
     assert store.messages[-1][3] == "Pergunta privada"
     assert store.messages[-1][1] == "conversation-test"
     assert completion.calls == []
+
+
+
+def test_explicit_connection_test_sends_only_fixed_prompt_and_never_context_or_history(monkeypatch):
+    store = FakeStore()
+    completion = FakeCompletion("OK")
+    assistant = _assistant(store, completion, monkeypatch)
+
+    result = assistant.test_connection()
+
+    assert result["success"] is True
+    assert result["connection_tested"] is True
+    assert result["context_sent"] is False
+    assert result["history_sent"] is False
+    assert result["conversation_saved"] is False
+    assert completion.calls == [{
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "Responda somente: OK"}],
+        "temperature": 0,
+        "max_completion_tokens": 5,
+    }]
+    assert store.messages == []
+
+
+def test_explicit_connection_test_sanitizes_provider_failure(monkeypatch):
+    class FailingCompletion:
+        def create(self, **kwargs):
+            raise RuntimeError("secret OPENAI_API_KEY=must-not-leak")
+
+    assistant = _assistant(FakeStore(), FailingCompletion(), monkeypatch)
+
+    try:
+        assistant.test_connection()
+    except AssistantUnavailableError as exc:
+        assert str(exc) == (
+            "Teste de conexão falhou. Confira a configuração do provedor e tente novamente."
+        )
+        assert "secret" not in str(exc)
+        assert "must-not-leak" not in str(exc)
+    else:
+        raise AssertionError("provider failure must be reported as a sanitized failure")
