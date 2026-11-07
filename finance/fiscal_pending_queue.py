@@ -447,11 +447,19 @@ class FiscalPendingQueue:
             evidence = db.execute(
                 """SELECT
                        COUNT(*) AS total,
-                       SUM(CASE WHEN TRIM(COALESCE(institution, '')) = '' THEN 1 ELSE 0 END) AS missing_institution,
+                       SUM(CASE WHEN
+                           TRIM(COALESCE(institution, '')) = ''
+                           AND LOWER(TRIM(COALESCE(custody_location, ''))) NOT LIKE '%autocust%'
+                           AND LOWER(TRIM(COALESCE(custody_location, ''))) NOT LIKE '%self-custod%'
+                           THEN 1 ELSE 0 END) AS missing_institution,
                        SUM(CASE WHEN TRIM(COALESCE(custody_location, '')) IN ('', 'NOT_INFORMED') THEN 1 ELSE 0 END) AS missing_custody_location,
                        SUM(CASE WHEN TRIM(COALESCE(contract_type, '')) IN ('', 'NOT_INFORMED', 'NOT_CONFIRMED') THEN 1 ELSE 0 END) AS missing_contract_type,
                        SUM(CASE WHEN
-                           TRIM(COALESCE(institution, '')) = ''
+                           (
+                               TRIM(COALESCE(institution, '')) = ''
+                               AND LOWER(TRIM(COALESCE(custody_location, ''))) NOT LIKE '%autocust%'
+                               AND LOWER(TRIM(COALESCE(custody_location, ''))) NOT LIKE '%self-custod%'
+                           )
                            OR TRIM(COALESCE(custody_location, '')) IN ('', 'NOT_INFORMED')
                            OR TRIM(COALESCE(contract_type, '')) IN ('', 'NOT_INFORMED', 'NOT_CONFIRMED')
                            THEN 1 ELSE 0 END) AS missing_core_evidence
