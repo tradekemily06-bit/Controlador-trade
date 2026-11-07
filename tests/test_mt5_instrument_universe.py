@@ -82,3 +82,43 @@ def test_missing_broker_session_metadata_does_not_claim_crypto_is_weekend_capabl
 
     assert by_symbol["BTCUSD"].asset_class == "crypto"
     assert by_symbol["BTCUSD"].weekend_capable is False
+
+
+def test_instrument_catalog_exposes_broker_currency_and_contract_metadata():
+    mt5 = FakeMT5()
+    mt5.info["EURUSD"].currency_base = "EUR"
+    mt5.info["EURUSD"].currency_profit = "USD"
+    mt5.info["EURUSD"].currency_margin = "USD"
+    mt5.info["EURUSD"].trade_contract_size = 100000.0
+    mt5.info["EURUSD"].digits = 5
+    mt5.info["EURUSD"].point = 0.00001
+    mt5.info["EURUSD"].trade_tick_size = 0.00001
+    mt5.info["EURUSD"].trade_tick_value = 1.0
+
+    statuses = discover_mt5_instruments(mt5, include_invisible=True)
+    eurusd = next(item for item in statuses if item.symbol == "EURUSD")
+
+    assert eurusd.currency_base == "EUR"
+    assert eurusd.currency_profit == "USD"
+    assert eurusd.currency_margin == "USD"
+    assert eurusd.contract_size == 100000.0
+    assert eurusd.digits == 5
+    assert eurusd.point == 0.00001
+    assert eurusd.trade_tick_size == 0.00001
+    assert eurusd.trade_tick_value == 1.0
+
+
+def test_invalid_broker_currency_and_numeric_metadata_are_omitted():
+    mt5 = FakeMT5()
+    mt5.info["EURUSD"].currency_base = "EU1"
+    mt5.info["EURUSD"].currency_profit = "USDD"
+    mt5.info["EURUSD"].trade_contract_size = float("nan")
+    mt5.info["EURUSD"].digits = True
+
+    statuses = discover_mt5_instruments(mt5, include_invisible=True)
+    eurusd = next(item for item in statuses if item.symbol == "EURUSD")
+
+    assert eurusd.currency_base is None
+    assert eurusd.currency_profit is None
+    assert eurusd.contract_size is None
+    assert eurusd.digits is None
