@@ -64,7 +64,7 @@ def test_fx_evidence_must_be_complete(tmp_path):
 
 def test_invalid_amount_currency_and_date_are_rejected(tmp_path):
     queue = make_queue(tmp_path / "fiscal.sqlite3")
-    for key, value in (("original_amount", 0), ("original_currency", "XYZ"), ("occurred_on", "30/10/2026")):
+    for key, value in (("original_amount", 0), ("original_currency", "US1"), ("occurred_on", "30/10/2026")):
         payload = sample()
         payload[key] = value
         try:
@@ -702,3 +702,24 @@ def test_foreign_pending_rejects_non_text_owner_identity(tmp_path):
     for invalid_owner in (None, 123, True, [], {}, object()):
         with pytest.raises(ValueError, match="identidade proprietária"):
             queue.list_pending(invalid_owner)
+
+
+def test_foreign_queue_accepts_currency_codes_outside_old_fixed_list(tmp_path):
+    queue = make_queue(tmp_path / "fiscal-open-currency.sqlite3")
+    payload = sample("FOREIGN-CURRENCY-OPEN")
+    payload["original_currency"] = "NZD"
+    item = queue.add(OWNER, payload)
+    assert item["original_currency"] == "NZD"
+
+
+def test_foreign_queue_rejects_malformed_currency_codes(tmp_path):
+    queue = make_queue(tmp_path / "fiscal-invalid-currency.sqlite3")
+    for code in ("US", "US1", "USDD", "ÄBC", "   "):
+        payload = sample("BAD-CURRENCY-" + str(len(code)) + "-" + code.encode("utf-8").hex())
+        payload["original_currency"] = code
+        try:
+            queue.add(OWNER, payload)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"malformed currency code must be rejected: {code!r}")
