@@ -288,11 +288,16 @@ def show_assistant() -> None:
         try:
             connection_result = api("/api/assistant/test-connection", "POST", {})
             if connection_result.get("success") is True and connection_result.get("connection_tested") is True:
+                st.session_state["assistant_connection_tested"] = True
                 st.success("Conexão com a OpenAI testada com sucesso. Nenhuma pergunta, conversa ou dado fiscal foi enviado neste teste.")
             else:
+                st.session_state["assistant_connection_tested"] = False
                 st.error("O teste não confirmou a conexão. Nenhum contexto fiscal foi enviado.")
         except Exception:
+            st.session_state["assistant_connection_tested"] = False
             st.error("Não foi possível testar a conexão. Nenhum contexto fiscal foi enviado; confira a configuração do provedor e tente novamente.")
+    if assistant_available and st.session_state.get("assistant_connection_tested") is True:
+        st.caption("Conexão com a OpenAI foi testada nesta sessão. Isso não substitui o consentimento para enviar contexto em cada uso do Assistente.")
 
     st.caption(
         "Privacidade: a pergunta, as mensagens recentes desta conversa e um resumo operacional filtrado são enviados pelo servidor à OpenAI. "
