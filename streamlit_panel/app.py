@@ -816,6 +816,32 @@ def show_fiscal() -> None:
                     enabled = bool(details.get("booking_enabled", False))
                     state_label = "Lançamento parcial habilitado" if enabled else "Pendente · sem cálculo automático"
                     st.write(f"- **{details.get('label', category)}** — {state_label}")
+                    evidence_labels = {
+                        "residencia_fiscal": "residência fiscal na data",
+                        "natureza_do_rendimento": "natureza do rendimento",
+                        "evento": "tipo de evento",
+                        "moeda": "moeda original",
+                        "fx_method": "método cambial documentado",
+                        "instituicao_ou_autocustodia": "instituição ou autocustódia",
+                        "local_custodia": "local de custódia",
+                        "tipo_de_contrato": "tipo de contrato",
+                        "custodia": "custódia",
+                        "local_da_operacao": "local da operação",
+                        "controle": "estrutura de controle",
+                        "entidade": "identificação da entidade",
+                        "lucro": "lucros e documentação",
+                    }
+                    required_evidence = details.get("requires", [])
+                    if isinstance(required_evidence, list) and required_evidence:
+                        st.caption("Dados necessários para triagem: " + ", ".join(
+                            evidence_labels.get(str(field), str(field).replace("_", " "))
+                            for field in required_evidence
+                        ))
+                    recommended_evidence = details.get("recommended_evidence", [])
+                    if isinstance(recommended_evidence, list) and recommended_evidence:
+                        st.caption("Evidências recomendadas: " + ", ".join(
+                            str(field).replace("_", " ") for field in recommended_evidence
+                        ))
                     for limitation in details.get("limitations", []):
                         st.caption(limitation)
         except Exception:
