@@ -47,9 +47,10 @@ No host Windows remoto, `deployment/bootstrap_windows_runtime.ps1` também insta
 ## Módulos no painel
 
 - A Reserva Fiscal e o Assistente do Ecossistema ficam agrupados dentro de Financeiro, sem criar novos grupos de navegação. Categorias sem cálculo validado ficam pendentes e fora dos totais; a estimativa brasileira identificada na interface é planejamento, não apuração de imposto devido.
+- A fila estrangeira registra instituição, custódia, tipo de contrato, custo de aquisição, taxas e imposto pago no exterior na moeda original quando informados. Esses campos são evidências declaradas para triagem; não confirmam localização fiscal, enquadramento, conversão cambial ou crédito tributário e não geram cálculo automático.
 - O Assistente do Ecossistema é acessado pelo seletor interno de Financeiro. A interface lista até 30 conversas salvas, permite abrir o histórico recente e excluir uma conversa somente após ação explícita do usuário.
 - A pergunta, as mensagens recentes da conversa e um resumo operacional filtrado são enviados à OpenAI quando o usuário envia uma consulta. As mensagens também ficam armazenadas no histórico local do Assistente no servidor do Ecossistema. A chave OpenAI permanece no servidor; não envie senhas, códigos de acesso ou dados bancários sensíveis.
-- A consulta de status do Assistente verifica a configuração local do cliente, mas não testa conectividade nem validade da chave. A conexão real não é considerada validada até um teste autorizado.
+- A consulta de status do Assistente verifica a configuração local do cliente, mas não testa conectividade nem validade da chave. O botão **Testar conexão com a OpenAI** envia somente uma mensagem técnica fixa, sem pergunta, histórico ou dados fiscais; o teste não substitui o consentimento explícito exigido para cada consulta com contexto.
 - Replay e Simulador têm limitações descritas na própria interface. O backtest atual não integra Risk Manager, margem, alavancagem, swap ou conversão para a moeda da conta. Não o trate como previsão nem como backtest financeiro completo.
 - Os demais módulos só devem ser considerados operacionais quando suas integrações forem efetivamente implementadas e validadas.
 
