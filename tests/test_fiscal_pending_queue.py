@@ -977,3 +977,23 @@ def test_fx_conversion_method_must_match_quote_evidence_for_assets_and_results(t
             raise AssertionError("FX method and quote evidence must be mutually consistent")
 
     assert queue.list_pending(OWNER)["total"] == 0
+
+
+def test_foreign_review_history_is_append_only_at_database_level(tmp_path):
+    import sqlite3
+
+    queue = make_queue(tmp_path / "append-only-foreign-review.sqlite3")
+    pending = queue.add(OWNER, sample("FOREIGN-APPEND-ONLY"))
+    review = queue.record_review(OWNER, pending["pending_id"], review_sample())
+
+    for statement, params in (
+        ("UPDATE fiscal_pending_reviews SET reviewer_name = 'alterado' WHERE review_id = ?", (review["review_id"],)),
+        ("DELETE FROM fiscal_pending_reviews WHERE review_id = ?", (review["review_id"],)),
+    ):
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            with queue._connect() as db:
+                db.execute(statement, params)
+
+    history = queue.list_reviews(OWNER, pending["pending_id"])
+    assert len(history) == 1
+    assert history[0]["reviewer_name"] == review["reviewer_name"]
