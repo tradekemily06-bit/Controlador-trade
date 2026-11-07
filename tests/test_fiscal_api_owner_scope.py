@@ -140,7 +140,14 @@ def test_fiscal_and_assistant_read_routes_ignore_forged_owner_parameters(
     fiscal_summary_status, fiscal_summary = _request("/api/fiscal-reserve")
     assert fiscal_summary_status.startswith("200")
     assert fiscal_summary["foreign_pending"]["total"] == 1
-    assert fiscal_summary["foreign_pending"]["currencies"] == ["USD"]
+    assert fiscal_summary["foreign_pending"]["currencies"] == ["EUR", "USD"]
+    assert fiscal_summary["foreign_pending"]["evidence_completeness"] == {
+        "total": 2,
+        "missing_institution": 0,
+        "missing_custody_location": 0,
+        "missing_contract_type": 0,
+        "missing_core_evidence": 0,
+    }
     assert fiscal_summary["foreign_pending"]["included_in_totals"] is False
     assert "PENDING-B-ONLY" not in json.dumps(pending)
 
@@ -273,11 +280,23 @@ def test_foreign_pending_api_intake_results_and_reviews_stay_owner_scoped_and_un
             "income_nature": "INVESTMENT_INCOME",
             "event_type": "ACQUISITION",
             "fx_conversion_method": "NOT_CONVERTED",
+            "institution": "Broker API",
+            "custody_location": "Custódia estrangeira",
+            "contract_type": "ETF à vista",
+            "acquisition_cost": 120.0,
+            "transaction_fees": 2.5,
+            "foreign_tax_paid": 1.25,
         },
     )
     assert status.startswith("201")
     pending_id = created["pending"]["pending_id"]
     assert created["pending"]["status"] == "PENDING_CLASSIFICATION"
+    assert created["pending"]["institution"] == "Broker API"
+    assert created["pending"]["custody_location"] == "Custódia estrangeira"
+    assert created["pending"]["contract_type"] == "ETF à vista"
+    assert created["pending"]["acquisition_cost"] == 120.0
+    assert created["pending"]["transaction_fees"] == 2.5
+    assert created["pending"]["foreign_tax_paid"] == 1.25
     assert created["reserve_calculated"] is False
 
     status, realized = _request(
@@ -295,9 +314,21 @@ def test_foreign_pending_api_intake_results_and_reviews_stay_owner_scoped_and_un
             "income_nature": "TRADING_RESULT",
             "event_type": "DISPOSAL",
             "fx_conversion_method": "NOT_CONVERTED",
+            "institution": "Broker EU",
+            "custody_location": "Custódia na UE",
+            "contract_type": "Derivativo",
+            "acquisition_cost": 500.0,
+            "transaction_fees": 3.0,
+            "foreign_tax_paid": 0.0,
         },
     )
     assert status.startswith("201")
+    assert realized["pending"]["institution"] == "Broker EU"
+    assert realized["pending"]["custody_location"] == "Custódia na UE"
+    assert realized["pending"]["contract_type"] == "Derivativo"
+    assert realized["pending"]["acquisition_cost"] == 500.0
+    assert realized["pending"]["transaction_fees"] == 3.0
+    assert realized["pending"]["foreign_tax_paid"] == 0.0
     assert realized["pending"]["original_result"] == -37.25
     assert realized["pending"]["status"] == "PENDING_CLASSIFICATION"
     assert realized["classification_status"] == "PENDING_CLASSIFICATION"
