@@ -127,6 +127,37 @@ class EcosystemAssistant:
             "may_enable_real": False,
             "may_move_money": False,
         }
+    def test_connection(self):
+        """Test provider reachability with a fixed prompt and no user/fiscal context."""
+        try:
+            response = self._client().chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": "Responda somente: OK"}],
+                temperature=0,
+                max_completion_tokens=5,
+            )
+            answer = response.choices[0].message.content
+            if not isinstance(answer, str) or not answer.strip():
+                raise ValueError("resposta vazia")
+        except Exception as exc:
+            raise AssistantUnavailableError(
+                "Teste de conexão falhou. Confira a configuração do provedor e tente novamente."
+            ) from exc
+        return {
+            "success": True,
+            "connection_tested": True,
+            "status": "CONNECTION_TESTED",
+            "provider": "OpenAI API",
+            "model": self.model,
+            "context_sent": False,
+            "history_sent": False,
+            "conversation_saved": False,
+            "read_only": True,
+            "may_execute_orders": False,
+            "may_enable_real": False,
+            "may_move_money": False,
+        }
+
     def conversations(self,identity): return self.store.list(identity)
     def history(self,identity,cid): return self.store.history(identity,cid)
     def delete_conversation(self,identity,cid): return self.store.delete(identity,cid)
