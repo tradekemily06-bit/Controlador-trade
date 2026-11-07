@@ -1,5 +1,6 @@
 import os
-from datetime import date
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 from finance.fiscal_pending_queue import FiscalPendingQueue
 from finance.fiscal_schema import migrate_fiscal_schema
 
@@ -861,3 +862,59 @@ def test_foreign_pending_summary_reports_only_aggregate_missing_core_evidence(tm
     assert summary["included_in_totals"] is False
     assert summary["reserve_calculated"] is False
     assert "reference" not in summary["evidence_completeness"]
+
+
+
+def test_foreign_queue_rejects_future_event_and_fx_dates_for_assets_and_results(tmp_path):
+    queue = make_queue(tmp_path / "future-dates.sqlite3")
+    tomorrow = (
+        datetime.now(ZoneInfo("America/Sao_Paulo")).date() + timedelta(days=1)
+    ).isoformat()
+
+    asset = sample("FUTURE-ASSET-EVENT")
+    asset["occurred_on"] = tomorrow
+    try:
+        queue.add(OWNER, asset)
+    except ValueError as exc:
+        assert "occurred_on não pode estar no futuro" in str(exc)
+    else:
+        raise AssertionError("future foreign asset event date must be rejected")
+
+    asset = sample("FUTURE-ASSET-FX")
+    asset["fx_date"] = tomorrow
+    try:
+        queue.add(OWNER, asset)
+    except ValueError as exc:
+        assert "fx_date não pode estar no futuro" in str(exc)
+    else:
+        raise AssertionError("future FX evidence date must be rejected")
+
+    realized = {
+        "reference": "FUTURE-REALIZED-EVENT",
+        "original_result": 10.0,
+        "original_currency": "USD",
+        "instrument": "ETF",
+        "jurisdiction": "US",
+        "occurred_on": tomorrow,
+    }
+    try:
+        queue.add_realized_result(OWNER, realized)
+    except ValueError as exc:
+        assert "occurred_on não pode estar no futuro" in str(exc)
+    else:
+        raise AssertionError("future realized result date must be rejected")
+
+    realized["reference"] = "FUTURE-REALIZED-FX"
+    realized["occurred_on"] = datetime.now(ZoneInfo("America/Sao_Paulo")).date().isoformat()
+    realized.update({
+        "fx_rate": 5.0,
+        "fx_date": tomorrow,
+        "fx_source": "fonte documental",
+        "fx_conversion_method": "PTAX_SELL",
+    })
+    try:
+        queue.add_realized_result(OWNER, realized)
+    except ValueError as exc:
+        assert "fx_date não pode estar no futuro" in str(exc)
+    else:
+        raise AssertionError("future FX evidence date on realized result must be rejected")
