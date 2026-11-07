@@ -444,6 +444,21 @@ class FiscalPendingQueue:
                    ORDER BY original_currency""",
                 (owner_id,),
             ).fetchall()
+            evidence = db.execute(
+                """SELECT
+                       COUNT(*) AS total,
+                       SUM(CASE WHEN TRIM(COALESCE(institution, '')) = '' THEN 1 ELSE 0 END) AS missing_institution,
+                       SUM(CASE WHEN TRIM(COALESCE(custody_location, '')) IN ('', 'NOT_INFORMED') THEN 1 ELSE 0 END) AS missing_custody_location,
+                       SUM(CASE WHEN TRIM(COALESCE(contract_type, '')) IN ('', 'NOT_INFORMED', 'NOT_CONFIRMED') THEN 1 ELSE 0 END) AS missing_contract_type,
+                       SUM(CASE WHEN
+                           TRIM(COALESCE(institution, '')) = ''
+                           OR TRIM(COALESCE(custody_location, '')) IN ('', 'NOT_INFORMED')
+                           OR TRIM(COALESCE(contract_type, '')) IN ('', 'NOT_INFORMED', 'NOT_CONFIRMED')
+                           THEN 1 ELSE 0 END) AS missing_core_evidence
+                   FROM fiscal_reserve_pending_foreign
+                   WHERE owner_id = ?""",
+                (owner_id,),
+            ).fetchone()
             period_counts = {}
             for period_name, (start_day, end_day) in periods.items():
                 row = db.execute(
@@ -469,6 +484,13 @@ class FiscalPendingQueue:
             "realized_results": counts.get("REALIZED_RESULT", 0),
             "asset_amounts": counts.get("ASSET_AMOUNT", 0),
             "currencies": [str(row["original_currency"]) for row in currencies],
+            "evidence_completeness": {
+                "total": int(evidence["total"] or 0),
+                "missing_institution": int(evidence["missing_institution"] or 0),
+                "missing_custody_location": int(evidence["missing_custody_location"] or 0),
+                "missing_contract_type": int(evidence["missing_contract_type"] or 0),
+                "missing_core_evidence": int(evidence["missing_core_evidence"] or 0),
+            },
             "periods": period_counts,
             "classification_status": "PENDING_CLASSIFICATION",
             "included_in_totals": False,
