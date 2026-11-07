@@ -220,6 +220,9 @@ def test_streamlit_restores_assistant_conversation_id_after_provider_failure():
     assert 'raise RuntimeError(f"API indisponível (HTTP {exc.code}): {message}") from None' in api_helper
     assert 'error_payload.get("error"' not in api_helper
     assert 'safe_messages = {' in api_helper
+    assert 'if exc.code == 503 and path == "/api/assistant/chat":' in api_helper
+    assert "A pergunta pode ter sido salva no histórico" in api_helper
+    assert "abra a conversa antes de reenviar para evitar duplicidade" in api_helper
     assert 'raise RuntimeError("Runtime indisponível. Verifique a conexão com o serviço.") from None' in api_helper
 
 
