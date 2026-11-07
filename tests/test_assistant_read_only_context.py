@@ -177,6 +177,10 @@ def test_assistant_foreign_pending_context_never_exposes_structured_user_declara
                     "event_type": "DIVIDEND_RECEIPT",
                     "fx_conversion_method": "PTAX_SELL",
                     "notes": "PRIVATE-FOREIGN-NOTE",
+                    "reviewer_name": "PRIVATE-REVIEWER",
+                    "professional_registration": "PRIVATE-REGISTRATION",
+                    "evidence_reference": "PRIVATE-OPINION-REFERENCE",
+                    "review_notes": "PRIVATE-REVIEW-NOTES",
                     "original_amount": 999999,
                     "original_currency": "USD",
                 }],
@@ -197,6 +201,9 @@ def test_assistant_foreign_pending_context_never_exposes_structured_user_declara
     assert pending["reserve_calculated"] is False
     for private_value in (
         "PRIVATE-FOREIGN-REFERENCE", "PRIVATE-FOREIGN-NOTE",
+        "PRIVATE-REVIEWER", "PRIVATE-REGISTRATION",
+        "PRIVATE-OPINION-REFERENCE", "PRIVATE-REVIEW-NOTES",
+        "reviewer_name", "professional_registration", "evidence_reference", "review_notes",
         "tax_residency_at_event", "income_nature", "event_type",
         "fx_conversion_method", "original_amount", "999999",
     ):
