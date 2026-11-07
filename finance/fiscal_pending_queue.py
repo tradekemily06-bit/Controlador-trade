@@ -121,6 +121,15 @@ class FiscalPendingQueue:
         return raw
 
     @staticmethod
+    def _reject_future_event_date(value: str, field: str) -> str:
+        """Prevent future-dated events or FX evidence from entering the fiscal queue."""
+        parsed = date.fromisoformat(value)
+        today = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
+        if parsed > today:
+            raise ValueError(f"{field} não pode estar no futuro")
+        return value
+
+    @staticmethod
     def _positive(value: Any, field: str) -> float:
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ValueError(f"{field} deve ser numérico")
@@ -201,7 +210,9 @@ class FiscalPendingQueue:
         if len(currency) != CURRENCY_CODE_LENGTH or not currency.isascii() or not currency.isalpha():
             raise ValueError("moeda deve ser um código alfabético de três letras")
         amount = self._positive(payload.get("original_amount"), "original_amount")
-        occurred_on = self._date(payload.get("occurred_on"), "occurred_on")
+        occurred_on = self._reject_future_event_date(
+            self._date(payload.get("occurred_on"), "occurred_on"), "occurred_on"
+        )
         fx_rate = payload.get("fx_rate")
         fx_date = payload.get("fx_date")
         fx_source = self._text(payload, "fx_source", 200)
@@ -209,7 +220,9 @@ class FiscalPendingQueue:
             fx_rate = self._positive(fx_rate, "fx_rate")
             if not fx_date or not fx_source:
                 raise ValueError("fx_date e fx_source são obrigatórios quando houver fx_rate")
-            fx_date = self._date(fx_date, "fx_date")
+            fx_date = self._reject_future_event_date(
+                self._date(fx_date, "fx_date"), "fx_date"
+            )
             if len(fx_source) > 200:
                 raise ValueError("fx_source deve ter até 200 caracteres")
         elif fx_date or fx_source:
@@ -267,7 +280,9 @@ class FiscalPendingQueue:
         if result != result or result in (float("inf"), float("-inf")) or abs(result) > 1e12:
             raise ValueError("original_result deve ser finito e estar dentro do limite")
         result = round(result, 8)
-        occurred_on = self._date(payload.get("occurred_on"), "occurred_on")
+        occurred_on = self._reject_future_event_date(
+            self._date(payload.get("occurred_on"), "occurred_on"), "occurred_on"
+        )
         fx_rate = payload.get("fx_rate")
         fx_date = payload.get("fx_date")
         fx_source = self._text(payload, "fx_source", 200)
@@ -275,7 +290,9 @@ class FiscalPendingQueue:
             fx_rate = self._positive(fx_rate, "fx_rate")
             if not fx_date or not fx_source:
                 raise ValueError("fx_date e fx_source são obrigatórios quando houver fx_rate")
-            fx_date = self._date(fx_date, "fx_date")
+            fx_date = self._reject_future_event_date(
+                self._date(fx_date, "fx_date"), "fx_date"
+            )
             if len(fx_source) > 200:
                 raise ValueError("fx_source deve ter até 200 caracteres")
         elif fx_date or fx_source:
