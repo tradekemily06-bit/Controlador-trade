@@ -11,9 +11,11 @@ from finance.fiscal_identity import configured_fiscal_owner_id
 OWNER = configured_fiscal_owner_id()
 
 def make_queue(path):
-    queue = FiscalPendingQueue(str(path))
+    FiscalPendingQueue(str(path))
     migrate_fiscal_schema(str(path))
-    return queue
+    # Re-open after migration so constructor-installed append-only triggers
+    # exist on the final owner-scoped review table, not the legacy table.
+    return FiscalPendingQueue(str(path))
 
 
 def sample(reference="FOREIGN-STATEMENT-001"):
