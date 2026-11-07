@@ -74,6 +74,69 @@ def test_migration_is_idempotent(tmp_path, monkeypatch):
     db.close()
 
 
+def test_migration_installs_append_only_foreign_review_triggers_immediately(tmp_path, monkeypatch):
+    path = str(tmp_path / "legacy-review-history.sqlite3")
+    _legacy_db(path)
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+
+    migrate_fiscal_schema(path)
+
+    with sqlite3.connect(path) as db:
+        trigger_names = {
+            row[0] for row in db.execute(
+                "SELECT name FROM sqlite_master WHERE type='trigger'"
+            )
+        }
+        assert {
+            "fiscal_pending_reviews_no_update",
+            "fiscal_pending_reviews_no_delete",
+        } <= trigger_names
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            db.execute(
+                "UPDATE fiscal_pending_reviews SET review_notes='tampered' WHERE review_id='r1'"
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            db.execute("DELETE FROM fiscal_pending_reviews WHERE review_id='r1'")
+        assert db.execute(
+            "SELECT review_notes FROM fiscal_pending_reviews WHERE review_id='r1'"
+        ).fetchone() == ("",)
+
+
+def test_owner_scoped_fast_path_keeps_foreign_review_history_append_only(tmp_path, monkeypatch):
+    path = str(tmp_path / "owner-review-history.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    owner = migrate_fiscal_schema(path)
+
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "INSERT INTO fiscal_reserve_pending_foreign "
+            "(pending_id,owner_id,reference,original_amount,original_currency,instrument,"
+            "jurisdiction,occurred_on,notes,status,created_at) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            ("p1", owner, "review-target", 10, "USD", "ETF", "US",
+             "2026-11-03", "", "PENDING_CLASSIFICATION", "now"),
+        )
+        db.execute(
+            "INSERT INTO fiscal_pending_reviews "
+            "(review_id,owner_id,pending_id,candidate_classification,confirmed_jurisdiction,"
+            "reviewer_name,reviewer_role,professional_registration,evidence_reference,"
+            "reviewed_on,review_notes,created_at) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("r1", owner, "p1", "ETF", "US", "Reviewer", "contador",
+             "CRC-X", "DOC-X", "2026-11-03", "", "now"),
+        )
+
+    # The fast path must preserve/reinstall the guards on every migration.
+    migrate_fiscal_schema(path)
+    with sqlite3.connect(path) as db:
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            db.execute(
+                "UPDATE fiscal_pending_reviews SET review_notes='tampered' WHERE review_id='r1'"
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            db.execute("DELETE FROM fiscal_pending_reviews WHERE review_id='r1'")
+
+
 def test_migration_without_configured_identity_changes_nothing(tmp_path, monkeypatch):
     path = str(tmp_path / "legacy.sqlite3")
     _legacy_db(path)
