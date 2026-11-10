@@ -800,6 +800,10 @@ void RefreshMemory(){
       string score=JsonValue(objects[i],"score");
       string outcome=JsonValue(objects[i],"outcome");
       string confirmed=JsonValue(objects[i],"confirmed");
+      if(outcome=="null") outcome="";
+      if(symbol=="null") symbol="";
+      if(timeframe=="null") timeframe="";
+      if(score=="null") score="";
       if(id=="" || signal==""){
          ArrayResize(memory_records,0);
          memory_loaded=false;
