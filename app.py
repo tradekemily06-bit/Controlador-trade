@@ -1758,6 +1758,18 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {"results": SERVICE.replay(cases), "execution_allowed": False}, request_id, environ)
         if path == "/api/memory" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, {"records": SERVICE.memory_view(_query_limit(environ, 50))}, request_id, environ)
+        if path == "/api/reports" and method == "GET":
+            limit = _query_limit(environ, 50, maximum=200)
+            report = {
+                "generated_at": datetime.now(ZoneInfo("America/Sao_Paulo")).isoformat(),
+                "summary": SERVICE.statistics(),
+                "records": SERVICE.memory_view(limit),
+                "record_count": min(len(SERVICE.memory), limit),
+                "source": "decision_memory",
+                "read_only": True,
+                "execution_allowed": False,
+            }
+            return _json_response(start_response, HTTPStatus.OK, report, request_id, environ)
         if path == "/api/statistics" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.statistics(), request_id, environ)
         if path == "/api/outcome" and method == "POST":
