@@ -2130,5 +2130,6 @@ def test_mt5_native_panel_uses_six_areas_and_explicit_module_routes():
     assert 'if(module=="Conexões") return "CONNECTIONS";' in source
     assert 'if(module=="Relatórios") return "REPORTS";' in source
     assert 'if(module=="Auditoria") return "AUDIT";' in source
+    assert 'if(module=="Financeiro") return "FINANCE";' in source
     assert 'Obj("V1")' not in source
     assert 'Obj("V9")' not in source
