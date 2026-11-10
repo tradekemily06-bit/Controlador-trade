@@ -137,6 +137,8 @@ jobs:
             'validate_windows_runtime.ps1',
             'validate_fiscal_assistant_runtime.ps1',
             'install_windows_autostart.ps1',
+            'backup_runtime.ps1',
+            'restore_runtime.ps1',
             'bootstrap_windows_runtime.ps1',
             'start_streamlit_panel.ps1'
           )
