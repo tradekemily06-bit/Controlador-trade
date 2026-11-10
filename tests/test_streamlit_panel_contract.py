@@ -1043,10 +1043,10 @@ def test_every_reference_navigation_module_has_a_functional_streamlit_route():
 
 
 def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid_summary():
-    assert "summary_available = False" in source[source.index("def show_fiscal()"):source.index("def show_readonly_module")]
     from math import isfinite
 
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert "summary_available = False" in source[source.index("def show_fiscal()"):source.index("def show_readonly_module")]
     tree = ast.parse(source)
     finite_helper = next(
         node for node in tree.body
