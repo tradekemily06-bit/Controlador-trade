@@ -416,7 +416,7 @@ def test_configured_terminal_path_mismatch_blocks_demo_order():
 
     result = adapter.execute(request())
 
-    assert result.success is False
+    assert result.accepted is False
     assert not any(isinstance(call, tuple) and call[0] == "order_send" for call in fake.calls)
     assert "shutdown" in fake.calls
 
