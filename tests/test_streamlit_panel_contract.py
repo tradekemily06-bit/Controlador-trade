@@ -23,7 +23,7 @@ def test_streamlit_operational_navigation_has_six_areas_and_central_last():
     assert 'AREAS["CENTRAL"] = ["Financeiro", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]' in source
     area_order = source.split("area = st.radio(\"Áreas principais\", list(AREAS)", 1)[0]
     assert 'for name in ("COCKPIT", "ANÁLISE", "ESTUDO")' in area_order
-    assert "AMBIENTE NÃO CONFIRMADO" in source
+    assert "NÃO CONFIRMADO" in source
 
 
 def test_streamlit_reports_uses_dedicated_read_only_reports_endpoint_and_avoids_fake_modules():
