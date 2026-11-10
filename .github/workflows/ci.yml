@@ -21,13 +21,21 @@ jobs:
           python-version: "3.12"
 
       - name: Install test dependencies
-        run: python -m pip install --upgrade pip pytest
+        run: |
+          python -m pip install --upgrade pip pytest
+          python -m pip install -r requirements.txt
+          python -m pip install -r streamlit_panel/requirements.txt
 
       - name: Run P1.9 robustness tests
-        run: python -m pytest -q core/test_strategy_robustness.py
+        run: python -m pytest --import-mode=importlib -q core/test_strategy_robustness.py
 
       - name: Run full test suite
-        run: python -m pytest -q
+        env:
+          # Tests use loopback WSGI requests; opt in only inside this isolated CI step.
+          CONTROLADOR_REMOTE_ACCESS_REQUIRED: "false"
+          CONTROLADOR_LOCAL_MUTATIONS_ALLOWED: "true"
+          CONTROLADOR_LOCAL_MUTATION_HOSTS: "localhost,127.0.0.1,[::1]"
+        run: python -m pytest --import-mode=importlib -q
 
       - name: Dependency security audit
         run: |
@@ -35,7 +43,46 @@ jobs:
           python -m pip_audit -r requirements.txt
 
       - name: Compile all Python project surfaces
-        run: python -m compileall -q app.py core data execution audit analysis integration security_guard.py security_audit.py web
+        run: python -m compileall -q app.py assistant finance core data execution audit analysis integration security_guard.py security_audit.py web streamlit_panel
+
+      - name: Start Streamlit panel and verify HTTP health
+        env:
+          CONTROLADOR_SINGLE_USER_IDENTITY: streamlit-ci-owner
+          CONTROLADOR_REMOTE_ACCESS_REQUIRED: "false"
+          CONTROLADOR_API_BASE_URL: http://127.0.0.1:9
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m streamlit run streamlit_panel/app.py \
+            --server.address 127.0.0.1 \
+            --server.port 8501 \
+            --server.headless true \
+            --browser.gatherUsageStats false > /tmp/controlador-streamlit-ci.log 2>&1 &
+          streamlit_pid=$!
+          cleanup() {
+            kill "$streamlit_pid" 2>/dev/null || true
+            wait "$streamlit_pid" 2>/dev/null || true
+            cat /tmp/controlador-streamlit-ci.log
+          }
+          trap cleanup EXIT
+          ready=0
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8501/_stcore/health >/dev/null; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$streamlit_pid" 2>/dev/null; then
+              echo "Streamlit exited before becoming healthy."
+              exit 1
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "Streamlit panel did not become healthy within 60 seconds."
+            exit 1
+          fi
+          curl --fail --silent http://127.0.0.1:8501/ >/dev/null
+          echo "Streamlit panel started and served its browser entry point."
 
       - name: Build production container
         run: docker build --tag controlador-trade:ci .
@@ -50,7 +97,10 @@ jobs:
           }
           trap cleanup EXIT
 
-          docker run -d --name controlador-trade-ci -p 7860:7860 controlador-trade:ci
+          docker run -d --name controlador-trade-ci -p 7860:7860 \
+            -e CONTROLADOR_SINGLE_USER_IDENTITY=container-smoke-user \
+            -e CONTROLADOR_RUNTIME_DIR=/tmp/controlador-runtime-ci \
+            controlador-trade:ci
 
           for attempt in {1..60}; do
             health_status="$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}starting{{end}}' controlador-trade-ci 2>/dev/null || true)"
@@ -85,8 +135,10 @@ jobs:
             'start_controlador_runtime.ps1',
             'start_mt5_runtime.ps1',
             'validate_windows_runtime.ps1',
+            'validate_fiscal_assistant_runtime.ps1',
             'install_windows_autostart.ps1',
-            'bootstrap_windows_runtime.ps1'
+            'bootstrap_windows_runtime.ps1',
+            'start_streamlit_panel.ps1'
           )
           foreach ($relative in $paths) {
             $path = Join-Path $deployment $relative

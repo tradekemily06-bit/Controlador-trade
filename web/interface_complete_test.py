@@ -71,3 +71,18 @@ def test_interface_surfaces_critical_runtime_observability():
         "REAL só pode ser executado pelo fluxo controlado",
     ):
         assert marker in HTML
+
+
+def test_web_close_ui_uses_read_only_reconciliation_and_reports_true_state():
+    start = HTML.index("async function closeRuntimeCycle(")
+    end = HTML.index("async function runRuntimeCycle()", start)
+    close = HTML[start:end]
+    assert "/api/runtime/close" in close
+    assert "/api/runtime/close/reconcile" in close
+    assert "state==='CLOSED'" in close
+    assert "state==='OPEN'" in close
+    assert "Fechamento inconclusivo" in close
+    assert "ciclo foi preservada" in close
+    assert "fechamento manual explícito" in HTML
+    assert "x.timed_exit?.scheduled" in HTML
+    assert "best-effort; pode atrasar se MT5/runtime estiver indisponível" in HTML

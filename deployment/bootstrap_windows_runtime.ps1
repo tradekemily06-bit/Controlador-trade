@@ -59,6 +59,8 @@ Set-Location $ProjectRoot
 if ($LASTEXITCODE -ne 0) { throw 'Falha ao instalar requirements.txt.' }
 & $PythonExe -m pip install -r requirements-mt5.txt
 if ($LASTEXITCODE -ne 0) { throw 'Falha ao instalar requirements-mt5.txt.' }
+& $PythonExe -m pip install -r streamlit_panel/requirements.txt
+if ($LASTEXITCODE -ne 0) { throw 'Falha ao instalar streamlit_panel/requirements.txt.' }
 
 Write-Host 'Verificando import do MetaTrader5...'
 & $PythonExe -c 'import MetaTrader5; print(MetaTrader5.__version__)'

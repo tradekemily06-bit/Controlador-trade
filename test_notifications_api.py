@@ -18,6 +18,7 @@ def call_app(path, method="GET", payload=None, authorization=None):
         "QUERY_STRING": "",
         "CONTENT_TYPE": "application/json" if payload is not None else "",
         "CONTENT_LENGTH": str(len(body)),
+            "REMOTE_ADDR": "127.0.0.1",
         "wsgi.input": io.BytesIO(body),
     }
     if authorization is not None:
@@ -69,3 +70,20 @@ def test_notification_preferences_endpoint_cannot_be_used_as_execution_authority
     assert status == "200 OK"
     assert payload["preferences"]["notifications"]["important_enabled"] is False
     assert payload["preferences"]["notifications"]["security_enabled"] is False
+
+
+
+def test_all_notifications_endpoint_returns_persisted_history_shape():
+    status, payload = call_app("/api/notifications/all")
+    assert status == "200 OK"
+    assert isinstance(payload["items"], list)
+
+
+def test_critical_notification_preference_cannot_be_disabled():
+    status, payload = call_app(
+        "/api/preferences/notifications",
+        method="POST",
+        payload={"critical_enabled": False},
+    )
+    assert status == "400 Bad Request"
+    assert payload["error"] == "Entrada inválida"

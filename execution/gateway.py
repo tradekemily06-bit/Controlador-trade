@@ -70,6 +70,27 @@ class ExecutionGateway:
         entry_conditions: tuple[str, ...] = (),
         cycle_id: str | None = None,
     ) -> GatewayResult:
+        """Serialize final gate, durable reservation and broker dispatch with Kill Switch activation."""
+        with self._kill_switch.execution_lock():
+            return self._execute_locked(
+                request_id,
+                request,
+                snapshot=snapshot,
+                timestamp=timestamp,
+                entry_conditions=entry_conditions,
+                cycle_id=cycle_id,
+            )
+
+    def _execute_locked(
+        self,
+        request_id: str,
+        request: ExecutionRequest,
+        *,
+        snapshot: DecisionSnapshot | None = None,
+        timestamp: datetime | None = None,
+        entry_conditions: tuple[str, ...] = (),
+        cycle_id: str | None = None,
+    ) -> GatewayResult:
         validation_error = self._validate(request_id, request)
         if validation_error is not None:
             return GatewayResult(GatewayStatus.INVALID_REQUEST, validation_error)
@@ -133,7 +154,11 @@ class ExecutionGateway:
 
         if self._ledger is not None:
             try:
-                self._ledger.bind_external_id(request_id, result.external_id or "")
+                self._ledger.bind_external_id(
+                    request_id,
+                    result.external_id or "",
+                    account_fingerprint=result.account_fingerprint,
+                )
                 self._ledger.mark_accepted(request_id)
             except (OSError, ValueError) as exc:
                 # RESERVED remains durable, so a restart cannot replay the order.
