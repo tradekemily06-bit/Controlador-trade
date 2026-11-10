@@ -259,8 +259,10 @@ try {
     throw "Falha ao substituir a fonte MQL5; arquivos anteriores restaurados. $($_.Exception.Message)"
 }
 
-if (Test-Path -LiteralPath $log) { Remove-Item -LiteralPath $log -Force }
-$compileStartedAt = Get-Date
+$provenanceTemp = "$provenance.$stamp.tmp"
+try {
+    if (Test-Path -LiteralPath $log) { Remove-Item -LiteralPath $log -Force }
+    $compileStartedAt = Get-Date
 $explicitLog = $log
 $binaryHashBefore = if (Test-Path -LiteralPath $binary -PathType Leaf) { (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash } else { '' }
 
@@ -313,8 +315,7 @@ if ($binaryWriteTime -lt $compileStartedAt.AddSeconds(-2)) {
     throw "O EX5 não foi atualizado pela compilação (timestamp anterior à compilação): $binary"
 }
 
-$provenanceTemp = "$provenance.$stamp.tmp"
-$provenancePayload = @{
+    $provenancePayload = @{
     schema_version = 1
     source_sha256 = $sourceHash
     binary_sha256 = $binaryHashAfter
@@ -331,6 +332,16 @@ try {
     Restore-File -Backup $backupLog -Target $log
     Remove-Item -LiteralPath $provenanceTemp -Force -ErrorAction SilentlyContinue
     throw "Não foi possível registrar a proveniência da compilação; arquivos anteriores restaurados. $($_.Exception.Message)"
+}
+
+
+} catch {
+    Restore-File -Backup $backupSource -Target $destination
+    Restore-File -Backup $backupBinary -Target $binary
+    Restore-File -Backup $backupProvenance -Target $provenance
+    Restore-File -Backup $backupLog -Target $log
+    Remove-Item -LiteralPath $provenanceTemp -Force -ErrorAction SilentlyContinue
+    throw "Falha inesperada na sincronização/compilação; artefatos anteriores restaurados. $($_.Exception.Message)"
 }
 
 if ($metaEditorExitCode -ne 0) {
