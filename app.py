@@ -368,16 +368,23 @@ def application(environ, start_response):
                 environ,
             )
 
-    # Native EA read-only calls have an exact loopback/Host allowlist. They
-    # never inherit the remote identity header and cannot be reached through
-    # the public Tunnel/proxy.
-    if method == "GET" and path in local_ea_get_paths:
-        authorized, reason = _authorize_local_runtime(environ)
+    # In remote mode, native EA reads without a proxy identity must pass
+    # the loopback/Host gate. Requests carrying the trusted proxy identity
+    # continue through the normal remote identity check, preserving Streamlit
+    # server-side reads for shared endpoints such as /api/health/preferences.
+    if remote_access_required and method == "GET" and path in local_ea_get_paths:
+        identity_header = os.environ.get("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "").strip()
+        identity_key = "HTTP_" + identity_header.upper().replace("-", "_") if identity_header else ""
+        has_proxy_identity = bool(identity_key and str(environ.get(identity_key) or "").strip())
+        if has_proxy_identity:
+            authorized, reason = _authorize_remote_mutation(environ)
+        else:
+            authorized, reason = _authorize_local_runtime(environ)
         if not authorized:
             return _json_response(
                 start_response,
-                HTTPStatus.FORBIDDEN,
-                {"error": "Acesso local do terminal não autorizado."},
+                _remote_identity_http_status(reason) if has_proxy_identity else HTTPStatus.FORBIDDEN,
+                {"error": "Identidade autenticada necessária." if has_proxy_identity else "Acesso local do terminal não autorizado."},
                 request_id,
                 environ,
             )
