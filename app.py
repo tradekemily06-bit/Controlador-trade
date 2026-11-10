@@ -345,7 +345,7 @@ def application(environ, start_response):
             return _json_response(
                 start_response,
                 _remote_identity_http_status(reason),
-                {"error": "Identidade autenticada necessária para consultar este recurso.", "request_id": request_id},
+                {"error": "Identidade autenticada necessária.", "request_id": request_id},
                 request_id,
                 environ,
             )
