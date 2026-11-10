@@ -805,6 +805,7 @@ def show_fiscal() -> None:
     except Exception as exc:
         summary = {}
         st.error("Resumo fiscal indisponível. Os lançamentos e alterações de percentual ficam bloqueados. Verifique a disponibilidade do serviço e os registros técnicos locais.")
+        st.caption("Detalhes técnicos não são exibidos no painel.")
     st.subheader("Reserva Fiscal")
     st.caption("Planejamento e separação estimada. Operações MT5 cuja elegibilidade fiscal não foi verificada ficam em fila brasileira separada, sem cálculo e fora dos totais. Registros estrangeiros não classificados também ficam fora dos totais; nenhuma alíquota genérica é aplicada.")
     if not summary_available:
@@ -1130,8 +1131,8 @@ def show_fiscal() -> None:
                             "Evidência": item.get("evidence_reference"),
                             "Observações": item.get("review_notes", ""),
                             "Data": item.get("reviewed_on"),
-                            "Identidade verificada": "Não" if item.get("reviewer_identity_status") == "DECLARED_NOT_VERIFIED" else "Estado inválido",
-                            "Registro profissional verificado": "Não" if item.get("professional_registration_verified") is False else "Estado inválido",
+                            "Identidade verificada": "NÃO VERIFICADA" if item.get("reviewer_identity_status") == "DECLARED_NOT_VERIFIED" else "Estado inválido",
+                            "Registro profissional verificado": "NÃO VERIFICADO" if item.get("professional_registration_verified") is False else "Estado inválido",
                         } for item in review_data["reviews"]], use_container_width=True, hide_index=True)
                     else:
                         st.caption("Nenhuma evidência de revisão registrada para esta pendência.")
@@ -1361,8 +1362,8 @@ def show_fiscal() -> None:
                             "Evidência": item.get("evidence_reference"),
                             "Observações": item.get("review_notes", ""),
                             "Data": item.get("reviewed_on"),
-                            "Identidade verificada": "Não" if item.get("reviewer_identity_status") == "DECLARED_NOT_VERIFIED" else "Estado inválido",
-                            "Registro profissional verificado": "Não" if item.get("professional_registration_verified") is False else "Estado inválido",
+                            "Identidade verificada": "NÃO VERIFICADA" if item.get("reviewer_identity_status") == "DECLARED_NOT_VERIFIED" else "Estado inválido",
+                            "Registro profissional verificado": "NÃO VERIFICADO" if item.get("professional_registration_verified") is False else "Estado inválido",
                         } for item in foreign_review_data["reviews"]], use_container_width=True, hide_index=True)
                     else:
                         st.caption("Nenhuma evidência de revisão registrada para esta pendência.")
