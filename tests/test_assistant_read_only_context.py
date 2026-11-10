@@ -641,12 +641,17 @@ def test_real_pending_queues_reach_assistant_without_entering_fiscal_reserve(tmp
             assert requested_owner_id == owner_id
             return reserve.summary(requested_owner_id, as_of=today)
 
+    class FixedDateDomesticQueue:
+        def summary(self, requested_owner_id):
+            assert requested_owner_id == owner_id
+            return domestic_queue.summary(requested_owner_id, as_of=today)
+
     context = collect_read_only_context(
         FakeService(),
         FixedDateFiscalReserve(),
         owner_id,
         fiscal_pending_queue=foreign_queue,
-        fiscal_domestic_pending_queue=domestic_queue,
+        fiscal_domestic_pending_queue=FixedDateDomesticQueue(),
     )
 
     fiscal = context["fiscal_reserve"]
