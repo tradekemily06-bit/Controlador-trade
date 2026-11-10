@@ -330,14 +330,28 @@ def application(environ, start_response):
     if not is_local_health_probe and not SECURITY.allow(environ):
         return _json_response(start_response, HTTPStatus.TOO_MANY_REQUESTS, {"error": "Limite de requisições excedido", "request_id": request_id}, request_id, environ)
 
-    # Native EA close endpoints have their own stricter loopback/Host gate below.
-    # Exempt only these exact paths from the remote identity gate so a same-machine
-    # terminal can use them when remote Access is mandatory; all other POST routes
-    # continue through _authorize_remote_mutation.
+    # Native EA aliases have a dedicated loopback/Host gate. Keep the
+    # exception allowlist exact: no generic local POST bypass is permitted.
+    local_ea_route_aliases = {
+        "/api/runtime/analysis/local": "/api/runtime/analysis",
+        "/api/runtime/cycle/local": "/api/runtime/cycle",
+        "/api/preferences/local": "/api/preferences",
+    }
     local_ea_post_paths = {
         "/api/runtime/close/local/reconcile",
         "/api/runtime/close/local",
+        *local_ea_route_aliases.keys(),
     }
+    if method == "POST" and path in local_ea_route_aliases:
+        authorized, reason = _authorize_local_runtime(environ)
+        if not authorized:
+            return _json_response(
+                start_response,
+                HTTPStatus.FORBIDDEN,
+                {"error": reason, "execution_allowed": False},
+                request_id,
+                environ,
+            )
     if method == "POST" and path != "/api/updates" and path not in local_ea_post_paths:
         raw_length = environ.get("CONTENT_LENGTH")
         try:
@@ -358,6 +372,11 @@ def application(environ, start_response):
                     request_id,
                     environ,
                 )
+
+    # Route aliases are normalized only after their dedicated local gate passed.
+    # The canonical handlers remain the single source of business logic.
+    if method == "POST" and path in local_ea_route_aliases:
+        path = local_ea_route_aliases[path]
 
     try:
         if path == "/api/health/live" and method == "GET":

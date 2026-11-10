@@ -539,5 +539,80 @@ class AppSecurityTests(unittest.TestCase):
                 else:
                     os.environ[name] = value
 
+    def test_native_ea_local_runtime_aliases_are_gated_and_canonical_routes_stay_remote(self):
+        names = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED",
+            "CONTROLADOR_LOCAL_MUTATIONS_ALLOWED",
+            "CONTROLADOR_LOCAL_MUTATION_HOSTS",
+            "CONTROLADOR_TRUSTED_IDENTITY_HEADER",
+        }
+        old = {name: os.environ.get(name) for name in names}
+        try:
+            os.environ["CONTROLADOR_REMOTE_ACCESS_REQUIRED"] = "true"
+            os.environ["CONTROLADOR_LOCAL_MUTATIONS_ALLOWED"] = "true"
+            os.environ["CONTROLADOR_LOCAL_MUTATION_HOSTS"] = "localhost,127.0.0.1,[::1]"
+            os.environ["CONTROLADOR_TRUSTED_IDENTITY_HEADER"] = "Cf-Access-Authenticated-User-Email"
+
+            routes = [
+                ("/api/runtime/analysis/local", {"confirmed": "not-a-boolean"}),
+                ("/api/runtime/cycle/local", {}),
+                ("/api/preferences/local", {}),
+            ]
+            for path, payload in routes:
+                status, _, _ = self.request(
+                    path,
+                    method="POST",
+                    payload=payload,
+                    remote="127.0.0.1",
+                    headers={"HTTP_HOST": "127.0.0.1:8000"},
+                )
+                self.assertNotIn(status, {"401 Unauthorized", "403 Forbidden"}, path)
+
+                remote_denied, _, _ = self.request(
+                    path,
+                    method="POST",
+                    payload=payload,
+                    remote="203.0.113.10",
+                    headers={"HTTP_HOST": "127.0.0.1:8000"},
+                )
+                self.assertEqual(remote_denied, "403 Forbidden", path)
+
+                host_denied, _, _ = self.request(
+                    path,
+                    method="POST",
+                    payload=payload,
+                    remote="127.0.0.1",
+                    headers={"HTTP_HOST": "controlador.example.com"},
+                )
+                self.assertEqual(host_denied, "403 Forbidden", path)
+
+                proxied_denied, _, _ = self.request(
+                    path,
+                    method="POST",
+                    payload=payload,
+                    remote="127.0.0.1",
+                    headers={
+                        "HTTP_HOST": "127.0.0.1:8000",
+                        "HTTP_CF_ACCESS_AUTHENTICATED_USER_EMAIL": "owner@example.com",
+                    },
+                )
+                self.assertEqual(proxied_denied, "403 Forbidden", path)
+
+            canonical_status, _, _ = self.request(
+                "/api/runtime/analysis",
+                method="POST",
+                payload={"confirmed": "not-a-boolean"},
+                remote="127.0.0.1",
+                headers={"HTTP_HOST": "127.0.0.1:8000"},
+            )
+            self.assertEqual(canonical_status, "401 Unauthorized")
+        finally:
+            for name, value in old.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
+
 if __name__ == "__main__":
     unittest.main()
