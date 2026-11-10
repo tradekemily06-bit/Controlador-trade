@@ -3079,9 +3079,9 @@ AREAS = {
 }
 AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]
 AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]
-AREAS["MAIS / ADMIN"] = list(_REFERENCE_TABS["MAIS / ADMIN"])
-if "Kill Switch" not in AREAS["MAIS / ADMIN"]:
-    AREAS["MAIS / ADMIN"].append("Kill Switch")
+AREAS["CENTRAL"] = list(_REFERENCE_TABS["MAIS / ADMIN"])
+if "Kill Switch" not in AREAS["CENTRAL"]:
+    AREAS["CENTRAL"].append("Kill Switch")
 if "panel_open" not in st.session_state:
     st.session_state.panel_open = True
 
