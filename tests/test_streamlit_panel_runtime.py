@@ -124,3 +124,4 @@ def test_all_streamlit_module_destinations_render_without_uncaught_exceptions(mo
             module = next(item for item in app.radio if item.label == "Módulos")
             module.set_value(module_name).run(timeout=30)
             assert not app.exception, f"module failed to render: {area_name} / {module_name}"
+            assert not any("ainda não possui integração operacional" in item.value.lower() for item in app.info), f"placeholder module: {area_name} / {module_name}"
