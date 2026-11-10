@@ -633,7 +633,7 @@ def test_real_pending_queues_reach_assistant_without_entering_fiscal_reserve(tmp
         "market_scope": "B3",
         "occurred_on": today.isoformat(),
         "realized_result_brl": 700.0,
-        "category_candidate": "BR_FII",
+        "category_candidate": "BR_FII_FIAGRO",
     })
 
     class FixedDateFiscalReserve:
