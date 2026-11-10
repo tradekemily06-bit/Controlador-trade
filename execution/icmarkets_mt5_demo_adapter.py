@@ -588,18 +588,7 @@ class ICMarketsMT5DemoAdapter:
             deals = deal_fn(ticket=ticket) if callable(deal_fn) else ()
             order_fn = getattr(mt5, "history_orders_get", None)
             orders = order_fn(ticket=ticket) if callable(order_fn) else ()
-            if deals and orders:
-                return ExternalOrderObservation(
-                    external_id,
-                    ExternalOrderStatus.UNKNOWN,
-                    "ticket coincide com histórico de ordem e negócio; identidade externa ambígua",
-                )
-            if deals:
-                return ExternalOrderObservation(
-                    external_id,
-                    ExternalOrderStatus.EXECUTED,
-                    "deal externo encontrado no histórico MT5",
-                )
+
             if orders:
                 order = tuple(orders)[-1]
                 state = getattr(order, "state", None)
@@ -627,7 +616,8 @@ class ICMarketsMT5DemoAdapter:
                     initial = getattr(order, "volume_initial", None)
                     remaining = getattr(order, "volume_current", None)
                     if (
-                        isinstance(initial, (int, float))
+                        not deals
+                        and isinstance(initial, (int, float))
                         and not isinstance(initial, bool)
                         and isinstance(remaining, (int, float))
                         and not isinstance(remaining, bool)
@@ -645,7 +635,7 @@ class ICMarketsMT5DemoAdapter:
                     return ExternalOrderObservation(
                         external_id,
                         ExternalOrderStatus.UNKNOWN,
-                        "ordem externa cancelada/rejeitada com volume executado ou metadados insuficientes",
+                        "ordem externa cancelada/rejeitada com negócio associado ou metadados insuficientes",
                     )
 
                 pending_states = {
@@ -656,6 +646,12 @@ class ICMarketsMT5DemoAdapter:
                     getattr(mt5, "ORDER_STATE_REQUEST_CANCEL", object()),
                 }
                 if state in pending_states:
+                    if deals:
+                        return ExternalOrderObservation(
+                            external_id,
+                            ExternalOrderStatus.UNKNOWN,
+                            "ordem ainda em andamento, mas já há negócio associado; reconciliação bloqueada",
+                        )
                     return ExternalOrderObservation(
                         external_id,
                         ExternalOrderStatus.PENDING,
@@ -665,6 +661,13 @@ class ICMarketsMT5DemoAdapter:
                     external_id,
                     ExternalOrderStatus.UNKNOWN,
                     f"estado externo MT5 não reconhecido; state={state}",
+                )
+
+            if deals:
+                return ExternalOrderObservation(
+                    external_id,
+                    ExternalOrderStatus.EXECUTED,
+                    "negócio associado à ordem encontrado no histórico MT5",
                 )
             return ExternalOrderObservation(external_id, ExternalOrderStatus.UNKNOWN, "ticket externo não encontrado no histórico MT5")
         finally:
