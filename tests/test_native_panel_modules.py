@@ -87,6 +87,11 @@ def test_native_mt5_environment_and_statistics_are_not_misrepresented_as_other_m
     lab = source.split('}else if(active_view=="LAB"){', 1)[1].split('}else if(active_view=="ENSINO"){', 1)[0]
 
     assert 'if(module=="Ambiente MT5 DEMO / Simulação") return "LAB";' not in routing
+    assert 'if(module=="Ambiente MT5 DEMO / Simulação") return "ENVIRONMENT";' in routing
+    assert 'Http("GET","/api/health","",health,health_code)' in source
+    assert 'Http("GET","/api/connections","",connections,connections_code)' in source
+    assert 'active_view=="ENVIRONMENT"' in source
+    assert 'else if(active_view=="ENVIRONMENT") RefreshEnvironmentView();' in source
     assert 'if(module=="Memória" || module=="Estatísticas") return "MEMORIA";' not in routing
     assert 'if(module=="Memória") return "MEMORIA";' in routing
     assert "Replay: indisponivel nesta interface" in lab
@@ -199,7 +204,7 @@ def test_native_read_only_views_are_not_overwritten_by_cockpit_timer_refresh():
     timer = source.split("void OnTimer()", 1)[1].split("void OnChartEvent", 1)[0]
     render = source.split("void RenderView(){", 1)[1].split("void RefreshHealth()", 1)[0]
 
-    for view in ("MEMORIA", "RISK", "STATS", "CONNECTIONS", "SECURITY"):
+    for view in ("MEMORIA", "RISK", "STATS", "CONNECTIONS", "ENVIRONMENT", "SECURITY"):
         assert f'active_view=="{view}"' in health
     assert 'if(active_view=="COCKPIT" && bid>0)' in timer
     for view in ("RISK", "STATS", "CONNECTIONS"):
