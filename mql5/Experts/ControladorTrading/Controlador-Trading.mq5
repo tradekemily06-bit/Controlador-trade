@@ -904,8 +904,8 @@ void RefreshSecurityView(){
    }
    string storage=JsonObjectValue(r,"production_storage","state");
    string gate=JsonObjectValue(r,"production_operation_gate","storage_state");
-   string identity=JsonObjectValue(r,"identity","trusted_identity_provider");
-   string tenant=JsonObjectValue(r,"identity","tenant_isolation");
+   string identity=JsonValue(r,"trusted_identity_provider");
+   string tenant=JsonValue(r,"tenant_isolation");
    string real=JsonValue(r,"real");
    SetLabel(Obj("INFO1"),"Armazenamento: "+(storage==""?"nao confirmado":storage),20,361,8,C'205,215,230');
    SetLabel(Obj("INFO2"),"Gate operacional: "+(gate==""?"nao confirmado":gate),20,381,8,C'205,215,230');
