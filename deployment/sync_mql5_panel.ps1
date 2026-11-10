@@ -267,6 +267,11 @@ $backupSource = "$destination.$stamp.bak"
 $backupBinary = [System.IO.Path]::ChangeExtension($destination, '.ex5') + ".$stamp.bak"
 $backupProvenance = "$provenance.$stamp.bak"
 $backupLog = "$log.$stamp.bak"
+$backupTargets = @($backupSource, $backupBinary, $backupProvenance, $backupLog)
+$backupCollision = @($backupTargets | Where-Object { Test-Path -LiteralPath $_ })
+if ($backupCollision.Count -gt 0) {
+    throw "Backup com nome já existente; nenhum artefato do EA foi alterado. Escolha uma nova execução após inspecionar: $($backupCollision -join '; ')"
+}
 try {
     if (Test-Path -LiteralPath $destination) { Copy-WithRetry -Source $destination -Destination $backupSource }
     if (Test-Path -LiteralPath $binary) { Copy-WithRetry -Source $binary -Destination $backupBinary }
