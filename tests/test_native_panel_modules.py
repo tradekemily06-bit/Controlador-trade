@@ -205,3 +205,35 @@ def test_native_statistics_view_exposes_outcomes_and_daily_weekly_monthly_totals
     assert '"Hoje: "+(daily_total' in stats
     assert '"Semana: "+(weekly_total' in stats
     assert '"Mes: "+(monthly_total' in stats
+
+def test_native_memory_view_reads_real_decision_records_and_paginates_them():
+    source = EA.read_text(encoding="utf-8")
+    memory = source.split("void RefreshMemory()", 1)[1].split("void RefreshStatistics()", 1)[0]
+    renderer = source.split("void RenderMemoryPage()", 1)[1].split("void RefreshMemory()", 1)[0]
+    view = source.split('active_view=="MEMORIA"', 1)[1].split('}else if', 1)[0]
+    events = source.split("void OnChartEvent", 1)[1]
+
+    assert 'Http("GET","/api/memory?limit=50","",r,code)' in memory
+    assert 'ExtractJsonArrayObjects(r,"records",objects)' in memory
+    for field in ("decision_id", "created_at", "symbol", "timeframe", "signal", "score", "outcome", "confirmed"):
+        assert f'JsonValue(objects[i],"{field}")' in memory
+    assert 'int page_size=5;' in renderer
+    assert 'Obj("MEMORY_PREV")' in renderer
+    assert 'Obj("MEMORY_NEXT")' in renderer
+    assert 'Obj("MEMORY_PAGE")' in renderer
+    assert 'else if(active_view=="MEMORIA") RefreshMemory();' in events
+    assert 'if(active_view=="MEMORIA" && memory_page>0)' in events
+    assert 'if(active_view=="MEMORIA" && (memory_page+1)*5<ArraySize(memory_records))' in events
+    assert "RefreshSecondary();" not in view
+    assert "auditoria" not in view.lower()
+
+
+def test_native_memory_does_not_report_empty_or_malformed_api_response_as_success():
+    source = EA.read_text(encoding="utf-8")
+    memory = source.split("void RefreshMemory()", 1)[1].split("void RefreshStatistics()", 1)[0]
+
+    assert 'if(!Http("GET","/api/memory?limit=50","",r,code))' in memory
+    assert 'if(!ExtractJsonArrayObjects(r,"records",objects))' in memory
+    assert 'if(id=="" || signal=="")' in memory
+    assert 'memory_loaded=false;' in memory
+    assert "Nenhum registro de decisao encontrado." in memory
