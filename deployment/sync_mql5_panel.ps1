@@ -194,6 +194,10 @@ function Resolve-Mt5DataPath([string]$RequestedPath, [string]$TerminalPath) {
     if ($matchingProcesses.Count -gt 1) {
         throw 'Várias instâncias do MT5 estão ativas e nenhuma pasta de dados contém o painel; configure CONTROLADOR_MT5_DATA_PATH para evitar um destino ambíguo.'
     }
+    if ($WhatIfPreference) {
+        throw 'Simulação -WhatIf não inicializa o terminal MT5. Informe -Mt5DataPath ou CONTROLADOR_MT5_DATA_PATH, ou mantenha uma única pasta de dados existente que contenha o EA.'
+    }
+
     $paths = Get-Mt5Paths -TerminalPath $TerminalPath
     if (-not $paths -or [string]::IsNullOrWhiteSpace($paths.data_path)) {
         throw 'Não foi possível resolver a pasta de dados MT5 com segurança.'
