@@ -1648,7 +1648,7 @@ def test_kill_switch_activation_api_is_confirmed_persisted_and_never_auto_resume
     assert '"unknown_request_ids"' in route
     assert 'não são canceladas' in route
     assert 'deactivate' not in route
-    assert 'if method == "POST" and path != "/api/updates" and path not in local_ea_post_paths:' in runtime_source
+    assert 'if method == "POST" and path != "/api/updates" and path not in local_ea_post_paths and not path.startswith("/api/assistant/"):' in runtime_source
     assert '"/api/runtime/analysis/local": "/api/runtime/analysis"' in runtime_source
     assert "_authorize_local_runtime(environ)" in runtime_source
     assert '_authorize_remote_mutation(environ)' in runtime_source
