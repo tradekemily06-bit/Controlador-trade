@@ -8,6 +8,8 @@ from data.models import Candle
 
 
 def call_app(path, method="GET", payload=None):
+    import app as app_module
+    app_module.SECURITY._buckets.clear()
     body = json.dumps(payload).encode() if payload is not None else b""
     captured = {}
 
