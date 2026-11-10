@@ -104,7 +104,7 @@ def test_mql5_panel_uses_approved_compact_c_signal_without_watermark():
     assert '"ECOSSISTEMA • MT5 • DEMO / SIMULACAO"' in panel
     assert "RUNTIME REAL" not in panel
     assert "InpPanelWidth = 360" in panel
-    assert "InpPanelHeight = 440" in panel
+    assert "InpPanelHeight = 500" in panel
     assert "bool panel_visible=false" in panel
     assert 'SetCompactLabel(Obj("PANEL_TOGGLE_BG"),"●"' in panel
     assert 'SetCompactLabel(Obj("PANEL_TOGGLE"),"C"' in panel
