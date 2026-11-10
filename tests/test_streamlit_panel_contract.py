@@ -456,7 +456,15 @@ def test_streamlit_uses_exactly_six_main_areas_in_the_approved_order():
     assert 'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]' in source
     assert 'AREAS["CENTRAL"] = ["Financeiro", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]' in source
     assert "list(AREAS)" in source
-    assert 'for name in ("COCKPIT", "ANÁLISE", "ESTUDO")' in source
+    ordered_area_markers = [
+        'for name in ("COCKPIT", "ANÁLISE", "ESTUDO")',
+        'AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]',
+        'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]',
+        'AREAS["CENTRAL"] = ["Financeiro", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]',
+    ]
+    positions = [source.index(marker) for marker in ordered_area_markers]
+    assert positions == sorted(positions)
+    assert 'AREAS["FINANCEIRO"]' not in source
     assert 'if module_name == "Financeiro":' in source
     assert "show_finance_overview()" in source
     assert 'if module == "Reserva Fiscal":' in source
