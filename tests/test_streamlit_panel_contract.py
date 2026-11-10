@@ -1881,7 +1881,9 @@ def test_streamlit_assistant_surfaces_only_sanitized_actionable_api_errors():
     end = source.index('\n\n\ndef _is_finite_number', start)
     submit_block = source[start:end]
     assert 'except RuntimeError as exc:' in submit_block
-    assert 'st.error("Falha no Assistente: " + str(exc))' in submit_block
+    assert 'st.session_state["assistant_submission_error"] = "Falha no Assistente: " + str(exc)' in submit_block
+    assert 'st.session_state["assistant_submission_warning"]' in submit_block
+    assert 'st.rerun()' in submit_block
     assert 'except Exception:' in submit_block
     assert "Detalhes técnicos não são exibidos no painel." in submit_block
 
