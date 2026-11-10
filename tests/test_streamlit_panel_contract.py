@@ -454,7 +454,8 @@ def test_financeiro_overview_remains_available_with_dedicated_fiscal_and_assista
     assert config["open_state"]["tabs"]["MAIS / ADMIN"][0] == "Financeiro"
     assert 'AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]' in source
     assert 'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]' in source
-    assert 'AREAS["CENTRAL"] = list(_REFERENCE_TABS["MAIS / ADMIN"])' in source
+    assert 'AREAS["FINANCEIRO"] = ["Financeiro"]
+    assert 'AREAS["CENTRAL"] = [module for module in _REFERENCE_TABS["MAIS / ADMIN"] if module != "Financeiro"]' in source' in source
     assert 'if module_name == "Financeiro":' in source
     assert "show_finance_overview()" in source
     assert 'if module == "Reserva Fiscal":' in source
@@ -467,7 +468,7 @@ def test_streamlit_readme_identifies_the_streamlit_panel_as_user_facing_and_figm
     readme = (PANEL_DIR / "README.md").read_text(encoding="utf-8")
     assert "O Figma é somente referência visual" in readme
     assert "painel de uso pretendido" in readme
-    assert "**Financeiro** continua disponível em **CENTRAL**" in readme
+    assert "**Financeiro** possui uma área principal própria" in readme
     assert "**Reserva Fiscal** possui uma área principal própria" in readme
     assert "**Assistente do Ecossistema** possui uma área principal própria" in readme
 
