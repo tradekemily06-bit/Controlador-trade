@@ -91,6 +91,8 @@ def test_native_mt5_environment_and_statistics_are_not_misrepresented_as_other_m
     assert 'if(module=="Memória") return "MEMORIA";' in routing
     assert "Replay: indisponivel nesta interface" in lab
     assert "Replay: disponivel no laboratorio" not in lab
+    assert "DEMO nao confirmado" in lab
+    assert "Ambiente: DEMO / SIMULACAO" not in lab
 
 
 def test_native_mt5_operational_actions_are_not_reused_by_non_operational_modules():
