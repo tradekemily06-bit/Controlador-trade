@@ -396,3 +396,10 @@ def test_runtime_backup_uses_collision_resistant_archive_names():
     script = _read("deployment/backup_runtime.ps1")
     assert "yyyyMMdd-HHmmss-fff" in script
     assert "[guid]::NewGuid().ToString('N')" in script
+
+
+
+def test_windows_ci_parses_runtime_backup_and_restore_scripts():
+    workflow = _read(".github/workflows/ci.yml")
+    assert "'backup_runtime.ps1'" in workflow
+    assert "'restore_runtime.ps1'" in workflow
