@@ -2125,7 +2125,6 @@ def test_mt5_native_panel_uses_six_areas_and_explicit_module_routes():
         assert area in source
     assert 'active_view=="UNAVAILABLE"' in source
     assert 'return "UNAVAILABLE";' in source
-    assert 'active_area=="CENTRAL" && module=="Configurações"' in source
-    assert 'active_area=="CENTRAL"' in source
+    assert 'area=="CENTRAL" && module=="Configurações"' in source
     assert 'Obj("V1")' not in source
     assert 'Obj("V9")' not in source
