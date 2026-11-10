@@ -124,7 +124,7 @@ O origin da API continua em `http://127.0.0.1:8000` e o origin web do Streamlit 
 - A validação física DEMO deve ser repetida no Windows remoto antes de liberar o uso diário.
 
 ## Critério de pronto
-- /api/health responder pelo hostname HTTPS.
+- `/_stcore/health` responder pelo hostname HTTPS (health do Streamlit); `/api/health` deve ser verificado localmente no host em `http://127.0.0.1:8000/api/health`, pois a API 8000 não é publicada no Tunnel.
 - /api/status e `/api/runtime/real/status` devem refletir o estado real do runtime; ausência de pré-requisitos mantém REAL bloqueado.
 - login/identidade do Access validado.
 - tarefa Windows do Streamlit ativa e `http://127.0.0.1:8501/_stcore/health` saudável no host

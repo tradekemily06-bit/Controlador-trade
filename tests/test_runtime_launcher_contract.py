@@ -385,3 +385,30 @@ def test_remote_runtime_docs_distinguish_windows_supervisors_from_cloudflare_tun
     assert "não instala nem registra o serviço Windows `cloudflared`" in text
     assert "porta 8000" in text
     assert "AtStartupS4U" in text
+
+
+
+def test_mql5_sync_requires_explicit_confirmation_and_supports_whatif():
+    text = _read("deployment/sync_mql5_panel.ps1")
+    assert "[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]" in text
+    assert "$PSCmdlet.ShouldProcess($destination, $actionDescription)" in text
+    assert "Substituir o fonte .mq5 e o binário .ex5" in text
+    assert "$backupLog = \"$log.$stamp.bak\"" in text
+    assert "Copy-WithRetry -Source $log -Destination $backupLog" in text
+    assert "Restore-File -Backup $backupLog -Target $log" in text
+    assert text.count("Restore-File -Backup $backupLog -Target $log") >= 7
+    assert '$provenanceTemp = "$provenance.$stamp.tmp"' in text
+    assert 'Falha inesperada na sincronização/compilação; artefatos anteriores restaurados.' in text
+    assert text.index('try {\n    if (Test-Path -LiteralPath $log)') < text.index('& $MetaEditorPath "/compile:$destination"')
+    assert "Remove-Item -LiteralPath $backupLog -Force -ErrorAction SilentlyContinue" in text
+    assert "$script:RestoreFailures = [System.Collections.Generic.List[string]]::new()" in text
+    assert "function Assert-RestoreComplete" in text
+    assert "ROLLBACK_INCOMPLETO" in text
+    assert "Write-Error \"Falha ao restaurar" in text
+    assert "Get-FileHash -LiteralPath $Backup -Algorithm SHA256" in text
+    assert "Get-FileHash -LiteralPath $Target -Algorithm SHA256" in text
+    assert text.count("$script:RestoreFailures.Clear()") >= 7
+    assert text.count("Assert-RestoreComplete") >= 8
+    assert text.index("$PSCmdlet.ShouldProcess") < text.index("New-Item -ItemType Directory -Force -Path $destinationDir")
+    assert text.index("$PSCmdlet.ShouldProcess") < text.index("Copy-WithRetry -Source $source -Destination $destination")
+    assert text.index("$PSCmdlet.ShouldProcess") < text.index('& $MetaEditorPath "/compile:$destination"')

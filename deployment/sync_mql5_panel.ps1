@@ -1,3 +1,4 @@
+[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
 param(
     [string]$ProjectRoot = (Split-Path -Parent $PSScriptRoot),
     [string]$PythonExe = 'python',
@@ -21,11 +22,38 @@ function Copy-WithRetry([string]$Source, [string]$Destination, [int]$Attempts = 
     }
 }
 
+$script:RestoreFailures = [System.Collections.Generic.List[string]]::new()
+
 function Restore-File([string]$Backup, [string]$Target) {
-    if (Test-Path -LiteralPath $Backup -PathType Leaf) {
-        Copy-WithRetry -Source $Backup -Destination $Target
-    } elseif (Test-Path -LiteralPath $Target -PathType Leaf) {
-        Remove-Item -LiteralPath $Target -Force -ErrorAction SilentlyContinue
+    try {
+        if (Test-Path -LiteralPath $Backup -PathType Leaf) {
+            Copy-WithRetry -Source $Backup -Destination $Target
+            if (-not (Test-Path -LiteralPath $Target -PathType Leaf)) {
+                throw 'O arquivo restaurado não existe no destino.'
+            }
+            $backupHash = (Get-FileHash -LiteralPath $Backup -Algorithm SHA256).Hash
+            $targetHash = (Get-FileHash -LiteralPath $Target -Algorithm SHA256).Hash
+            if ($backupHash -ne $targetHash) {
+                throw 'O hash do arquivo restaurado diverge do backup.'
+            }
+        } elseif (Test-Path -LiteralPath $Target -PathType Leaf) {
+            Remove-Item -LiteralPath $Target -Force -ErrorAction Stop
+            if (Test-Path -LiteralPath $Target -PathType Leaf) {
+                throw 'O arquivo novo não foi removido durante a restauração.'
+            }
+        }
+        return $true
+    } catch {
+        [void]$script:RestoreFailures.Add("$Target :: $($_.Exception.Message)")
+        Write-Error "Falha ao restaurar '$Target': $($_.Exception.Message)" -ErrorAction Continue
+        return $false
+    }
+}
+
+function Assert-RestoreComplete {
+    if ($script:RestoreFailures.Count -gt 0) {
+        $details = $script:RestoreFailures -join ' | '
+        throw "ROLLBACK_INCOMPLETO: um ou mais artefatos não puderam ser restaurados. $details"
     }
 }
 
@@ -182,7 +210,6 @@ $dataPath = Resolve-Mt5DataPath -RequestedPath $Mt5DataPath -TerminalPath $Mt5Te
 $terminalInstallPath = Split-Path -Parent $Mt5TerminalPath
 $destinationDir = Join-Path $dataPath 'MQL5\Experts\ControladorTrading'
 $destination = Join-Path $destinationDir 'Controlador-Trading.mq5'
-New-Item -ItemType Directory -Force -Path $destinationDir | Out-Null
 
 if ([string]::IsNullOrWhiteSpace($MetaEditorPath)) {
     $candidate = Join-Path $terminalInstallPath 'metaeditor64.exe'
@@ -201,6 +228,7 @@ $sourceHash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
 $destinationHash = if (Test-Path -LiteralPath $destination -PathType Leaf) { (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash } else { '' }
 $binary = [System.IO.Path]::ChangeExtension($destination, '.ex5')
 $provenance = "$binary.provenance.json"
+$log = [System.IO.Path]::ChangeExtension($destination, '.log')
 $sourceWriteTime = (Get-Item -LiteralPath $source).LastWriteTime
 $binaryUsable = $false
 if ((Test-Path -LiteralPath $binary -PathType Leaf) -and (Test-Path -LiteralPath $provenance -PathType Leaf)) {
@@ -227,26 +255,52 @@ if (-not $Force -and $sourceHash -eq $destinationHash -and -not $binaryUsable) {
     Write-Host "Fonte já sincronizada, mas EX5 ausente/desatualizado; recompilando."
 }
 
-$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+$actionDescription = "Substituir o fonte .mq5 e o binário .ex5, atualizar a proveniência e recriar/remover o log de compilação no terminal MT5 selecionado"
+if (-not $PSCmdlet.ShouldProcess($destination, $actionDescription)) {
+    Write-Host 'Sincronização/compilação não executada; nenhum arquivo do EA foi alterado.'
+    return
+}
+
+$stamp = (Get-Date -Format 'yyyyMMdd-HHmmss-fff') + '-' + [guid]::NewGuid().ToString('N')
 $backupSource = "$destination.$stamp.bak"
 $backupBinary = [System.IO.Path]::ChangeExtension($destination, '.ex5') + ".$stamp.bak"
 $backupProvenance = "$provenance.$stamp.bak"
-if (Test-Path -LiteralPath $destination) { Copy-WithRetry -Source $destination -Destination $backupSource }
-if (Test-Path -LiteralPath $binary) { Copy-WithRetry -Source $binary -Destination $backupBinary }
-if (Test-Path -LiteralPath $provenance) { Copy-WithRetry -Source $provenance -Destination $backupProvenance }
+$backupLog = "$log.$stamp.bak"
+$backupTargets = @($backupSource, $backupBinary, $backupProvenance, $backupLog)
+$backupCollision = @($backupTargets | Where-Object { Test-Path -LiteralPath $_ })
+if ($backupCollision.Count -gt 0) {
+    throw "Backup com nome já existente; nenhum artefato do EA foi alterado. Escolha uma nova execução após inspecionar: $($backupCollision -join '; ')"
+}
+New-Item -ItemType Directory -Force -Path $destinationDir | Out-Null
+try {
+    if (Test-Path -LiteralPath $destination) { Copy-WithRetry -Source $destination -Destination $backupSource }
+    if (Test-Path -LiteralPath $binary) { Copy-WithRetry -Source $binary -Destination $backupBinary }
+    if (Test-Path -LiteralPath $provenance) { Copy-WithRetry -Source $provenance -Destination $backupProvenance }
+    if (Test-Path -LiteralPath $log) { Copy-WithRetry -Source $log -Destination $backupLog }
+} catch {
+    throw "Falha ao criar os backups dos artefatos; o destino do EA ainda não foi modificado. Backups parciais foram preservados para inspeção. $($_.Exception.Message)"
+}
 
-Copy-WithRetry -Source $source -Destination $destination
-$copiedSourceHash = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash
-if ($copiedSourceHash -ne $sourceHash) {
+try {
+    Copy-WithRetry -Source $source -Destination $destination
+    $copiedSourceHash = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash
+    if ($copiedSourceHash -ne $sourceHash) {
+        throw "A fonte mudou durante a sincronização; destino será restaurado: $destination"
+    }
+} catch {
+    $script:RestoreFailures.Clear()
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
     Restore-File -Backup $backupProvenance -Target $provenance
-    throw "A fonte mudou durante a sincronização; destino restaurado: $destination"
+    Restore-File -Backup $backupLog -Target $log
+    Assert-RestoreComplete
+    throw "Falha ao substituir a fonte MQL5; arquivos anteriores restaurados. $($_.Exception.Message)"
 }
 
-$log = [System.IO.Path]::ChangeExtension($destination, '.log')
-if (Test-Path -LiteralPath $log) { Remove-Item -LiteralPath $log -Force }
-$compileStartedAt = Get-Date
+$provenanceTemp = "$provenance.$stamp.tmp"
+try {
+    if (Test-Path -LiteralPath $log) { Remove-Item -LiteralPath $log -Force }
+    $compileStartedAt = Get-Date
 $explicitLog = $log
 $binaryHashBefore = if (Test-Path -LiteralPath $binary -PathType Leaf) { (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash } else { '' }
 
@@ -254,9 +308,12 @@ $binaryHashBefore = if (Test-Path -LiteralPath $binary -PathType Leaf) { (Get-Fi
 $metaEditorExitCode = $LASTEXITCODE
 Start-Sleep -Milliseconds 500
 if (-not (Test-Path -LiteralPath $log -PathType Leaf)) {
+    $script:RestoreFailures.Clear()
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
     Restore-File -Backup $backupProvenance -Target $provenance
+    Restore-File -Backup $backupLog -Target $log
+    Assert-RestoreComplete
     throw "MetaEditor não produziu log de compilação: $log"
 }
 
@@ -264,38 +321,49 @@ $logText = Get-Content -LiteralPath $log -Raw -ErrorAction SilentlyContinue
 $errorMatch = [regex]::Match($logText, '(?i)(\d+)\s+(errors?|erros?)')
 $warningMatch = [regex]::Match($logText, '(?i)(\d+)\s+(warnings?|avisos?)')
 if (-not $errorMatch.Success -or -not $warningMatch.Success) {
+    $script:RestoreFailures.Clear()
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
     Restore-File -Backup $backupProvenance -Target $provenance
+    Restore-File -Backup $backupLog -Target $log
+    Assert-RestoreComplete
     throw "Log de compilação sem contagem inequívoca de erros/avisos: $log"
 }
 $errors = $errorMatch.Groups[1].Value
 $warnings = $warningMatch.Groups[1].Value
 if ($errors -ne '0' -or $warnings -ne '0') {
+    $script:RestoreFailures.Clear()
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
     Restore-File -Backup $backupProvenance -Target $provenance
+    Restore-File -Backup $backupLog -Target $log
+    Assert-RestoreComplete
     throw "Compilação MQL5 rejeitada: errors=$errors warnings=$warnings. Log: $log"
 }
 
 if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) {
+    $script:RestoreFailures.Clear()
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
     Restore-File -Backup $backupProvenance -Target $provenance
+    Restore-File -Backup $backupLog -Target $log
+    Assert-RestoreComplete
     throw "MetaEditor terminou sem gerar o EX5 esperado: $binary"
 }
 
 $binaryWriteTime = (Get-Item -LiteralPath $binary).LastWriteTime
 $binaryHashAfter = (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash
 if ($binaryWriteTime -lt $compileStartedAt.AddSeconds(-2)) {
+    $script:RestoreFailures.Clear()
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
     Restore-File -Backup $backupProvenance -Target $provenance
+    Restore-File -Backup $backupLog -Target $log
+    Assert-RestoreComplete
     throw "O EX5 não foi atualizado pela compilação (timestamp anterior à compilação): $binary"
 }
 
-$provenanceTemp = "$provenance.$stamp.tmp"
-$provenancePayload = @{
+    $provenancePayload = @{
     schema_version = 1
     source_sha256 = $sourceHash
     binary_sha256 = $binaryHashAfter
@@ -306,11 +374,26 @@ try {
         Set-Content -LiteralPath $provenanceTemp -Encoding ASCII
     Move-Item -LiteralPath $provenanceTemp -Destination $provenance -Force
 } catch {
+    $script:RestoreFailures.Clear()
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
     Restore-File -Backup $backupProvenance -Target $provenance
+    Restore-File -Backup $backupLog -Target $log
+    Assert-RestoreComplete
     Remove-Item -LiteralPath $provenanceTemp -Force -ErrorAction SilentlyContinue
     throw "Não foi possível registrar a proveniência da compilação; arquivos anteriores restaurados. $($_.Exception.Message)"
+}
+
+
+} catch {
+    $script:RestoreFailures.Clear()
+    Restore-File -Backup $backupSource -Target $destination
+    Restore-File -Backup $backupBinary -Target $binary
+    Restore-File -Backup $backupProvenance -Target $provenance
+    Restore-File -Backup $backupLog -Target $log
+    Assert-RestoreComplete
+    Remove-Item -LiteralPath $provenanceTemp -Force -ErrorAction SilentlyContinue
+    throw "Falha inesperada na sincronização/compilação; artefatos anteriores restaurados. $($_.Exception.Message)"
 }
 
 if ($metaEditorExitCode -ne 0) {
@@ -321,6 +404,7 @@ Remove-Item -LiteralPath $log -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $backupSource -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $backupBinary -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $backupProvenance -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $backupLog -Force -ErrorAction SilentlyContinue
 
 Write-Host "MQL5 sincronizado e compilado com sucesso."
 Write-Host "Proveniência: $provenance"

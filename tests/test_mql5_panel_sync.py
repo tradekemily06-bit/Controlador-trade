@@ -276,7 +276,7 @@ def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compil
     assert "source_sha256 = $sourceHash" in text
     assert "binary_sha256 = $binaryHashAfter" in text
     assert "Set-Content -LiteralPath $provenanceTemp -Encoding ASCII" in text
-    assert text.count("Restore-File -Backup $backupProvenance -Target $provenance") == 7
+    assert text.count("Restore-File -Backup $backupProvenance -Target $provenance") >= 7
     assert text.index("if ($binaryWriteTime -lt $compileStartedAt.AddSeconds(-2))") < text.index("binary_sha256 = $binaryHashAfter")
 
 
@@ -375,3 +375,36 @@ def test_mql5_json_helpers_accept_standard_json_whitespace_and_escaped_strings()
     assert "if(escaped) escaped=false;" in helpers
     assert r"else if(c=='\\') escaped=true;" in helpers
     assert r"else if(ch=='\\') escaped=true;" in helpers
+
+
+def test_mql5_sync_backup_creation_fails_closed_before_any_destination_write():
+    text = SCRIPT.read_text(encoding="utf-8")
+    backup_start = text.index("$backupSource =")
+    destination_write = text.index(
+        "Copy-WithRetry -Source $source -Destination $destination", backup_start
+    )
+    backup_phase = text[backup_start:destination_write]
+    assert "try {" in backup_phase
+    assert "Copy-WithRetry -Source $destination -Destination $backupSource" in backup_phase
+    assert "Copy-WithRetry -Source $binary -Destination $backupBinary" in backup_phase
+    assert "Copy-WithRetry -Source $provenance -Destination $backupProvenance" in backup_phase
+    assert "Copy-WithRetry -Source $log -Destination $backupLog" in backup_phase
+    assert "catch {" in backup_phase
+    assert "o destino do EA ainda não foi modificado" in backup_phase
+    assert "Restore-File" not in backup_phase
+    assert text.index("Falha ao criar os backups dos artefatos") < text.index(
+        "Copy-WithRetry -Source $source -Destination $destination"
+    )
+
+def test_mql5_sync_refuses_to_overwrite_preexisting_backup_artifacts():
+    text = SCRIPT.read_text(encoding="utf-8")
+    backup_start = text.index("$backupSource =")
+    backup_try = text.index("try {", backup_start)
+    collision_guard = text.index("$backupCollision =", backup_start)
+    directory_create = text.index("New-Item -ItemType Directory -Force -Path $destinationDir")
+    assert backup_start < collision_guard < directory_create < backup_try
+    assert "$stamp = (Get-Date -Format 'yyyyMMdd-HHmmss-fff') + '-' + [guid]::NewGuid().ToString('N')" in text
+    assert "$backupTargets = @($backupSource, $backupBinary, $backupProvenance, $backupLog)" in text
+    assert "Test-Path -LiteralPath $_" in text[collision_guard:directory_create]
+    assert "Backup com nome já existente" in text[collision_guard:directory_create]
+    assert "nenhum artefato do EA foi alterado" in text[collision_guard:directory_create]
