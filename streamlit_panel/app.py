@@ -1928,7 +1928,7 @@ def show_readonly_module(module_name: str) -> None:
             else:
                 st.info("Não há decisões direcionais confirmadas sem resultado manual nos 50 registros carregados.")
             st.caption("WIN/LOSS/DRAW/OPEN/VOID são anotações manuais de estudo; não são resultados financeiros confirmados pela corretora.")
-            st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
+            st.caption("Somente leitura · execução permitida: NÃO · REAL: DESABILITADO")
             return
 
         if module_name == "Motor de Decisão":
