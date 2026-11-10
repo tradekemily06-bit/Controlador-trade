@@ -47,6 +47,7 @@ No host Windows remoto, `deployment/bootstrap_windows_runtime.ps1` também insta
 ## Módulos no painel
 
 - Reserva Fiscal e Assistente do Ecossistema ficam agrupados dentro de Financeiro, sem criar novos grupos de navegação. Categorias sem cálculo validado ficam pendentes e fora dos totais; a estimativa brasileira identificada na interface é planejamento, não apuração de imposto devido.
+- Memória permite anotar manualmente WIN/LOSS/DRAW/OPEN/VOID para decisões direcionais confirmadas. Essas anotações são de estudo e não são resultados financeiros confirmados pela corretora.
 - A fila estrangeira registra instituição, custódia, tipo de contrato, custo de aquisição, taxas e imposto pago no exterior na moeda original quando informados. Esses campos são evidências declaradas para triagem; não confirmam localização fiscal, enquadramento, conversão cambial ou crédito tributário e não geram cálculo automático.
 - O Assistente do Ecossistema é acessado pelo seletor interno de Financeiro. A interface lista até 30 conversas salvas, permite abrir o histórico recente e excluir uma conversa somente após ação explícita do usuário.
 - A pergunta, as mensagens recentes da conversa e um resumo operacional filtrado são enviados à OpenAI quando o usuário envia uma consulta. As mensagens também ficam armazenadas no histórico local do Assistente no servidor do Ecossistema. A chave OpenAI permanece no servidor; não envie senhas, códigos de acesso ou dados bancários sensíveis.
