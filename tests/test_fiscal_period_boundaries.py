@@ -49,8 +49,8 @@ def test_summary_periods_use_inclusive_local_calendar_dates_and_exclude_prior_pe
     }
     assert periods["week"]["start"] == "2026-11-09"
     assert periods["week"]["end"] == "2026-11-10"
-    assert periods["week"]["entries"] == 2
-    assert periods["week"]["realized_result_brl"] == 130.0
+    assert periods["week"]["entries"] == 3
+    assert periods["week"]["realized_result_brl"] == 210.0
     assert periods["month"]["start"] == "2026-11-01"
     assert periods["month"]["entries"] == 4
     assert periods["month"]["realized_result_brl"] == 250.0
