@@ -761,7 +761,7 @@ def test_timed_exit_is_blocked_without_opening_account_fingerprint(tmp_path):
 
 
 def test_timed_exit_worker_reconciles_before_closing_and_persists_completion(tmp_path):
-    from datetime import timezone
+    from datetime import datetime, timezone
     from execution.timed_exit_worker import TimedExitWorker
     from execution.ports import ExecutionResult
     service, runtime = _service_with_accepted_demo_position(tmp_path)
