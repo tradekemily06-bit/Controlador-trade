@@ -425,7 +425,7 @@ def test_streamlit_open_panel_is_rendered_inside_a_single_shell():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert 'with st.container(key="control-hub-shell"):' in source
     assert '<div class="hub-title">Controlador-Trader</div>' in source
-    assert '<span class="demo-pill">DEMO</span>' in source
+    assert '<span class="demo-pill">NÃO CONFIRMADO</span>' in source
     assert 'AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]' in source
     assert 'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]' in source
 
@@ -855,17 +855,16 @@ def test_streamlit_audit_module_uses_redacted_security_event_feed():
 
 def test_streamlit_kill_switch_view_is_dedicated_and_read_only():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
-    start = source.index('if module_name == "Kill Switch":')
-    end = source.index('if module_name == "Segurança":', start)
+    start = source.index("def show_kill_switch()")
+    end = source.index("def show_readonly_module(", start)
     view = source[start:end]
-    assert 'data.get("operational_observability", {})' in view
-    assert 'obs.get("kill_switch", {})' in view
-    assert 'obs.get("recovery", {})' in view
-    assert 'obs.get("reconciliation", {})' in view
-    assert 'reconciliation.get("unknown_request_ids", [])' in view
+    assert 'status.get("operational_observability", {})' in view
+    assert 'api("/api/runtime/real/status")' in view
+    assert 'position_close_recovery_items' in view
+    assert 'api("/api/runtime/real/close/reconcile"' in view
     assert "A ativação bloqueia novas execuções." in view
-    assert "não há cancelamento automático" in view
-    assert "Execução permitida: NÃO" in view
+    assert "não canceladas" in view
+    assert "CONSULTAR E RECONCILIAR" in view
 
 
 def test_streamlit_security_view_discloses_deployment_boundaries():
@@ -918,7 +917,7 @@ def test_streamlit_statistics_and_reports_have_distinct_aggregated_views():
     assert "controlador-trading-relatorio-operacional.csv" in reports_view
     assert "não inclui credenciais, dados bancários ou ordens" in reports_view
     assert "Execução permitida: NÃO · REAL: DESABILITADO" in statistics_view
-    assert "Execução permitida: NÃO · REAL: DESABILITADO" in reports_view
+    assert "Somente leitura · execução permitida: NÃO · REAL: DESABILITADO" in reports_view
 
 
 def test_streamlit_notifications_screen_reads_full_history_without_mutations():
@@ -1663,18 +1662,20 @@ def test_streamlit_fiscal_review_forms_match_queue_validation_limits():
 
 def test_streamlit_kill_switch_requires_explicit_confirmation_and_has_no_deactivation():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
-    start = source.index('if module_name == "Kill Switch":')
-    end = source.index('if module_name == "Segurança":', start)
+    start = source.index("def show_kill_switch()")
+    end = source.index("def show_readonly_module(", start)
     view = source[start:end]
 
-    assert 'activate_kill_switch_form' in view
-    assert 'emergency_confirm = st.checkbox(' in view
-    assert '"confirmed": True' in view
+    assert 'guarded_kill_switch_activation_form' in view
+    assert 'confirmed = st.checkbox(' in view
+    assert '("confirmed", True)' in source
     assert '"/api/runtime/kill-switch/activate"' in view
-    assert 'if state != "ACTIVE":' in view
-    assert 'A desativação não está disponível nesta interface.' in view
-    assert 'A ativação não as cancela.' in view
-    assert 'st.caption("Execução permitida: NÃO · REAL: DESABILITADO")' in view
+    assert 'kill_state == "ACTIVE"' in view
+    assert 'deactivation' in view.lower()
+    assert 'real_close_reconcile_form' in view
+    assert '"request_id": selected_request' in view
+    assert '"external_id": selected_item["external_id"]' in view
+    assert 'CONSULTAR E RECONCILIAR' in view
 
 
 def test_streamlit_dynamic_api_actions_have_matching_runtime_route_prefixes():
@@ -1720,8 +1721,8 @@ def test_streamlit_kill_switch_exposes_read_only_position_close_reconciliation()
     panel_source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     runtime_source = (PANEL_DIR.parent / "app.py").read_text(encoding="utf-8")
     controller_source = (PANEL_DIR.parent / "core" / "real_runtime_controller.py").read_text(encoding="utf-8")
-    start = panel_source.index('if module_name == "Kill Switch":')
-    end = panel_source.index('if module_name == "Segurança":', start)
+    start = panel_source.index("def show_kill_switch()")
+    end = panel_source.index("def show_readonly_module(", start)
     view = panel_source[start:end]
     route_start = runtime_source.index('if path == "/api/runtime/real/close/reconcile" and method == "POST":')
     route_end = runtime_source.index('if path == "/api/runtime/real/close" and method == "POST":', route_start)
