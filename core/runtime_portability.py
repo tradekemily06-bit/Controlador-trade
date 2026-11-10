@@ -30,6 +30,7 @@ def _copy_state(source: Path, target: Path) -> None:
 def create_backup(runtime_dir: str|Path, output_file: str|Path) -> dict[str,Any]:
     runtime=Path(runtime_dir).resolve(); output=Path(output_file).resolve()
     if not runtime.is_dir(): raise FileNotFoundError(f"runtime directory not found: {runtime}")
+    if output.exists(): raise FileExistsError(f"backup already exists; refusing to overwrite: {output}")
     output.parent.mkdir(parents=True,exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="controlador-portability-") as tmp:
         stage=Path(tmp); staged=[]
