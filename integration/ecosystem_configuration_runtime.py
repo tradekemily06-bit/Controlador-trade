@@ -304,7 +304,8 @@ class ConfiguredEcosystemService(EcosystemService):
             entry_conditions=(),
             checkpoint_store=self.operational_runtime.checkpoint_store,
             session_id=f"mt5-{symbol}-{timeframe}",
-            automation_policy=AutomationPolicy(enabled=True, minimum_interval_seconds=0),
+            # DEMO cycle is analysis-only by default; execution needs a separately designed, explicit authorization flow.
+            automation_policy=AutomationPolicy(enabled=False, minimum_interval_seconds=0),
             automation_readiness_factory=self._build_mt5_automation_readiness,
             automation_risk_budget_factory=self._build_mt5_automation_risk_budget,
             automation_pretrade_risk_factory=self._build_mt5_pretrade_risk,
