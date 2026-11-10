@@ -41,7 +41,7 @@ def test_native_mt5_assistant_requires_per_message_consent_and_persists_conversa
     assert 'Http("GET","/api/assistant/local/status"' in source
     assert 'Http("POST","/api/assistant/local/chat"' in send
     assert "if(!assistant_consent_armed)" in send
-    assert '"consent_to_openai":true' in send
+    assert r'\"consent_to_openai\":true' in send
     assert "assistant_consent_armed=false;" in send
     assert "PersistAssistantConversation();" in send
     assert "LoadAssistantConversation();" in source
