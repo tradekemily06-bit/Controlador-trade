@@ -318,6 +318,13 @@ def test_summary_counts_entire_queue_and_is_scoped_to_owner(tmp_path):
         "realized_results": 501,
         "asset_amounts": 0,
         "currencies": ["EUR", "USD"],
+        "evidence_completeness": {
+            "total": 501,
+            "missing_institution": 501,
+            "missing_custody_location": 501,
+            "missing_contract_type": 501,
+            "missing_core_evidence": 501,
+        },
         "periods": {
             "day": {"start": "2026-11-03", "end": "2026-11-03", "total": 501, "realized_results": 501, "asset_amounts": 0},
             "week": {"start": "2026-11-02", "end": "2026-11-03", "total": 501, "realized_results": 501, "asset_amounts": 0},
