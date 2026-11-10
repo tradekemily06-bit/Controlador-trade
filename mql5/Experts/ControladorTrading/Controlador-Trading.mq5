@@ -287,16 +287,21 @@ string AreaModuleLabel(string module){
 string ViewForModule(string area,string module){
    if(area=="COCKPIT"){
       if(module=="Operação") return "COCKPIT";
+      if(module=="Gestão de Risco") return "RISK";
       if(module=="Notificações") return "NOTIF";
    }else if(area=="ANÁLISE"){
       if(module=="Análise de Mercado") return "ANALISE";
       if(module=="Memória") return "MEMORIA";
+      if(module=="Estatísticas") return "STATS";
    }else if(area=="ESTUDO"){
       if(module=="Laboratório") return "LAB";
       if(module=="Aprendizado" || module=="Escola / Tutorial / Onboarding") return "ENSINO";
    }else if(area=="RESERVA FISCAL") return "RESERVA";
    else if(area=="ASSISTENTE DO ECOSSISTEMA") return "ASSISTENTE";
-   else if(area=="CENTRAL" && module=="Configurações") return "CONFIG";
+   else if(area=="CENTRAL"){
+      if(module=="Configurações") return "CONFIG";
+      if(module=="Conexões") return "CONNECTIONS";
+   }
    return "UNAVAILABLE";
 }
 void RenderNavigation(){
@@ -748,6 +753,60 @@ void RefreshAssistantStatus(){
    SetLabel(Obj("INFO1"),available=="true"?"Assistente: provedor configurado.":"Assistente: provedor indisponivel.",20,361,9,available=="true"?C'88,214,141':C'255,118,118');
    SetLabel(Obj("INFO2"),"Chat somente leitura; consentimento exigido a cada envio.",20,381,9,C'205,215,230');
 }
+void RefreshStatistics(){
+   string r; int code=0;
+   if(!Http("GET","/api/statistics","",r,code)){
+      SetLabel(Obj("INFO1"),"Estatisticas: runtime indisponivel",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Nenhum dado foi alterado.",20,381,9,C'205,215,230');
+      return;
+   }
+   string total=JsonValue(r,"total");
+   string rate=JsonValue(r,"win_rate");
+   string wins=JsonValue(r,"wins");
+   string losses=JsonValue(r,"losses");
+   SetLabel(Obj("INFO1"),"Decisoes registradas: "+(total==""?"nao informado":total),20,361,9,C'205,215,230');
+   SetLabel(Obj("INFO2"),"Win rate: "+(rate==""?"nao informado":rate),20,381,9,C'205,215,230');
+   SetLabel(Obj("INFO3"),"WIN: "+(wins==""?"nao informado":wins)+" • LOSS: "+(losses==""?"nao informado":losses),20,401,9,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Detalhes por periodo disponiveis no runtime.",20,421,9,C'205,215,230');
+   SetLabel(Obj("INFO5"),"Estatisticas historicas; nao sao garantia de resultado.",20,441,8,C'255,209,102');
+}
+void RefreshRiskView(){
+   string r; int code=0;
+   if(!Http("GET","/api/risk","",r,code)){
+      SetLabel(Obj("INFO1"),"Avaliacao de risco indisponivel.",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Nenhuma permissao operacional foi concedida.",20,381,9,C'205,215,230');
+      return;
+   }
+   string allowed=JsonValue(r,"allowed");
+   string reason=JsonValue(r,"reason");
+   string daily=JsonObjectValue(r,"configured_limits","daily_loss_limit");
+   string operations=JsonObjectValue(r,"configured_limits","max_operations");
+   string streak=JsonObjectValue(r,"configured_limits","max_consecutive_losses");
+   SetLabel(Obj("INFO1"),"Avaliacao: "+(allowed=="true"?"dentro dos limites":"bloqueio ativo"),20,361,9,allowed=="true"?C'88,214,141':C'255,118,118');
+   SetLabel(Obj("INFO2"),"Motivo: "+(reason==""?"nao informado":StringSubstr(reason,0,55)),20,381,8,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Limite perda diaria: "+(daily==""?"nao informado":daily),20,401,9,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Max operacoes: "+(operations==""?"nao informado":operations)+" • perdas seguidas: "+(streak==""?"nao informado":streak),20,421,8,C'205,215,230');
+   SetLabel(Obj("INFO5"),"Consulta informativa; nao autoriza execucao. REAL bloqueado.",20,441,8,C'255,155,155');
+}
+void RefreshConnections(){
+   string r; int code=0;
+   if(!Http("GET","/api/connections","",r,code)){
+      SetLabel(Obj("INFO1"),"Conexoes: runtime indisponivel",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Estado dos provedores nao confirmado.",20,381,9,C'205,215,230');
+      return;
+   }
+   string decision=JsonValue(r,"decision_core");
+   string gateway=JsonValue(r,"execution_gateway");
+   string mt5=JsonValue(r,"ic_markets_mt5_demo");
+   string ctrader=JsonValue(r,"cTrader");
+   string saas=JsonValue(r,"saas");
+   string real=JsonValue(r,"real");
+   SetLabel(Obj("INFO1"),"Motor decisao: "+(decision==""?"nao informado":decision),20,361,9,C'205,215,230');
+   SetLabel(Obj("INFO2"),"Gateway: "+(gateway==""?"nao informado":gateway),20,381,9,C'205,215,230');
+   SetLabel(Obj("INFO3"),"IC Markets MT5 DEMO: "+(mt5==""?"nao informado":mt5),20,401,9,C'205,215,230');
+   SetLabel(Obj("INFO4"),"cTrader: "+(ctrader==""?"nao informado":ctrader)+" • SaaS: "+(saas==""?"nao informado":saas),20,421,8,C'205,215,230');
+   SetLabel(Obj("INFO5"),"REAL: "+(real==""?"estado nao informado":real),20,441,9,C'255,155,155');
+}
 void ClearCockpitFields(){
    string names[]={"SYM","TF","SYML","TFL","MARKET","SIGNAL","SCORE","REASON","MODE","RECOVERY_TITLE","RECOVERY_ITEM","REC_REFRESH","REC_PREV","REC_NEXT","REC_RECONCILE","REC_CLOSE","RECOVERY_STATUS"};
    for(int i=0;i<ArraySize(names);i++)
@@ -896,6 +955,18 @@ void RenderView(){
       SetLabel(Obj("INFO3"),"Fonte: analise atual do ecossistema",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Candle fechado + filtros: exigidos pelo payload",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Sem acao automatica a partir de notificacoes",20,441,9,C'205,215,230');
+   }else if(active_view=="RISK"){
+      SetLabel(Obj("SUB"),"GESTAO DE RISCO • consulta somente leitura",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR RISCO",20,284,172,30);
+      RefreshRiskView();
+   }else if(active_view=="STATS"){
+      SetLabel(Obj("SUB"),"ESTATISTICAS • historico consolidado do runtime",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR ESTAT.",20,284,172,30);
+      RefreshStatistics();
+   }else if(active_view=="CONNECTIONS"){
+      SetLabel(Obj("SUB"),"CONEXOES • estado reportado pelos provedores",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR CONEXOES",20,284,172,30);
+      RefreshConnections();
    }else if(active_view=="MEMORIA"){
       SetLabel(Obj("SUB"),"MEMORIA • historico, WIN/LOSS, estatisticas e auditoria",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR MEMORIA",20,284,172,30);
@@ -1247,6 +1318,9 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
       if(active_view=="ANALISE") Analyze();
       else if(active_view=="CONFIG") RefreshPreferences();
       else if(active_view=="MEMORIA") RefreshSecondary();
+      else if(active_view=="RISK") RefreshRiskView();
+      else if(active_view=="STATS") RefreshStatistics();
+      else if(active_view=="CONNECTIONS") RefreshConnections();
       else if(active_view=="LAB") { RefreshHealth(); RefreshSecondary(); }
       else if(active_view=="ENSINO") RefreshLearning();
       else if(active_view=="NOTIF") RefreshNotifications();
