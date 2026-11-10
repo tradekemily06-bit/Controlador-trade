@@ -1,4 +1,4 @@
-from core.p128_learning_source_gate import LearningSourceGate, LearningSourceStatus, LearningSourceType
+from core.p128_learning_source_gate import LearningSource, LearningSourceGate, LearningSourceStatus, LearningSourceType
 
 
 def test_external_source_starts_quarantined_and_never_operation_eligible():
