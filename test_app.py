@@ -205,7 +205,8 @@ def test_runtime_close_reconciliation_rejects_coerced_identity_types():
         {"cycle_id": None, "external_id": "ticket-1"},
     )
     assert status.startswith("400")
-    assert "cycle_id" in data["error"]
+    assert data["error"] == "Entrada inválida"
+    assert "cycle_id" not in data["error"]
 
 def test_runtime_reconcile_forwards_cycle_lineage(monkeypatch):
     import app
