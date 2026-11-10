@@ -1281,6 +1281,9 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {"runtime_reconciliation": payload}, request_id, environ)
         if path == "/api/runtime/cycle" and method == "POST":
             data = _read_json(environ)
+            for flag in ("confirmed", "filters_ok"):
+                if flag in data and not isinstance(data[flag], bool):
+                    raise ValueError(f"{flag} deve ser booleano JSON")
             # Validate raw JSON types before coercion: bool is an int in Python,
             # and float(True)/int(True) would otherwise silently become sizing data.
             symbol = data.get("symbol", "")
