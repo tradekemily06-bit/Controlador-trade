@@ -291,6 +291,7 @@ string ViewForModule(string area,string module){
    if(area=="COCKPIT"){
       if(module=="Operação") return "COCKPIT";
       if(module=="Gestão de Risco") return "RISK";
+      if(module=="Ambiente MT5 DEMO / Simulação") return "ENVIRONMENT";
       if(module=="Notificações") return "NOTIF";
    }else if(area=="ANÁLISE"){
       if(module=="Análise de Mercado") return "ANALISE";
@@ -892,6 +893,33 @@ void RefreshConnections(){
    SetLabel(Obj("INFO4"),"cTrader: "+(ctrader==""?"nao informado":ctrader)+" • SaaS: "+(saas==""?"nao informado":saas),20,421,8,C'205,215,230');
    SetLabel(Obj("INFO5"),"REAL: "+(real==""?"estado nao informado":real),20,441,9,C'255,155,155');
 }
+void RefreshEnvironmentView(){
+   string health; int health_code=0;
+   if(!Http("GET","/api/health","",health,health_code)){
+      SetLabel(Obj("INFO1"),"Ambiente: runtime indisponivel",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Modo nao confirmado.",20,381,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Estado MT5 DEMO nao confirmado.",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Execucao permitida: NAO",20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
+      return;
+   }
+   string mode=JsonValue(health,"mode");
+   string mt5=JsonValue(health,"mt5_demo");
+   string execution=JsonValue(health,"execution_allowed");
+   string connections; int connections_code=0;
+   string decision="nao confirmado",gateway="nao confirmado";
+   if(Http("GET","/api/connections","",connections,connections_code)){
+      string decision_value=JsonValue(connections,"decision_core");
+      string gateway_value=JsonValue(connections,"execution_gateway");
+      if(decision_value!="") decision=decision_value;
+      if(gateway_value!="") gateway=gateway_value;
+   }
+   SetLabel(Obj("INFO1"),"Modo runtime: "+(mode==""?"nao informado":mode),20,361,9,C'205,215,230');
+   SetLabel(Obj("INFO2"),"MT5 DEMO: "+(mt5==""?"nao confirmado":mt5),20,381,9,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Motor: "+decision+" • Gateway: "+gateway,20,401,8,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Execucao permitida: "+(execution=="true"?"SIM":"NAO"),20,421,9,C'255,209,102');
+   SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • status nao substitui teste local",20,441,8,C'255,155,155');
+}
 void RefreshSecurityView(){
    string r; int code=0;
    if(!Http("GET","/api/health","",r,code)){
@@ -1151,6 +1179,11 @@ void RenderView(){
       SetLabel(Obj("SUB"),"CONEXOES • estado reportado pelos provedores",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR CONEXOES",20,284,172,30);
       RefreshConnections();
+   }else if(active_view=="ENVIRONMENT"){
+      ClearCockpitFields();
+      SetLabel(Obj("SUB"),"AMBIENTE MT5 DEMO / SIMULACAO • consulta somente leitura",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR AMBIENTE",20,284,172,30);
+      RefreshEnvironmentView();
    }else if(active_view=="SECURITY"){
       ClearCockpitFields();
       SetLabel(Obj("SUB"),"SEGURANCA • postura reportada pelo runtime",20,47,9,C'150,165,185');
@@ -1232,7 +1265,7 @@ void RefreshHealth(){
    SetLabel(Obj("RUNTIME"),"Sistema: online",20,104,10,C'88,214,141');
    SetLabel(Obj("MODE"),"Modo: "+(mode==""?"nao informado":mode)+" • MT5: "+(mt5==""?"nao confirmado":mt5),20,124,10,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • autorizacao separada",20,441,9,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
-   if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="UNAVAILABLE" || active_view=="MEMORIA" || active_view=="RISK" || active_view=="STATS" || active_view=="CONNECTIONS" || active_view=="SECURITY" || active_view=="REPORTS" || active_view=="AUDIT" || active_view=="FINANCE") return;
+   if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="UNAVAILABLE" || active_view=="MEMORIA" || active_view=="RISK" || active_view=="STATS" || active_view=="CONNECTIONS" || active_view=="ENVIRONMENT" || active_view=="SECURITY" || active_view=="REPORTS" || active_view=="AUDIT" || active_view=="FINANCE") return;
    SetLabel(Obj("INFO1"),"Analise do ecossistema: "+(engine==""?"online":engine),20,361,9,C'205,215,230');
 }
 void RefreshMarketAssets(){
@@ -1523,6 +1556,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
       else if(active_view=="STATS") RefreshStatistics();
       else if(active_view=="CONNECTIONS") RefreshConnections();
       else if(active_view=="SECURITY") RefreshSecurityView();
+      else if(active_view=="ENVIRONMENT") RefreshEnvironmentView();
       else if(active_view=="FINANCE") RefreshFinanceOverview();
       else if(active_view=="REPORTS") RefreshReports();
       else if(active_view=="AUDIT") RefreshAuditView();
