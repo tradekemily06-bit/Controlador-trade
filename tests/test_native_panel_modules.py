@@ -81,6 +81,22 @@ def test_native_mt5_navigation_never_routes_unimplemented_modules_to_unrelated_v
     assert 'if(active_view=="UNAVAILABLE") return;' in health
 
 
+def test_native_mt5_decision_engine_is_a_read_only_latest_analysis_view():
+    source = EA.read_text(encoding="utf-8")
+    routes = source.split("string ViewForModule(", 1)[1].split("void RenderNavigation()", 1)[0]
+    decision = source.split("void RefreshDecisionView()", 1)[1].split("void RefreshRiskView()", 1)[0]
+    health = source.split("void RefreshHealth()", 1)[1].split("void RefreshMarketAssets()", 1)[0]
+    events = source.split("void OnChartEvent", 1)[1]
+
+    assert 'if(module=="Motor de Decisão") return "DECISION";' in routes
+    assert 'Http("GET","/api/runtime/analysis/latest","",r,code)' in decision
+    assert 'JsonValue(r,"available")' in decision
+    assert 'JsonValue(analysis,"signal")' in decision
+    assert 'if(active_view=="DECISION") RefreshDecisionView();' in events
+    assert 'active_view=="DECISION"' in health
+    assert "nao cria ordem" in decision
+
+
 def test_native_mt5_environment_and_statistics_are_not_misrepresented_as_other_modules():
     source = EA.read_text(encoding="utf-8")
     routing = source.split("string ViewForModule(", 1)[1].split("void RenderNavigation()", 1)[0]
