@@ -264,7 +264,13 @@ def test_configured_service_surfaces_malformed_notification_records_as_critical(
 
     database = tmp_path / "ecosystem-state.sqlite"
     store = RealStateStore(database)
-    store.save("notifications", [{"notification_id": "incomplete-record"}])
+    import json
+    import sqlite3
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "INSERT INTO ecosystem_state(key, value_json) VALUES (?, ?)",
+            ("notifications", json.dumps([{"notification_id": "incomplete-record"}])),
+        )
     monkeypatch.setattr(
         configured_service,
         "EcosystemStateStore",
@@ -343,7 +349,13 @@ def test_malformed_notification_history_cannot_be_overwritten_by_publish(monkeyp
     database = tmp_path / "ecosystem-state.sqlite"
     initial_store = EcosystemStateStore(database)
     damaged = [{"notification_id": "incomplete-record"}]
-    initial_store.save("notifications", damaged)
+    import json
+    import sqlite3
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "INSERT INTO ecosystem_state(key, value_json) VALUES (?, ?)",
+            ("notifications", json.dumps(damaged)),
+        )
     monkeypatch.setattr(
         configured_service,
         "EcosystemStateStore",
@@ -377,7 +389,13 @@ def test_duplicate_notification_ids_after_process_restart_mark_history_corrupt(m
         "requires_attention": True,
         "blocking": True,
     }
-    store.save_notifications([duplicate, dict(duplicate)])
+    import json
+    import sqlite3
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "INSERT INTO ecosystem_state(key, value_json) VALUES (?, ?)",
+            ("notifications", json.dumps([duplicate, dict(duplicate)])),
+        )
     monkeypatch.setattr(
         configured_service,
         "EcosystemStateStore",
