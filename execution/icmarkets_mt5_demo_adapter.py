@@ -459,7 +459,10 @@ class ICMarketsMT5DemoAdapter:
                     opened_volume = sum(float(getattr(deal, "volume", 0.0) or 0.0) for deal in opening)
                     closed_volume = sum(float(getattr(deal, "volume", 0.0) or 0.0) for deal in closing)
                     components = {
-                        key: sum(float(getattr(deal, key, 0.0) or 0.0) for deal in position_deals)
+                        key: round(
+                            sum(float(getattr(deal, key, 0.0) or 0.0) for deal in position_deals),
+                            8,
+                        )
                         for key in ("profit", "commission", "swap", "fee")
                     }
                 except (TypeError, ValueError, OverflowError):
