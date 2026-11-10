@@ -52,10 +52,15 @@ def test_mql5_panel_has_single_repository_source():
     assert not legacy.exists()
 
 
-def test_controller_startup_calls_panel_sync():
+def test_controller_startup_never_syncs_or_compiles_the_installed_ea():
     startup = (ROOT / "deployment" / "start_controlador_runtime.ps1").read_text(encoding="utf-8")
-    assert "Sync-Mt5Panel" in startup
-    assert "sync_mql5_panel.ps1" in startup
+    sync_script = (ROOT / "deployment" / "sync_mql5_panel.ps1").read_text(encoding="utf-8")
+    assert "Sync-Mt5Panel" not in startup
+    assert "sync_mql5_panel.ps1" not in startup
+    assert "sincronização MQL5 não é executada automaticamente" in startup
+    # Keep the explicit maintenance utility available, but outside runtime startup.
+    assert '& $MetaEditorPath "/compile:$destination"' in sync_script
+    assert "Copy-WithRetry -Source $source -Destination $destination" in sync_script
 
 
 def test_mql5_panel_primes_runtime_and_refreshes_market_data_on_new_bars():
