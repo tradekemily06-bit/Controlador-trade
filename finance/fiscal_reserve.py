@@ -341,7 +341,6 @@ class FiscalReserve:
                     "reserve_amount_brl": round(float(row["reserve_amount_brl"]), 2),
                 }
             year_start = date(reference_day.year, 1, 1)
-            year_end = date(reference_day.year, 12, 31)
             monthly_rows = db.execute(
                 """SELECT substr(occurred_on, 6, 2) AS month,
                 COUNT(*) AS count,
@@ -355,7 +354,7 @@ class FiscalReserve:
                     owner_id,
                     "%USER_DECLARED_PENDING_REVIEW%",
                     year_start.isoformat(),
-                    year_end.isoformat(),
+                    reference_day.isoformat(),
                 ),
             ).fetchall()
             monthly_by_number = {int(row["month"]): row for row in monthly_rows}
