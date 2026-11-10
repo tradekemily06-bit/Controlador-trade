@@ -167,7 +167,8 @@ def test_native_risk_statistics_and_connections_modules_use_real_read_only_api_c
     assert 'active_view=="SECURITY"' in render
     assert 'else if(active_view=="SECURITY") RefreshSecurityView();' in events
     security = source.split("void RefreshSecurityView()", 1)[1].split("void RefreshFinanceOverview()", 1)[0]
-    assert 'JsonObjectValue(r,"identity","tenant_isolation")' in security
+    assert 'JsonValue(r,"trusted_identity_provider")' in security
+    assert 'JsonValue(r,"tenant_isolation")' in security
     assert '"nao confirmado"' in security
     assert 'Http("GET","/api/risk","",r,code)' in source
     assert 'Http("GET","/api/statistics","",r,code)' in source
