@@ -79,3 +79,15 @@ def test_native_mt5_navigation_never_routes_unimplemented_modules_to_unrelated_v
     assert 'return "UNAVAILABLE";' in routing
     # An unavailable module must not create background health widgets over its notice.
     assert 'if(active_view=="UNAVAILABLE") return;' in health
+
+
+def test_native_mt5_environment_and_statistics_are_not_misrepresented_as_other_modules():
+    source = EA.read_text(encoding="utf-8")
+    routing = source.split("string ViewForModule(", 1)[1].split("void RenderNavigation()", 1)[0]
+    lab = source.split('}else if(active_view=="LAB"){', 1)[1].split('}else if(active_view=="ENSINO"){', 1)[0]
+
+    assert 'if(module=="Ambiente MT5 DEMO / Simulação") return "LAB";' not in routing
+    assert 'if(module=="Memória" || module=="Estatísticas") return "MEMORIA";' not in routing
+    assert 'if(module=="Memória") return "MEMORIA";' in routing
+    assert "Replay: indisponivel nesta interface" in lab
+    assert "Replay: disponivel no laboratorio" not in lab
