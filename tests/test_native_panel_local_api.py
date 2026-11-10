@@ -74,7 +74,7 @@ def test_native_assistant_local_route_requires_local_mutations_to_be_enabled(tmp
 
     status, payload = _request("/api/assistant/local/status")
 
-    assert status.startswith("503")
+    assert status.startswith("403")
     assert "error" in payload
 
 
