@@ -1008,11 +1008,27 @@ def test_fiscal_api_to_assistant_context_flow_preserves_evidence_and_privacy(tmp
     assert pending["evidence_completeness"]["missing_core_evidence"] == 0
     assert pending["included_in_totals"] is False
     assert pending["reserve_calculated"] is False
+    serialized_context = json.dumps(context, ensure_ascii=False)
     for private_value in (
         "PRIVATE-E2E-REFERENCE",
         "PRIVATE-E2E-BROKER",
         "PRIVATE-E2E-NOTE",
-        "250",
-        "200",
     ):
-        assert private_value not in json.dumps(context, ensure_ascii=False)
+        assert private_value not in serialized_context
+
+    # Compare numeric JSON leaves, not substrings: ISO timestamps may contain
+    # digit sequences such as ".250" that are unrelated to private amounts.
+    def numeric_leaves(value):
+        if isinstance(value, dict):
+            for child in value.values():
+                yield from numeric_leaves(child)
+        elif isinstance(value, (list, tuple)):
+            for child in value:
+                yield from numeric_leaves(child)
+        elif isinstance(value, (int, float)) and not isinstance(value, bool):
+            yield value
+
+    assert 250 not in list(numeric_leaves(context))
+    assert 200 not in list(numeric_leaves(context))
+    assert "original_amount" not in pending
+    assert "original_result" not in pending
