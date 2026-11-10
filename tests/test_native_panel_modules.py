@@ -160,6 +160,13 @@ def test_native_risk_statistics_and_connections_modules_use_real_read_only_api_c
     assert 'if(module=="Gestão de Risco") return "RISK";' in routes
     assert 'if(module=="Estatísticas") return "STATS";' in routes
     assert 'if(module=="Conexões") return "CONNECTIONS";' in routes
+    assert 'if(module=="Segurança") return "SECURITY";' in routes
+    assert 'Http("GET","/api/health","",r,code)' in source
+    assert 'active_view=="SECURITY"' in render
+    assert 'else if(active_view=="SECURITY") RefreshSecurityView();' in events
+    security = source.split("void RefreshSecurityView()", 1)[1].split("void RefreshFinanceOverview()", 1)[0]
+    assert 'JsonObjectValue(r,"identity","tenant_isolation")' in security
+    assert '"nao confirmado"' in security
     assert 'Http("GET","/api/risk","",r,code)' in source
     assert 'Http("GET","/api/statistics","",r,code)' in source
     assert 'Http("GET","/api/connections","",r,code)' in source
