@@ -168,11 +168,18 @@ Os artefatos de estado portáveis são:
 - `execution-lifecycle.json`
 - `automation-lifecycle.json`
 - `runtime-checkpoint.json`
+- `demo-position-closes.json`
+- `demo-timed-exits.json`
 - `ecosystem-state.sqlite`
 - `decision-memory.sqlite`
 - `security-audit.sqlite`
+- `fiscal-reserve.sqlite3` — lançamentos, configurações, filas e revisões da Reserva Fiscal
+- `assistant.sqlite3` — conversas e mensagens locais do Assistente do Ecossistema
+- `latest-market-analysis.sqlite3` — snapshots recentes de análise
 
-`deployment/backup_runtime.ps1` cria um pacote verificado desses artefatos. O backup inclui também o lifecycle persistente da automação; usa a API de backup do SQLite para os bancos e registra SHA-256 no manifesto; segredos, tokens, senhas e configuração específica da máquina ficam fora do pacote. A restauração usa `deployment/restore_runtime.ps1`, valida o manifesto e não sobrescreve estado existente por padrão.
+`deployment/backup_runtime.ps1` cria um pacote verificado desses artefatos. Os bancos com sufixo `.sqlite`, `.sqlite3` ou `.db` são copiados pela API de backup do SQLite (incluindo páginas WAL já confirmadas), e o manifesto registra SHA-256 e tamanho. A verificação também executa `PRAGMA integrity_check` nos bancos incluídos antes de permitir a restauração. Segredos, tokens, senhas e configuração específica da máquina ficam fora do pacote.
+
+**Proteção do arquivo:** o ZIP contém dados financeiros e conversas locais e não é criptografado pelo utilitário. Armazene-o somente em volume protegido por criptografia de disco e permissões restritas, não o envie por canais públicos e defina retenção e cópias externas protegidas. Antes de restaurar, pare os serviços do runtime/Streamlit/MT5 e confirme que o destino está correto; a restauração não deve concorrer com processos que mantenham bancos abertos. A rotina recusa sobrescrever arquivos existentes por padrão.
 
 Assim, a troca de Windows/VPS preserva o estado do ecossistema sem transportar a identidade da máquina. O novo host deve fornecer novamente sua configuração local, MT5, Cloudflare/Access e segredos pelo mecanismo de implantação apropriado.
 
