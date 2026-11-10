@@ -328,7 +328,7 @@ def test_mql5_releases_stale_cycle_only_after_read_only_broker_confirmation():
 
 def test_mql5_native_recovery_inventory_supports_multiple_exact_tickets():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
-    parser = panel.split("bool ExtractJsonArrayObjects", 1)[1].split("bool ParseRecoveryInventory", 1)[0]
+    parser = panel.split("bool ExtractJsonArrayObjects", 1)[1].split("bool RefreshRecoveryInventory", 1)[0]
     selection = panel.split("void ReconcileSelectedRecovery()", 1)[1].split("int OnInit()", 1)[0]
     events = panel.split("void OnChartEvent", 1)[1]
 
