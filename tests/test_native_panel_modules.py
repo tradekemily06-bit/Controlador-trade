@@ -119,3 +119,22 @@ def test_native_mt5_cockpit_retains_controls_after_module_action_reset():
     assert 'SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR"' in cockpit
     assert 'SetButton(Obj("SAVE"),"SALVAR CONFIG"' in cockpit
     assert 'ObjectDelete(0,Obj("CYCLE"))' not in cockpit
+
+def test_native_mt5_assistant_paginates_the_complete_response_instead_of_silently_truncating():
+    source = EA.read_text(encoding="utf-8")
+    renderer = source.split("void RenderAssistantAnswer()", 1)[1].split("void RenderAssistant()", 1)[0]
+    send = source.split("void SendAssistantMessage()", 1)[1].split("void RenderView()", 1)[0]
+    events = source.split("void OnChartEvent", 1)[1]
+
+    assert 'int page_size=330;' in renderer
+    for index in range(1, 6):
+        assert f'Obj("INFO{index}")' in renderer
+    assert 'Obj("ASSISTANT_PREV")' in renderer
+    assert 'Obj("ASSISTANT_NEXT")' in renderer
+    assert 'Obj("ASSISTANT_PAGE")' in renderer
+    assert 'assistant_answer=JsonValue(response,"answer");' in send
+    assert "assistant_answer_page=0;" in send
+    assert "RenderAssistantAnswer();" in send
+    assert 'if(active_view=="ASSISTENTE" && assistant_answer_page>0)' in events
+    assert 'if(active_view=="ASSISTENTE" && (assistant_answer_page+1)*330<StringLen(assistant_answer))' in events
+    assert 'StringSubstr(answer,132,66)' not in send
