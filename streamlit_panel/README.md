@@ -48,7 +48,7 @@ No host Windows remoto, `deployment/bootstrap_windows_runtime.ps1` também insta
 
 ## Módulos no painel
 
-- **Reserva Fiscal** possui uma área principal própria no Streamlit, com estimativas, histórico, períodos, filas brasileira/estrangeira e revisões. Categorias sem cálculo validado ficam pendentes e fora dos totais; a estimativa brasileira identificada na interface é planejamento, não apuração de imposto devido.
+- **Reserva Fiscal** possui uma área principal própria no Streamlit, com estimativas, histórico, períodos, filas brasileira/estrangeira e revisões. O histórico mensal consolida os 12 meses do ano de referência apenas com lançamentos brasileiros elegíveis até a data de referência; não compensa prejuízos, não desconta IRRF e não é apuração mensal de imposto. Categorias sem cálculo validado ficam pendentes e fora dos totais; a estimativa brasileira identificada na interface é planejamento, não apuração de imposto devido.
 - **Financeiro** continua disponível em **MAIS / ADMIN** como visão geral consolidada de reservas estimadas, resultado mensal e contagem de pendências. Os lançamentos, filas, revisões e histórico completo ficam na área principal independente **Reserva Fiscal**.
 - **Assistente do Ecossistema** possui uma área principal própria, independente de Financeiro, com suas conversas, histórico e contexto operacional filtrado.
 - Memória permite anotar manualmente WIN/LOSS/DRAW/OPEN/VOID para decisões direcionais confirmadas. Essas anotações são de estudo e não são resultados financeiros confirmados pela corretora.
