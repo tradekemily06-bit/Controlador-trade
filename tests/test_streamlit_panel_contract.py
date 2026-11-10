@@ -447,7 +447,7 @@ def test_streamlit_leverage_control_persists_only_the_preference_without_executi
 
 
 
-def test_financeiro_functions_have_dedicated_top_level_areas_without_changing_figma_reference():
+def test_financeiro_overview_remains_available_with_dedicated_fiscal_and_assistant_areas():
     config = json.loads((PANEL_DIR / "controlador_trader_referencia_visual.json").read_text(encoding="utf-8"))
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert list(config["open_state"]["tabs"]) == ["COCKPIT", "ANÁLISE", "ESTUDO", "MAIS / ADMIN"]
@@ -467,6 +467,7 @@ def test_streamlit_readme_identifies_the_streamlit_panel_as_user_facing_and_figm
     readme = (PANEL_DIR / "README.md").read_text(encoding="utf-8")
     assert "O Figma é somente referência visual" in readme
     assert "painel de uso pretendido" in readme
+    assert "**Financeiro** continua disponível em **MAIS / ADMIN**" in readme
     assert "**Reserva Fiscal** possui uma área principal própria" in readme
     assert "**Assistente do Ecossistema** possui uma área principal própria" in readme
 
