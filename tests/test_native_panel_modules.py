@@ -180,3 +180,16 @@ def test_native_statistics_and_connections_do_not_claim_unknown_values_are_zero_
     assert 'rate==""?"nao informado":rate' in stats
     assert 'decision==""?"nao informado":decision' in connections
     assert 'mt5==""?"nao informado":mt5' in connections
+
+def test_native_read_only_views_are_not_overwritten_by_cockpit_timer_refresh():
+    source = EA.read_text(encoding="utf-8")
+    health = source.split("void RefreshHealth()", 1)[1].split("void RefreshMarketAssets()", 1)[0]
+    timer = source.split("void OnTimer()", 1)[1].split("void OnChartEvent", 1)[0]
+    render = source.split("void RenderView(){", 1)[1].split("void RefreshHealth()", 1)[0]
+
+    for view in ("MEMORIA", "RISK", "STATS", "CONNECTIONS"):
+        assert f'active_view=="{view}"' in health
+    assert 'if(active_view=="COCKPIT" && bid>0)' in timer
+    for view in ("RISK", "STATS", "CONNECTIONS"):
+        block = render.split(f'active_view=="{view}"', 1)[1].split('}else if', 1)[0]
+        assert "ClearCockpitFields();" in block
