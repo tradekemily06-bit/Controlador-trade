@@ -585,14 +585,22 @@ class ICMarketsMT5DemoAdapter:
             except (TypeError, ValueError) as exc:
                 raise ValueError("external_id deve ser um ticket MT5 numérico") from exc
             deal_fn = getattr(mt5, "history_deals_get", None)
-            if callable(deal_fn):
-                deals = deal_fn(ticket=ticket)
-                if deals:
-                    return ExternalOrderObservation(external_id, ExternalOrderStatus.EXECUTED, "deal externo encontrado no histórico MT5")
+            deals = deal_fn(ticket=ticket) if callable(deal_fn) else ()
             order_fn = getattr(mt5, "history_orders_get", None)
-            if callable(order_fn):
-                orders = order_fn(ticket=ticket)
-                if orders:
+            orders = order_fn(ticket=ticket) if callable(order_fn) else ()
+            if deals and orders:
+                return ExternalOrderObservation(
+                    external_id,
+                    ExternalOrderStatus.UNKNOWN,
+                    "ticket coincide com histórico de ordem e negócio; identidade externa ambígua",
+                )
+            if deals:
+                return ExternalOrderObservation(
+                    external_id,
+                    ExternalOrderStatus.EXECUTED,
+                    "deal externo encontrado no histórico MT5",
+                )
+            if orders:
                     order = tuple(orders)[-1]
                     state = getattr(order, "state", None)
                     filled = getattr(mt5, "ORDER_STATE_FILLED", object())
