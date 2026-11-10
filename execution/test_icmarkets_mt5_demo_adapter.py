@@ -291,12 +291,13 @@ class FakeRealMT5(FakeMT5):
         return SimpleNamespace(trade_mode=self.ACCOUNT_TRADE_MODE_REAL, balance=1000.0, equity=1015.0, profit=15.0)
 
 
-def test_real_adapter_accepts_only_real_account_and_real_request():
+def test_real_adapter_remains_hard_blocked_even_on_real_account():
     mt5 = FakeRealMT5()
     adapter = ICMarketsMT5RealAdapter(mt5_module=mt5)
     result = adapter.execute(request(mode=ExecutionMode.REAL))
-    assert result.accepted is True
-    assert result.external_id == "123456"
+    assert result.accepted is False
+    assert "Execução REAL permanece desabilitada" in result.message
+    assert mt5.calls == []
 
 
 def test_real_adapter_blocks_when_terminal_is_demo():
@@ -304,10 +305,8 @@ def test_real_adapter_blocks_when_terminal_is_demo():
     adapter = ICMarketsMT5RealAdapter(mt5_module=mt5)
     result = adapter.execute(request(mode=ExecutionMode.REAL))
     assert result.accepted is False
-    assert "DEMO" in result.message
-    assert not any(
-        isinstance(call, tuple) and call[0] == "order_send" for call in mt5.calls
-    )
+    assert "Execução REAL permanece desabilitada" in result.message
+    assert mt5.calls == []
 
 
 def test_real_adapter_never_accepts_demo_request():
