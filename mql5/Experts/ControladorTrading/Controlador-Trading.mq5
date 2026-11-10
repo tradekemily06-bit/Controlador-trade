@@ -869,8 +869,7 @@ void RefreshKillSwitchStatus(){
       SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
       return;
    }
-   string observability=JsonValue(r,"operational_observability");
-   string kill=JsonValue(observability,"kill_switch");
+   string kill=JsonObjectValue(r,"operational_observability","kill_switch");
    string enabled=JsonValue(kill,"enabled");
    string state=JsonValue(kill,"state");
    string reason=JsonValue(kill,"reason");
@@ -1220,6 +1219,8 @@ void SendAssistantMessage(){
 }
 void RenderView(){
    ClearAssistantControls();
+   string kill_controls[]={"KILL_REASON","KILL_CONFIRM","KILL_ACTIVATE"};
+   for(int k=0;k<ArraySize(kill_controls);k++) if(ObjectFind(0,Obj(kill_controls[k]))>=0) ObjectDelete(0,Obj(kill_controls[k]));
    string action_buttons[]={"ANALYZE","CYCLE","SAVE","CLOSE"};
    for(int i=0;i<ArraySize(action_buttons);i++)
       if(ObjectFind(0,Obj(action_buttons[i]))>=0) ObjectDelete(0,Obj(action_buttons[i]));
