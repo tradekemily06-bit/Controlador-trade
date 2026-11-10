@@ -17,11 +17,16 @@ class FakeMT5:
     DEAL_ENTRY_IN = 0
     DEAL_ENTRY_OUT = 1
     DEAL_ENTRY_OUT_BY = 2
-    ORDER_STATE_CANCELED = 4
+    ORDER_STATE_STARTED = 0
+    ORDER_STATE_PLACED = 1
+    ORDER_STATE_CANCELED = 2
+    ORDER_STATE_PARTIAL = 3
+    ORDER_STATE_FILLED = 4
     ORDER_STATE_REJECTED = 5
     ORDER_STATE_EXPIRED = 6
-    ORDER_STATE_FILLED = 7
-    ORDER_STATE_PARTIAL = 8
+    ORDER_STATE_REQUEST_ADD = 7
+    ORDER_STATE_REQUEST_MODIFY = 8
+    ORDER_STATE_REQUEST_CANCEL = 9
     POSITION_TYPE_BUY = 0
 
     def __init__(self, check_code=0, send_result=True):
@@ -256,7 +261,7 @@ def test_query_order_reconciles_canceled_external_order_as_not_executed():
     assert observation.status.value == "NOT_EXECUTED"
 
 
-def test_query_order_fails_closed_when_order_and_deal_tickets_collide():
+def test_query_order_accepts_filled_order_with_its_associated_deal_history():
     class CollidingTicketMT5(FakeMT5):
         def history_deals_get(self, *args, **kwargs):
             if kwargs.get("ticket") == 123456:
@@ -277,7 +282,7 @@ def test_query_order_fails_closed_when_order_and_deal_tickets_collide():
         mt5_module=CollidingTicketMT5()
     ).query_order("123456")
 
-    assert observation.status.value == "UNKNOWN"
+    assert observation.status.value == "EXECUTED"
 
 
 def test_query_order_reconciles_filled_order_ticket_as_executed():
