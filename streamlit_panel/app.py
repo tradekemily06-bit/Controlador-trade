@@ -1658,8 +1658,69 @@ def show_simulator() -> None:
 
 
 
+def show_finance_overview() -> None:
+    """Keep the general Financeiro entry while fiscal workflows have their own area."""
+    st.subheader("Financeiro")
+    st.caption(
+        "Visão geral financeira do Ecossistema. A Reserva Fiscal continua em uma área principal própria, "
+        "onde ficam lançamentos, histórico completo, filas e revisões documentais."
+    )
+    try:
+        summary = api("/api/fiscal-reserve?limit=50&offset=0")
+        if not (
+            _valid_fiscal_summary(summary)
+            and _valid_fiscal_history_page(summary, 0)
+        ):
+            raise ValueError("Resumo financeiro indisponível ou inválido.")
+        month = summary.get("periods", {}).get("month", {})
+        columns = st.columns(3)
+        columns[0].metric(
+            "Reserva estimada · Brasil",
+            money(summary.get("total_reserved_brl")),
+        )
+        columns[1].metric(
+            "Reserva estimada · mês",
+            money(month.get("reserve_amount_brl")),
+        )
+        columns[2].metric(
+            "Resultado realizado · mês",
+            money(month.get("realized_result_brl")),
+        )
+        st.caption(
+            f"Período mensal: {month.get('start', '—')} a {month.get('end', '—')} · "
+            "valores de planejamento, não apuração de imposto."
+        )
+        domestic = summary.get("domestic_pending", {})
+        foreign = summary.get("foreign_pending", {})
+        pending_columns = st.columns(2)
+        domestic_count = (
+            str(_safe_fiscal_count(domestic.get("total", 0)))
+            if isinstance(domestic, dict) and domestic.get("available") is True
+            else "Indisponível"
+        )
+        foreign_count = (
+            str(_safe_fiscal_count(foreign.get("total", 0)))
+            if isinstance(foreign, dict) and foreign.get("available") is True
+            else "Indisponível"
+        )
+        pending_columns[0].metric("Pendências brasileiras", domestic_count)
+        pending_columns[1].metric("Pendências do exterior", foreign_count)
+        st.info(
+            "As pendências permanecem fora dos totais e não geram reserva. "
+            "Para registrar, consultar documentos e revisar itens, abra a área principal Reserva Fiscal."
+        )
+    except Exception:
+        st.warning(
+            "A visão financeira não pôde validar os dados do runtime. "
+            "Nenhum valor foi estimado nesta tela."
+        )
+
+
 def show_readonly_module(module_name: str) -> None:
     """Render mapped runtime views and guarded controls for the selected module."""
+    if module_name == "Financeiro":
+        show_finance_overview()
+        return
     views = {
         "Operação": ("Estado operacional", "/api/health"),
         "Motor de Decisão": ("Motor de Decisão · última análise", "/api/runtime/analysis/latest"),
@@ -2887,10 +2948,7 @@ AREAS = {
 }
 AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]
 AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]
-AREAS["MAIS / ADMIN"] = [
-    module for module in _REFERENCE_TABS["MAIS / ADMIN"]
-    if module != "Financeiro"
-]
+AREAS["MAIS / ADMIN"] = list(_REFERENCE_TABS["MAIS / ADMIN"])
 if "panel_open" not in st.session_state:
     st.session_state.panel_open = True
 
