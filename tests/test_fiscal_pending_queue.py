@@ -1011,3 +1011,69 @@ def test_foreign_review_history_is_append_only_at_database_level(tmp_path):
     history = queue.list_reviews(OWNER, pending["pending_id"])
     assert len(history) == 1
     assert history[0]["reviewer_name"] == review["reviewer_name"]
+
+
+def test_domestic_and_foreign_pending_queues_share_database_without_cross_contamination(tmp_path):
+    from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
+
+    path = tmp_path / "fiscal-shared-pending.sqlite3"
+    foreign = make_queue(path)
+    domestic = FiscalDomesticPendingQueue(str(path))
+    owner_a = "shared-owner-a"
+    owner_b = "shared-owner-b"
+
+    # The same reference is valid in each jurisdiction queue: they are
+    # separate evidence domains, not one mixed ledger.
+    foreign.add(owner_a, sample("SAME-REFERENCE-001"))
+    domestic.add(owner_a, {
+        "reference": "SAME-REFERENCE-001",
+        "category_candidate": "BR_COMMON_EXCHANGE",
+        "instrument": "ETF",
+        "market_scope": "B3",
+        "occurred_on": "2026-11-03",
+        "realized_result_brl": -75.25,
+    })
+    foreign.add(owner_b, {
+        **sample("FOREIGN-OWNER-B"),
+        "fx_rate": None,
+        "fx_date": None,
+        "fx_source": None,
+        "fx_conversion_method": "NOT_INFORMED",
+    })
+    domestic.add(owner_b, {
+        "reference": "DOMESTIC-OWNER-B",
+        "instrument": "Ação",
+        "occurred_on": "2026-11-03",
+        "realized_result_brl": 125.0,
+    })
+
+    foreign_a = foreign.summary(owner_a, as_of=date(2026, 11, 3))
+    domestic_a = domestic.summary(owner_a, as_of=date(2026, 11, 3))
+    foreign_b = foreign.summary(owner_b, as_of=date(2026, 11, 3))
+    domestic_b = domestic.summary(owner_b, as_of=date(2026, 11, 3))
+
+    assert foreign_a["total"] == 1
+    assert foreign_a["asset_amounts"] == 1
+    assert foreign_a["realized_results"] == 0
+    assert foreign_a["included_in_totals"] is False
+    assert foreign_a["reserve_calculated"] is False
+
+    assert domestic_a["total"] == 1
+    assert domestic_a["periods"]["day"]["total"] == 1
+    assert domestic_a["periods"]["day"]["results"] == 1
+    assert domestic_a["included_in_totals"] is False
+    assert domestic_a["reserve_calculated"] is False
+
+    assert foreign_b["total"] == 1
+    assert foreign_b["asset_amounts"] == 1
+    assert domestic_b["total"] == 1
+    assert domestic_b["periods"]["day"]["results"] == 1
+
+    assert [item["reference"] for item in foreign.list_pending(owner_a)["items"]] == [
+        "SAME-REFERENCE-001"
+    ]
+    assert [item["reference"] for item in domestic.list_pending(owner_a)["items"]] == [
+        "SAME-REFERENCE-001"
+    ]
+    assert "DOMESTIC-OWNER-B" not in str(foreign.list_pending(owner_a))
+    assert "FOREIGN-OWNER-B" not in str(domestic.list_pending(owner_a))
