@@ -16,6 +16,24 @@ def test_streamlit_panel_keeps_the_four_reference_navigation_areas():
     assert config["closed_state"]["trigger"] == "C"
 
 
+def test_streamlit_operational_navigation_has_six_areas_and_central_last():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]' in source
+    assert 'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]' in source
+    assert 'AREAS["CENTRAL"] = ["Financeiro", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]' in source
+    area_order = source.split("area = st.radio(\"Áreas principais\", list(AREAS)", 1)[0]
+    assert 'for name in ("COCKPIT", "ANÁLISE", "ESTUDO")' in area_order
+    assert "AMBIENTE NÃO CONFIRMADO" in source
+
+
+def test_streamlit_reports_uses_dedicated_read_only_reports_endpoint_and_avoids_fake_modules():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert '"Relatórios": ("Resumo operacional", "/api/reports")' in source
+    views = source.split("views = {", 1)[1].split("}", 1)[0]
+    assert '"Segurança":' not in views
+    assert '"Multi-Broker":' not in views
+
+
 def test_streamlit_panel_connects_assistant_and_fiscal_to_existing_api():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     for route in (
