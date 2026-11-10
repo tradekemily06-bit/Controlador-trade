@@ -389,3 +389,126 @@ def test_assistant_saved_conversation_can_be_opened_and_deleted_from_panel(monke
         server.shutdown()
         server.server_close()
         worker.join(timeout=5)
+
+
+
+def test_fiscal_rate_form_posts_only_configured_brazil_day_trade_rate(monkeypatch):
+    import json
+    import threading
+    from datetime import date
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    calls = []
+    current_rate = {"value": 20.0}
+    as_of = date.today().isoformat()
+    start_week = date.fromordinal(date.today().toordinal() - date.today().weekday()).isoformat()
+    start_month = date.today().replace(day=1).isoformat()
+    start_year = date.today().replace(month=1, day=1).isoformat()
+
+    def summary_payload():
+        bounds = {
+            "day": (as_of, as_of),
+            "week": (start_week, as_of),
+            "month": (start_month, as_of),
+            "year": (start_year, as_of),
+        }
+        periods = {
+            key: {
+                "start": start, "end": end, "entries": 0,
+                "realized_result_brl": 0.0, "reserve_amount_brl": 0.0,
+            }
+            for key, (start, end) in bounds.items()
+        }
+        return {
+            "as_of": as_of,
+            "categories": {
+                "BR_DAY_TRADE": {
+                    "entries": 0, "rate": current_rate["value"],
+                    "realized_result_brl": 0.0, "reserve_amount_brl": 0.0,
+                    "rate_source": "USER_CONFIGURED",
+                },
+                "FOREIGN_FINANCIAL_ASSET": {
+                    "entries": 0, "classification_status": "PENDING_CLASSIFICATION",
+                    "rate_available": False, "realized_result_brl": 0.0,
+                    "reserve_amount_brl": 0.0,
+                },
+            },
+            "periods": periods,
+            "total_reserved_brl": 0.0,
+            "reserve_semantics": {
+                "kind": "PLANNING_ESTIMATE_ONLY",
+                "tax_liability_confirmed": False,
+                "monthly_tax_assessment": False,
+                "monthly_loss_offsets_calculated": False,
+                "irrf_credits_calculated": False,
+                "description": "Estimativa de planejamento, não imposto devido.",
+            },
+            "foreign_pending": {
+                "available": False, "included_in_totals": False,
+                "reserve_calculated": False,
+            },
+            "history": [],
+            "history_page": {
+                "total": 0, "limit": 50, "offset": 0,
+                "returned": 0, "has_more": False,
+            },
+            "monthly_planning": None,
+        }
+
+    class Handler(BaseHTTPRequestHandler):
+        def _send(self, payload, status=200):
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            calls.append(("GET", self.path))
+            if self.path.startswith("/api/fiscal-reserve?"):
+                return self._send(summary_payload())
+            return self._send({})
+
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", "0"))
+            payload = json.loads(self.rfile.read(length) or b"{}")
+            calls.append(("POST", self.path, payload))
+            if self.path == "/api/fiscal-reserve/rates":
+                current_rate["value"] = payload["rates"]["BR_DAY_TRADE"]
+                return self._send({"updated": True})
+            return self._send({"error": "not found"}, 404)
+
+        def log_message(self, format, *args):
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    try:
+        monkeypatch.setenv("CONTROLADOR_API_BASE_URL", f"http://127.0.0.1:{server.server_port}")
+        monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "false")
+        monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "test-owner")
+        monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "false")
+
+        app = AppTest.from_file(str(PANEL_APP)).run(timeout=30)
+        area = next(item for item in app.radio if item.label == "Áreas principais")
+        area.set_value("RESERVA FISCAL").run(timeout=30)
+        assert not app.exception
+        assert not any(item.label == "Registrar estimativa de planejamento" for item in app.button)
+
+        rate_input = next(item for item in app.number_input if item.label == "Percentual para novos lançamentos")
+        rate_input.set_value(17.5)
+        app.run(timeout=30)
+        app.button(key="fiscal_rate_form-Salvar percentual").click().run(timeout=30)
+
+        assert not app.exception
+        posts = [item for item in calls if item[0] == "POST"]
+        assert len(posts) == 1
+        assert posts[0][1] == "/api/fiscal-reserve/rates"
+        assert posts[0][2] == {"rates": {"BR_DAY_TRADE": 17.5}}
+        assert current_rate["value"] == 17.5
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=5)
