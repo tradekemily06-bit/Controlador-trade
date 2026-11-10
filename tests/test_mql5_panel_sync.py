@@ -408,3 +408,14 @@ def test_mql5_sync_refuses_to_overwrite_preexisting_backup_artifacts():
     assert "Test-Path -LiteralPath $_" in text[collision_guard:directory_create]
     assert "Backup com nome já existente" in text[collision_guard:directory_create]
     assert "nenhum artefato do EA foi alterado" in text[collision_guard:directory_create]
+
+
+def test_mql5_sync_whatif_never_initializes_python_terminal_bridge_without_resolved_data_path():
+    text = SCRIPT.read_text(encoding="utf-8")
+    resolver = text.split("function Resolve-Mt5DataPath", 1)[1].split("\n$dataPath =", 1)[0]
+    guard = resolver.index("if ($WhatIfPreference)")
+    bridge = resolver.index("$paths = Get-Mt5Paths -TerminalPath $TerminalPath")
+    assert guard < bridge
+    assert "Simulação -WhatIf não inicializa o terminal MT5" in resolver
+    assert "Informe -Mt5DataPath ou CONTROLADOR_MT5_DATA_PATH" in resolver
+    assert "Get-Mt5Paths -TerminalPath $TerminalPath" in resolver[bridge:]
