@@ -68,12 +68,12 @@ def _configure(tmp_path, monkeypatch):
         "original_currency": "USD",
         "instrument": "ETF",
         "jurisdiction": "PENDING_REVIEW",
-        "occurred_on": "2026-11-30",
+        "occurred_on": "2026-11-07",
     })
     domestic.add("another-owner", {
         "reference": "BR-OTHER-OWNER",
         "instrument": "ETF",
-        "occurred_on": "2026-11-30",
+        "occurred_on": "2026-11-07",
     })
     monkeypatch.setattr(app_module, "migrate_fiscal_schema", lambda _path: owner_id)
     return owner_id
