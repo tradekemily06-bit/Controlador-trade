@@ -477,7 +477,7 @@ def test_streamlit_readme_identifies_the_streamlit_panel_as_user_facing_and_figm
     readme = (PANEL_DIR / "README.md").read_text(encoding="utf-8")
     assert "O Figma é somente referência visual" in readme
     assert "painel de uso pretendido" in readme
-    assert "**Financeiro** possui uma área principal própria" in readme
+    assert "**Financeiro** é um módulo dentro de **CENTRAL**" in readme
     assert "**Reserva Fiscal** possui uma área principal própria" in readme
     assert "**Assistente do Ecossistema** possui uma área principal própria" in readme
 
