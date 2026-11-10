@@ -302,7 +302,11 @@ def test_fiscal_assistant_runtime_validator_is_read_only_and_checks_safe_contrac
     text = _read("deployment/validate_fiscal_assistant_runtime.ps1")
     for required in (
         "CONTROLADOR_SINGLE_USER_IDENTITY",
-        "Cf-Access-Authenticated-User-Email",
+        "CONTROLADOR_REMOTE_ACCESS_REQUIRED",
+        "CONTROLADOR_TRUSTED_IDENTITY_HEADER",
+        "$headers[$identityHeader] = $identity",
+        "$remoteRequired",
+        "LOCAL_LOOPBACK",
         "/api/health",
         "/api/fiscal-reserve?limit=1",
         "/api/fiscal-reserve/domestic-pending/summary",
@@ -321,7 +325,7 @@ def test_fiscal_assistant_runtime_validator_is_read_only_and_checks_safe_contrac
         "$assistant.may_execute_orders -eq $false",
         "$assistant.may_enable_real -eq $false",
         "$assistant.may_move_money -eq $false",
-        "nenhuma chamada foi feita",
+        "nenhuma chamada paga foi criada",
         "exit 2",
     ):
         assert required in text
@@ -329,6 +333,7 @@ def test_fiscal_assistant_runtime_validator_is_read_only_and_checks_safe_contrac
     assert "unauthorized-smoke-identity@example.invalid" in text
     assert "Test-RejectedIdentity '/api/assistant/status'" in text
     assert "Test-RejectedIdentity '/api/fiscal-reserve/pending?limit=1'" in text
+    assert "Não aplicável em modo local" in text
     assert "Invoke-WebRequest -UseBasicParsing -Method Post" not in text
     assert "/api/assistant/chat" not in text
     assert "Start-Process" not in text
