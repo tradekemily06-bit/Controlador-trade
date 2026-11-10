@@ -91,6 +91,8 @@ def test_native_mt5_kill_switch_requires_reason_and_explicit_confirmation():
     assert 'if(module=="Kill Switch") return "KILL_SWITCH";' in routes
     assert 'Http("POST","/api/runtime/kill-switch/activate",body,response,code)' in activation
     assert 'if(!kill_switch_confirm_armed)' in activation
+    assert 'SetChatEdit(Obj("KILL_REASON")' in source
+    assert 'kill_switch_confirm_armed=false;' in source.split("void SelectArea(string area)", 1)[1].split("void SelectModule", 1)[0]
     assert 'if(reason=="" || StringLen(reason)>240)' in activation
     assert r'\"confirmed\":true' in activation
     assert 'if(activated=="true" && execution=="false")' in activation
