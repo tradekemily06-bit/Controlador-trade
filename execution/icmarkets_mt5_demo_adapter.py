@@ -571,8 +571,15 @@ class ICMarketsMT5DemoAdapter:
     @serialized_mt5_session
     def query_order(self, external_id: str) -> ExternalOrderObservation:
         """Read external DEMO order/deal status for P121; never resubmits."""
-        if not isinstance(external_id, str) or not external_id.strip():
-            raise ValueError("external_id inválido")
+        if (
+            not isinstance(external_id, str)
+            or not external_id
+            or len(external_id) > 20
+            or not external_id.isascii()
+            or not external_id.isdecimal()
+            or int(external_id) <= 0
+        ):
+            raise ValueError("external_id deve ser um ticket MT5 decimal positivo")
         mt5 = self._module()
         if not self._initialize(mt5):
             raise MT5AdapterError(f"MT5 indisponível: {self._last_error(mt5)}")
