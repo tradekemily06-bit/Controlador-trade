@@ -165,13 +165,14 @@ def test_market_data_adapter_and_preflight_honor_configured_terminal():
     assert "CONTROLADOR_MT5_TERMINAL_PATH" in preflight
     assert "mt5.initialize(path=configured_path)" in preflight
 
-def test_controller_supervisor_preserves_mql5_sync_failure_details():
-    text = _read("deployment/start_controlador_runtime.ps1")
-    assert "$syncOutput = & powershell.exe" in text
-    assert " -Mt5TerminalPath $Mt5TerminalPath 2>&1" in text
-    assert "$syncExitCode = $LASTEXITCODE" in text
-    assert 'Write-StartupLog "Sincronização MQL5: $message"' in text
-    assert "terminou com código $syncExitCode" in text
+def test_windows_installer_does_not_require_or_claim_automatic_ea_sync():
+    installer = _read("deployment/install_windows_autostart.ps1")
+    startup = _read("deployment/start_controlador_runtime.ps1")
+    assert "$syncScript" not in installer
+    assert "sync_mql5_panel.ps1" not in installer
+    assert "não altera nem compila o EA MQL5" in installer
+    assert "Sync-Mt5Panel" not in startup
+    assert "sync_mql5_panel.ps1" not in startup
 
 
 
