@@ -81,6 +81,25 @@ def test_native_mt5_navigation_never_routes_unimplemented_modules_to_unrelated_v
     assert 'if(active_view=="UNAVAILABLE") return;' in health
 
 
+def test_native_mt5_kill_switch_requires_reason_and_explicit_confirmation():
+    source = EA.read_text(encoding="utf-8")
+    routes = source.split("string ViewForModule(", 1)[1].split("void RenderNavigation()", 1)[0]
+    activation = source.split("void ActivateKillSwitch()", 1)[1].split("void RefreshDecisionView()", 1)[0]
+    events = source.split("void OnChartEvent", 1)[1]
+    renderer = source.split("void RenderView()", 1)[1].split("void RefreshHealth()", 1)[0]
+
+    assert 'if(module=="Kill Switch") return "KILL_SWITCH";' in routes
+    assert 'Http("POST","/api/runtime/kill-switch/activate",body,response,code)' in activation
+    assert 'if(!kill_switch_confirm_armed)' in activation
+    assert 'if(reason=="" || StringLen(reason)>240)' in activation
+    assert r'\"confirmed\":true' in activation
+    assert 'if(activated=="true" && execution=="false")' in activation
+    assert 'sparam==Obj("KILL_CONFIRM") && active_view=="KILL_SWITCH"' in events
+    assert 'sparam==Obj("KILL_ACTIVATE") && active_view=="KILL_SWITCH"' in events
+    assert 'KILL_REASON","KILL_CONFIRM","KILL_ACTIVATE' in renderer
+    assert "deactivate" not in activation.lower()
+
+
 def test_native_mt5_decision_engine_is_a_read_only_latest_analysis_view():
     source = EA.read_text(encoding="utf-8")
     routes = source.split("string ViewForModule(", 1)[1].split("void RenderNavigation()", 1)[0]
