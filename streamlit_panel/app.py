@@ -447,6 +447,32 @@ def _is_finite_number(value: Any) -> bool:
         return False
 
 
+def _valid_monthly_planning(monthly: Any, expected_year: int) -> bool:
+    """Validate optional month-by-month planning data before displaying it."""
+    if not isinstance(monthly, dict):
+        return False
+    if monthly.get("year") != expected_year or monthly.get("kind") != "PLANNING_ESTIMATE_ONLY":
+        return False
+    if monthly.get("tax_assessment") is not False:
+        return False
+    months = monthly.get("months")
+    if not isinstance(months, list) or len(months) != 12:
+        return False
+    for index, item in enumerate(months, start=1):
+        if not isinstance(item, dict) or item.get("month") != f"{expected_year:04d}-{index:02d}":
+            return False
+        entries = item.get("entries")
+        if isinstance(entries, bool) or not isinstance(entries, int) or not 0 <= entries <= 1_000_000_000:
+            return False
+        realized = item.get("realized_result_brl")
+        if not _is_finite_number(realized) or not -1_000_000_000_000 <= realized <= 1_000_000_000_000:
+            return False
+        reserve = item.get("reserve_amount_brl")
+        if not _is_finite_number(reserve) or not 0 <= reserve <= 1_000_000_000_000:
+            return False
+    return True
+
+
 def _safe_fiscal_count(value: Any) -> int:
     """Render only bounded, genuine integer counts from fiscal API responses."""
     if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 1_000_000_000:
@@ -900,6 +926,29 @@ def show_fiscal() -> None:
             money(selected_period.get("realized_result_brl")),
         )
         c.metric("Estimativa acumulada · Brasil", money(summary.get("total_reserved_brl")))
+        as_of_year = date.fromisoformat(summary["as_of"]).year
+        monthly_planning = summary.get("monthly_planning")
+        st.markdown(f"#### Histórico mensal de planejamento · {as_of_year}")
+        st.caption(
+            "Consolidação anual dos lançamentos brasileiros elegíveis já registrados. "
+            "Não representa apuração mensal de imposto, não compensa prejuízos e não desconta créditos de IRRF."
+        )
+        if _valid_monthly_planning(monthly_planning, as_of_year):
+            st.dataframe(
+                [{
+                    "Competência": item["month"],
+                    "Lançamentos": item["entries"],
+                    "Resultado registrado": money(item["realized_result_brl"]),
+                    "Reserva estimada": money(item["reserve_amount_brl"]),
+                } for item in monthly_planning["months"]],
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.caption(
+                "Histórico mensal indisponível ou inválido nesta resposta. "
+                "Os valores não foram estimados nem substituídos por zeros."
+            )
         rate_source_label = {
             "DEFAULT": "padrão inicial do sistema",
             "USER_CONFIGURED": "configurado pelo usuário",
