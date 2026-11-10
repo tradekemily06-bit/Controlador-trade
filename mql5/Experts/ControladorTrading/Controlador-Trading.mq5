@@ -18,6 +18,9 @@ string active_module="Operação";
 string assistant_conversation_id="";
 string assistant_answer="";
 int assistant_answer_page=0;
+string memory_records[];
+int memory_page=0;
+bool memory_loaded=false;
 bool assistant_consent_armed=false;
 string selected_mode="DEMO";
 bool leverage_enabled=false;
@@ -753,6 +756,71 @@ void RefreshAssistantStatus(){
    SetLabel(Obj("INFO1"),available=="true"?"Assistente: provedor configurado.":"Assistente: provedor indisponivel.",20,361,9,available=="true"?C'88,214,141':C'255,118,118');
    SetLabel(Obj("INFO2"),"Chat somente leitura; consentimento exigido a cada envio.",20,381,9,C'205,215,230');
 }
+void RenderMemoryPage(){
+   int count=ArraySize(memory_records);
+   int page_size=5;
+   int page_count=(count+page_size-1)/page_size;
+   if(page_count<1) page_count=1;
+   memory_page=MathMax(0,MathMin(memory_page,page_count-1));
+   for(int row=0;row<5;row++){
+      int idx=memory_page*page_size+row;
+      string line=(idx<count?memory_records[idx]:"");
+      SetLabel(Obj("INFO"+IntegerToString(row+1)),line,20,361+row*20,8,line==""?C'100,110,125':C'205,215,230');
+   }
+   SetButton(Obj("MEMORY_PREV"),"ANTERIOR",20,470,104,26);
+   SetLabel(Obj("MEMORY_PAGE"),"MEMORIA "+IntegerToString(memory_page+1)+"/"+IntegerToString(page_count)+" • "+IntegerToString(count)+" REG.",138,476,8,C'150,165,185');
+   SetButton(Obj("MEMORY_NEXT"),"PROXIMA",296,470,114,26);
+   ObjectSetInteger(0,Obj("MEMORY_PREV"),OBJPROP_STATE,false);
+   ObjectSetInteger(0,Obj("MEMORY_NEXT"),OBJPROP_STATE,false);
+   ObjectSetInteger(0,Obj("MEMORY_PREV"),OBJPROP_BGCOLOR,memory_page>0?C'35,43,58':C'20,25,32');
+   ObjectSetInteger(0,Obj("MEMORY_NEXT"),OBJPROP_BGCOLOR,memory_page<page_count-1?C'35,43,58':C'20,25,32');
+}
+void RefreshMemory(){
+   string r; int code=0;
+   if(!Http("GET","/api/memory?limit=50","",r,code)){
+      memory_loaded=false;
+      SetLabel(Obj("INFO1"),"Memoria: runtime indisponivel",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Historico nao foi atualizado.",20,381,9,C'205,215,230');
+      return;
+   }
+   string objects[];
+   if(!ExtractJsonArrayObjects(r,"records",objects)){
+      memory_loaded=false;
+      SetLabel(Obj("INFO1"),"Memoria: resposta invalida",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Formato de historico nao reconhecido.",20,381,9,C'205,215,230');
+      return;
+   }
+   ArrayResize(memory_records,0);
+   for(int i=0;i<ArraySize(objects);i++){
+      string id=JsonValue(objects[i],"decision_id");
+      string created=JsonValue(objects[i],"created_at");
+      string symbol=JsonValue(objects[i],"symbol");
+      string timeframe=JsonValue(objects[i],"timeframe");
+      string signal=JsonValue(objects[i],"signal");
+      string score=JsonValue(objects[i],"score");
+      string outcome=JsonValue(objects[i],"outcome");
+      string confirmed=JsonValue(objects[i],"confirmed");
+      if(id=="" || signal==""){
+         ArrayResize(memory_records,0);
+         memory_loaded=false;
+         SetLabel(Obj("INFO1"),"Memoria: registro inconsistente",20,361,9,C'255,118,118');
+         return;
+      }
+      string date=StringSubstr(created,0,16);
+      StringReplace(date,"T"," ");
+      string line=date+" "+(symbol==""?"—":symbol)+" "+(timeframe==""?"—":timeframe)+" "+signal+" "+(score==""?"—":score)+" "+(outcome==""?"ABERTA":outcome);
+      if(confirmed!="true") line+=" • NAO CONFIRM.";
+      int n=ArraySize(memory_records);
+      if(ArrayResize(memory_records,n+1)!=n+1){ memory_loaded=false; return; }
+      memory_records[n]=line;
+   }
+   memory_loaded=true;
+   memory_page=0;
+   if(ArraySize(memory_records)==0){
+      for(int i=0;i<5;i++) SetLabel(Obj("INFO"+IntegerToString(i+1)),i==0?"Nenhum registro de decisao encontrado.":"",20,361+i*20,8,C'205,215,230');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,8,C'255,155,155');
+   }else RenderMemoryPage();
+}
 void RefreshStatistics(){
    string r; int code=0;
    if(!Http("GET","/api/statistics","",r,code)){
@@ -822,7 +890,7 @@ void ClearCockpitFields(){
       if(ObjectFind(0,Obj(names[i]))>=0) ObjectDelete(0,Obj(names[i]));
 }
 void ClearAssistantControls(){
-   string names[]={"ASSISTANT_PROMPT","ASSISTANT_INPUT","ASSISTANT_CONSENT","ASSISTANT_SEND","ASSISTANT_PREV","ASSISTANT_NEXT","ASSISTANT_PAGE"};
+   string names[]={"ASSISTANT_PROMPT","ASSISTANT_INPUT","ASSISTANT_CONSENT","ASSISTANT_SEND","ASSISTANT_PREV","ASSISTANT_NEXT","ASSISTANT_PAGE","MEMORY_PREV","MEMORY_NEXT","MEMORY_PAGE"};
    for(int i=0;i<ArraySize(names);i++)
       if(ObjectFind(0,Obj(names[i]))>=0) ObjectDelete(0,Obj(names[i]));
 }
@@ -980,14 +1048,9 @@ void RenderView(){
       SetButton(Obj("ANALYZE"),"ATUALIZAR CONEXOES",20,284,172,30);
       RefreshConnections();
    }else if(active_view=="MEMORIA"){
-      SetLabel(Obj("SUB"),"MEMORIA • historico, WIN/LOSS, estatisticas e auditoria",20,47,9,C'150,165,185');
+      SetLabel(Obj("SUB"),"MEMORIA • historico de decisoes e resultados registrados",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR MEMORIA",20,284,172,30);
-      RefreshSecondary();
-      SetLabel(Obj("INFO1"),"Memoria: registros disponiveis",20,361,9,C'205,215,230');
-      SetLabel(Obj("INFO2"),"Risco: situacao atual",20,381,9,C'205,215,230');
-      SetLabel(Obj("INFO3"),"Historico operacional atualizado",20,401,9,C'205,215,230');
-      SetLabel(Obj("INFO4"),"Estatisticas atualizadas",20,421,9,C'205,215,230');
-      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
+      RefreshMemory();
    }else if(active_view=="LAB"){
       SetLabel(Obj("SUB"),"LAB • laboratorio e validacao isolados da operacao REAL",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"VALIDAR AMBIENTE",20,284,172,30);
@@ -1324,12 +1387,14 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("M6")) { SelectModule(5); return; }
    else if(sparam==Obj("ASSISTANT_CONSENT")) { assistant_consent_armed=!assistant_consent_armed; SetButton(Obj("ASSISTANT_CONSENT"),assistant_consent_armed?"CONSENTIMENTO OPENAI: SIM":"CONSENTIMENTO OPENAI: NAO",20,307,220,28); }
    else if(sparam==Obj("ASSISTANT_SEND")) SendAssistantMessage();
+   else if(sparam==Obj("MEMORY_PREV")) { if(active_view=="MEMORIA" && memory_page>0) { memory_page--; RenderMemoryPage(); } }
+   else if(sparam==Obj("MEMORY_NEXT")) { if(active_view=="MEMORIA" && (memory_page+1)*5<ArraySize(memory_records)) { memory_page++; RenderMemoryPage(); } }
    else if(sparam==Obj("ASSISTANT_PREV")) { if(active_view=="ASSISTENTE" && assistant_answer_page>0) { assistant_answer_page--; RenderAssistantAnswer(); } }
    else if(sparam==Obj("ASSISTANT_NEXT")) { if(active_view=="ASSISTENTE" && (assistant_answer_page+1)*330<StringLen(assistant_answer)) { assistant_answer_page++; RenderAssistantAnswer(); } }
    else if(sparam==Obj("ANALYZE")) {
       if(active_view=="ANALISE") Analyze();
       else if(active_view=="CONFIG") RefreshPreferences();
-      else if(active_view=="MEMORIA") RefreshSecondary();
+      else if(active_view=="MEMORIA") RefreshMemory();
       else if(active_view=="RISK") RefreshRiskView();
       else if(active_view=="STATS") RefreshStatistics();
       else if(active_view=="CONNECTIONS") RefreshConnections();
