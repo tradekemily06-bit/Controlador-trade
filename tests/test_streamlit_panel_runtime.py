@@ -499,7 +499,7 @@ def test_fiscal_rate_form_posts_only_configured_brazil_day_trade_rate(monkeypatc
         rate_input = next(item for item in app.number_input if item.label == "Percentual para novos lançamentos")
         rate_input.set_value(17.5)
         app.run(timeout=30)
-        app.button(key="fiscal_rate_form-Salvar percentual").click().run(timeout=30)
+        app.button(key="FormSubmitter:fiscal_rate_form-Salvar percentual").click().run(timeout=30)
 
         assert not app.exception
         posts = [item for item in calls if item[0] == "POST"]
@@ -620,7 +620,7 @@ def test_fiscal_result_requires_confirmation_and_complete_fields_before_posting(
         area.set_value("RESERVA FISCAL").run(timeout=30)
         assert not app.exception
 
-        submit_key = "fiscal_result_form-Registrar estimativa de planejamento"
+        submit_key = "FormSubmitter:fiscal_result_form-Registrar estimativa de planejamento"
         app.button(key=submit_key).click().run(timeout=30)
         assert not app.exception
         assert not [item for item in calls if item[0] == "POST"]
