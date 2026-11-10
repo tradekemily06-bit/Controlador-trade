@@ -1579,7 +1579,7 @@ def test_streamlit_foreign_fiscal_inputs_match_api_limits():
     assert 'max_value=1_000_000_000_000.0' in source
     assert 'placeholder="ETF, ação, Forex, CFD, cripto", max_chars=80' in source
     assert 'placeholder="EUA, Brasil, outro", max_chars=80' in source
-    assert 'instrument_signed = st.text_input("Instrumento", max_chars=80)' in source
+    assert 'instrument_signed = st.text_input("Instrumento", max_chars=80, key="foreign_signed_instrument")' in source
     assert 'jurisdiction_signed = st.text_input("Jurisdição", max_chars=80)' in source
     assert '_text(payload, "instrument", 80, required=True)' in api_source
     assert '_text(payload, "jurisdiction", 80, required=True)' in api_source
