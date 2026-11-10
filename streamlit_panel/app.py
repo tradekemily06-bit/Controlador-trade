@@ -1863,8 +1863,72 @@ def show_readonly_module(module_name: str) -> None:
                 st.dataframe(rows, use_container_width=True, hide_index=True)
             else:
                 st.info("Nenhum registro corresponde aos filtros selecionados.")
-            st.caption("WIN/LOSS/DRAW são anotações de estudo manual, não resultados financeiros confirmados pela corretora.")
-            st.caption("Somente leitura · execução permitida: NÃO · REAL: DESABILITADO")
+
+            pending_outcome_records = [
+                item for item in records
+                if isinstance(item.get("decision_id"), str)
+                and bool(item.get("decision_id", "").strip())
+                and item.get("confirmed") is True
+                and str(item.get("signal") or "").upper() in {"COMPRA", "VENDA"}
+                and not str(item.get("outcome") or "").strip()
+            ]
+            st.markdown("#### Registrar resultado de estudo · WIN/LOSS")
+            st.caption(
+                "Registre manualmente o desfecho de uma decisão confirmada de COMPRA ou VENDA. "
+                "Esta anotação não consulta a corretora, não comprova lucro/prejuízo e não altera ordens."
+            )
+            if pending_outcome_records:
+                outcome_labels = {
+                    str(item["decision_id"]): (
+                        f"{item.get('symbol') or 'Ativo não informado'} · "
+                        f"{item.get('timeframe') or 'Período não informado'} · "
+                        f"{str(item.get('signal') or '').upper()} · "
+                        f"score {item.get('score', '—')} · {item.get('created_at') or 'data não informada'}"
+                    )
+                    for item in pending_outcome_records
+                }
+                with st.form("memory_manual_outcome_form"):
+                    selected_decision_id = st.selectbox(
+                        "Decisão confirmada sem resultado",
+                        options=list(outcome_labels),
+                        format_func=lambda value: outcome_labels.get(value, value),
+                    )
+                    selected_outcome = st.selectbox(
+                        "Resultado observado · anotação manual",
+                        ["WIN", "LOSS", "DRAW", "OPEN", "VOID"],
+                    )
+                    confirm_manual_outcome = st.checkbox(
+                        "Confirmo que este resultado é uma anotação manual de estudo, não uma confirmação independente da corretora."
+                    )
+                    outcome_submit = st.form_submit_button(
+                        "Salvar resultado manual",
+                        disabled=not confirm_manual_outcome,
+                    )
+                if outcome_submit and confirm_manual_outcome:
+                    try:
+                        saved_outcome = api(
+                            "/api/outcome",
+                            "POST",
+                            {
+                                "decision_id": selected_decision_id,
+                                "outcome": selected_outcome,
+                            },
+                        )
+                        if (
+                            saved_outcome.get("decision_id") == selected_decision_id
+                            and saved_outcome.get("outcome") == selected_outcome
+                            and saved_outcome.get("outcome_source") == "MANUAL_STUDY"
+                        ):
+                            st.success("Resultado manual registrado no histórico de decisões.")
+                            st.rerun()
+                        else:
+                            st.warning("O runtime não confirmou o registro. Confira o histórico antes de tentar novamente.")
+                    except Exception:
+                        st.error("Não foi possível registrar o resultado manual. O estado do histórico não foi confirmado.")
+            else:
+                st.info("Não há decisões direcionais confirmadas sem resultado manual nos 50 registros carregados.")
+            st.caption("WIN/LOSS/DRAW/OPEN/VOID são anotações manuais de estudo; não são resultados financeiros confirmados pela corretora.")
+            st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
             return
 
         if module_name == "Motor de Decisão":
