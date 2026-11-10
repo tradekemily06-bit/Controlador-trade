@@ -10,8 +10,9 @@ class FakeStore:
         self._history = list(history or [])
 
     def append(self, identity, conversation_id, role, content):
+        conversation_id = conversation_id or "conversation-test"
         self.messages.append((identity, conversation_id, role, content))
-        return conversation_id or "conversation-test"
+        return conversation_id
 
     def history(self, identity, conversation_id, limit):
         return self._history[-limit:] + [
