@@ -3077,10 +3077,11 @@ AREAS = {
     ]
     for name in ("COCKPIT", "ANÁLISE", "ESTUDO")
 }
-AREAS["FINANCEIRO"] = ["Financeiro"]
 AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]
 AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]
-AREAS["CENTRAL"] = [module for module in _REFERENCE_TABS["MAIS / ADMIN"] if module != "Financeiro"]
+# CENTRAL is the final main area. Financeiro belongs inside it, not as a
+# seventh top-level area. Keep the original Figma JSON unchanged.
+AREAS["CENTRAL"] = ["Financeiro", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]
 if "panel_open" not in st.session_state:
     st.session_state.panel_open = True
 
@@ -3108,14 +3109,11 @@ with st.container(key="control-hub-shell"):
 
     area = st.radio("Áreas principais", list(AREAS), horizontal=True, key="main_area_navigation", label_visibility="collapsed")
     st.divider()
-    if area in {"FINANCEIRO", "RESERVA FISCAL", "ASSISTENTE DO ECOSSISTEMA"}:
-        module = AREAS[area][0]
-    else:
-        # The previous Financeiro selector may remain in Streamlit session state
-        # after navigation changes; normalize it before rendering the new options.
-        if st.session_state.get("module_navigation") not in AREAS[area]:
-            st.session_state["module_navigation"] = AREAS[area][0]
-        module = st.radio("Módulos", AREAS[area], horizontal=False, key="module_navigation", label_visibility="collapsed")
+    # Every one of the six main areas uses the same module-navigation
+    # contract. Single-module areas remain visible and selectable too.
+    if st.session_state.get("module_navigation") not in AREAS[area]:
+        st.session_state["module_navigation"] = AREAS[area][0]
+    module = st.radio("Módulos", AREAS[area], horizontal=False, key="module_navigation", label_visibility="collapsed")
 
     if module == "Reserva Fiscal":
         show_fiscal()
