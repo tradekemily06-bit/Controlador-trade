@@ -110,3 +110,12 @@ def test_native_mt5_operational_actions_are_not_reused_by_non_operational_module
         assert 'SetButton(Obj("CYCLE")' not in section
         assert 'SetButton(Obj("CLOSE")' not in section
         assert 'SetButton(Obj("SAVE")' not in section
+
+
+def test_native_mt5_cockpit_retains_controls_after_module_action_reset():
+    source = EA.read_text(encoding="utf-8")
+    cockpit = source.split('if(active_view=="COCKPIT"){', 1)[1].split('}else if(active_view=="ANALISE"){', 1)[0]
+    assert 'SetButton(Obj("CYCLE"),"RODAR CICLO DEMO"' in cockpit
+    assert 'SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR"' in cockpit
+    assert 'SetButton(Obj("SAVE"),"SALVAR CONFIG"' in cockpit
+    assert 'ObjectDelete(0,Obj("CYCLE"))' not in cockpit
