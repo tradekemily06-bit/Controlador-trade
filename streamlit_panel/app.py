@@ -1029,6 +1029,7 @@ def show_fiscal() -> None:
             col.metric(label, money(item.get("reserve_amount_brl")))
             col.caption("Resultado: " + money(item.get("realized_result_brl")))
     except Exception as exc:
+        summary_available = False
         st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
         summary = {}
 
