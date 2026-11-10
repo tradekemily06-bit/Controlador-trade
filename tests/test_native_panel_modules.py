@@ -64,7 +64,7 @@ def test_native_mt5_module_navigation_recreates_base_controls_without_background
     assert 'SelectArea("CENTRAL")' in events
     assert 'else if(active_view=="RESERVA") RefreshFiscal();' not in timer
     assert 'else if(active_view=="ASSISTENTE") RefreshAssistantStatus();' not in timer
-    assert 'if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="UNAVAILABLE" || active_view=="MEMORIA" || active_view=="RISK" || active_view=="STATS" || active_view=="CONNECTIONS") return;' in health
+    assert 'if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="UNAVAILABLE" || active_view=="MEMORIA" || active_view=="RISK" || active_view=="STATS" || active_view=="CONNECTIONS" || active_view=="REPORTS" || active_view=="AUDIT") return;' in health
     assert '"REC_REFRESH"' in clear_fields and '"REC_CLOSE"' in clear_fields
 
 
@@ -237,3 +237,25 @@ def test_native_memory_does_not_report_empty_or_malformed_api_response_as_succes
     assert 'if(id=="" || signal=="")' in memory
     assert 'memory_loaded=false;' in memory
     assert "Nenhum registro de decisao encontrado." in memory
+
+
+def test_native_reports_and_audit_modules_are_real_read_only_screens():
+    source = EA.read_text(encoding="utf-8")
+    routing = source.split("string ViewForModule(", 1)[1].split("void RenderNavigation()", 1)[0]
+    reports = source.split("void RefreshReports()", 1)[1].split("void RefreshAuditView()", 1)[0]
+    audit = source.split("void RefreshAuditView()", 1)[1].split("void ClearCockpitFields()", 1)[0]
+    events = source.split("void OnChartEvent", 1)[1]
+
+    assert 'if(module=="Relatórios") return "REPORTS";' in routing
+    assert 'if(module=="Auditoria") return "AUDIT";' in routing
+    assert 'Http("GET","/api/reports?limit=50","",r,code)' in reports
+    for field in ("total", "actionable", "wins", "losses", "win_rate"):
+        assert f'JsonObjectValue(r,"summary","{field}")' in reports
+    assert 'Http("GET","/api/security/audit?limit=50","",r,code)' in audit
+    assert 'ExtractJsonArrayObjects(r,"events",objects)' in audit
+    for field in ("count", "returned", "retention_limit", "persistence"):
+        assert f'JsonValue(r,"{field}")' in audit
+    assert 'else if(active_view=="REPORTS") RefreshReports();' in events
+    assert 'else if(active_view=="AUDIT") RefreshAuditView();' in events
+    assert "execution_allowed" not in reports
+    assert "client_hash" not in audit
