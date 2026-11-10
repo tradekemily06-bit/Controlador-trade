@@ -379,9 +379,11 @@ def test_mql5_json_helpers_accept_standard_json_whitespace_and_escaped_strings()
 
 def test_mql5_sync_backup_creation_fails_closed_before_any_destination_write():
     text = SCRIPT.read_text(encoding="utf-8")
-    backup_phase = text.split("$backupSource =", 1)[1].split(
-        "try:\\n    Copy-WithRetry -Source $source -Destination $destination", 1
-    )[0]
+    backup_start = text.index("$backupSource =")
+    destination_write = text.index(
+        "Copy-WithRetry -Source $source -Destination $destination", backup_start
+    )
+    backup_phase = text[backup_start:destination_write]
     assert "try {" in backup_phase
     assert "Copy-WithRetry -Source $destination -Destination $backupSource" in backup_phase
     assert "Copy-WithRetry -Source $binary -Destination $backupBinary" in backup_phase
