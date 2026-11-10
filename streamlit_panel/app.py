@@ -1858,7 +1858,7 @@ def show_readonly_module(module_name: str) -> None:
         "Ambiente MT5 DEMO": ("Conexões e ambiente", "/api/connections"),
         "Memória": ("Memória de decisões", "/api/memory?limit=50"),
         "Estatísticas": ("Estatísticas operacionais", "/api/statistics"),
-        "Relatórios": ("Resumo operacional", "/api/statistics"),
+        "Relatórios": ("Resumo operacional", "/api/reports?limit=50"),
         "Laboratório": ("Laboratório de aprendizado", "/api/learning"),
         "Aprendizado": ("Aprendizado validado", "/api/learning"),
         "Descobertas": ("Descobertas registradas", "/api/learning"),
