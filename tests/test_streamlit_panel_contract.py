@@ -365,7 +365,7 @@ def test_streamlit_closed_panel_shows_signal_score_and_system_availability():
     end = source.index("st.stop()", start) + len("st.stop()")
     closed_state = source[start:end]
     helper_start = source.index("def render_latest_signal(")
-    helper_end = source.index("# Four approved navigation areas", helper_start)
+    helper_end = source.index("# Keep the supplied Figma reference JSON untouched", helper_start)
     helper = source[helper_start:helper_end]
 
     assert 'st.button("C", key="open_control_hub", help="Abrir painel")' in closed_state
@@ -388,7 +388,8 @@ def test_streamlit_open_panel_is_rendered_inside_a_single_shell():
     assert 'with st.container(key="control-hub-shell"):' in source
     assert '<div class="hub-title">Controlador-Trader</div>' in source
     assert '<span class="demo-pill">DEMO</span>' in source
-    assert '["Reserva Fiscal", "Assistente do Ecossistema"]' in source
+    assert 'AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]' in source
+    assert 'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]' in source
 
 
 def test_streamlit_open_and_closed_panel_share_the_latest_signal_and_score():
@@ -400,7 +401,7 @@ def test_streamlit_open_and_closed_panel_share_the_latest_signal_and_score():
     open_end = source.index('if st.button("Fechar painel"', open_start)
     opened = source[open_start:open_end]
     helper_start = source.index("def render_latest_signal(")
-    helper_end = source.index("# Four approved navigation areas", helper_start)
+    helper_end = source.index("# Keep the supplied Figma reference JSON untouched", helper_start)
     helper = source[helper_start:helper_end]
 
     assert "render_latest_signal(closed=True)" in closed
@@ -453,8 +454,8 @@ def test_streamlit_readme_identifies_the_streamlit_panel_as_user_facing_and_figm
     readme = (PANEL_DIR / "README.md").read_text(encoding="utf-8")
     assert "O Figma é somente referência visual" in readme
     assert "painel de uso pretendido" in readme
-    assert "Reserva Fiscal possui uma área principal própria" in readme
-    assert "Assistente do Ecossistema possui uma área principal própria" in readme
+    assert "**Reserva Fiscal** possui uma área principal própria" in readme
+    assert "**Assistente do Ecossistema** possui uma área principal própria" in readme
 
 
 
@@ -1908,7 +1909,7 @@ def test_streamlit_api_rejects_invalid_or_non_object_json_responses():
 def test_closed_panel_health_uses_only_online_or_unavailable_labels():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     helper_start = source.index("def render_latest_signal(")
-    helper_end = source.index("# Four approved navigation areas", helper_start)
+    helper_end = source.index("# Keep the supplied Figma reference JSON untouched", helper_start)
     helper = source[helper_start:helper_end]
     assert '"OK": "SISTEMA ONLINE"' in helper
     assert '"WARNING": "INDISPONÍVEL"' in helper
@@ -1930,7 +1931,7 @@ def test_open_panel_health_uses_only_online_or_unavailable_labels():
 def test_streamlit_signal_strip_refreshes_periodically_in_both_panel_states():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     helper_start = source.index("def render_latest_signal(")
-    helper_end = source.index("# Four approved navigation areas", helper_start)
+    helper_end = source.index("# Keep the supplied Figma reference JSON untouched", helper_start)
     helper = source[helper_start:helper_end]
     assert '@st.fragment(run_every="15s")' in source
     assert "def render_latest_signal(closed: bool = False)" in source
