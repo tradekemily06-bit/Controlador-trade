@@ -65,3 +65,32 @@ def test_financeiro_overview_is_read_only_and_does_not_duplicate_fiscal_writes()
     assert 'api("/api/fiscal-reserve/domestic-pending/summary")' in overview
     assert 'method="POST"' not in overview
     assert "st.form_submit_button" not in overview
+
+
+def _registered_backend_route(route: str) -> bool:
+    normalized = route.split("?", 1)[0]
+    normalized = re.sub(r"\{[^}]+\}", "", normalized)
+    candidates = [normalized]
+    candidate = normalized.rstrip("/")
+    while candidate and candidate != "/api":
+        candidates.append(candidate)
+        candidate = candidate.rsplit("/", 1)[0]
+    for candidate in dict.fromkeys(candidates):
+        escaped = re.escape(candidate)
+        if re.search(rf'path\s*==\s*["\']{escaped}["\']', API_SOURCE):
+            return True
+        if re.search(rf'path\.startswith\(["\']{escaped}["\']\)', API_SOURCE):
+            return True
+    return False
+
+
+def test_every_literal_streamlit_api_call_has_a_backend_route():
+    # Cover every Streamlit surface, not only the fiscal and assistant pages.
+    # Query strings and formatted per-record suffixes are normalized first.
+    routes = {
+        match.group(2).split("?", 1)[0]
+        for match in re.finditer(r'api\(\s*(?:f)?(["\'])(/api/[^"\'\x60]+)\1', PANEL_SOURCE)
+    }
+    assert len(routes) >= 40, "API route inventory unexpectedly shrank; review panel changes"
+    missing = sorted(route for route in routes if not _registered_backend_route(route))
+    assert not missing, f"Streamlit calls have no backend route: {missing}"
