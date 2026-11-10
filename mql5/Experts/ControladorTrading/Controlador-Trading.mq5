@@ -303,6 +303,7 @@ string ViewForModule(string area,string module){
    }else if(area=="RESERVA FISCAL") return "RESERVA";
    else if(area=="ASSISTENTE DO ECOSSISTEMA") return "ASSISTENTE";
    else if(area=="CENTRAL"){
+      if(module=="Financeiro") return "FINANCE";
       if(module=="Configurações") return "CONFIG";
       if(module=="Conexões") return "CONNECTIONS";
       if(module=="Auditoria") return "AUDIT";
@@ -890,6 +891,28 @@ void RefreshConnections(){
    SetLabel(Obj("INFO4"),"cTrader: "+(ctrader==""?"nao informado":ctrader)+" • SaaS: "+(saas==""?"nao informado":saas),20,421,8,C'205,215,230');
    SetLabel(Obj("INFO5"),"REAL: "+(real==""?"estado nao informado":real),20,441,9,C'255,155,155');
 }
+void RefreshFinanceOverview(){
+   string r; int code=0;
+   if(!Http("GET","/api/fiscal-reserve?limit=50&offset=0","",r,code)){
+      SetLabel(Obj("INFO1"),"Financeiro: resumo indisponivel",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Nenhum saldo ou reserva foi estimado.",20,381,8,C'205,215,230');
+      return;
+   }
+   string total=JsonValue(r,"total_reserved_brl");
+   string month=JsonObjectValue(r,"periods","month");
+   string month_reserve=JsonValue(month,"reserve_amount_brl");
+   string realized=JsonValue(month,"realized_result_brl");
+   string foreign_total=JsonObjectValue(r,"foreign_pending","total");
+   string domestic_response; int domestic_code=0;
+   string domestic_total="?";
+   if(Http("GET","/api/fiscal-reserve/domestic-pending/summary","",domestic_response,domestic_code))
+      domestic_total=JsonValue(domestic_response,"total");
+   SetLabel(Obj("INFO1"),"Reserva estimada Brasil: "+(total==""?"nao informada":total)+" BRL",20,361,8,C'205,215,230');
+   SetLabel(Obj("INFO2"),"Reserva estimada no mes: "+(month_reserve==""?"nao informada":month_reserve)+" BRL",20,381,8,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Resultado realizado no mes: "+(realized==""?"nao informado":realized)+" BRL",20,401,8,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Pendencias BR: "+(domestic_total==""?"?":domestic_total)+" • exterior: "+(foreign_total==""?"?":foreign_total),20,421,8,C'205,215,230');
+   SetLabel(Obj("INFO5"),"Visao fiscal resumida; nao representa saldo bancario ou equity. Pendencias fora dos totais.",20,441,7,C'255,209,102');
+}
 void RefreshReports(){
    string r; int code=0;
    if(!Http("GET","/api/reports?limit=50","",r,code)){
@@ -1106,6 +1129,11 @@ void RenderView(){
       SetLabel(Obj("SUB"),"CONEXOES • estado reportado pelos provedores",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR CONEXOES",20,284,172,30);
       RefreshConnections();
+   }else if(active_view=="FINANCE"){
+      ClearCockpitFields();
+      SetLabel(Obj("SUB"),"FINANCEIRO • visao geral fiscal; nao representa saldo bancario",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR FINANCEIRO",20,284,172,30);
+      RefreshFinanceOverview();
    }else if(active_view=="REPORTS"){
       ClearCockpitFields();
       SetLabel(Obj("SUB"),"RELATORIOS • resumo historico do runtime, somente leitura",20,47,9,C'150,165,185');
@@ -1177,7 +1205,7 @@ void RefreshHealth(){
    SetLabel(Obj("RUNTIME"),"Sistema: online",20,104,10,C'88,214,141');
    SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),20,124,10,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • autorizacao separada",20,441,9,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
-   if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="UNAVAILABLE" || active_view=="MEMORIA" || active_view=="RISK" || active_view=="STATS" || active_view=="CONNECTIONS" || active_view=="REPORTS" || active_view=="AUDIT") return;
+   if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="UNAVAILABLE" || active_view=="MEMORIA" || active_view=="RISK" || active_view=="STATS" || active_view=="CONNECTIONS" || active_view=="REPORTS" || active_view=="AUDIT" || active_view=="FINANCE") return;
    SetLabel(Obj("INFO1"),"Analise do ecossistema: "+(engine==""?"online":engine),20,361,9,C'205,215,230');
 }
 void RefreshMarketAssets(){
@@ -1467,6 +1495,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
       else if(active_view=="RISK") RefreshRiskView();
       else if(active_view=="STATS") RefreshStatistics();
       else if(active_view=="CONNECTIONS") RefreshConnections();
+      else if(active_view=="FINANCE") RefreshFinanceOverview();
       else if(active_view=="REPORTS") RefreshReports();
       else if(active_view=="AUDIT") RefreshAuditView();
       else if(active_view=="LAB") { RefreshHealth(); RefreshSecondary(); }
