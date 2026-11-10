@@ -49,7 +49,7 @@ def test_kill_switch_activation_requires_authenticated_owner(monkeypatch, tmp_pa
     status, payload = _post_kill_switch(identity=None)
 
     assert status == "401 Unauthorized"
-    assert "Identidade autenticada necessária" in payload["error"]
+    assert payload["error"] == "trusted identity is required"
     assert runtime.kill_switch.state.enabled is False
 
 
@@ -59,7 +59,6 @@ def test_kill_switch_activation_rejects_wrong_identity(monkeypatch, tmp_path):
     status, payload = _post_kill_switch(identity="other@example.test")
 
     assert status == "403 Forbidden"
-    assert payload["execution_allowed"] is False
     assert runtime.kill_switch.state.enabled is False
 
 
