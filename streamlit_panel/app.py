@@ -1644,7 +1644,7 @@ def show_readonly_module(module_name: str) -> None:
         "Motor de Decisão": ("Motor de Decisão · última análise", "/api/runtime/analysis/latest"),
         "Gestão de Risco": ("Gestão de Risco", "/api/risk"),
         "Notificações": ("Central de Notificações", "/api/notifications"),
-        "MT5 DEMO / Simulação": ("Conexões e ambiente", "/api/connections"),
+        "Conexão MT5 DEMO": ("Conexões e ambiente", "/api/connections"),
         "Kill Switch": ("Proteção operacional", "/api/health"),
         "Memória": ("Memória de decisões", "/api/memory?limit=50"),
         "Estatísticas": ("Estatísticas operacionais", "/api/statistics"),
@@ -2173,7 +2173,7 @@ def show_readonly_module(module_name: str) -> None:
             st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
             return
 
-        if module_name == "MT5 DEMO / Simulação":
+        if module_name == "Conexão MT5 DEMO":
             st.markdown("#### Ambiente de operação conectado")
             st.metric("IC Markets · MT5 DEMO", str(data.get("ic_markets_mt5_demo", "NÃO CONFIRMADO")))
             cols = st.columns(2)
@@ -2852,9 +2852,20 @@ def render_latest_signal(closed: bool = False) -> None:
         st.markdown(f'<div class="open-score">{score_label}</div>', unsafe_allow_html=True)
 
 
-# Four approved navigation areas from the extracted reference JSON.
-# Streamlit is the product; the JSON supplies the visual and navigation specification.
-AREAS = {name: list(modules) for name, modules in CONFIG["open_state"]["tabs"].items()}
+# Keep the supplied Figma reference JSON untouched. The active Streamlit
+# navigation may separate complex product modules into their own destinations.
+# "MT5 DEMO / Simulação" in the reference is operational connection/recovery,
+# not the historical Simulador module already housed under ESTUDO.
+AREAS = {
+    name: [
+        "Conexão MT5 DEMO" if module == "MT5 DEMO / Simulação" else module
+        for module in modules
+        if module != "Financeiro"
+    ]
+    for name, modules in CONFIG["open_state"]["tabs"].items()
+}
+AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]
+AREAS["ASSISTENTE"] = ["Assistente do Ecossistema"]
 if "panel_open" not in st.session_state:
     st.session_state.panel_open = True
 
@@ -2882,14 +2893,19 @@ with st.container(key="control-hub-shell"):
 
     area = st.radio("Áreas principais", list(AREAS), horizontal=True, key="main_area_navigation", label_visibility="collapsed")
     st.divider()
-    module = st.radio("Módulos", AREAS[area], horizontal=False, key="module_navigation", label_visibility="collapsed")
+    if area in {"RESERVA FISCAL", "ASSISTENTE"}:
+        module = AREAS[area][0]
+    else:
+        # The previous Financeiro selector may remain in Streamlit session state
+        # after navigation changes; normalize it before rendering the new options.
+        if st.session_state.get("module_navigation") not in AREAS[area]:
+            st.session_state["module_navigation"] = AREAS[area][0]
+        module = st.radio("Módulos", AREAS[area], horizontal=False, key="module_navigation", label_visibility="collapsed")
 
-    if module == "Financeiro":
-        financial = st.radio("Financeiro", ["Reserva Fiscal", "Assistente do Ecossistema"], horizontal=True, key="financeiro_section", label_visibility="collapsed")
-        if financial == "Reserva Fiscal":
-            show_fiscal()
-        else:
-            show_assistant()
+    if module == "Reserva Fiscal":
+        show_fiscal()
+    elif module == "Assistente do Ecossistema":
+        show_assistant()
     else:
         show_readonly_module(module)
 
