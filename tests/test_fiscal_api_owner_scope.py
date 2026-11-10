@@ -1167,6 +1167,6 @@ def test_assistant_history_and_delete_routes_hide_foreign_conversation_ids(tmp_p
     assert status.startswith("200")
     assert body["deleted"] is True
     assert store.list(owner_id) == []
-    assert store.list("single:other-owner") == [
-        store.list("single:other-owner")[0]
-    ]
+    remaining_foreign = store.list("single:other-owner")
+    assert len(remaining_foreign) == 1
+    assert remaining_foreign[0]["title"] == "histórico de outro titular"
