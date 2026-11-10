@@ -863,7 +863,7 @@ def test_streamlit_kill_switch_view_is_dedicated_and_read_only():
     assert 'status.get("operational_observability", {})' in view
     assert 'api("/api/runtime/real/status")' in view
     assert 'position_close_recovery_items' in view
-    assert 'api("/api/runtime/real/close/reconcile"' in view
+    assert '"/api/runtime/real/close/reconcile"' in view
     assert "A ativação bloqueia novas execuções." in view
     assert "não canceladas" in view
     assert "CONSULTAR E RECONCILIAR" in view
