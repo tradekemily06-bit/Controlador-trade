@@ -7,5 +7,13 @@ if([string]::IsNullOrWhiteSpace($OutputDir)){$OutputDir=Join-Path $ProjectRoot '
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $timestamp=Get-Date -Format 'yyyyMMdd-HHmmss-fff'; $backup=Join-Path $OutputDir ("controlador-runtime-$timestamp-$([guid]::NewGuid().ToString('N')).zip")
 Set-Location $ProjectRoot
-& $PythonExe -c "from core.runtime_portability import create_backup; print(create_backup(r'$RuntimeDir',r'$backup'))"
-if($LASTEXITCODE -ne 0){throw 'Falha ao criar backup do runtime.'}
+$env:CONTROLADOR_BACKUP_RUNTIME_DIR = $RuntimeDir
+$env:CONTROLADOR_BACKUP_OUTPUT_FILE = $backup
+try {
+    & $PythonExe -c 'import os; from core.runtime_portability import create_backup; print(create_backup(os.environ["CONTROLADOR_BACKUP_RUNTIME_DIR"], os.environ["CONTROLADOR_BACKUP_OUTPUT_FILE"]))'
+    $backupExitCode = $LASTEXITCODE
+} finally {
+    Remove-Item Env:CONTROLADOR_BACKUP_RUNTIME_DIR -ErrorAction SilentlyContinue
+    Remove-Item Env:CONTROLADOR_BACKUP_OUTPUT_FILE -ErrorAction SilentlyContinue
+}
+if($backupExitCode -ne 0){throw 'Falha ao criar backup do runtime.'}
