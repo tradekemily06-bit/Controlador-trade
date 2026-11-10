@@ -1,26 +1,35 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
+import uuid
+from datetime import datetime, timezone
 from dataclasses import asdict
 from enum import Enum
 from pathlib import Path
-from threading import Lock
+from threading import RLock
 from typing import Any
+
+
+class NotificationHistoryUnavailableError(RuntimeError):
+    """Notification history cannot be safely persisted or replaced."""
 
 
 class EcosystemStateStore:
     """Durable single-runtime store for user-facing ecosystem state.
 
-    Trading authority remains outside this store. The store only persists
-    preferences and notifications so all clients of the same runtime observe
-    the same state after restarts.
+    Trading authority remains outside this store. It persists user preferences,
+    notifications, and educational records so all clients of the same runtime
+    observe the same state after restarts. Learning records never grant trading
+    authority.
     """
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._lock = Lock()
+        self._lock = RLock()
+        self._notifications_load_error: str | None = None
         self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
@@ -36,6 +45,17 @@ class EcosystemStateStore:
                 )
                 """
             )
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS notification_history_quarantine (
+                    archive_id TEXT PRIMARY KEY,
+                    archived_at TEXT NOT NULL,
+                    corruption_category TEXT NOT NULL,
+                    payload_sha256 TEXT NOT NULL,
+                    raw_payload TEXT NOT NULL
+                )
+                """
+            )
 
     def load(self, key: str) -> Any | None:
         with self._lock, self._connect() as db:
@@ -45,7 +65,7 @@ class EcosystemStateStore:
             ).fetchone()
         return None if row is None else json.loads(row[0])
 
-    def save(self, key: str, value: Any) -> None:
+    def _write_state(self, key: str, value: Any) -> None:
         encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=lambda item: item.value if isinstance(item, Enum) else str(item))
         with self._lock, self._connect() as db:
             db.execute(
@@ -57,6 +77,21 @@ class EcosystemStateStore:
                 (key, encoded),
             )
 
+    def save(self, key: str, value: Any) -> None:
+        # Notification history has a dedicated guarded writer. Keeping the
+        # generic state API from writing that key prevents bypassing corruption
+        # protection after a damaged history has been detected.
+        if key == "notifications":
+            raise ValueError("use save_notifications para persistir o histórico")
+        self._write_state(key, value)
+
+    def load_learning(self) -> dict[str, Any] | None:
+        value = self.load("learning")
+        return value if isinstance(value, dict) else None
+
+    def save_learning(self, learning: dict[str, Any]) -> None:
+        self.save("learning", learning)
+
     def load_preferences(self) -> dict[str, Any] | None:
         value = self.load("preferences")
         return value if isinstance(value, dict) else None
@@ -64,9 +99,311 @@ class EcosystemStateStore:
     def save_preferences(self, preferences: Any) -> None:
         self.save("preferences", asdict(preferences))
 
+    @property
+    def notifications_load_error(self) -> str | None:
+        """Return a safe category when persisted notification JSON is corrupt."""
+        with self._lock:
+            return self._notifications_load_error
+
     def load_notifications(self) -> list[dict[str, Any]]:
-        value = self.load("notifications")
-        return value if isinstance(value, list) else []
+        # Serialize the corruption flag transition with every guarded writer.
+        with self._lock:
+            self._notifications_load_error = None
+            try:
+                value = self.load("notifications")
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                self._notifications_load_error = "invalid_json"
+                return []
+            except sqlite3.Error:
+                self._notifications_load_error = "read_failed"
+                return []
+            if value is None:
+                return []
+            if not isinstance(value, list):
+                self._notifications_load_error = "invalid_shape"
+                return []
+            if any(not isinstance(item, dict) for item in value):
+                self._notifications_load_error = "invalid_records"
+            return value
+
+    def mark_notifications_unavailable(self, category: str) -> None:
+        """Prevent routine writes after validation detects damaged history."""
+        allowed = {"invalid_json", "read_failed", "invalid_shape", "invalid_records"}
+        normalized = str(category).strip().lower()
+        if normalized not in allowed:
+            raise ValueError("categoria de histórico inválida")
+        with self._lock:
+            self._notifications_load_error = normalized
+
+    def archive_notifications_for_recovery(self, *, confirmed: bool = False) -> dict[str, str]:
+        """Preserve the exact damaged payload before any separately approved recovery."""
+        with self._lock:
+            if confirmed is not True:
+                raise ValueError("confirmação explícita é obrigatória para arquivar o histórico")
+            category = self._notifications_load_error
+            allowed = {"invalid_json", "read_failed", "invalid_shape", "invalid_records"}
+            if category not in allowed:
+                raise NotificationHistoryUnavailableError(
+                    "não há histórico marcado para recuperação"
+                )
+
+            archive_id = str(uuid.uuid4())
+            archived_at = datetime.now(timezone.utc).isoformat()
+            try:
+                with self._lock, self._connect() as db:
+                    db.execute("BEGIN IMMEDIATE")
+                    row = db.execute(
+                        "SELECT value_json FROM ecosystem_state WHERE key = ?",
+                        ("notifications",),
+                    ).fetchone()
+                    if row is None:
+                        raise NotificationHistoryUnavailableError(
+                            "payload original de notificações não encontrado; nada foi alterado"
+                        )
+                    raw_payload = row[0]
+                    if isinstance(raw_payload, str):
+                        payload_bytes = raw_payload.encode("utf-8")
+                    elif isinstance(raw_payload, bytes):
+                        payload_bytes = raw_payload
+                    else:
+                        raise NotificationHistoryUnavailableError(
+                            "formato do payload original não pode ser preservado com segurança"
+                        )
+                    digest = hashlib.sha256(payload_bytes).hexdigest()
+                    db.execute(
+                        """
+                        INSERT INTO notification_history_quarantine
+                        (archive_id, archived_at, corruption_category, payload_sha256, raw_payload)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (archive_id, archived_at, category, digest, raw_payload),
+                    )
+            except sqlite3.Error as exc:
+                raise NotificationHistoryUnavailableError(
+                    "não foi possível preservar o histórico original; nenhum reparo foi aplicado"
+                ) from exc
+
+            # Deliberately keep the original row and the unavailable flag untouched.
+            return {
+                "archive_id": archive_id,
+                "archived_at": archived_at,
+                "corruption_category": category,
+                "payload_sha256": digest,
+            }
+
+    def inspect_notification_quarantine(self, archive_id: str) -> dict[str, Any]:
+        """Verify an archived payload and report whether every record is restorable."""
+        if not isinstance(archive_id, str) or not archive_id.strip():
+            raise ValueError("archive_id inválido")
+        with self._lock, self._connect() as db:
+            row = db.execute(
+                "SELECT corruption_category, payload_sha256, raw_payload "
+                "FROM notification_history_quarantine WHERE archive_id = ?",
+                (archive_id.strip(),),
+            ).fetchone()
+        if row is None:
+            raise NotificationHistoryUnavailableError("arquivo de quarentena não encontrado")
+        category, expected_digest, raw_payload = row
+        payload_bytes = raw_payload if isinstance(raw_payload, bytes) else raw_payload.encode("utf-8") if isinstance(raw_payload, str) else None
+        if payload_bytes is None:
+            raise NotificationHistoryUnavailableError("payload arquivado possui formato não suportado")
+        actual_digest = hashlib.sha256(payload_bytes).hexdigest()
+        if actual_digest != expected_digest:
+            raise NotificationHistoryUnavailableError("integridade do arquivo de quarentena não confere")
+        try:
+            decoded = json.loads(payload_bytes)
+        except (json.JSONDecodeError, UnicodeDecodeError, TypeError) as exc:
+            raise NotificationHistoryUnavailableError("payload arquivado não contém JSON válido") from exc
+        if not isinstance(decoded, list):
+            raise NotificationHistoryUnavailableError("payload arquivado não contém uma lista de notificações")
+        from core.ecosystem_notifications import EcosystemNotificationCenter
+        center = EcosystemNotificationCenter()
+        center.restore(decoded)
+        if center.restore_had_invalid_records or len(center.all()) != len(decoded):
+            raise NotificationHistoryUnavailableError("arquivo contém notificações inválidas; restauração integral bloqueada")
+        normalized = [
+            {
+                "notification_id": item.notification_id,
+                "kind": item.kind.value,
+                "severity": item.severity.value,
+                "title": item.title,
+                "message": item.message,
+                "requires_attention": item.requires_attention,
+                "blocking": item.blocking,
+            }
+            for item in center.all()
+        ]
+        return {
+            "archive_id": archive_id.strip(),
+            "corruption_category": category,
+            "payload_sha256": actual_digest,
+            "notification_count": len(normalized),
+            "notifications": normalized,
+            "integrity_verified": True,
+            "fully_valid": True,
+        }
+
+    def restore_notifications_from_quarantine(
+        self, archive_id: str, *, confirmed: bool = False
+    ) -> dict[str, Any]:
+        """Atomically verify and restore a complete archive without a TOCTOU gap."""
+        if confirmed is not True:
+            raise ValueError("confirmação explícita é obrigatória para restaurar o histórico")
+        if not isinstance(archive_id, str) or not archive_id.strip():
+            raise ValueError("archive_id inválido")
+
+        normalized_archive_id = archive_id.strip()
+        with self._lock, self._connect() as db:
+            # BEGIN IMMEDIATE serializes the archive read, integrity checks and
+            # current-payload comparison against concurrent SQLite writers.
+            db.execute("BEGIN IMMEDIATE")
+            archived = db.execute(
+                "SELECT corruption_category, payload_sha256, raw_payload "
+                "FROM notification_history_quarantine WHERE archive_id = ?",
+                (normalized_archive_id,),
+            ).fetchone()
+            if archived is None:
+                raise NotificationHistoryUnavailableError("arquivo de quarentena não encontrado")
+
+            category, expected_digest, raw_payload = archived
+            payload_bytes = (
+                raw_payload if isinstance(raw_payload, bytes)
+                else raw_payload.encode("utf-8") if isinstance(raw_payload, str)
+                else None
+            )
+            if payload_bytes is None:
+                raise NotificationHistoryUnavailableError("payload arquivado possui formato não suportado")
+            actual_digest = hashlib.sha256(payload_bytes).hexdigest()
+            if actual_digest != expected_digest:
+                raise NotificationHistoryUnavailableError("integridade do arquivo de quarentena não confere")
+            try:
+                decoded = json.loads(payload_bytes)
+            except (json.JSONDecodeError, UnicodeDecodeError, TypeError) as exc:
+                raise NotificationHistoryUnavailableError("payload arquivado não contém JSON válido") from exc
+            if not isinstance(decoded, list):
+                raise NotificationHistoryUnavailableError("payload arquivado não contém uma lista de notificações")
+
+            from core.ecosystem_notifications import EcosystemNotificationCenter
+            center = EcosystemNotificationCenter()
+            center.restore(decoded)
+            if center.restore_had_invalid_records or len(center.all()) != len(decoded):
+                raise NotificationHistoryUnavailableError(
+                    "arquivo contém notificações inválidas; restauração integral bloqueada"
+                )
+            normalized = [
+                {
+                    "notification_id": item.notification_id,
+                    "kind": item.kind.value,
+                    "severity": item.severity.value,
+                    "title": item.title,
+                    "message": item.message,
+                    "requires_attention": item.requires_attention,
+                    "blocking": item.blocking,
+                }
+                for item in center.all()
+            ]
+
+            current = db.execute(
+                "SELECT value_json FROM ecosystem_state WHERE key = ?",
+                ("notifications",),
+            ).fetchone()
+            if current is None:
+                raise NotificationHistoryUnavailableError("histórico original ausente; restauração bloqueada")
+            raw_current = current[0]
+            current_bytes = (
+                raw_current if isinstance(raw_current, bytes)
+                else raw_current.encode("utf-8") if isinstance(raw_current, str)
+                else None
+            )
+            if current_bytes is None or hashlib.sha256(current_bytes).hexdigest() != expected_digest:
+                raise NotificationHistoryUnavailableError(
+                    "histórico original mudou desde o arquivamento; restauração bloqueada"
+                )
+
+            encoded = json.dumps(normalized, ensure_ascii=False, separators=(",", ":"))
+            db.execute(
+                "UPDATE ecosystem_state SET value_json = ? WHERE key = ?",
+                (encoded, "notifications"),
+            )
+            # Clear the in-memory failure flag before releasing the same lock
+            # that serializes loads, marks and guarded writes.
+            self._notifications_load_error = None
+
+        return {
+            "archive_id": normalized_archive_id,
+            "restored_count": len(normalized),
+            "integrity_verified": True,
+            "archive_preserved": True,
+        }
 
     def save_notifications(self, notifications: list[dict[str, Any]]) -> None:
-        self.save("notifications", notifications)
+        # The in-memory flag protects this store instance, but another process
+        # or store instance may have observed corruption independently. Re-read
+        # and validate the durable row while holding SQLite's write reservation
+        # so a stale writer cannot overwrite damaged history.
+        with self._lock:
+            if self._notifications_load_error is not None:
+                raise NotificationHistoryUnavailableError(
+                    "histórico de notificações exige recuperação explícita antes de nova gravação"
+                )
+            try:
+                from core.ecosystem_notifications import EcosystemNotificationCenter
+                candidate = EcosystemNotificationCenter()
+                if not isinstance(notifications, list):
+                    self._notifications_load_error = "invalid_records"
+                    raise NotificationHistoryUnavailableError(
+                        "lote de notificações deve ser uma lista; gravação bloqueada"
+                    )
+                candidate.restore(notifications)
+                if (
+                    candidate.restore_had_invalid_records
+                    or len(candidate.all()) != len(notifications)
+                ):
+                    self._notifications_load_error = "invalid_records"
+                    raise NotificationHistoryUnavailableError(
+                        "novas notificações inválidas ou duplicadas; gravação bloqueada"
+                    )
+                with self._connect() as db:
+                    db.execute("BEGIN IMMEDIATE")
+                    row = db.execute(
+                        "SELECT value_json FROM ecosystem_state WHERE key = ?",
+                        ("notifications",),
+                    ).fetchone()
+                    if row is not None:
+                        try:
+                            persisted = json.loads(row[0])
+                        except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
+                            self._notifications_load_error = "invalid_json"
+                            raise NotificationHistoryUnavailableError(
+                                "histórico persistido inválido; recuperação explícita obrigatória"
+                            )
+                        if not isinstance(persisted, list):
+                            self._notifications_load_error = "invalid_shape"
+                            raise NotificationHistoryUnavailableError(
+                                "formato do histórico persistido inválido; recuperação explícita obrigatória"
+                            )
+                        center = EcosystemNotificationCenter()
+                        center.restore(persisted)
+                        if center.restore_had_invalid_records or len(center.all()) != len(persisted):
+                            self._notifications_load_error = "invalid_records"
+                            raise NotificationHistoryUnavailableError(
+                                "registros persistidos inválidos; recuperação explícita obrigatória"
+                            )
+                    encoded = json.dumps(
+                        notifications,
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                        default=lambda item: item.value if isinstance(item, Enum) else str(item),
+                    )
+                    db.execute(
+                        """
+                        INSERT INTO ecosystem_state(key, value_json)
+                        VALUES (?, ?)
+                        ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json
+                        """,
+                        ("notifications", encoded),
+                    )
+            except sqlite3.Error as exc:
+                raise NotificationHistoryUnavailableError(
+                    "persistência do histórico de notificações indisponível"
+                ) from exc

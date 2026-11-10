@@ -1,30 +1,31 @@
 # Publicação do painel web
 
-O Controlador Trading possui um painel mobile-first servido pelo `app.py`. O serviço pode ser hospedado como uma aplicação WSGI Python.
+O Controlador Trading possui uma API/runtime em `app.py` e um painel Streamlit separado. Para o uso integrado com MT5, o Streamlit, a API e o terminal MT5 precisam permanecer no mesmo host Windows de runtime, com a API e o Streamlit vinculados somente ao loopback e publicados externamente apenas pelo caminho autenticado descrito em `deployment/WINDOWS_MT5_REMOTE_RUNTIME.md`.
 
-## Segurança
+## Segurança e limite operacional
 
 - O painel permanece em modo de simulação/DEMO.
-- A API de análise retorna `execution_allowed: false`.
-- REAL permanece desabilitado.
+- A API de análise retorna `execution_allowed: false` quando as barreiras de execução não foram satisfeitas.
+- REAL permanece desabilitado até validação específica e autorização humana explícita.
 - Nenhuma credencial de corretora deve ser colocada no repositório.
+- O runtime mantém exclusividade de processo sobre o diretório e os bancos SQLite configurados. Não inicie duas instâncias da API sobre os mesmos recursos.
 
-## Hospedagem recomendada para o primeiro teste
+## Hospedagem do ecossistema integrado
 
-Para um teste pelo celular, PythonAnywhere oferece uma conta Beginner gratuita com uma aplicação web em `seu-usuario.pythonanywhere.com`. O arquivo `deployment/pythonanywhere_wsgi.py` já existe para servir de entrada WSGI.
+Para o produto operacional — painel Streamlit, API, MT5 DEMO, Assistente do Ecossistema e Reserva Fiscal — use o host Windows dedicado descrito no guia remoto. O celular e o notebook acessam o mesmo hostname HTTPS protegido por Cloudflare Access; o notebook não precisa ficar ligado quando o host remoto estiver ativo.
 
-Fluxo:
+A API deve escutar somente em `127.0.0.1:8000`; o Streamlit deve escutar somente em `127.0.0.1:8501`. O Tunnel publica apenas o Streamlit (porta 8501). Não publique a porta 8000 diretamente na Internet. Consulte `deployment/WINDOWS_MT5_REMOTE_RUNTIME.md` para variáveis obrigatórias, identidade de usuário, supervisão e critérios de validação.
 
-1. Criar a conta gratuita.
-2. Abrir um console Bash.
-3. Clonar este repositório na pasta `~/Controlador-trade`.
-4. Na aba Web, criar uma aplicação Python/Manual.
-5. Apontar o arquivo WSGI para `~/Controlador-trade/deployment/pythonanywhere_wsgi.py`.
-6. Recarregar a aplicação.
-7. Abrir o endereço público fornecido pelo PythonAnywhere.
+## Entrada WSGI antiga / PythonAnywhere
 
-O health check fica em `/api/health`.
+O arquivo `deployment/pythonanywhere_wsgi.py` é mantido apenas como entrada WSGI legada para experimentos isolados da API. **Ele não implanta o painel Streamlit integrado, não hospeda o terminal MT5 Windows e não constitui o ambiente operacional do Ecossistema Controlador Trading.**
+
+Além disso, o runtime adquire locks de arquivo durante a importação de `app.py`. O comportamento desses locks em servidores WSGI multiprocessos depende de como os workers são criados: quando processos são criados por `fork`, descritores e locks herdados podem compartilhar a mesma abertura de arquivo, então não é seguro afirmar que cada worker necessariamente tentará adquirir um lock independente. Por isso, **WSGI multiprocessos não é uma topologia suportada para este runtime** e não deve ser usado para compartilhar o estado SQLite/MT5. Não tente contornar essa restrição aumentando workers ou alterando o momento de importação. Um worker único também não resolve a ausência do MT5 Windows e do painel Streamlit integrado; PythonAnywhere permanece apenas uma entrada WSGI legada para experimentos isolados, não o produto operacional.
+
+Referências oficiais sobre o modelo de workers:
+- https://help.pythonanywhere.com/pages/GlobalStateAndWebApps
+- https://help.pythonanywhere.com/pages/HowManyHitsCanMySiteHandle/
 
 ## Alternativa Docker
 
-O `Dockerfile` mantém uma opção de hospedagem Docker futura e usa a variável `PORT` (7860 por padrão). Isso não é necessário para o primeiro teste.
+O `Dockerfile` é uma opção para ambientes que não dependem de um terminal MT5 Windows local. Ele inicia `python app.py` em um único processo de API. Não confunda essa imagem isolada com a implantação integrada MT5 + Streamlit do host Windows; a validação de broker/terminal não é fornecida pelo container.

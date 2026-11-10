@@ -11,7 +11,10 @@ input int    InpPanelHeight = 440;
 string P="CTP_";
 string last_cycle_id="";
 string last_external_id="";
+bool cycle_identity_store_valid=true;
 string active_view="COCKPIT";
+string assistant_conversation_id="";
+bool assistant_consent_armed=false;
 string selected_mode="DEMO";
 bool leverage_enabled=false;
 bool runtime_ok=false;
@@ -24,8 +27,58 @@ int panel_height=440;
 string compact_signal="AGUARDAR";
 string compact_score="—%";
 bool compact_available=false;
+struct RecoveryPosition{ string cycle_id; string external_id; string state; };
+RecoveryPosition recovery_items[];
+int recovery_selected=0;
+bool recovery_inventory_valid=false;
+bool recovery_close_armed=false;
+string recovery_message="Inventario nao consultado.";
 double panel_sx=1.0;
 double panel_sy=1.0;
+
+string CycleIdentityFileName(){
+   return P+"cycle-"+IntegerToString(ChartID())+".txt";
+}
+bool PersistCycleIdentity(){
+   if(last_cycle_id=="" || last_external_id=="") return false;
+   string payload=last_cycle_id+"\r\n"+last_external_id;
+   int handle=FileOpen(CycleIdentityFileName(),FILE_WRITE|FILE_TXT|FILE_ANSI);
+   if(handle==INVALID_HANDLE){
+      cycle_identity_store_valid=false;
+      Print("Controlador: falha ao abrir arquivo local de identidade do ciclo.");
+      return false;
+   }
+   uint written=FileWriteString(handle,payload);
+   FileClose(handle);
+   cycle_identity_store_valid=(written==(uint)StringLen(payload));
+   if(!cycle_identity_store_valid) Print("Controlador: identidade do ciclo não foi persistida integralmente.");
+   return cycle_identity_store_valid;
+}
+void LoadCycleIdentity(){
+   if(!FileIsExist(CycleIdentityFileName())) return;
+   int handle=FileOpen(CycleIdentityFileName(),FILE_READ|FILE_TXT|FILE_ANSI);
+   if(handle==INVALID_HANDLE){
+      cycle_identity_store_valid=false;
+      Print("Controlador: arquivo de identidade do ciclo existe, mas não pôde ser lido.");
+      return;
+   }
+   string cycle_id=FileReadString(handle);
+   string external_id=FileReadString(handle);
+   FileClose(handle);
+   if(cycle_id!="" && external_id!=""){
+      last_cycle_id=cycle_id;
+      last_external_id=external_id;
+   }else{
+      cycle_identity_store_valid=false;
+      Print("Controlador: arquivo de identidade do ciclo está incompleto; novas execuções bloqueadas.");
+   }
+}
+void ClearCycleIdentity(){
+   last_cycle_id="";
+   last_external_id="";
+   FileDelete(CycleIdentityFileName());
+   cycle_identity_store_valid=!FileIsExist(CycleIdentityFileName());
+}
 
 string Obj(string suffix){ return P+suffix; }
 string PanelVisibilityKey(){ return P+IntegerToString(ChartID())+"_PANEL_VISIBLE"; }
@@ -94,6 +147,10 @@ void SetEdit(string name,string text,int x,int y,int w,int h){
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
 }
+void SetChatEdit(string name,string text,int x,int y,int w,int h){
+   SetEdit(name,text,x,y,w,h);
+   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,true);
+}
 void SetCompactLabel(string name,string text,int x,int y,int size,color clr,bool clickable=false){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
@@ -149,8 +206,13 @@ void TogglePanel(){
    ChartRedraw();
 }
 void LoadPanelVisibility(){
-   panel_visible=false;
-   GlobalVariableSet(PanelVisibilityKey(),0.0);
+   string key=PanelVisibilityKey();
+   if(GlobalVariableCheck(key))
+      panel_visible=(GlobalVariableGet(key)>0.5);
+   else{
+      panel_visible=false;
+      GlobalVariableSet(key,0.0);
+   }
    RefreshPanelToggle();
 }
 void Panel(){
@@ -171,13 +233,15 @@ void Panel(){
 
    SetLabel(Obj("TITLE"),"Controlador Trading",20,27,13,clrWhite);
    SetLabel(Obj("SUB"),"ECOSSISTEMA • MT5 • DEMO / SIMULACAO",20,47,9,C'150,165,185');
-   SetButton(Obj("V1"),"⌂",18,67,54,25);
-   SetButton(Obj("V2"),"A",74,67,54,25);
-   SetButton(Obj("V3"),"M",130,67,54,25);
-   SetButton(Obj("V4"),"L",186,67,48,25);
-   SetButton(Obj("V5"),"E",236,67,54,25);
-   SetButton(Obj("V6"),"🔔",292,67,54,25);
-   SetButton(Obj("V7"),"⚙",348,67,54,25);
+   SetButton(Obj("V1"),"C",18,67,42,25);
+   SetButton(Obj("V2"),"A",64,67,42,25);
+   SetButton(Obj("V3"),"M",110,67,42,25);
+   SetButton(Obj("V4"),"L",156,67,42,25);
+   SetButton(Obj("V5"),"E",202,67,42,25);
+   SetButton(Obj("V6"),"N",248,67,42,25);
+   SetButton(Obj("V7"),"G",294,67,42,25);
+   SetButton(Obj("V8"),"RF",340,67,42,25);
+   SetButton(Obj("V9"),"AE",386,67,42,25);
 
    SetLabel(Obj("RUNTIME"),"Sistema: verificando...",20,104,10,C'255,209,102');
    SetLabel(Obj("MODE"),"Modo: DEMO / SIMULACAO",20,124,10,C'88,214,141');
@@ -206,6 +270,14 @@ void Panel(){
    SetLabel(Obj("EXTID"),"Execucao: sem atividade",20,483,8,C'145,160,180');
    SetLabel(Obj("PRICE"),"Preco atual: —",20,501,9,C'190,200,215');
    SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • barreiras mantidas",20,520,8,C'255,155,155');
+   SetLabel(Obj("RECOVERY_TITLE"),"RECUPERACAO DEMO",20,545,8,C'150,165,185');
+   SetLabel(Obj("RECOVERY_ITEM"),"Atualize o inventario de tickets",20,560,8,C'205,215,230');
+   SetButton(Obj("REC_REFRESH"),"ATUALIZAR",20,578,82,24);
+   SetButton(Obj("REC_PREV"),"<",108,578,34,24);
+   SetButton(Obj("REC_NEXT"),">",148,578,34,24);
+   SetButton(Obj("REC_RECONCILE"),"CONSULTAR MT5",188,578,105,24);
+   SetButton(Obj("REC_CLOSE"),"FECHAR",299,578,80,24);
+   SetLabel(Obj("RECOVERY_STATUS"),"Sem consulta ao broker.",20,604,8,C'145,160,180');
 }
 void DeletePanel(bool preserveCompact=false){
    int total=ObjectsTotal(0,-1,-1);
@@ -217,18 +289,34 @@ void DeletePanel(bool preserveCompact=false){
    }
    if(preserveCompact) RefreshPanelToggle();
 }
-string JsonValue(string json,string key){
-   string needle="\"" + key + "\":";
+int JsonValueStart(string json,string key){
+   string needle="\""+key+"\"";
    int p=StringFind(json,needle);
+   while(p>=0){
+      int q=p+StringLen(needle);
+      while(q<StringLen(json) && (StringGetCharacter(json,q)==' ' || StringGetCharacter(json,q)=='\n' || StringGetCharacter(json,q)=='\r' || StringGetCharacter(json,q)=='\t')) q++;
+      if(q<StringLen(json) && StringGetCharacter(json,q)==':'){
+         q++;
+         while(q<StringLen(json) && (StringGetCharacter(json,q)==' ' || StringGetCharacter(json,q)=='\n' || StringGetCharacter(json,q)=='\r' || StringGetCharacter(json,q)=='\t')) q++;
+         return q;
+      }
+      p=StringFind(json,needle,p+StringLen(needle));
+   }
+   return -1;
+}
+string JsonValue(string json,string key){
+   int p=JsonValueStart(json,key);
    if(p<0) return "";
-   p+=StringLen(needle);
-   while(p<StringLen(json) && (StringGetCharacter(json,p)==' ' || StringGetCharacter(json,p)=='\n' || StringGetCharacter(json,p)=='\r')) p++;
    if(p<StringLen(json) && StringGetCharacter(json,p)=='"'){
       int q=p+1;
-      while(q<StringLen(json)){
-         if(StringGetCharacter(json,q)=='"' && (q==p+1 || StringGetCharacter(json,q-1)!='\\')) break;
-         q++;
+      bool escaped=false;
+      for(;q<StringLen(json);q++){
+         ushort c=StringGetCharacter(json,q);
+         if(escaped) escaped=false;
+         else if(c=='\\') escaped=true;
+         else if(c=='"') break;
       }
+      if(q>=StringLen(json)) return "";
       return StringSubstr(json,p+1,q-p-1);
    }
    int q=p;
@@ -237,18 +325,55 @@ string JsonValue(string json,string key){
       if(c==',' || c=='}' || c==']' || c=='\n' || c=='\r') break;
       q++;
    }
-   return StringSubstr(json,p,q-p);
+   string value=StringSubstr(json,p,q-p);
+   StringTrimLeft(value);
+   StringTrimRight(value);
+   return value;
+}
+bool ExtractJsonArrayObjects(string json,string arrayKey,string &objects[]){
+   ArrayResize(objects,0);
+   int valueStart=JsonValueStart(json,arrayKey);
+   if(valueStart<0 || valueStart>=StringLen(json) || StringGetCharacter(json,valueStart)!='[') return false;
+   int length=StringLen(json),pos=valueStart+1;
+   bool have_item=false,after_comma=false;
+   while(pos<length){
+      ushort c=StringGetCharacter(json,pos);
+      if(c==' ' || c=='\n' || c=='\r' || c=='\t'){ pos++; continue; }
+      if(c==']') return !after_comma;
+      if(c==','){
+         if(!have_item || after_comma) return false;
+         after_comma=true; pos++; continue;
+      }
+      if(c!='{') return false;
+      if(have_item && !after_comma) return false;
+      int objectStart=pos,depth=0;
+      bool inString=false,escaped=false;
+      for(;pos<length;pos++){
+         c=StringGetCharacter(json,pos);
+         if(inString){
+            if(escaped) escaped=false;
+            else if(c=='\\') escaped=true;
+            else if(c=='"') inString=false;
+         }else{
+            if(c=='"') inString=true;
+            else if(c=='{') depth++;
+            else if(c=='}'){ depth--; if(depth==0){ pos++; break; } }
+         }
+      }
+      if(depth!=0 || inString) return false;
+      int n=ArraySize(objects);
+      if(ArrayResize(objects,n+1)!=n+1) return false;
+      objects[n]=StringSubstr(json,objectStart,pos-objectStart);
+      have_item=true; after_comma=false;
+   }
+   return false;
 }
 string JsonObjectValue(string json,string objectKey,string key){
-   string marker="\""+objectKey+"\":";
-   int p=StringFind(json,marker);
-   if(p<0) return "";
-   int start=StringFind(json,"{",p+StringLen(marker));
-   if(start<0) return "";
+   int valueStart=JsonValueStart(json,objectKey);
+   if(valueStart<0 || valueStart>=StringLen(json) || StringGetCharacter(json,valueStart)!='{') return "";
    int depth=0;
-   bool inString=false;
-   bool escaped=false;
-   for(int i=start;i<StringLen(json);i++){
+   bool inString=false,escaped=false;
+   for(int i=valueStart;i<StringLen(json);i++){
       ushort ch=StringGetCharacter(json,i);
       if(inString){
          if(escaped) escaped=false;
@@ -259,11 +384,130 @@ string JsonObjectValue(string json,string objectKey,string key){
          else if(ch=='{') depth++;
          else if(ch=='}'){
             depth--;
-            if(depth==0) return JsonValue(StringSubstr(json,start,i-start+1),key);
+            if(depth==0) return JsonValue(StringSubstr(json,valueStart,i-valueStart+1),key);
          }
       }
    }
    return "";
+}
+void RenderRecoverySelection(){
+   int count=ArraySize(recovery_items);
+   if(!recovery_inventory_valid){
+      SetLabel(Obj("RECOVERY_ITEM"),"Inventario indisponivel ou invalido.",20,560,8,C'255,118,118');
+      SetLabel(Obj("RECOVERY_STATUS"),recovery_message,20,604,8,C'255,118,118');
+      return;
+   }
+   if(count==0){
+      SetLabel(Obj("RECOVERY_ITEM"),"Nenhum ciclo pendente no ledger.",20,560,8,C'88,214,141');
+      SetLabel(Obj("RECOVERY_STATUS"),"Lista vazia; consulta somente leitura.",20,604,8,C'145,160,180');
+      return;
+   }
+   recovery_selected=MathMax(0,MathMin(recovery_selected,count-1));
+   RecoveryPosition item=recovery_items[recovery_selected];
+   SetLabel(Obj("RECOVERY_ITEM"),StringFormat("%d/%d Ticket %s · %s",recovery_selected+1,count,item.external_id,item.state),20,560,8,C'205,215,230');
+   SetLabel(Obj("RECOVERY_STATUS"),StringSubstr(recovery_message,0,58),20,604,8,C'145,160,180');
+}
+bool ParseRecoveryInventory(string json){
+   string objects[];
+   if(!ExtractJsonArrayObjects(json,"positions",objects)) return false;
+   ArrayResize(recovery_items,0);
+   for(int i=0;i<ArraySize(objects);i++){
+      string cycle=JsonValue(objects[i],"cycle_id");
+      string ticket=JsonValue(objects[i],"external_id");
+      string state=JsonValue(objects[i],"recovery_state");
+      if(cycle=="" || ticket=="" || (state!="BLOCKED_ACCOUNT_IDENTITY" && state!="BROKER_CONFIRMED_OPEN" && state!="RECONCILIATION_REQUIRED")){
+         ArrayResize(recovery_items,0);
+         return false;
+      }
+      int n=ArraySize(recovery_items);
+      if(ArrayResize(recovery_items,n+1)!=n+1){ ArrayResize(recovery_items,0); return false; }
+      recovery_items[n].cycle_id=cycle;
+      recovery_items[n].external_id=ticket;
+      recovery_items[n].state=state;
+   }
+   return true;
+}
+bool RefreshRecoveryInventory(){
+   string response; int code=0;
+   if(!Http("GET","/api/runtime/positions/recovery/local","",response,code)){
+      recovery_inventory_valid=false;
+      recovery_message="Falha HTTP ao consultar inventario local.";
+      RenderRecoverySelection();
+      return false;
+   }
+   if(!ParseRecoveryInventory(response)){
+      recovery_inventory_valid=false;
+      recovery_message="Resposta JSON invalida; acoes bloqueadas.";
+      RenderRecoverySelection();
+      return false;
+   }
+   recovery_inventory_valid=true;
+   recovery_selected=0;
+   recovery_close_armed=false;
+   recovery_message="Inventario lido; broker ainda nao consultado.";
+   RenderRecoverySelection();
+   return true;
+}
+void ReconcileSelectedRecovery(){
+   if(!recovery_inventory_valid || ArraySize(recovery_items)==0) return;
+   recovery_selected=MathMax(0,MathMin(recovery_selected,ArraySize(recovery_items)-1));
+   RecoveryPosition item=recovery_items[recovery_selected];
+   if(item.state=="BLOCKED_ACCOUNT_IDENTITY"){
+      recovery_message="Identidade original bloqueada; sem fechamento.";
+      RenderRecoverySelection();
+      return;
+   }
+   string body="{\"cycle_id\":\""+JsonEscape(item.cycle_id)+"\",\"external_id\":\""+JsonEscape(item.external_id)+"\"}";
+   string response; int code=0;
+   if(!Http("POST","/api/runtime/close/local/reconcile",body,response,code)){
+      recovery_message="MT5 nao confirmou; nenhuma ordem enviada.";
+      RenderRecoverySelection();
+      return;
+   }
+   string state=JsonObjectValue(response,"close_reconciliation","state");
+   if(state=="CLOSED"){
+      recovery_message="MT5 confirmou CLOSED; atualizando lista.";
+      RefreshRecoveryInventory();
+   }else if(state=="OPEN"){
+      recovery_items[recovery_selected].state="BROKER_CONFIRMED_OPEN";
+      recovery_close_armed=false;
+      recovery_message="MT5 confirmou OPEN. Clique FECHAR e confirme novamente.";
+      RenderRecoverySelection();
+   }else{
+      recovery_message="Estado UNKNOWN; fechamento permanece bloqueado.";
+      RenderRecoverySelection();
+   }
+}
+void CloseSelectedRecovery(){
+   if(!recovery_inventory_valid || ArraySize(recovery_items)==0) return;
+   recovery_selected=MathMax(0,MathMin(recovery_selected,ArraySize(recovery_items)-1));
+   RecoveryPosition item=recovery_items[recovery_selected];
+   if(item.state!="BROKER_CONFIRMED_OPEN"){
+      recovery_message="Fechamento exige estado OPEN confirmado pelo MT5.";
+      RenderRecoverySelection();
+      return;
+   }
+   if(!recovery_close_armed){
+      recovery_close_armed=true;
+      recovery_message="Confirme: clique FECHAR novamente para este ticket.";
+      RenderRecoverySelection();
+      return;
+   }
+   recovery_close_armed=false;
+   string body="{\"cycle_id\":\""+JsonEscape(item.cycle_id)+"\",\"external_id\":\""+JsonEscape(item.external_id)+"\"}";
+   string response; int code=0;
+   if(!Http("POST","/api/runtime/close/local",body,response,code)){
+      recovery_message="Fechamento inconclusivo; reconciliacao necessaria.";
+      RefreshRecoveryInventory();
+      return;
+   }
+   if(JsonValue(response,"closed")=="true" && JsonValue(response,"close_state")=="CLOSED"){
+      recovery_message="Fechamento confirmado pelo runtime.";
+      RefreshRecoveryInventory();
+      return;
+   }
+   recovery_message="Sem confirmacao CLOSED; consultando estado.";
+   ReconcileSelectedRecovery();
 }
 bool Http(string method,string path,string body,string &response,int &code){
    char data[];
@@ -313,9 +557,8 @@ void RefreshPreferences(){
    string filters=JsonObjectValue(r,"preferences","require_filters");
    string leverage=JsonObjectValue(r,"preferences","leverage_enabled");
    if(mode=="") mode="DEMO";
-   selected_mode=mode;
+   selected_mode="DEMO";
    leverage_enabled=(leverage=="true");
-   SetButton(Obj("MODE_TOGGLE"),selected_mode=="REAL"?"MODO: REAL":"MODO: DEMO",20,465,172,28);
    SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,505,177,28);
    SetLabel(Obj("INFO1"),"Modo selecionado: "+selected_mode,20,361,9,C'205,215,230');
    SetLabel(Obj("INFO2"),"Alavancagem: "+(leverage_enabled?"ON":"OFF"),20,381,9,leverage_enabled?C'255,209,102':C'205,215,230');
@@ -352,7 +595,139 @@ void RefreshLearning(){
       SetLabel(Obj("INFO1"),"Ensino indisponivel",20,361,9,C'255,118,118');
    }
 }
+string AssistantConversationFileName(){
+   return P+"assistant-"+IntegerToString(ChartID())+".txt";
+}
+void LoadAssistantConversation(){
+   if(!FileIsExist(AssistantConversationFileName())) return;
+   int handle=FileOpen(AssistantConversationFileName(),FILE_READ|FILE_TXT|FILE_ANSI);
+   if(handle==INVALID_HANDLE) return;
+   assistant_conversation_id=FileReadString(handle);
+   FileClose(handle);
+}
+void PersistAssistantConversation(){
+   if(assistant_conversation_id=="") return;
+   int handle=FileOpen(AssistantConversationFileName(),FILE_WRITE|FILE_TXT|FILE_ANSI);
+   if(handle==INVALID_HANDLE) return;
+   FileWriteString(handle,assistant_conversation_id);
+   FileClose(handle);
+}
+void RefreshFiscal(){
+   string r; int code=0;
+   if(!Http("GET","/api/fiscal-reserve/local?limit=20","",r,code)){
+      SetLabel(Obj("INFO1"),"Reserva Fiscal: runtime local indisponivel",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Nenhum dado fiscal foi alterado.",20,381,9,C'205,215,230');
+      return;
+   }
+   string total=JsonValue(r,"total_reserved_brl");
+   string foreign_total=JsonObjectValue(r,"foreign_pending","total");
+   string domestic_total=JsonObjectValue(r,"domestic_pending","total");
+   SetLabel(Obj("INFO1"),"Reserva estimada Brasil: R$ "+(total==""?"—":DoubleToString(StringToDouble(total),2)),20,361,9,C'88,214,141');
+   SetLabel(Obj("INFO2"),"Pendencias Brasil: "+(domestic_total==""?"indisponivel":domestic_total)+" • fora dos totais",20,381,9,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Pendencias exterior: "+(foreign_total==""?"indisponivel":foreign_total)+" • sem calculo",20,401,9,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Brasil/exterior permanecem em filas separadas.",20,421,9,C'205,215,230');
+   SetLabel(Obj("INFO5"),"Estimativa de planejamento; nao e imposto apurado.",20,441,9,C'255,209,102');
+   SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • Reserva Fiscal somente leitura",20,520,8,C'255,155,155');
+}
+void RefreshAssistantStatus(){
+   string r; int code=0;
+   if(!Http("GET","/api/assistant/local/status","",r,code)){
+      SetLabel(Obj("INFO1"),"Assistente do Ecossistema indisponivel.",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Verifique o runtime e a configuracao do provedor.",20,381,9,C'205,215,230');
+      return;
+   }
+   string available=JsonValue(r,"available");
+   SetLabel(Obj("INFO1"),available=="true"?"Assistente: provedor configurado.":"Assistente: provedor indisponivel.",20,361,9,available=="true"?C'88,214,141':C'255,118,118');
+   SetLabel(Obj("INFO2"),"Chat somente leitura; consentimento exigido a cada envio.",20,381,9,C'205,215,230');
+}
+void ClearCockpitFields(){
+   string names[]={"SYM","TF","SYML","TFL","MARKET","SIGNAL","SCORE","REASON","MODE","RECOVERY_TITLE","RECOVERY_ITEM","REC_REFRESH","REC_PREV","REC_NEXT","REC_RECONCILE","REC_CLOSE","RECOVERY_STATUS"};
+   for(int i=0;i<ArraySize(names);i++)
+      if(ObjectFind(0,Obj(names[i]))>=0) ObjectDelete(0,Obj(names[i]));
+}
+void ClearAssistantControls(){
+   string names[]={"ASSISTANT_PROMPT","ASSISTANT_INPUT","ASSISTANT_CONSENT","ASSISTANT_SEND"};
+   for(int i=0;i<ArraySize(names);i++)
+      if(ObjectFind(0,Obj(names[i]))>=0) ObjectDelete(0,Obj(names[i]));
+}
+void RenderFiscal(){
+   ClearCockpitFields();
+   SetLabel(Obj("SUB"),"RESERVA FISCAL • resumo conectado ao runtime",20,47,9,C'150,165,185');
+   SetButton(Obj("ANALYZE"),"ATUALIZAR RESERVA",20,294,172,30);
+   if(ObjectFind(0,Obj("CYCLE"))>=0) ObjectDelete(0,Obj("CYCLE"));
+   if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
+   if(ObjectFind(0,Obj("CLOSE"))>=0) ObjectDelete(0,Obj("CLOSE"));
+   if(ObjectFind(0,Obj("CYCLEID"))>=0) ObjectDelete(0,Obj("CYCLEID"));
+   if(ObjectFind(0,Obj("EXTID"))>=0) ObjectDelete(0,Obj("EXTID"));
+   if(ObjectFind(0,Obj("PRICE"))>=0) ObjectDelete(0,Obj("PRICE"));
+   SetLabel(Obj("INFO1"),"Consultando Reserva Fiscal...",20,361,9,C'205,215,230');
+   SetLabel(Obj("INFO2"),"Brasil e exterior permanecem separados.",20,381,9,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Pendencias nao entram nos totais.",20,401,9,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Valores de planejamento nao confirmam imposto.",20,421,9,C'205,215,230');
+   SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
+   RefreshFiscal();
+}
+void RenderAssistant(){
+   ClearCockpitFields();
+   SetLabel(Obj("SUB"),"ASSISTENTE DO ECOSSISTEMA • leitura e orientacao",20,47,9,C'150,165,185');
+   if(ObjectFind(0,Obj("ANALYZE"))>=0) ObjectDelete(0,Obj("ANALYZE"));
+   if(ObjectFind(0,Obj("CYCLE"))>=0) ObjectDelete(0,Obj("CYCLE"));
+   if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
+   if(ObjectFind(0,Obj("CLOSE"))>=0) ObjectDelete(0,Obj("CLOSE"));
+   if(ObjectFind(0,Obj("CYCLEID"))>=0) ObjectDelete(0,Obj("CYCLEID"));
+   if(ObjectFind(0,Obj("EXTID"))>=0) ObjectDelete(0,Obj("EXTID"));
+   if(ObjectFind(0,Obj("PRICE"))>=0) ObjectDelete(0,Obj("PRICE"));
+   SetLabel(Obj("ASSISTANT_PROMPT"),"Pergunta (ate 1000 caracteres)",20,250,8,C'150,165,185');
+   SetChatEdit(Obj("ASSISTANT_INPUT"),"",20,266,390,34);
+   SetButton(Obj("ASSISTANT_CONSENT"),assistant_consent_armed?"CONSENTIMENTO OPENAI: SIM":"CONSENTIMENTO OPENAI: NAO",20,307,220,28);
+   SetButton(Obj("ASSISTANT_SEND"),"ENVIAR",248,307,162,28);
+   SetLabel(Obj("INFO1"),"A pergunta e o contexto filtrado serao enviados a OpenAI.",20,361,8,C'205,215,230');
+   SetLabel(Obj("INFO2"),"O assistente nao executa ordens nem movimenta dinheiro.",20,381,8,C'205,215,230');
+   SetLabel(Obj("INFO3"),"REAL: BLOQUEADO",20,401,8,C'255,155,155');
+   SetLabel(Obj("INFO4"),"Resposta aparecera apos o envio.",20,421,8,C'205,215,230');
+   SetLabel(Obj("INFO5"),"Historico completo permanece no servidor.",20,441,8,C'145,160,180');
+   RefreshAssistantStatus();
+}
+void SendAssistantMessage(){
+   if(!assistant_consent_armed){
+      SetLabel(Obj("INFO1"),"Ative o consentimento explicito antes de enviar.",20,361,8,C'255,209,102');
+      return;
+   }
+   if(ObjectFind(0,Obj("ASSISTANT_INPUT"))<0) return;
+   string message=ObjectGetString(0,Obj("ASSISTANT_INPUT"),OBJPROP_TEXT);
+   StringTrimLeft(message);
+   StringTrimRight(message);
+   if(message=="" || StringLen(message)>1000){
+      SetLabel(Obj("INFO1"),"Informe uma pergunta de 1 a 1000 caracteres.",20,361,8,C'255,209,102');
+      return;
+   }
+   string conversation_json=assistant_conversation_id==""?"null":"\""+JsonEscape(assistant_conversation_id)+"\"";
+   string body="{\"message\":\""+JsonEscape(message)+"\",\"conversation_id\":"+conversation_json+",\"consent_to_openai\":true}";
+   assistant_consent_armed=false;
+   SetButton(Obj("ASSISTANT_CONSENT"),"CONSENTIMENTO OPENAI: NAO",20,307,220,28);
+   string response; int code=0;
+   if(!Http("POST","/api/assistant/local/chat",body,response,code)){
+      string failed_id=JsonValue(response,"conversation_id");
+      if(failed_id!=""){ assistant_conversation_id=failed_id; PersistAssistantConversation(); }
+      SetLabel(Obj("INFO1"),"Resposta indisponivel. Consulte o historico antes de reenviar.",20,361,8,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Status HTTP: "+IntegerToString(code)+" • detalhes protegidos.",20,381,8,C'205,215,230');
+      return;
+   }
+   assistant_conversation_id=JsonValue(response,"conversation_id");
+   PersistAssistantConversation();
+   string answer=JsonValue(response,"answer");
+   if(answer=="") answer="Resposta vazia ou formato inesperado.";
+   SetLabel(Obj("INFO1"),"Resposta: "+StringSubstr(answer,0,66),20,361,8,C'205,215,230');
+   SetLabel(Obj("INFO2"),StringSubstr(answer,66,66),20,381,8,C'205,215,230');
+   SetLabel(Obj("INFO3"),StringSubstr(answer,132,66),20,401,8,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Conversa persistida no servidor do Ecossistema.",20,421,8,C'88,214,141');
+   SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • sem execucao ou movimentacao.",20,441,8,C'255,155,155');
+   ObjectSetString(0,Obj("ASSISTANT_INPUT"),OBJPROP_TEXT,"");
+}
 void RenderView(){
+   ClearAssistantControls();
+   if(active_view=="RESERVA") { RenderFiscal(); return; }
+   if(active_view=="ASSISTENTE") { RenderAssistant(); return; }
    if(active_view=="COCKPIT"){
       SetLabel(Obj("SUB"),"COCKPIT • motor, decisao, risco, execucao",20,47,9,C'150,165,185');
       SetLabel(Obj("INFO1"),"Análise do ecossistema",20,361,9,C'205,215,230');
@@ -457,6 +832,7 @@ void RefreshHealth(){
    SetLabel(Obj("RUNTIME"),"Sistema: online",20,104,10,C'88,214,141');
    SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),20,124,10,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • autorizacao separada",20,441,9,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
+   if(active_view=="RESERVA" || active_view=="ASSISTENTE") return;
    SetLabel(Obj("INFO1"),"Analise do ecossistema: "+(engine==""?"online":engine),20,361,9,C'205,215,230');
 }
 void RefreshMarketAssets(){
@@ -507,9 +883,9 @@ void SaveConfig(){
    if(tf=="") tf=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
    tf=NormalizeTimeframe(tf);
    string leverage=leverage_enabled?"true":"false";
-   string body="{\"selected_mode\":\""+JsonEscape(selected_mode)+"\",\"leverage_enabled\":"+leverage+",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":true,\"require_filters\":true}";
+   string body="{\"selected_mode\":\"DEMO\",\"leverage_enabled\":"+leverage+",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":true,\"require_filters\":true}";
    string r; int code=0;
-   if(Http("POST","/api/preferences",body,r,code)){
+   if(Http("POST","/api/preferences/local",body,r,code)){
       SetLabel(Obj("INFO4"),"Configuracoes sincronizadas",20,421,9,C'88,214,141');
       RefreshPreferences();
    }else{
@@ -531,7 +907,7 @@ void Analyze(bool render=true){
    tf=NormalizeTimeframe(tf);
    string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100}";
    string r; int code=0;
-   if(!Http("POST","/api/runtime/analysis",body,r,code)){
+   if(!Http("POST","/api/runtime/analysis/local",body,r,code)){
       runtime_ok=false;
       UpdateCompactSignal("INDISPONIVEL","",false);
       if(render) SetLabel(Obj("REASON"),"Analise indisponivel",20,204,9,C'255,118,118');
@@ -558,16 +934,45 @@ void Analyze(bool render=true){
    SetLabel(Obj("INFO1"),"Decisao atualizada",20,361,9,c);
    ChartRedraw();
 }
+bool RefreshActiveCycleState(){
+   if(last_cycle_id=="" || last_external_id=="") return true;
+   string body="{\"cycle_id\":\""+JsonEscape(last_cycle_id)+"\",\"external_id\":\""+JsonEscape(last_external_id)+"\"}";
+   string response; int code=0;
+   if(!Http("POST","/api/runtime/close/local/reconcile",body,response,code)){
+      SetLabel(Obj("INFO1"),"Estado da posicao inconclusivo; ciclo bloqueado.",20,361,9,C'255,118,118');
+      return false;
+   }
+   string state=JsonObjectValue(response,"close_reconciliation","state");
+   if(state=="CLOSED"){
+      ClearCycleIdentity();
+      SetLabel(Obj("INFO1"),"MT5 confirmou fechamento; novo ciclo liberado.",20,361,9,C'88,214,141');
+      return cycle_identity_store_valid;
+   }
+   if(state=="OPEN"){
+      SetLabel(Obj("INFO1"),"MT5 confirma posicao aberta; feche antes de novo ciclo.",20,361,9,C'255,209,102');
+      return false;
+   }
+   SetLabel(Obj("INFO1"),"MT5 nao confirmou estado; ciclo permanece bloqueado.",20,361,9,C'255,118,118');
+   return false;
+}
+
 void RunCycle(){
+   if(!cycle_identity_store_valid){
+      SetLabel(Obj("INFO1"),"Arquivo de ciclo indisponivel; novas execucoes bloqueadas.",20,361,9,C'255,118,118');
+      return;
+   }
+   if(last_cycle_id!="" && last_external_id!="" && !RefreshActiveCycleState()){
+      return;
+   }
    string sym=ObjectGetString(0,Obj("SYM"),OBJPROP_TEXT);
    string tf=ObjectGetString(0,Obj("TF"),OBJPROP_TEXT);
    if(sym=="") sym=_Symbol;
    if(tf=="") tf=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
    tf=NormalizeTimeframe(tf);
-   string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100,\"amount\":0.01,\"duration_seconds\":60,\"confirmed\":true,\"filters_ok\":true,\"entry_conditions\":[]}";
+   string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100,\"amount\":0.01,\"duration_seconds\":60}";
    string r; int code=0;
    SetLabel(Obj("INFO1"),"Validando ciclo DEMO...",20,361,9,C'255,209,102');
-   if(!Http("POST","/api/runtime/cycle",body,r,code)){
+   if(!Http("POST","/api/runtime/cycle/local",body,r,code)){
       UpdateCompactSignal("INDISPONIVEL","",false);
       SetLabel(Obj("INFO1"),"Ciclo indisponivel ou bloqueado",20,361,9,C'255,118,118');
       return;
@@ -581,14 +986,25 @@ void RunCycle(){
    string cid=JsonValue(r,"cycle_id");
    string eid=JsonValue(r,"external_id");
    string allowed=JsonValue(r,"execution_allowed");
+   string accepted=JsonObjectValue(r,"execution","accepted");
+   if(allowed=="true" && accepted=="true" && cid!="" && eid!=""){
+      last_cycle_id=cid;
+      last_external_id=eid;
+      PersistCycleIdentity();
+   }
    color c=signal=="COMPRA"?C'88,214,141':signal=="VENDA"?C'255,118,118':C'255,209,102';
    SetLabel(Obj("SIGNAL"),CompactSignalText(signal),20,154,22,c);
    SetLabel(Obj("SCORE"),"Qualidade: "+(score==""?"—":DoubleToString(StringToDouble(score),0))+"%",20,184,10,clrWhite);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Ciclo concluido.":reason,0,62),20,204,9,C'180,190,205');
-   last_cycle_id=cid; last_external_id=eid;
-   SetLabel(Obj("CYCLEID"),"Ciclo DEMO: "+(cid==""?"concluido":"atualizado"),20,465,8,C'145,160,180');
-   SetLabel(Obj("EXTID"),"Execucao: "+(eid==""?"sem atividade":"registrada"),20,483,8,C'145,160,180');
-   SetLabel(Obj("INFO1"),"Ciclo DEMO validado",20,361,9,C'205,215,230');
+   SetLabel(Obj("CYCLEID"),"Ciclo DEMO: "+(last_cycle_id==""?"sem posicao":"registrado"),20,465,8,C'145,160,180');
+   SetLabel(Obj("EXTID"),"Execucao: "+(last_external_id==""?"sem atividade":"registrada"),20,483,8,C'145,160,180');
+   string timed_scheduled=JsonObjectValue(r,"timed_exit","scheduled");
+   string timed_due=JsonObjectValue(r,"timed_exit","due_at");
+   if(timed_scheduled=="true"){
+      SetLabel(Obj("INFO1"),"Saida DEMO best-effort: "+StringSubstr(timed_due,0,19),20,361,9,C'88,214,141');
+   }else{
+      SetLabel(Obj("INFO1"),cycle_identity_store_valid?"Sem saida temporizada; fechamento manual explicito.":"Falha ao salvar ticket; não reinicie EA.",20,361,9,C'255,209,102');
+   }
 }
 void CloseCycle(){
    if(last_cycle_id=="" || last_external_id==""){
@@ -597,13 +1013,43 @@ void CloseCycle(){
    }
    string body="{\"cycle_id\":\""+JsonEscape(last_cycle_id)+"\",\"external_id\":\""+JsonEscape(last_external_id)+"\"}";
    string r; int code=0;
-   if(Http("POST","/api/runtime/close",body,r,code)){
-      SetLabel(Obj("INFO1"),"Fechamento DEMO + reconciliacao confirmado.",20,361,9,C'88,214,141');
-      last_cycle_id=""; last_external_id="";
-   }else SetLabel(Obj("INFO1"),"Fechamento bloqueado ou indisponivel",20,361,9,C'255,118,118');
+   if(Http("POST","/api/runtime/close/local",body,r,code)){
+      if(JsonValue(r,"closed")=="true"){
+         SetLabel(Obj("INFO1"),"Posicao DEMO fechada e confirmada.",20,361,9,C'88,214,141');
+         ClearCycleIdentity();
+         return;
+      }
+      string reconciliation; int reconcile_code=0;
+      if(Http("POST","/api/runtime/close/local/reconcile",body,reconciliation,reconcile_code)){
+         string state=JsonObjectValue(reconciliation,"close_reconciliation","state");
+         if(state=="CLOSED"){
+            SetLabel(Obj("INFO1"),"MT5 confirmou o fechamento.",20,361,9,C'88,214,141');
+            ClearCycleIdentity();
+         }else if(state=="OPEN"){
+            SetLabel(Obj("INFO1"),"MT5 confirma: posicao continua aberta.",20,361,9,C'255,209,102');
+         }else{
+            SetLabel(Obj("INFO1"),"Fechamento inconclusivo; ciclo preservado.",20,361,9,C'255,118,118');
+         }
+      }else SetLabel(Obj("INFO1"),"Sem evidencia de fechamento; ciclo preservado.",20,361,9,C'255,118,118');
+   }else{
+      string reconciliation; int reconcile_code=0;
+      if(Http("POST","/api/runtime/close/local/reconcile",body,reconciliation,reconcile_code)){
+         string state=JsonObjectValue(reconciliation,"close_reconciliation","state");
+         if(state=="CLOSED"){
+            SetLabel(Obj("INFO1"),"MT5 confirmou o fechamento.",20,361,9,C'88,214,141');
+            ClearCycleIdentity();
+         }else if(state=="OPEN"){
+            SetLabel(Obj("INFO1"),"MT5 confirma: posicao continua aberta.",20,361,9,C'255,209,102');
+         }else{
+            SetLabel(Obj("INFO1"),"Fechamento inconclusivo; ciclo preservado.",20,361,9,C'255,118,118');
+         }
+      }else SetLabel(Obj("INFO1"),"Fechamento bloqueado; identidade preservada.",20,361,9,C'255,118,118');
+   }
 }
 int OnInit(){
    active_view="COCKPIT";
+   LoadCycleIdentity();
+   LoadAssistantConversation();
    LoadPanelVisibility();
    if(panel_visible){
       Panel();
@@ -649,13 +1095,17 @@ void OnTimer(){
 void OnChartEvent(const int id,const long &lparam,const double &dparam,const string &sparam){
    if(id!=CHARTEVENT_OBJECT_CLICK) return;
    if(sparam==Obj("PANEL_TOGGLE") || sparam==Obj("PANEL_TOGGLE_BG")) { TogglePanel(); return; }
-   if(sparam==Obj("V1")) { active_view="COCKPIT"; RenderView(); }
-   else if(sparam==Obj("V2")) { active_view="ANALISE"; RenderView(); }
-   else if(sparam==Obj("V3")) { active_view="MEMORIA"; RenderView(); }
-   else if(sparam==Obj("V4")) { active_view="LAB"; RenderView(); }
-   else if(sparam==Obj("V5")) { active_view="ENSINO"; RenderView(); }
-   else if(sparam==Obj("V6")) { active_view="NOTIF"; RenderView(); }
-   else if(sparam==Obj("V7")) { active_view="CONFIG"; RenderView(); }
+   if(sparam==Obj("V1")) { active_view="COCKPIT"; Panel(); RenderView(); }
+   else if(sparam==Obj("V2")) { active_view="ANALISE"; Panel(); RenderView(); }
+   else if(sparam==Obj("V3")) { active_view="MEMORIA"; Panel(); RenderView(); }
+   else if(sparam==Obj("V4")) { active_view="LAB"; Panel(); RenderView(); }
+   else if(sparam==Obj("V5")) { active_view="ENSINO"; Panel(); RenderView(); }
+   else if(sparam==Obj("V6")) { active_view="NOTIF"; Panel(); RenderView(); }
+   else if(sparam==Obj("V7")) { active_view="CONFIG"; Panel(); RenderView(); }
+   else if(sparam==Obj("V8")) { active_view="RESERVA"; Panel(); RenderView(); }
+   else if(sparam==Obj("V9")) { active_view="ASSISTENTE"; Panel(); RenderView(); }
+   else if(sparam==Obj("ASSISTANT_CONSENT")) { assistant_consent_armed=!assistant_consent_armed; SetButton(Obj("ASSISTANT_CONSENT"),assistant_consent_armed?"CONSENTIMENTO OPENAI: SIM":"CONSENTIMENTO OPENAI: NAO",20,307,220,28); }
+   else if(sparam==Obj("ASSISTANT_SEND")) SendAssistantMessage();
    else if(sparam==Obj("ANALYZE")) {
       if(active_view=="ANALISE") Analyze();
       else if(active_view=="CONFIG") RefreshPreferences();
@@ -663,11 +1113,17 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
       else if(active_view=="LAB") { RefreshHealth(); RefreshSecondary(); }
       else if(active_view=="ENSINO") RefreshLearning();
       else if(active_view=="NOTIF") RefreshNotifications();
+      else if(active_view=="RESERVA") RefreshFiscal();
+      else if(active_view=="ASSISTENTE") RefreshAssistantStatus();
       else Analyze();
    }
    else if(sparam==Obj("CYCLE")) RunCycle();
    else if(sparam==Obj("SAVE")) SaveConfig();
-   else if(sparam==Obj("MODE_TOGGLE")) { selected_mode=(selected_mode=="DEMO"?"REAL":"DEMO"); SaveConfig(); }
    else if(sparam==Obj("LEVERAGE_TOGGLE")) { leverage_enabled=!leverage_enabled; SaveConfig(); }
    else if(sparam==Obj("CLOSE")) CloseCycle();
+   else if(sparam==Obj("REC_REFRESH")) RefreshRecoveryInventory();
+   else if(sparam==Obj("REC_PREV")){ recovery_selected=MathMax(0,recovery_selected-1); recovery_close_armed=false; RenderRecoverySelection(); }
+   else if(sparam==Obj("REC_NEXT")){ recovery_selected=MathMin(ArraySize(recovery_items)-1,recovery_selected+1); recovery_close_armed=false; RenderRecoverySelection(); }
+   else if(sparam==Obj("REC_RECONCILE")) ReconcileSelectedRecovery();
+   else if(sparam==Obj("REC_CLOSE")) CloseSelectedRecovery();
 }

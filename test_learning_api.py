@@ -75,3 +75,48 @@ def test_learning_activity_requires_no_trade_permission():
     )
     assert status.startswith("200")
     assert payload["execution_allowed"] is False
+
+
+
+def test_learning_source_api_rejects_string_booleans():
+    source_id = "api-source-strict-bool"
+    status, payload = request(
+        "/api/learning/sources/screen",
+        "POST",
+        {"source_id": source_id, "source_type": "LINK", "uri": "https://example.com/strict"},
+    )
+    assert status.startswith("200")
+    assert payload["source"]["status"] == "QUARANTINED"
+
+    status, payload = request(
+        "/api/learning/sources/validate",
+        "POST",
+        {"source_id": source_id, "content_verified": "true", "security_checked": True},
+    )
+    assert status.startswith("400")
+    assert payload["error"] == "Entrada inválida"
+
+    status, payload = request(
+        "/api/learning/sources/admit",
+        "POST",
+        {"source_id": source_id, "knowledge_validated": "true"},
+    )
+    assert status.startswith("400")
+    assert payload["error"] == "Entrada inválida"
+
+
+
+def test_professor_api_rejects_client_claim_of_unregistered_validated_knowledge():
+    status, payload = request(
+        "/api/learning/professor/activity",
+        "POST",
+        {
+            "activity_id": "api-untrusted-professor-activity",
+            "knowledge_id": "not-registered-on-server",
+            "statement": "Afirmação fornecida pelo navegador.",
+            "concept": "contexto",
+            "knowledge_validated": True,
+        },
+    )
+    assert status.startswith("400")
+    assert payload["error"] == "Entrada inválida"

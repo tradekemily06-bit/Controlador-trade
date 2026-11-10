@@ -74,6 +74,23 @@ class EcosystemPreferences:
 class EcosystemPreferencesStore:
     """Validated preferences; security-critical permissions are immutable here."""
 
+    @staticmethod
+    def _stored_enum(enum_type, payload: dict, field: str, default):
+        value = payload.get(field, default.value)
+        try:
+            return enum_type(value)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _stored_color(payload: dict, field: str, default: str) -> str:
+        value = payload.get(field, default)
+        if not isinstance(value, str) or len(value) not in (4, 7) or not value.startswith("#"):
+            return default
+        if any(char not in "0123456789abcdefABCDEF" for char in value[1:]):
+            return default
+        return value
+
     def __init__(self, preferences: EcosystemPreferences | None = None) -> None:
         self._preferences = preferences or EcosystemPreferences()
         self._validate(self._preferences)
@@ -113,36 +130,57 @@ class EcosystemPreferencesStore:
         notification_data = payload.get("notifications") if isinstance(payload.get("notifications"), dict) else {}
         defaults = NotificationPreferences()
         candle = CandleAppearance(
-            style=CandleStyle(str(candle_data.get("style", CandleStyle.CANDLESTICK.value))),
-            color_mode=CandleColorMode(str(candle_data.get("color_mode", CandleColorMode.DEFAULT.value))),
-            bullish_color=str(candle_data.get("bullish_color", CandleAppearance.bullish_color)),
-            bearish_color=str(candle_data.get("bearish_color", CandleAppearance.bearish_color)),
-            wick_color=str(candle_data.get("wick_color", CandleAppearance.wick_color)),
-            border_enabled=bool(candle_data.get("border_enabled", True)),
-            show_wicks=bool(candle_data.get("show_wicks", True)),
-            show_bodies=bool(candle_data.get("show_bodies", True)),
+            style=cls._stored_enum(CandleStyle, candle_data, "style", CandleStyle.CANDLESTICK),
+            color_mode=cls._stored_enum(CandleColorMode, candle_data, "color_mode", CandleColorMode.DEFAULT),
+            bullish_color=cls._stored_color(candle_data, "bullish_color", CandleAppearance.bullish_color),
+            bearish_color=cls._stored_color(candle_data, "bearish_color", CandleAppearance.bearish_color),
+            wick_color=cls._stored_color(candle_data, "wick_color", CandleAppearance.wick_color),
+            border_enabled=candle_data.get("border_enabled") if isinstance(candle_data.get("border_enabled"), bool) else True,
+            show_wicks=candle_data.get("show_wicks") if isinstance(candle_data.get("show_wicks"), bool) else True,
+            show_bodies=candle_data.get("show_bodies") if isinstance(candle_data.get("show_bodies"), bool) else True,
         )
         notifications = NotificationPreferences(
-            **{field: bool(notification_data.get(field, getattr(defaults, field))) for field in NotificationPreferences.__dataclass_fields__}
+            **{field: notification_data.get(field) if isinstance(notification_data.get(field), bool) else getattr(defaults, field) for field in NotificationPreferences.__dataclass_fields__}
         )
         preferences = EcosystemPreferences(
             default_symbol=str(payload.get("default_symbol", "EURUSD")),
             default_timeframe=str(payload.get("default_timeframe", "5m")),
-            require_closed_candle=bool(payload.get("require_closed_candle", True)),
-            require_filters=bool(payload.get("require_filters", True)),
-            chart_theme=ChartTheme(str(payload.get("chart_theme", ChartTheme.DARK.value))),
+            require_closed_candle=payload.get("require_closed_candle") if isinstance(payload.get("require_closed_candle"), bool) else True,
+            require_filters=payload.get("require_filters") if isinstance(payload.get("require_filters"), bool) else True,
+            chart_theme=cls._stored_enum(ChartTheme, payload, "chart_theme", ChartTheme.DARK),
             candle=candle,
             notifications=notifications,
-            show_technical_details_by_default=bool(payload.get("show_technical_details_by_default", False)),
+            show_technical_details_by_default=payload.get("show_technical_details_by_default") if isinstance(payload.get("show_technical_details_by_default"), bool) else False,
             autonomous_operation_enabled=False,
             real_execution_enabled=False,
             selected_mode=str(payload.get("selected_mode", "DEMO")).upper(),
-            leverage_enabled=payload.get("leverage_enabled", False),
+            leverage_enabled=payload.get("leverage_enabled") if isinstance(payload.get("leverage_enabled"), bool) else False,
         )
         return cls(preferences)
 
     @staticmethod
     def _validate(value: EcosystemPreferences) -> None:
+        boolean_preferences = (
+            "require_closed_candle",
+            "require_filters",
+            "show_technical_details_by_default",
+            "autonomous_operation_enabled",
+            "real_execution_enabled",
+            "leverage_enabled",
+        )
+        for field in boolean_preferences:
+            if not isinstance(getattr(value, field), bool):
+                raise ValueError(f"{field} must be a boolean")
+
+        boolean_candle_preferences = ("border_enabled", "show_wicks", "show_bodies")
+        for field in boolean_candle_preferences:
+            if not isinstance(getattr(value.candle, field), bool):
+                raise ValueError(f"candle.{field} must be a boolean")
+
+        for field in NotificationPreferences.__dataclass_fields__:
+            if not isinstance(getattr(value.notifications, field), bool):
+                raise ValueError(f"notifications.{field} must be a boolean")
+
         if not value.default_symbol.strip():
             raise ValueError("default_symbol is required")
         if not value.default_timeframe.strip():

@@ -35,11 +35,14 @@
     badge.classList.toggle('hidden', items.length === 0);
     renderLists(items, { critical: criticalBox, important: importantBox, info: infoBox });
     if (expand) {
-      expand.classList.toggle('hidden', items.length === 0);
+      // Keep the archive reachable even when the current summary has no
+      // important/critical items but older informational events exist.
+      expand.classList.remove('hidden');
       expand.textContent = 'VER TODAS';
       expand.onclick = async () => {
         if (!infoBox.classList.contains('hidden')) {
           infoBox.classList.add('hidden');
+          renderLists(items, { critical: criticalBox, important: importantBox, info: infoBox });
           expand.textContent = 'VER TODAS';
           return;
         }
@@ -48,6 +51,9 @@
         const allData = await allResponse.json();
         const allItems = Array.isArray(allData.items) ? allData.items : [];
         renderLists(allItems, { critical: criticalBox, important: importantBox, info: infoBox });
+        if (allItems.length === 0) {
+          infoBox.innerHTML = '<div class="muted">Nenhuma notificação registrada.</div>';
+        }
         infoBox.classList.remove('hidden');
         expand.textContent = 'OCULTAR INFORMATIVAS';
       };

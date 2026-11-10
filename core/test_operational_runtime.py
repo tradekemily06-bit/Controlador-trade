@@ -104,3 +104,20 @@ def test_supervisor_status_accepts_utf8_bom(tmp_path):
 
     assert snapshot["supervision"]["controller"]["state"] == "HEALTHY"
     assert snapshot["supervision"]["mt5"]["state"] == "HEALTHY"
+
+
+def test_kill_switch_activation_is_persisted_and_restored_fail_closed(tmp_path):
+    runtime = build_operational_runtime(tmp_path)
+    runtime.operational_recorder.activate_kill_switch("parada de emergência")
+
+    restored = build_operational_runtime(tmp_path)
+    snapshot = EcosystemService(operational_runtime=restored).operational_observability()
+
+    assert restored.kill_switch.state.enabled is True
+    assert restored.kill_switch.state.reason == "parada de emergência"
+    assert snapshot["kill_switch"] == {
+        "state": "ACTIVE",
+        "enabled": True,
+        "reason": "parada de emergência",
+    }
+    assert snapshot["execution"]["state"] == "BLOCKED"

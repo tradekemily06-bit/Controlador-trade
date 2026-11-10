@@ -27,10 +27,69 @@ class ApiContractTests(unittest.TestCase):
             "QUERY_STRING": query,
             "CONTENT_TYPE": "application/json" if payload is not None else "",
             "CONTENT_LENGTH": str(len(body)),
+            "REMOTE_ADDR": "127.0.0.1",
             "wsgi.input": io.BytesIO(body),
         }
         response = b"".join(application(environ, start_response))
         return captured["status"], captured["headers"], json.loads(response)
+
+    def test_assistant_chat_requires_explicit_openai_consent_at_api_boundary(self):
+        import app as app_module
+        with patch.object(app_module, "_authorize_remote_mutation", return_value=(True, "")), \
+             patch.object(app_module, "migrate_fiscal_schema", return_value="single:test-owner"), \
+             patch.object(app_module, "configured_fiscal_owner_id", return_value="single:test-owner"), \
+             patch.object(app_module.ASSISTANT, "ask", return_value={
+                 "answer": "Resposta segura", "conversation_id": "conversation-test",
+                 "read_only": True, "execution_allowed": False,
+             }) as ask:
+            status, _, rejected = self.request(
+                "/api/assistant/chat", method="POST",
+                payload={"message": "Pergunta sem consentimento"},
+            )
+            self.assertEqual(status, "400 Bad Request")
+            self.assertIn("Consentimento explícito", rejected["error"])
+            ask.assert_not_called()
+
+            status, _, accepted = self.request(
+                "/api/assistant/chat", method="POST",
+                payload={"message": "Pergunta autorizada", "consent_to_openai": True},
+            )
+            self.assertEqual(status, "200 OK")
+            self.assertEqual(accepted["answer"], "Resposta segura")
+            ask.assert_called_once_with(
+                "single:test-owner", "Pergunta autorizada",
+                "single:test-owner", None,
+            )
+
+    def test_security_audit_endpoint_is_read_only_redacted_and_limited(self):
+        import app as app_module
+        sample = [{
+            "timestamp": 1793836800.0,
+            "request_id": "req-audit-test",
+            "method": "GET",
+            "path": "/api/health",
+            "status": 200,
+            "client_hash": "must-not-be-exposed",
+        }]
+        with patch.object(app_module.AUDIT, "snapshot", return_value=sample), \
+             patch.object(app_module.AUDIT, "max_events", 1000), \
+             patch.dict("os.environ", {"CONTROLADOR_REMOTE_ACCESS_REQUIRED": "false"}, clear=False):
+            status, _, payload = self.request("/api/security/audit", query="limit=1")
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(payload["returned"], 1)
+        self.assertEqual(payload["events"][0]["request_id"], "req-audit-test")
+        self.assertNotIn("client_hash", payload["events"][0])
+        self.assertFalse(payload["execution_allowed"])
+
+    def test_security_audit_remote_access_requires_trusted_identity(self):
+        with patch.dict("os.environ", {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "true",
+            "CONTROLADOR_TRUSTED_IDENTITY_HEADER": "X-Trusted-User",
+        }, clear=False):
+            status, _, payload = self.request("/api/security/audit")
+        self.assertEqual(status, "401 Unauthorized")
+        self.assertIn("Identidade autenticada", payload["error"])
 
     def test_notifications_endpoint_is_available_and_fail_closed(self):
         status, _, payload = self.request("/api/notifications")
@@ -118,6 +177,52 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(payload["market_data"]["candles"], 20)
         self.assertFalse(payload["execution_allowed"])
         analyze.assert_called_once()
+
+    def test_latest_mt5_analysis_feed_is_read_only_and_scoped_by_symbol_timeframe(self):
+        import tempfile
+        from pathlib import Path
+        import app as app_module
+        from core.latest_market_analysis_store import LatestMarketAnalysisStore
+
+        fake = SimpleNamespace(
+            timestamp=datetime(2026, 10, 8, 12, tzinfo=timezone.utc),
+            analysis=SimpleNamespace(signal=SimpleNamespace(value="COMPRAR"), score=84.0, reason="confirmação DEMO", confirmed=True, symbol="EURUSD", timeframe="5m"),
+            quality=SimpleNamespace(score=84.0, level=SimpleNamespace(value="FORTE"), actionable=True),
+            decision=SimpleNamespace(decision="EXECUTAR", reason="filtros aprovados"),
+            snapshot=SimpleNamespace(as_dict=lambda: {"signal": "COMPRAR", "symbol": "EURUSD"}),
+            market_data=SimpleNamespace(
+                source="IC Markets MT5 DEMO",
+                candles=tuple(
+                    SimpleNamespace(timestamp=datetime(2026, 10, 8, tzinfo=timezone.utc) + timedelta(minutes=i),
+                                    open=1.1, high=1.101, low=1.099, close=1.1005, volume=10)
+                    for i in range(20)
+                ),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            store = LatestMarketAnalysisStore(Path(directory) / "latest-analysis.sqlite3")
+            with patch.object(app_module, "LATEST_MARKET_ANALYSIS", store), \
+                 patch.object(app_module.SERVICE, "analyze_mt5_market", return_value=fake):
+                status, _, posted = self.request(
+                    "/api/runtime/analysis", method="POST",
+                    payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+                )
+                self.assertEqual(status, "200 OK")
+                status, _, latest = self.request(
+                    "/api/runtime/analysis/latest", query="symbol=EURUSD&timeframe=5m"
+                )
+                self.assertEqual(status, "200 OK")
+                self.assertTrue(latest["available"])
+                self.assertEqual(latest["analysis"]["analysis_cycle"]["symbol"], "EURUSD")
+                self.assertEqual(latest["analysis"]["signal"], posted["signal"])
+                self.assertEqual(latest["cache_scope"], "PERSISTENT_SQLITE")
+                self.assertFalse(latest["execution_allowed"])
+                self.assertEqual(latest["real"], "DESABILITADO")
+                status, _, missing = self.request(
+                    "/api/runtime/analysis/latest", query="symbol=GBPUSD&timeframe=5m"
+                )
+                self.assertEqual(status, "200 OK")
+                self.assertFalse(missing["available"])
 
     def test_analyze_exposes_stable_presentation_and_security_contract(self):
         status, _, payload = self.request(
@@ -260,7 +365,8 @@ def test_mt5_market_data_failure_returns_unavailable_not_old_signal(monkeypatch)
     )
     assert status == "503 Service Unavailable"
     assert payload["execution_allowed"] is False
-    assert payload["detail"] == "dados indisponíveis"
+    assert payload["error"] == "dados de mercado indisponíveis"
+    assert "dados indisponíveis" not in payload["error"]
     assert "signal" not in payload
 
 
@@ -280,7 +386,9 @@ def test_runtime_analysis_runtime_failure_returns_unavailable_without_signal(mon
     assert status == "503 Service Unavailable"
     assert payload["execution_allowed"] is False
     assert "signal" not in payload
-    assert "STALE" in payload["detail"]
+    assert payload["error"] == "dados de mercado indisponíveis"
+    assert "STALE" not in str(payload)
+    assert "detail" not in payload
 
 
 def test_runtime_analysis_displays_wait_when_final_context_or_risk_gate_blocks(monkeypatch):
@@ -369,6 +477,7 @@ def test_runtime_cycle_exposes_quality_and_gates_display_signal(monkeypatch):
     )
     result = SimpleNamespace(stopped=False, stop_reason="", cycles=[cycle])
     call_args = {}
+    monkeypatch.setattr(app, "_mode_execution_block_reason", lambda _preferences: None)
     monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **kwargs: (call_args.update(kwargs) or result))
 
     status, _, payload = ApiContractTests().request(
@@ -377,8 +486,8 @@ def test_runtime_cycle_exposes_quality_and_gates_display_signal(monkeypatch):
         payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
     )
 
-    assert call_args["confirmed"] is False
-    assert call_args["filters_ok"] is True
+    assert "confirmed" not in call_args
+    assert "filters_ok" not in call_args
     runtime = payload["runtime"]
     assert status == "200 OK"
     assert runtime["signal"] == "AGUARDAR"
@@ -537,3 +646,51 @@ def test_lightweight_liveness_probe_does_not_run_slow_system_diagnostics():
     assert payload["live"] is True
     assert "execution_allowed" not in payload
     assert "real" not in payload
+
+
+def test_fiscal_summary_api_hides_unclassified_foreign_generic_rate(monkeypatch, tmp_path):
+    import app
+
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "api-contract-owner")
+    monkeypatch.setattr(app, "FISCAL_RESERVE_DB", tmp_path / "fiscal.sqlite3")
+    monkeypatch.setattr(
+        app.FISCAL_RESERVE,
+        "summary",
+        lambda _owner_id, **_: {
+            "name": "Reserva Fiscal",
+            "categories": {
+                "BR_DAY_TRADE": {"rate": 20.0, "reserve_amount_brl": 100.0},
+                "FOREIGN_FINANCIAL_ASSET": {
+                    "rate": 15.0,
+                    "entries": 2,
+                    "realized_result_brl": 500.0,
+                    "reserve_amount_brl": 75.0,
+                },
+            },
+            "total_reserved_brl": 100.0,
+            "periods": {},
+            "history": [{
+                "category": "FOREIGN_FINANCIAL_ASSET",
+                "realized_result_brl": 500.0,
+                "reserve_rate": 15.0,
+                "reserve_amount_brl": 75.0,
+            }],
+            "history_page": {"limit": 100, "offset": 0, "returned": 0, "total": 0, "has_more": False},
+        },
+    )
+
+    status, _, payload = ApiContractTests().request("/api/fiscal-reserve")
+
+    assert status == "200 OK"
+    foreign = payload["categories"]["FOREIGN_FINANCIAL_ASSET"]
+    assert "rate" not in foreign
+    assert foreign["classification_status"] == "PENDING_CLASSIFICATION"
+    assert foreign["rate_available"] is False
+    assert foreign["realized_result_brl"] == 0.0
+    assert foreign["reserve_amount_brl"] == 0.0
+    assert payload["total_reserved_brl"] == 100.0
+    assert payload["categories"]["BR_DAY_TRADE"]["rate"] == 20.0
+    legacy = payload["history"][0]
+    assert "reserve_rate" not in legacy
+    assert "reserve_amount_brl" not in legacy
+    assert legacy["classification_status"] == "PENDING_CLASSIFICATION"

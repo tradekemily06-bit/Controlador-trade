@@ -8,6 +8,7 @@ from analysis.decision_record import DecisionRecord
 from analysis.decision_store import DecisionStore
 from analysis.statistics import summarize, summarize_breakdowns, summarize_periods
 from core.ecosystem_health import build_health_alerts
+from core.operational_alerts import OperationalIncident, build_operational_incidents
 from core.ecosystem_notifications import EcosystemNotification, NotificationKind, NotificationSeverity
 from core.learning_content import ContentType, LearningActivity, LearningAttempt, LearningObservation, LearningResource, LearningStatus, normalize_tags
 from core.market_data_runtime_integrity import MarketDataRuntimeReport
@@ -23,6 +24,7 @@ from core.senior_risk_reasoning import RiskDomain, RiskObservation
 from data.models import Candle
 from integration.news_provider import UnconfiguredNewsProvider
 from security.identity_boundary import IdentityPolicy
+from security_audit import AUDIT
 from security.production_operation_gate import ProductionOperationGate
 from security.request_context import ProductionRequestContext, require_production_context
 from storage.production_boundary import ProductionStoragePolicy
@@ -48,10 +50,100 @@ class EcosystemService:
         self.learning_observations: list[LearningObservation] = []
         self.learning_activities: dict[str, LearningActivity] = {}
         self.learning_attempts: list[LearningAttempt] = []
+        self.state_store = None
         self.senior_context = SeniorContextOrchestrator()
         self.automation = ControlledAutomationService(
             lifecycle_store=(operational_runtime.automation_lifecycle if operational_runtime is not None else None)
         )
+
+    @staticmethod
+    def _require_learning_bool(value: Any, field: str) -> bool:
+        if not isinstance(value, bool):
+            raise ValueError(f"{field} must be a boolean")
+        return value
+
+    def restore_learning_state(self) -> None:
+        """Restore educational records from the shared SQLite state store."""
+        store = getattr(self, "state_store", None)
+        if store is None:
+            return
+        saved = store.load_learning()
+        if not isinstance(saved, dict):
+            return
+        try:
+            restored_sources: dict[str, LearningSource] = {}
+            for item in saved.get("sources", []):
+                source = LearningSource(
+                    source_id=item["source_id"],
+                    source_type=LearningSourceType(item["source_type"]),
+                    uri=item["uri"],
+                    status=LearningSourceStatus(item["status"]),
+                    content_verified=self._require_learning_bool(item.get("content_verified", False), "content_verified"),
+                    security_checked=self._require_learning_bool(item.get("security_checked", False), "security_checked"),
+                    knowledge_validated=self._require_learning_bool(item.get("knowledge_validated", False), "knowledge_validated"),
+                    operation_eligible=False,
+                )
+                if source.status is LearningSourceStatus.VALIDATED and not (
+                    source.content_verified and source.security_checked
+                ):
+                    raise ValueError("validated source snapshot lacks required review evidence")
+                if source.knowledge_validated and source.status is not LearningSourceStatus.VALIDATED:
+                    raise ValueError("knowledge snapshot is admitted before source validation")
+                if source.source_id in restored_sources:
+                    raise ValueError("duplicate learning source in snapshot")
+                restored_sources[source.source_id] = source
+            self.learning_sources = restored_sources
+            self.learning_resources = {
+                item["resource_id"]: LearningResource(
+                    resource_id=item["resource_id"], title=item["title"],
+                    content_type=ContentType(item["content_type"]),
+                    source_url=item.get("source_url"), source_name=item.get("source_name"),
+                    status=LearningStatus(item["status"]), tags=tuple(item.get("tags", ())),
+                )
+                for item in saved.get("resources", [])
+            }
+            self.learning_observations = [
+                LearningObservation(
+                    resource_id=item["resource_id"], statement=item["statement"],
+                    concepts=tuple(item.get("concepts", ())), evidence=item.get("evidence"),
+                    confidence=item.get("confidence"), validated=self._require_learning_bool(item.get("validated", False), "validated"),
+                )
+                for item in saved.get("observations", [])
+            ]
+            self.learning_activities = {
+                item["activity_id"]: LearningActivity(
+                    activity_id=item["activity_id"], prompt=item["prompt"],
+                    expected_concepts=tuple(item.get("expected_concepts", ())),
+                    difficulty=item.get("difficulty", "UNSPECIFIED"),
+                )
+                for item in saved.get("activities", [])
+            }
+            self.learning_attempts = [
+                LearningAttempt(
+                    activity_id=item["activity_id"], answer=item["answer"],
+                    correct=item.get("correct"), feedback=item.get("feedback", ""),
+                )
+                for item in saved.get("attempts", [])
+            ]
+        except (KeyError, TypeError, ValueError):
+            # Corrupt or incompatible learning data must not be partially trusted.
+            self.learning_sources = {}
+            self.learning_resources = {}
+            self.learning_observations = []
+            self.learning_activities = {}
+            self.learning_attempts = []
+
+    def _persist_learning_state(self) -> None:
+        store = getattr(self, "state_store", None)
+        if store is None:
+            return
+        store.save_learning({
+            "sources": [asdict(item) for item in self.learning_sources.values()],
+            "resources": [asdict(item) for item in self.learning_resources.values()],
+            "observations": [asdict(item) for item in self.learning_observations],
+            "activities": [asdict(item) for item in self.learning_activities.values()],
+            "attempts": [asdict(item) for item in self.learning_attempts],
+        })
 
     def require_production_context(self, *, subject_id: str | None, tenant_id: str | None) -> ProductionRequestContext:
         return require_production_context(subject_id=subject_id, tenant_id=tenant_id)
@@ -137,16 +229,22 @@ class EcosystemService:
         if source.source_id in self.learning_sources:
             raise ValueError("source_id já cadastrado")
         self.learning_sources[source.source_id] = source
+        self._persist_learning_state()
         return source
 
     def validate_learning_source(self, source: LearningSource, *, content_verified: bool, security_checked: bool) -> LearningSource:
+        self._require_learning_bool(content_verified, "content_verified")
+        self._require_learning_bool(security_checked, "security_checked")
         updated = self.learning_source_gate.validate_content(source, content_verified=content_verified, security_checked=security_checked)
         self.learning_sources[updated.source_id] = updated
+        self._persist_learning_state()
         return updated
 
     def admit_learning_knowledge(self, source: LearningSource, *, knowledge_validated: bool) -> LearningSource:
+        self._require_learning_bool(knowledge_validated, "knowledge_validated")
         updated = self.learning_source_gate.admit_knowledge(source, knowledge_validated=knowledge_validated)
         self.learning_sources[updated.source_id] = updated
+        self._persist_learning_state()
         return updated
 
     def learning_sources_view(self) -> list[dict[str, Any]]:
@@ -160,6 +258,7 @@ class EcosystemService:
             source_type = {ContentType.VIDEO: LearningSourceType.VIDEO, ContentType.DOCUMENT: LearningSourceType.DOCUMENT}.get(resource.content_type, LearningSourceType.LINK)
             self.screen_learning_source({"source_id": resource.resource_id, "source_type": source_type.value, "uri": resource.source_url})
         self.learning_resources[resource.resource_id] = resource
+        self._persist_learning_state()
         return resource
 
     def learning_resources_view(self) -> list[dict[str, Any]]:
@@ -167,7 +266,7 @@ class EcosystemService:
 
     def add_learning_observation(self, payload: dict[str, Any]) -> LearningObservation:
         resource_id = str(payload.get("resource_id", ""))
-        validated = bool(payload.get("validated", False))
+        validated = self._require_learning_bool(payload.get("validated", False), "validated")
         if resource_id not in self.learning_resources:
             raise ValueError("resource_id não encontrado")
         source = self.learning_sources.get(resource_id)
@@ -175,6 +274,7 @@ class EcosystemService:
             raise ValueError("external learning knowledge must pass source and knowledge validation first")
         observation = LearningObservation(resource_id=resource_id, statement=str(payload.get("statement", "")), concepts=normalize_tags(tuple(payload.get("concepts", ()) or ())), evidence=payload.get("evidence"), confidence=payload.get("confidence"), validated=validated)
         self.learning_observations.append(observation)
+        self._persist_learning_state()
         return observation
 
     def learning_observations_view(self) -> list[dict[str, Any]]:
@@ -185,13 +285,36 @@ class EcosystemService:
         if activity.activity_id in self.learning_activities:
             raise ValueError("activity_id já cadastrado")
         self.learning_activities[activity.activity_id] = activity
+        self._persist_learning_state()
         return activity
 
     def generate_professor_activity(self, payload: dict[str, Any]) -> LearningActivity:
-        activity = self.learning_professor.build_activity(ProfessorActivitySpec(activity_id=str(payload.get("activity_id", "")), knowledge_id=str(payload.get("knowledge_id", "")), statement=str(payload.get("statement", "")), concept=str(payload.get("concept", "")), difficulty=str(payload.get("difficulty", "INTERMEDIATE"))), knowledge_validated=bool(payload.get("knowledge_validated", False)))
+        # Never trust a browser-supplied "knowledge_validated" flag. Resolve the
+        # knowledge ID against the server-side source registry and its review state.
+        knowledge_id = str(payload.get("knowledge_id", "")).strip()
+        source = self.learning_sources.get(knowledge_id)
+        if (
+            source is None
+            or source.status is not LearningSourceStatus.VALIDATED
+            or not source.content_verified
+            or not source.security_checked
+            or not source.knowledge_validated
+        ):
+            raise ValueError("only server-reviewed and server-admitted knowledge can generate professor activities")
+        activity = self.learning_professor.build_activity(
+            ProfessorActivitySpec(
+                activity_id=str(payload.get("activity_id", "")),
+                knowledge_id=knowledge_id,
+                statement=str(payload.get("statement", "")),
+                concept=str(payload.get("concept", "")),
+                difficulty=str(payload.get("difficulty", "INTERMEDIATE")),
+            ),
+            knowledge_validated=True,
+        )
         if activity.activity_id in self.learning_activities:
             raise ValueError("activity_id já cadastrado")
         self.learning_activities[activity.activity_id] = activity
+        self._persist_learning_state()
         return activity
 
     def learning_activities_view(self) -> list[dict[str, Any]]:
@@ -201,8 +324,12 @@ class EcosystemService:
         activity_id = str(payload.get("activity_id", ""))
         if activity_id not in self.learning_activities:
             raise ValueError("activity_id não encontrado")
-        attempt = LearningAttempt(activity_id=activity_id, answer=str(payload.get("answer", "")), correct=payload.get("correct"), feedback=str(payload.get("feedback", "")))
+        correct = payload.get("correct")
+        if correct is not None:
+            correct = self._require_learning_bool(correct, "correct")
+        attempt = LearningAttempt(activity_id=activity_id, answer=str(payload.get("answer", "")), correct=correct, feedback=str(payload.get("feedback", "")))
         self.learning_attempts.append(attempt)
+        self._persist_learning_state()
         return attempt
 
     def learning_summary(self) -> dict[str, Any]:
@@ -268,10 +395,22 @@ class EcosystemService:
         identity = self.identity.status()
         observability = self.operational_observability()
         mt5_status = self._mt5_demo_status_from_observability(observability)
-        components = {"decision_engine": "ONLINE", "memory": "ONLINE", "replay": "ONLINE", "statistics": "ONLINE", "risk_gate": "ONLINE", "automation": "ONLINE", "learning": "ONLINE", "news": "AGUARDANDO_FONTE", "mt5_demo": mt5_status, "real": "DESABILITADO", "saas": "FOUNDATION", "production_storage": str(production_storage["state"]), "production_operation_gate": str(production_gate["storage_state"]), "trusted_identity_provider": str(identity["trusted_identity_provider"]), "tenant_isolation": str(identity["tenant_isolation"])}
+        audit_persistence = (
+            "NOT_CONFIGURED"
+            if not AUDIT.persistence_available and AUDIT.persistence_error is None
+            else "DURABLE"
+            if AUDIT.persistence_available
+            else str(AUDIT.persistence_error or "unavailable").upper()
+        )
+        audit_component_status = (
+            "OPTIONAL" if audit_persistence == "NOT_CONFIGURED"
+            else "DURABLE" if audit_persistence == "DURABLE"
+            else audit_persistence
+        )
+        components = {"decision_engine": "ONLINE", "memory": "ONLINE", "replay": "ONLINE", "statistics": "ONLINE", "risk_gate": "ONLINE", "automation": "ONLINE", "learning": "ONLINE", "news": "AGUARDANDO_FONTE", "mt5_demo": mt5_status, "real": "DESABILITADO", "saas": "FOUNDATION", "production_storage": str(production_storage["state"]), "production_operation_gate": str(production_gate["storage_state"]), "trusted_identity_provider": str(identity["trusted_identity_provider"]), "tenant_isolation": str(identity["tenant_isolation"]), "security_audit": audit_component_status}
         alerts = build_health_alerts(components)
         health = "CRITICAL" if any(alert.severity == "CRITICAL" for alert in alerts) else ("WARNING" if alerts else "OK")
-        return {"mode": "SIMULACAO", "execution_allowed": False, "execution": "bloqueada_por_padrao", "decision_engine": components["decision_engine"], "memory": components["memory"], "replay": components["replay"], "statistics": components["statistics"], "risk_gate": components["risk_gate"], "learning": components["learning"], "news": components["news"], "mt5_demo": components["mt5_demo"], "real": components["real"], "saas": components["saas"], "components": components, "health": health, "alerts": [alert.to_dict() for alert in alerts], "memory_persistence": "SQLITE" if self.store.database_path else "IN_MEMORY", "production_storage": production_storage, "production_operation_gate": production_gate, "operational_observability": observability, **identity}
+        return {"mode": "SIMULACAO", "execution_allowed": False, "execution": "bloqueada_por_padrao", "decision_engine": components["decision_engine"], "memory": components["memory"], "replay": components["replay"], "statistics": components["statistics"], "risk_gate": components["risk_gate"], "learning": components["learning"], "news": components["news"], "mt5_demo": components["mt5_demo"], "real": components["real"], "saas": components["saas"], "components": components, "health": health, "alerts": [alert.to_dict() for alert in alerts], "memory_persistence": "SQLITE" if self.store.database_path else "IN_MEMORY", "security_audit": {"persistence": audit_persistence, "retention_limit": AUDIT.max_events}, "production_storage": production_storage, "production_operation_gate": production_gate, "operational_observability": observability, **identity}
 
     def health_alerts(self) -> list[dict[str, Any]]:
         return [asdict(item) for item in build_health_alerts(self.operational_observability())]
@@ -289,13 +428,25 @@ class EcosystemService:
             "market_data": NotificationKind.MARKET,
             "runtime_health": NotificationKind.SYSTEM_UPDATE,
             "kill_switch": NotificationKind.RISK,
+            "security_audit": NotificationKind.SYSTEM_UPDATE,
         }
         severity_by_incident = {
             "CRITICAL": NotificationSeverity.CRITICAL,
             "WARNING": NotificationSeverity.IMPORTANT,
         }
         items: list[dict[str, Any]] = []
-        for incident in build_operational_incidents(self.operational_observability()):
+        incidents = build_operational_incidents(self.operational_observability())
+        if not AUDIT.persistence_available and AUDIT.persistence_error is not None:
+            incidents.append(
+                OperationalIncident(
+                    code="SECURITY_AUDIT_PERSISTENCE_FAILED",
+                    severity="CRITICAL",
+                    status=str(AUDIT.persistence_error).upper(),
+                    source="security_audit",
+                    message="persistência da trilha de auditoria indisponível; verifique o armazenamento local",
+                )
+            )
+        for incident in incidents:
             items.append(
                 {
                     "notification_id": f"operational-{incident.code}",

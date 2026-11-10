@@ -52,28 +52,65 @@ class EcosystemNotificationCenter:
 
     def __init__(self) -> None:
         self._notifications: list[EcosystemNotification] = []
-
-
+        self._restore_had_invalid_records = False
 
     def restore(self, items: list[dict]) -> None:
         """Restore persisted notifications; invalid records are ignored safely."""
         restored: list[EcosystemNotification] = []
+        seen_ids: set[str] = set()
+        invalid_records = False
         for item in items:
+            if not isinstance(item, dict):
+                invalid_records = True
+                continue
             try:
+                notification_id = item["notification_id"]
+                kind = item["kind"]
+                severity = item["severity"]
+                title = item["title"]
+                message = item["message"]
+                requires_attention = item.get("requires_attention", False)
+                blocking = item.get("blocking", False)
+                # Persisted JSON is untrusted input: do not coerce strings such
+                # as "false" to True or arbitrary objects into display text.
+                if not all(isinstance(value, str) for value in (
+                    notification_id, kind, severity, title, message
+                )):
+                    invalid_records = True
+                    continue
+                if type(requires_attention) is not bool or type(blocking) is not bool:
+                    invalid_records = True
+                    continue
+                if not notification_id.strip() or not title.strip() or not message.strip():
+                    invalid_records = True
+                    continue
+                if len(notification_id) > 160 or len(title) > 240 or len(message) > 4000:
+                    invalid_records = True
+                    continue
+                if notification_id in seen_ids:
+                    invalid_records = True
+                    continue
+                seen_ids.add(notification_id)
                 notification = EcosystemNotification(
-                    notification_id=str(item["notification_id"]),
-                    kind=NotificationKind(str(item["kind"])),
-                    severity=NotificationSeverity(str(item["severity"])),
-                    title=str(item["title"]),
-                    message=str(item["message"]),
-                    requires_attention=bool(item.get("requires_attention", False)),
-                    blocking=bool(item.get("blocking", False)),
+                    notification_id=notification_id,
+                    kind=NotificationKind(kind),
+                    severity=NotificationSeverity(severity),
+                    title=title,
+                    message=message,
+                    requires_attention=requires_attention,
+                    blocking=blocking,
                 )
-                if notification.title.strip() and notification.message.strip():
-                    restored.append(notification)
+                restored.append(notification)
             except (KeyError, TypeError, ValueError):
+                invalid_records = True
                 continue
         self._notifications = restored
+        self._restore_had_invalid_records = invalid_records
+
+    @property
+    def restore_had_invalid_records(self) -> bool:
+        """Whether the latest restore discarded malformed persisted records."""
+        return self._restore_had_invalid_records
 
     def publish(self, notification: EcosystemNotification) -> EcosystemNotification:
         if not isinstance(notification, EcosystemNotification):

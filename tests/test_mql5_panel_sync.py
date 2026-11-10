@@ -68,7 +68,7 @@ def test_mql5_panel_primes_runtime_and_refreshes_market_data_on_new_bars():
     assert "current_bar!=last_analysis_bar" in timer
     assert "Analyze(new_bar && (active_view==\"COCKPIT\" || active_view==\"ANALISE\"));" in timer
     assert "Analyze(false);" in timer
-    assert '"/api/runtime/analysis"' in analyze
+    assert '"/api/runtime/analysis/local"' in analyze
     assert "if(!render) return;" in analyze
 
 
@@ -122,13 +122,14 @@ def test_mql5_config_mode_and_leverage_controls_persist_without_real_authority()
     save = panel.split("void SaveConfig()", 1)[1].split("void Analyze(bool render=true)", 1)[0]
     events = panel.split("void OnChartEvent", 1)[1]
 
-    assert 'Obj("MODE_TOGGLE")' in prefs
+    assert 'Obj("MODE_TOGGLE")' not in prefs
+    assert 'Obj("MODE_TOGGLE")' not in events
     assert 'Obj("LEVERAGE_TOGGLE")' in prefs
     assert '"ALAVANCAGEM: ON"' in prefs
     assert '"ALAVANCAGEM: OFF"' in prefs
-    assert 'selected_mode=(selected_mode=="DEMO"?"REAL":"DEMO")' in events
+    assert 'selected_mode="DEMO";' in prefs
+    assert r'\"selected_mode\":\"DEMO\"' in save
     assert "leverage_enabled=!leverage_enabled" in events
-    assert "selected_mode" in save
     assert "leverage_enabled" in save
     assert 'SetLabel(Obj("INFO5"),"REAL: BLOQUEADO' in prefs
 
@@ -273,3 +274,100 @@ def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compil
     assert "Set-Content -LiteralPath $provenanceTemp -Encoding ASCII" in text
     assert text.count("Restore-File -Backup $backupProvenance -Target $provenance") == 7
     assert text.index("if ($binaryWriteTime -lt $compileStartedAt.AddSeconds(-2))") < text.index("binary_sha256 = $binaryHashAfter")
+
+
+def test_mql5_close_preserves_cycle_until_broker_confirms_position_closed():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    close = panel.split("void CloseCycle()", 1)[1].split("int OnInit()", 1)[0]
+    assert 'JsonValue(r,"closed")=="true"' in close
+    assert '"/api/runtime/close/local/reconcile"' in close
+    assert 'JsonObjectValue(reconciliation,"close_reconciliation","state")' in close
+    assert 'state=="CLOSED"' in close
+    assert 'state=="OPEN"' in close
+    assert close.count("ClearCycleIdentity();") >= 2
+    assert "Fechamento inconclusivo; ciclo preservado." in close
+    assert "Sem saida temporizada; fechamento manual explicito." in panel
+
+
+def test_mql5_preserves_active_cycle_ticket_across_analysis_and_ea_restart():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    run_cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    init = panel.split("int OnInit()", 1)[1].split("void OnDeinit", 1)[0]
+    assert "LoadCycleIdentity();" in init
+    assert "PersistCycleIdentity();" in run_cycle
+    assert "ClearCycleIdentity();" in panel
+    assert "FileOpen(CycleIdentityFileName(),FILE_WRITE|FILE_TXT|FILE_ANSI)" in panel
+    assert "FileOpen(CycleIdentityFileName(),FILE_READ|FILE_TXT|FILE_ANSI)" in panel
+    assert 'if(allowed=="true" && accepted=="true" && cid!="" && eid!="")' in run_cycle
+    assert "last_cycle_id=cid; last_external_id=eid;" not in run_cycle
+    assert 'if(last_cycle_id!="" && last_external_id!="" && !RefreshActiveCycleState())' in run_cycle
+    assert "RefreshActiveCycleState()" in run_cycle
+    refresh = panel.split("bool RefreshActiveCycleState()", 1)[1].split("void RunCycle()", 1)[0]
+    assert 'JsonObjectValue(response,"close_reconciliation","state")' in refresh
+    assert 'state=="CLOSED"' in refresh
+    assert 'state=="OPEN"' in refresh
+    assert "if(!cycle_identity_store_valid)" in run_cycle
+    assert "FileIsExist(CycleIdentityFileName())" in panel
+    assert "Falha ao salvar ticket; não reinicie EA." in run_cycle
+
+
+def test_mql5_releases_stale_cycle_only_after_read_only_broker_confirmation():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    refresh = panel.split("bool RefreshActiveCycleState()", 1)[1].split("void RunCycle()", 1)[0]
+    run_cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    assert 'Http("POST","/api/runtime/close/local/reconcile"' in refresh
+    assert 'state=="CLOSED"' in refresh
+    assert "ClearCycleIdentity();" in refresh
+    assert 'state=="OPEN"' in refresh
+    assert 'if(last_cycle_id!="" && last_external_id!="" && !RefreshActiveCycleState())' in run_cycle
+    assert 'JsonObjectValue(r,"timed_exit","scheduled")' in run_cycle
+    assert 'JsonObjectValue(r,"timed_exit","due_at")' in run_cycle
+    assert "best-effort" in run_cycle
+
+
+
+def test_mql5_native_recovery_inventory_supports_multiple_exact_tickets():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    parser = panel.split("bool ExtractJsonArrayObjects", 1)[1].split("bool RefreshRecoveryInventory", 1)[0]
+    selection = panel.split("void ReconcileSelectedRecovery()", 1)[1].split("int OnInit()", 1)[0]
+    events = panel.split("void OnChartEvent", 1)[1]
+
+    assert 'Http("GET","/api/runtime/positions/recovery/local"' in panel
+    assert 'ExtractJsonArrayObjects(json,"positions",objects)' in panel
+    assert "RecoveryPosition recovery_items[];" in panel
+    assert "bool ParseRecoveryInventory(string json)" in panel
+    assert "bool RefreshRecoveryInventory()" in panel
+    assert "void ReconcileSelectedRecovery()" in panel
+    assert "void CloseSelectedRecovery()" in panel
+    assert 'Http("GET","/api/runtime/positions/recovery/local"' in panel
+    assert "recovery_items[n].cycle_id=cycle;" in panel
+    assert "recovery_items[n].external_id=ticket;" in panel
+    assert "if(c!='{') return false;" in parser
+    assert "if(depth!=0 || inString) return false;" in parser
+    assert "bool have_item=false,after_comma=false;" in parser
+    assert "if(c==']') return !after_comma;" in parser
+    assert 'state!="BLOCKED_ACCOUNT_IDENTITY"' in parser
+    assert 'state!="BROKER_CONFIRMED_OPEN"' in parser
+    assert 'state!="RECONCILIATION_REQUIRED"' in parser
+    assert 'Http("POST","/api/runtime/close/local/reconcile"' in selection
+    assert 'item.state!="BROKER_CONFIRMED_OPEN"' in selection
+    assert "if(!recovery_close_armed)" in selection
+    assert 'Http("POST","/api/runtime/close/local"' in selection
+    assert 'Obj("REC_PREV")' in events
+    assert 'Obj("REC_NEXT")' in events
+    assert 'Obj("REC_RECONCILE")' in events
+    assert 'Obj("REC_CLOSE")' in events
+
+
+def test_mql5_json_helpers_accept_standard_json_whitespace_and_escaped_strings():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    helpers = panel.split("int JsonValueStart", 1)[1].split("bool Http(", 1)[0]
+
+    assert "JsonValueStart(json,arrayKey)" in helpers
+    assert "if(have_item && !after_comma) return false;" in helpers
+    assert "JsonValueStart(json,objectKey)" in helpers
+    assert "StringGetCharacter(json,q)=='\\n'" in helpers
+    assert "StringGetCharacter(json,q)=='\\t'" in helpers
+    assert "if(escaped) escaped=false;" in helpers
+    assert r"else if(c=='\\') escaped=true;" in helpers
+    assert r"else if(ch=='\\') escaped=true;" in helpers

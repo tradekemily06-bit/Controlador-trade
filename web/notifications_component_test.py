@@ -28,3 +28,11 @@ def test_notification_component_has_no_execution_controls_or_authority():
     for forbidden in ("/api/analyze", "/api/outcome", "execution", "COMPRA", "VENDA"):
         assert forbidden not in JS
     assert "window.ControladorNotifications" in JS
+
+
+
+def test_notification_archive_remains_reachable_when_summary_is_empty_and_collapse_restores_summary():
+    assert "expand.classList.remove('hidden')" in JS
+    collapsed = JS.split("if (!infoBox.classList.contains('hidden')) {", 1)[1].split("return;", 1)[0]
+    assert "renderLists(items" in collapsed
+    assert "Nenhuma notificação registrada." in JS
