@@ -37,11 +37,12 @@ def test_streamlit_reports_uses_dedicated_read_only_reports_endpoint_and_avoids_
     assert '"Multi-Broker": ("Visão de provedores · somente leitura", "/api/connections")' in views
     multi_broker_view = source.split('if module_name == "Multi-Broker":', 1)[1].split('if module_name == "Segurança":', 1)[0]
     assert "Execução multi-broker: NÃO IMPLEMENTADA" in multi_broker_view
-    security_view = source.split('if module_name == "Segurança":', 1)[1].split('if module_name == "Configurações":', 1)[0]
+    security_view = source.split('if module_name == "Segurança":', 1)[1].split('if module_name == "Laboratório":', 1)[0]
     assert 'data.get("production_storage", {})' in security_view
     assert 'data.get("production_operation_gate", {})' in security_view
-    assert 'data.get("trusted_identity_provider")' in security_view
-    assert 'data.get("tenant_isolation")' in security_view
+    assert 'data.get("identity", data)' in security_view
+    assert 'identity.get("trusted_identity_provider"' in security_view
+    assert 'identity.get("tenant_isolation"' in security_view
     assert '"NÃO CONFIRMADO"' in security_view
 
 
@@ -865,7 +866,7 @@ def test_streamlit_kill_switch_view_is_dedicated_and_read_only():
     assert 'position_close_recovery_items' in view
     assert '"/api/runtime/real/close/reconcile"' in view
     assert "A ativação bloqueia novas execuções." in view
-    assert "não canceladas" in view
+    assert "não foram canceladas" in view
     assert "CONSULTAR E RECONCILIAR" in view
 
 
