@@ -1858,15 +1858,13 @@ def show_readonly_module(module_name: str) -> None:
         "Ambiente MT5 DEMO": ("Conexões e ambiente", "/api/connections"),
         "Memória": ("Memória de decisões", "/api/memory?limit=50"),
         "Estatísticas": ("Estatísticas operacionais", "/api/statistics"),
-        "Relatórios": ("Resumo operacional", "/api/statistics"),
+        "Relatórios": ("Resumo operacional", "/api/reports"),
         "Laboratório": ("Laboratório de aprendizado", "/api/learning"),
         "Aprendizado": ("Aprendizado validado", "/api/learning"),
         "Descobertas": ("Descobertas registradas", "/api/learning"),
         "Escola / Tutorial / Onboarding": ("Primeiros passos", "/api/onboarding"),
         "Configurações": ("Preferências do Ecossistema", "/api/preferences"),
-        "Segurança": ("Segurança do Ecossistema", "/api/health"),
         "Conexões": ("Conexões disponíveis", "/api/connections"),
-        "Multi-Broker": ("Disponibilidade de conexões", "/api/connections"),
         "Auditoria": ("Auditoria operacional", "/api/security/audit"),
     }
     if module_name == "Kill Switch":
@@ -3101,7 +3099,7 @@ with st.container(key="control-hub-shell"):
     with header_left:
         st.markdown('<div class="hub-title">Controlador-Trader</div>', unsafe_allow_html=True)
     with header_right:
-        st.markdown('<div class="demo-pill-wrap"><span class="demo-pill">DEMO</span></div>', unsafe_allow_html=True)
+        st.markdown('<div class="demo-pill-wrap"><span class="demo-pill">NÃO CONFIRMADO</span></div>', unsafe_allow_html=True)
 
     # The same periodically refreshed signal and score appear in both panel states.
     with st.container(key="open-signal-strip"):
