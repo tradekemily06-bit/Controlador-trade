@@ -808,7 +808,8 @@ def test_streamlit_kill_switch_view_is_dedicated_and_read_only():
     assert 'obs.get("recovery", {})' in view
     assert 'obs.get("reconciliation", {})' in view
     assert 'reconciliation.get("unknown_request_ids", [])' in view
-    assert "Não altera o Kill Switch nem retoma operações." in view
+    assert "A ativação bloqueia novas execuções." in view
+    assert "não há cancelamento automático" in view
     assert "Execução permitida: NÃO" in view
 
 
@@ -1952,7 +1953,7 @@ def test_assistant_openai_consent_is_bound_to_authenticated_identity():
 def test_operation_overview_does_not_claim_continuous_realtime_refresh():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     start = source.index('if module_name == "Operação":')
-    end = source.index('if module_name == "Motor de Decisão":', start)
+    end = source.index('if module_name == "Notificações":', start)
     operation = source[start:end]
     assert 'Estado operacional · última consulta' in operation
     assert 'não representam transmissão contínua' in operation
