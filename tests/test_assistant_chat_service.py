@@ -220,6 +220,10 @@ def test_assistant_system_rules_require_period_aware_fiscal_estimates_and_no_gen
     assert "não some períodos nem invente valores" in chat_module.SYSTEM_PROMPT
     assert "Nunca apresente nem recomende percentual genérico para resultados estrangeiros" in chat_module.SYSTEM_PROMPT
     assert "A Reserva Fiscal é planejamento, não cálculo definitivo de imposto" in chat_module.SYSTEM_PROMPT
+    assert "Use reserve_semantics como limites obrigatórios" in chat_module.SYSTEM_PROMPT
+    assert "tax_liability_confirmed não for true" in chat_module.SYSTEM_PROMPT
+    assert "monthly_tax_assessment não for true" in chat_module.SYSTEM_PROMPT
+    assert "monthly_loss_offsets_calculated não for true" in chat_module.SYSTEM_PROMPT
 
 
 def test_assistant_never_describes_user_configured_planning_rate_as_verified_tax_rate():
