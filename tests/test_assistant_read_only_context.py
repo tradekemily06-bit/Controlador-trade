@@ -46,6 +46,48 @@ def test_context_is_read_only_and_contains_existing_module_summaries():
     assert context["assistant_safety"]["may_move_money"] is False
 
 
+def test_assistant_context_preserves_only_allowlisted_fiscal_rate_origin():
+    class FiscalWithRateOrigins:
+        def summary(self, owner_id):
+            return {
+                "name": "Reserva Fiscal",
+                "total_reserved_brl": 10.0,
+                "categories": {
+                    "BR_DAY_TRADE": {
+                        "rate": 20.0,
+                        "rate_source": "DEFAULT",
+                        "entries": 1,
+                        "realized_result_brl": 50.0,
+                        "reserve_amount_brl": 10.0,
+                    },
+                },
+            }
+
+    context = collect_read_only_context(FakeService(), FiscalWithRateOrigins(), "test-owner")
+    category = context["fiscal_reserve"]["categories"]["BR_DAY_TRADE"]
+    assert category["rate_source"] == "DEFAULT"
+    assert category["rate_kind"] == "SYSTEM_DEFAULT_PLANNING_RATE"
+    assert category["tax_rate_verified"] is False
+
+    class UnknownOriginFiscal:
+        def summary(self, owner_id):
+            return {
+                "total_reserved_brl": 10.0,
+                "categories": {
+                    "BR_DAY_TRADE": {
+                        "rate": 20.0,
+                        "rate_source": "forged-user-claim",
+                        "entries": 1,
+                    },
+                },
+            }
+
+    unknown = collect_read_only_context(FakeService(), UnknownOriginFiscal(), "test-owner")
+    unknown_category = unknown["fiscal_reserve"]["categories"]["BR_DAY_TRADE"]
+    assert unknown_category["rate_source"] == "LEGACY_UNKNOWN"
+    assert unknown_category["rate_kind"] == "LEGACY_RATE_ORIGIN_UNKNOWN"
+
+
 def test_context_rejects_missing_dependencies():
     try:
         collect_read_only_context(None, FakeFiscalReserve(), "test-owner")
