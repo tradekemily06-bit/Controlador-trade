@@ -360,7 +360,8 @@ def test_mt5_market_data_failure_returns_unavailable_not_old_signal(monkeypatch)
     )
     assert status == "503 Service Unavailable"
     assert payload["execution_allowed"] is False
-    assert payload["detail"] == "dados indisponíveis"
+    assert payload["error"] == "dados de mercado indisponíveis"
+    assert "dados indisponíveis" not in payload["error"]
     assert "signal" not in payload
 
 
@@ -380,7 +381,9 @@ def test_runtime_analysis_runtime_failure_returns_unavailable_without_signal(mon
     assert status == "503 Service Unavailable"
     assert payload["execution_allowed"] is False
     assert "signal" not in payload
-    assert "STALE" in payload["detail"]
+    assert payload["error"] == "dados de mercado indisponíveis"
+    assert "STALE" not in str(payload)
+    assert "detail" not in payload
 
 
 def test_runtime_analysis_displays_wait_when_final_context_or_risk_gate_blocks(monkeypatch):
@@ -469,6 +472,7 @@ def test_runtime_cycle_exposes_quality_and_gates_display_signal(monkeypatch):
     )
     result = SimpleNamespace(stopped=False, stop_reason="", cycles=[cycle])
     call_args = {}
+    monkeypatch.setattr(app, "_mode_execution_block_reason", lambda _preferences: None)
     monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **kwargs: (call_args.update(kwargs) or result))
 
     status, _, payload = ApiContractTests().request(
