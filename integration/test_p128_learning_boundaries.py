@@ -60,7 +60,7 @@ def test_source_validation_and_knowledge_admission_still_never_make_operation_el
 
 def test_professor_activity_requires_validated_knowledge_and_is_not_trade_authority():
     service = EcosystemService()
-    with pytest.raises(ValueError, match="validated knowledge"):
+    with pytest.raises(ValueError, match="server-reviewed and server-admitted knowledge"):
         service.generate_professor_activity({
             "activity_id": "quiz-1",
             "knowledge_id": "k-1",
