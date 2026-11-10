@@ -256,6 +256,30 @@ def test_query_order_reconciles_canceled_external_order_as_not_executed():
     assert observation.status.value == "NOT_EXECUTED"
 
 
+def test_query_order_fails_closed_when_order_and_deal_tickets_collide():
+    class CollidingTicketMT5(FakeMT5):
+        def history_deals_get(self, *args, **kwargs):
+            if kwargs.get("ticket") == 123456:
+                return (SimpleNamespace(ticket=123456, profit=1.0),)
+            return ()
+
+        def history_orders_get(self, *args, **kwargs):
+            if kwargs.get("ticket") == 123456:
+                return (SimpleNamespace(
+                    ticket=123456,
+                    state=self.ORDER_STATE_FILLED,
+                    volume_initial=0.01,
+                    volume_current=0.0,
+                ),)
+            return ()
+
+    observation = ICMarketsMT5DemoAdapter(
+        mt5_module=CollidingTicketMT5()
+    ).query_order("123456")
+
+    assert observation.status.value == "UNKNOWN"
+
+
 def test_query_order_reconciles_filled_order_ticket_as_executed():
     class FilledOrderMT5(FakeMT5):
         def history_deals_get(self, *args, **kwargs):
