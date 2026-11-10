@@ -188,6 +188,13 @@ def migrate_fiscal_schema(database_path: str) -> str:
                 for table in TABLES
             }
             if all("owner_id" in columns for columns in owner_columns.values()):
+                settings_columns = owner_columns["fiscal_reserve_settings"]
+                if "rate_source" not in settings_columns:
+                    db.execute(
+                        "ALTER TABLE fiscal_reserve_settings ADD COLUMN rate_source "
+                        "TEXT NOT NULL DEFAULT 'LEGACY_UNKNOWN' "
+                        "CHECK(rate_source IN ('DEFAULT','USER_CONFIGURED','LEGACY_UNKNOWN'))"
+                    )
                 # owner_id columns alone do not guarantee owner-scoped uniqueness or review linkage.
                 constraints_valid = _owner_schema_constraints_valid(db)
                 pending_columns = owner_columns["fiscal_reserve_pending_foreign"]
@@ -236,8 +243,9 @@ def migrate_fiscal_schema(database_path: str) -> str:
                 # Repair a missing default planning rate in already owner-scoped
                 # databases without overwriting a rate the owner has configured.
                 db.execute(
-                    """INSERT OR IGNORE INTO fiscal_reserve_settings(owner_id, category, rate)
-                       VALUES (?, 'BR_DAY_TRADE', 20.0)""",
+                    """INSERT OR IGNORE INTO fiscal_reserve_settings
+                       (owner_id, category, rate, rate_source)
+                       VALUES (?, 'BR_DAY_TRADE', 20.0, 'DEFAULT')""",
                     (owner_id,),
                 )
                 violations = db.execute("PRAGMA foreign_key_check").fetchall()
@@ -271,6 +279,8 @@ def migrate_fiscal_schema(database_path: str) -> str:
                 owner_id TEXT NOT NULL,
                 category TEXT NOT NULL,
                 rate REAL NOT NULL CHECK(rate >= 0 AND rate <= 100),
+                rate_source TEXT NOT NULL
+                    CHECK(rate_source IN ('DEFAULT','USER_CONFIGURED','LEGACY_UNKNOWN')),
                 PRIMARY KEY(owner_id, category)
             )
         """)
@@ -344,9 +354,12 @@ def migrate_fiscal_schema(database_path: str) -> str:
 
         for row in settings:
             keys = set(row.keys())
+            rate_source = row["rate_source"] if "rate_source" in keys else "LEGACY_UNKNOWN"
+            if rate_source not in {"DEFAULT", "USER_CONFIGURED", "LEGACY_UNKNOWN"}:
+                raise RuntimeError("Origem do percentual fiscal inválida; migração interrompida.")
             db.execute(
-                "INSERT INTO fiscal_reserve_settings_new(owner_id,category,rate) VALUES(?,?,?)",
-                (owner_id, row["category"], row["rate"]),
+                "INSERT INTO fiscal_reserve_settings_new(owner_id,category,rate,rate_source) VALUES(?,?,?,?)",
+                (owner_id, row["category"], row["rate"], rate_source),
             )
         for row in entries:
             db.execute("""
@@ -409,8 +422,8 @@ def migrate_fiscal_schema(database_path: str) -> str:
             ON fiscal_pending_reviews(owner_id,pending_id,created_at DESC)
         """)
         db.execute("""
-            INSERT OR IGNORE INTO fiscal_reserve_settings(owner_id,category,rate)
-            VALUES(?, 'BR_DAY_TRADE', 20.0)
+            INSERT OR IGNORE INTO fiscal_reserve_settings(owner_id,category,rate,rate_source)
+            VALUES(?, 'BR_DAY_TRADE', 20.0, 'DEFAULT')
         """, (owner_id,))
         violations = db.execute("PRAGMA foreign_key_check").fetchall()
         if violations:

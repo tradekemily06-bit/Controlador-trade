@@ -879,9 +879,14 @@ def show_fiscal() -> None:
             money(selected_period.get("realized_result_brl")),
         )
         c.metric("Estimativa acumulada · Brasil", money(summary.get("total_reserved_brl")))
+        rate_source_label = {
+            "DEFAULT": "padrão inicial do sistema",
+            "USER_CONFIGURED": "configurado pelo usuário",
+            "LEGACY_UNKNOWN": "origem anterior não identificada",
+        }.get(br.get("rate_source"), "origem não identificada")
         st.caption(
             f"Período: {selected_period.get('start', '—')} a {selected_period.get('end', '—')} · "
-            f"Brasil day trade · percentual de planejamento configurado: {br.get('rate', '—')}%"
+            f"Brasil day trade · percentual de planejamento {rate_source_label}: {br.get('rate', '—')}%"
         )
         semantics = summary.get("reserve_semantics", {})
         st.warning("ESTIMATIVA DE PLANEJAMENTO — não é imposto apurado ou devido. " + str(semantics.get("description") or "Não calcula compensação mensal de prejuízos nem créditos de IRRF."))
