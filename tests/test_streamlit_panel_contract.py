@@ -1752,6 +1752,9 @@ def test_windows_bootstrap_installs_and_supervises_the_streamlit_panel():
     assert "GetEnvironmentVariable('CONTROLADOR_SINGLE_USER_IDENTITY', 'Machine')" in supervisor
     assert "não corresponde à identidade persistida no escopo de Máquina" in supervisor
     assert "127.0.0.1:8501" in readme
+    assert 'CONTROLADOR_EXECUTION_PROVIDER="ic_markets_mt5_demo"' in readme
+    assert "O provider padrão do código é `paper`" in readme
+    assert "OPENAI_API_KEY" in readme
     assert "hostname do painel" in runbook
     assert "porta 8000 não deve ser publicada" in runbook
     assert "0.0.0.0" not in supervisor
