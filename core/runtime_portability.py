@@ -5,7 +5,8 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 PORTABILITY_VERSION = 1
-PORTABLE_FILES = ("operation-memory.json","operational-safety.json","execution-ledger.json","execution-lifecycle.json","automation-lifecycle.json","runtime-checkpoint.json","ecosystem-state.sqlite","decision-memory.sqlite","security-audit.sqlite")
+PORTABLE_FILES = ("operation-memory.json","operational-safety.json","execution-ledger.json","execution-lifecycle.json","automation-lifecycle.json","runtime-checkpoint.json","demo-position-closes.json","demo-timed-exits.json","ecosystem-state.sqlite","decision-memory.sqlite","security-audit.sqlite","fiscal-reserve.sqlite3","assistant.sqlite3","latest-market-analysis.sqlite3")
+SQLITE_SUFFIXES = frozenset({".sqlite", ".sqlite3", ".db"})
 
 def _sha256(path: Path) -> str:
     digest=hashlib.sha256()
@@ -22,7 +23,7 @@ def _sqlite_snapshot(source: Path, target: Path) -> None:
         target_db.close(); source_db.close()
 
 def _copy_state(source: Path, target: Path) -> None:
-    if source.suffix.lower()==".sqlite": _sqlite_snapshot(source,target)
+    if source.suffix.lower() in SQLITE_SUFFIXES: _sqlite_snapshot(source,target)
     else:
         target.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(source,target)
 
@@ -93,10 +94,21 @@ def verify_backup(backup_file:str|Path)->dict[str,Any]:
         members=set(member_names)
         if members != set(expected):
             raise ValueError("backup contents do not match manifest")
-        for member,(digest,size) in expected.items():
-            data=archive.read(member)
-            if len(data)!=size or hashlib.sha256(data).hexdigest()!=digest:
-                raise ValueError(f"backup integrity failure: {member}")
+        with tempfile.TemporaryDirectory(prefix="controlador-backup-verify-") as temp_dir:
+            for member,(digest,size) in expected.items():
+                data=archive.read(member)
+                if len(data)!=size or hashlib.sha256(data).hexdigest()!=digest:
+                    raise ValueError(f"backup integrity failure: {member}")
+                if Path(member).suffix.lower() in SQLITE_SUFFIXES:
+                    staged_db = Path(temp_dir) / member
+                    staged_db.write_bytes(data)
+                    try:
+                        with sqlite3.connect(staged_db) as connection:
+                            integrity = connection.execute("PRAGMA integrity_check").fetchone()
+                    except sqlite3.DatabaseError as exc:
+                        raise ValueError(f"backup SQLite integrity failure: {member}") from exc
+                    if not integrity or integrity[0] != "ok":
+                        raise ValueError(f"backup SQLite integrity failure: {member}")
     return manifest
 def restore_backup(backup_file:str|Path,runtime_dir:str|Path,*,replace:bool=False)->dict[str,Any]:
     manifest=verify_backup(backup_file); runtime=Path(runtime_dir).resolve(); runtime.mkdir(parents=True,exist_ok=True)
