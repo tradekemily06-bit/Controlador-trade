@@ -1030,12 +1030,8 @@ def test_foreign_pending_review_form_posts_and_refreshes_history_without_booking
             item.label == "Classificação candidata revisada"
             for item in app.selectbox
         )
-        assert any(
-            item.value == "NÃO VERIFICADA"
-            for frame in app.dataframe
-            for row in frame.value.to_dict(orient="records")
-            for item in []
-        ) is False
+        assert any("NÃO VERIFICADA" in str(frame.value) for frame in app.dataframe)
+        assert any("NÃO VERIFICADO" in str(frame.value) for frame in app.dataframe)
         assert app.dataframe, "the refreshed foreign review history should render"
     finally:
         server.shutdown()
