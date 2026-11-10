@@ -50,6 +50,7 @@ def _configure(tmp_path, monkeypatch):
     monkeypatch.setattr(app_module.SECURITY, "headers", lambda request_id, **kwargs: [])
     monkeypatch.setattr(app_module, "_audit", lambda *args, **kwargs: None)
     monkeypatch.setattr(app_module, "migrate_fiscal_schema", lambda _path: OWNER)
+    monkeypatch.setattr(app_module, "configured_fiscal_owner_id", lambda: OWNER)
     monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", tmp_path / "fiscal.sqlite3")
     store = AssistantConversationStore(tmp_path / "assistant.sqlite3")
     monkeypatch.setattr(app_module, "ASSISTANT", AssistantHistoryFacade(store))
