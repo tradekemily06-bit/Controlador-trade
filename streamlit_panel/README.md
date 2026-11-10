@@ -2,6 +2,19 @@
 
 Esta é a interface Streamlit do Controlador-Trader destinada a reunir o painel operacional e os módulos Reserva Fiscal e Assistente do Ecossistema. O Figma é somente referência visual e não é alterado por esta implementação; o Streamlit é o painel de uso pretendido. A aplicação Streamlit conecta-se ao runtime do Ecossistema, que por sua vez integra as funções de MT5. A interface é uma aplicação web, não um overlay nativo desenhado dentro do gráfico MT5.
 
+## Navegação principal: seis áreas
+
+A navegação principal do painel tem exatamente seis áreas, nesta ordem:
+
+1. COCKPIT — Operação, Motor de Decisão, Gestão de Risco, Notificações, MT5 DEMO / Simulação e Kill Switch.
+2. ANÁLISE — Análise de Mercado, Memória, Estatísticas e Relatórios.
+3. ESTUDO — Laboratório, Replay, Simulador, Aprendizado, Descobertas e Escola / Tutorial / Onboarding.
+4. RESERVA FISCAL — permanece visível enquanto o módulo é concluído; estados indisponíveis devem ser explícitos.
+5. ASSISTENTE DO ECOSSISTEMA — permanece visível enquanto o módulo é concluído; consentimento explícito continua obrigatório.
+6. CENTRAL — Financeiro, Configurações, Auditoria, Segurança, Conexões e Multi-Broker. CENTRAL é sempre a última área.
+
+Financeiro não é uma sétima área: é um módulo dentro de CENTRAL. O JSON visual de referência permanece intacto. Cada área usa o mesmo seletor de módulos no Streamlit, inclusive as áreas que atualmente contêm apenas um módulo.
+
 ## Instalação local (Windows / Python 3.12)
 
 No diretório raiz do repositório:
