@@ -81,7 +81,7 @@ def test_mt5_senior_context_uses_only_observed_risk_domains():
     assert {item.domain.value for item in context.risk_assessment.observations} == {"CAPITAL", "POSITION", "DATA_QUALITY"}
 
 
-def test_mt5_cycle_wires_controlled_automation_into_canonical_runtime(monkeypatch):
+def test_mt5_cycle_keeps_automation_disabled_by_default(monkeypatch):
     from core.operational_state import OperationalState
     from execution.gateway import GatewayResult, GatewayStatus
 
@@ -119,7 +119,7 @@ def test_mt5_cycle_wires_controlled_automation_into_canonical_runtime(monkeypatc
     result = service.run_mt5_cycle(symbol="EURUSD", timeframe="5m", limit=20)
     assert result == "runtime-result"
     assert lock.held is False
-    assert fake.kwargs["automation_policy"].enabled is True
+    assert fake.kwargs["automation_policy"].enabled is False
     assert fake.kwargs["confirmed"] is True
     assert fake.kwargs["filters_ok"] is True
     assert fake.kwargs["filters_required"] is True
