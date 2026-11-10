@@ -956,14 +956,17 @@ void RenderView(){
       SetLabel(Obj("INFO4"),"Candle fechado + filtros: exigidos pelo payload",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Sem acao automatica a partir de notificacoes",20,441,9,C'205,215,230');
    }else if(active_view=="RISK"){
+      ClearCockpitFields();
       SetLabel(Obj("SUB"),"GESTAO DE RISCO • consulta somente leitura",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR RISCO",20,284,172,30);
       RefreshRiskView();
    }else if(active_view=="STATS"){
+      ClearCockpitFields();
       SetLabel(Obj("SUB"),"ESTATISTICAS • historico consolidado do runtime",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR ESTAT.",20,284,172,30);
       RefreshStatistics();
    }else if(active_view=="CONNECTIONS"){
+      ClearCockpitFields();
       SetLabel(Obj("SUB"),"CONEXOES • estado reportado pelos provedores",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR CONEXOES",20,284,172,30);
       RefreshConnections();
@@ -1033,7 +1036,7 @@ void RefreshHealth(){
    SetLabel(Obj("RUNTIME"),"Sistema: online",20,104,10,C'88,214,141');
    SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),20,124,10,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • autorizacao separada",20,441,9,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
-   if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="UNAVAILABLE") return;
+   if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="UNAVAILABLE" || active_view=="MEMORIA" || active_view=="RISK" || active_view=="STATS" || active_view=="CONNECTIONS") return;
    SetLabel(Obj("INFO1"),"Analise do ecossistema: "+(engine==""?"online":engine),20,361,9,C'205,215,230');
 }
 void RefreshMarketAssets(){
@@ -1293,7 +1296,7 @@ void OnTimer(){
    // panel details only when a new bar arrives in the analysis views.
    Analyze(new_bar && (active_view=="COCKPIT" || active_view=="ANALISE"));
    double bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
-   if(active_view!="UNAVAILABLE" && bid>0) SetLabel(Obj("PRICE"),"Preco atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
+   if(active_view=="COCKPIT" && bid>0) SetLabel(Obj("PRICE"),"Preco atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
 }
 void OnChartEvent(const int id,const long &lparam,const double &dparam,const string &sparam){
    if(id!=CHARTEVENT_OBJECT_CLICK) return;
