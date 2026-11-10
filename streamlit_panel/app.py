@@ -2798,7 +2798,7 @@ if not st.session_state.panel_open:
     with st.container(key="panel-toggle"):
         toggle_col, signal_col = st.columns([1, 3], vertical_alignment="center")
         with toggle_col:
-            if st.button("C", key="open_control_hub", help="Abrir Controlador-Trader"):
+            if st.button("C", key="open_control_hub", help="Abrir painel"):
                 st.session_state.panel_open = True
                 st.rerun()
         with signal_col:
