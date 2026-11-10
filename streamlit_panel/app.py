@@ -3078,7 +3078,9 @@ AREAS = {
 }
 AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]
 AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]
-AREAS["MAIS / ADMIN"] = list(_REFERENCE_TABS["MAIS / ADMIN"])\nif "Kill Switch" not in AREAS["MAIS / ADMIN"]:\n    AREAS["MAIS / ADMIN"].append("Kill Switch")
+AREAS["MAIS / ADMIN"] = list(_REFERENCE_TABS["MAIS / ADMIN"])
+if "Kill Switch" not in AREAS["MAIS / ADMIN"]:
+    AREAS["MAIS / ADMIN"].append("Kill Switch")
 if "panel_open" not in st.session_state:
     st.session_state.panel_open = True
 
@@ -3119,6 +3121,8 @@ with st.container(key="control-hub-shell"):
         show_fiscal()
     elif module == "Assistente do Ecossistema":
         show_assistant()
+    elif module == "Kill Switch":
+        show_kill_switch()
     else:
         show_readonly_module(module)
 
