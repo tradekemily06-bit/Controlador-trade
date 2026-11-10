@@ -809,15 +809,16 @@ void RenderAssistant(){
    SetChatEdit(Obj("ASSISTANT_INPUT"),"",20,266,390,34);
    SetButton(Obj("ASSISTANT_CONSENT"),assistant_consent_armed?"CONSENTIMENTO OPENAI: SIM":"CONSENTIMENTO OPENAI: NAO",20,307,220,28);
    SetButton(Obj("ASSISTANT_SEND"),"ENVIAR",248,307,162,28);
-   if(assistant_answer!="") RenderAssistantAnswer();
-   else{
+   if(assistant_answer==""){
       SetLabel(Obj("INFO1"),"A pergunta e o contexto filtrado serao enviados a OpenAI.",20,361,8,C'205,215,230');
       SetLabel(Obj("INFO2"),"O assistente nao executa ordens nem movimenta dinheiro.",20,381,8,C'205,215,230');
       SetLabel(Obj("INFO3"),"REAL: BLOQUEADO",20,401,8,C'255,155,155');
       SetLabel(Obj("INFO4"),"Resposta aparecera apos o envio.",20,421,8,C'205,215,230');
       SetLabel(Obj("INFO5"),"Historico completo permanece no servidor.",20,441,8,C'145,160,180');
+      RefreshAssistantStatus();
+   }else{
+      RenderAssistantAnswer();
    }
-   RefreshAssistantStatus();
 }
 void SendAssistantMessage(){
    if(!assistant_consent_armed){
