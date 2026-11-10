@@ -715,7 +715,8 @@ def test_assistant_context_rejects_non_finite_numbers_and_boolean_counts():
     assert "total_reserved_brl" not in fiscal
     assert fiscal["categories"]["BR_DAY_TRADE"] == {
         "entries": 0,
-        "rate_kind": "USER_CONFIGURED_PLANNING_RATE",
+        "rate_source": "LEGACY_UNKNOWN",
+        "rate_kind": "LEGACY_RATE_ORIGIN_UNKNOWN",
         "tax_rate_verified": False,
         "reserve_amount_brl": 12.5,
     }
@@ -868,7 +869,8 @@ def test_assistant_context_rejects_out_of_range_fiscal_rates_and_amounts():
     assert "total_reserved_brl" not in fiscal
     assert fiscal["categories"]["BR_DAY_TRADE"] == {
         "entries": 2,
-        "rate_kind": "USER_CONFIGURED_PLANNING_RATE",
+        "rate_source": "LEGACY_UNKNOWN",
+        "rate_kind": "LEGACY_RATE_ORIGIN_UNKNOWN",
         "tax_rate_verified": False,
     }
     assert fiscal["periods"]["day"] == {"entries": 1}
