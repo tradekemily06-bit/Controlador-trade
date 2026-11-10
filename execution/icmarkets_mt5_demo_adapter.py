@@ -938,20 +938,11 @@ class ICMarketsMT5RealAdapter(ICMarketsMT5DemoAdapter):
         return real_mode is not None and getattr(account, "trade_mode", None) == real_mode
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
-        if request.mode is not ExecutionMode.REAL:
-            return ExecutionResult(False, "IC Markets MT5 REAL adapter aceita somente REAL.")
-        # Reuse the proven MT5 execution mechanics while keeping the request
-        # boundary explicit. The inherited implementation performs the same
-        # account, symbol, volume, quote, order_check and order_send checks;
-        # the subclass account predicate above makes those checks REAL-only.
-        from dataclasses import replace
-        demo_shaped_request = replace(request, mode=ExecutionMode.DEMO)
-        result = super().execute(demo_shaped_request)
-        if result.accepted:
-            return ExecutionResult(
-                True,
-                "ordem REAL enviada e confirmada pelo MT5.",
-                result.external_id,
-                result.account_fingerprint,
-            )
-        return result
+        # REAL remains deliberately unavailable in this product baseline.
+        # Do not delegate to the inherited adapter: even a correctly identified
+        # REAL account must not reach order_check/order_send before the separate
+        # operational validation and explicit owner authorization are approved.
+        return ExecutionResult(
+            False,
+            "Execução REAL permanece desabilitada até validação operacional e autorização explícita.",
+        )
