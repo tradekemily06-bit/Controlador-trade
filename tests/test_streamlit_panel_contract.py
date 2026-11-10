@@ -454,8 +454,8 @@ def test_financeiro_overview_remains_available_with_dedicated_fiscal_and_assista
     assert config["open_state"]["tabs"]["MAIS / ADMIN"][0] == "Financeiro"
     assert 'AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]' in source
     assert 'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]' in source
-    assert 'AREAS["FINANCEIRO"] = ["Financeiro"]
-    assert 'AREAS["CENTRAL"] = [module for module in _REFERENCE_TABS["MAIS / ADMIN"] if module != "Financeiro"]' in source' in source
+    assert 'AREAS["FINANCEIRO"] = ["Financeiro"]' in source
+    assert 'AREAS["CENTRAL"] = [module for module in _REFERENCE_TABS["MAIS / ADMIN"] if module != "Financeiro"]' in source
     assert 'if module_name == "Financeiro":' in source
     assert "show_finance_overview()" in source
     assert 'if module == "Reserva Fiscal":' in source
