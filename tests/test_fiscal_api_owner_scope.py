@@ -1032,3 +1032,34 @@ def test_fiscal_api_to_assistant_context_flow_preserves_evidence_and_privacy(tmp
     assert 200 not in list(numeric_leaves(context))
     assert "original_amount" not in pending
     assert "original_result" not in pending
+
+
+def test_assistant_chat_without_explicit_consent_fails_before_fiscal_context_or_provider_access(
+    tmp_path, monkeypatch
+):
+    database = tmp_path / "assistant-consent.sqlite3"
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "X-Auth-User")
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", database)
+    monkeypatch.setattr(app_module.SECURITY, "allow", lambda environ: True)
+    monkeypatch.setattr(app_module.SECURITY, "headers", lambda request_id, **kwargs: [])
+    monkeypatch.setattr(app_module, "_audit", lambda *args, **kwargs: None)
+
+    def forbidden_context_access(*args, **kwargs):
+        raise AssertionError("fiscal context must not be assembled without explicit consent")
+
+    monkeypatch.setattr(app_module, "migrate_fiscal_schema", forbidden_context_access)
+
+    status, body = _request(
+        "/api/assistant/chat",
+        method="POST",
+        payload={
+            "message": "Resuma minha conta",
+            "consent_to_openai": False,
+        },
+    )
+
+    assert status.startswith("400")
+    assert body["error"] == "Consentimento explícito para envio do contexto à OpenAI é obrigatório."
+    assert not database.exists()
