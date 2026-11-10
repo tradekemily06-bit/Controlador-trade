@@ -93,6 +93,8 @@ def test_native_mt5_environment_and_statistics_are_not_misrepresented_as_other_m
     assert "Replay: disponivel no laboratorio" not in lab
     assert "DEMO nao confirmado" in lab
     assert "Ambiente: DEMO / SIMULACAO" not in lab
+    assert '(mode==""?"nao informado":mode)' in source
+    assert '(mt5==""?"nao confirmado":mt5)' in source
 
 
 def test_native_mt5_operational_actions_are_not_reused_by_non_operational_modules():
@@ -196,7 +198,7 @@ def test_native_read_only_views_are_not_overwritten_by_cockpit_timer_refresh():
     timer = source.split("void OnTimer()", 1)[1].split("void OnChartEvent", 1)[0]
     render = source.split("void RenderView(){", 1)[1].split("void RefreshHealth()", 1)[0]
 
-    for view in ("MEMORIA", "RISK", "STATS", "CONNECTIONS"):
+    for view in ("MEMORIA", "RISK", "STATS", "CONNECTIONS", "SECURITY"):
         assert f'active_view=="{view}"' in health
     assert 'if(active_view=="COCKPIT" && bid>0)' in timer
     for view in ("RISK", "STATS", "CONNECTIONS"):
