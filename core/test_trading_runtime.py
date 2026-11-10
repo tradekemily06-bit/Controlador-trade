@@ -256,7 +256,7 @@ def test_runtime_rejects_external_id_belonging_to_another_cycle(tmp_path):
         )
 
 
-def test_runtime_recovers_unknown_execution_with_explicit_external_id(tmp_path):
+def test_runtime_refuses_caller_supplied_external_id_for_unknown_execution(tmp_path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
     ledger.reserve("req-unknown", cycle_id="runtime-000007")
@@ -264,17 +264,23 @@ def test_runtime_recovers_unknown_execution_with_explicit_external_id(tmp_path):
     lifecycle.put(ExecutionLifecycleRecord(
         "req-unknown", ExecutionLifecycleState.UNKNOWN, datetime.now(timezone.utc), "uncertain"
     ))
-    snapshot = TradingRuntime.reconcile_external_cycle(
-        cycle_id="runtime-000007",
-        external_id="777",
-        query_port=FakeOrderQuery(ExternalOrderStatus.EXECUTED),
-        ledger=ledger,
-        execution_lifecycle=lifecycle,
-    )
-    assert snapshot is not None
-    assert ledger.record_for("req-unknown").external_id == "777"
-    assert ledger.status("req-unknown") is ExecutionLedgerStatus.RECONCILED_EXECUTED
-    assert lifecycle.get("req-unknown").state is ExecutionLifecycleState.ACCEPTED
+
+    class MustNotQuery:
+        def query_order(self, external_id):
+            raise AssertionError("broker query must not run without persisted order identity")
+
+    with pytest.raises(ValueError, match="external_id não foi persistido"):
+        TradingRuntime.reconcile_external_cycle(
+            cycle_id="runtime-000007",
+            external_id="777",
+            query_port=MustNotQuery(),
+            ledger=ledger,
+            execution_lifecycle=lifecycle,
+        )
+
+    assert ledger.record_for("req-unknown").external_id is None
+    assert ledger.status("req-unknown") is ExecutionLedgerStatus.UNKNOWN
+    assert lifecycle.get("req-unknown").state is ExecutionLifecycleState.UNKNOWN
 
 
 def test_runtime_rejects_contradictory_terminal_reconciliation(tmp_path):
