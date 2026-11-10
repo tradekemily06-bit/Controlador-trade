@@ -179,9 +179,11 @@ class ApiContractTests(unittest.TestCase):
         analyze.assert_called_once()
 
     def test_latest_mt5_analysis_feed_is_read_only_and_scoped_by_symbol_timeframe(self):
+        import tempfile
+        from pathlib import Path
         import app as app_module
-        with app_module._LATEST_MARKET_ANALYSIS_LOCK:
-            app_module._LATEST_MARKET_ANALYSIS.clear()
+        from core.latest_market_analysis_store import LatestMarketAnalysisStore
+
         fake = SimpleNamespace(
             timestamp=datetime(2026, 10, 8, 12, tzinfo=timezone.utc),
             analysis=SimpleNamespace(signal=SimpleNamespace(value="COMPRAR"), score=84.0, reason="confirmação DEMO", confirmed=True, symbol="EURUSD", timeframe="5m"),
@@ -197,27 +199,30 @@ class ApiContractTests(unittest.TestCase):
                 ),
             ),
         )
-        with patch.object(app_module.SERVICE, "analyze_mt5_market", return_value=fake):
-            status, _, posted = self.request(
-                "/api/runtime/analysis", method="POST",
-                payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
-            )
-        self.assertEqual(status, "200 OK")
-        status, _, latest = self.request(
-            "/api/runtime/analysis/latest", query="symbol=EURUSD&timeframe=5m"
-        )
-        self.assertEqual(status, "200 OK")
-        self.assertTrue(latest["available"])
-        self.assertEqual(latest["analysis"]["analysis_cycle"]["symbol"], "EURUSD")
-        self.assertEqual(latest["analysis"]["signal"], posted["signal"])
-        self.assertEqual(latest["cache_scope"], "PROCESS_MEMORY_ONLY")
-        self.assertFalse(latest["execution_allowed"])
-        self.assertEqual(latest["real"], "DESABILITADO")
-        status, _, missing = self.request(
-            "/api/runtime/analysis/latest", query="symbol=GBPUSD&timeframe=5m"
-        )
-        self.assertEqual(status, "200 OK")
-        self.assertFalse(missing["available"])
+        with tempfile.TemporaryDirectory() as directory:
+            store = LatestMarketAnalysisStore(Path(directory) / "latest-analysis.sqlite3")
+            with patch.object(app_module, "LATEST_MARKET_ANALYSIS", store), \
+                 patch.object(app_module.SERVICE, "analyze_mt5_market", return_value=fake):
+                status, _, posted = self.request(
+                    "/api/runtime/analysis", method="POST",
+                    payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+                )
+                self.assertEqual(status, "200 OK")
+                status, _, latest = self.request(
+                    "/api/runtime/analysis/latest", query="symbol=EURUSD&timeframe=5m"
+                )
+                self.assertEqual(status, "200 OK")
+                self.assertTrue(latest["available"])
+                self.assertEqual(latest["analysis"]["analysis_cycle"]["symbol"], "EURUSD")
+                self.assertEqual(latest["analysis"]["signal"], posted["signal"])
+                self.assertEqual(latest["cache_scope"], "PERSISTENT_SQLITE")
+                self.assertFalse(latest["execution_allowed"])
+                self.assertEqual(latest["real"], "DESABILITADO")
+                status, _, missing = self.request(
+                    "/api/runtime/analysis/latest", query="symbol=GBPUSD&timeframe=5m"
+                )
+                self.assertEqual(status, "200 OK")
+                self.assertFalse(missing["available"])
 
     def test_analyze_exposes_stable_presentation_and_security_contract(self):
         status, _, payload = self.request(
