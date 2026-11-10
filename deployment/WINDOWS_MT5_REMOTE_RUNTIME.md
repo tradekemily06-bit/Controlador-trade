@@ -100,6 +100,12 @@ Exemplo do modo 24/7: `-AutostartMode AtStartupS4U`. A configuração é feita u
 
 O instalador não grava senha, token ou segredo. O Controlador continua fazendo preflight DEMO e não transforma uma falha do MT5 em autorização: sem DEMO válido, a execução permanece bloqueada.
 
+## Sincronização do EA MQL5 — ação manual separada
+
+O supervisor do Controlador e o instalador de tarefas do Windows **não copiam nem compilam o EA** durante a inicialização. A rotina de sincronização fica separada em `deployment/sync_mql5_panel.ps1`, com confirmação de alto impacto, backup dos artefatos existentes e tentativa de rollback em caso de falha. Use `-WhatIf` para simular a operação: a simulação não cria a pasta de destino, não copia arquivos e não inicia MetaEditor. Não coloque essa rotina em tarefas de boot nem a execute como parte do startup do runtime.
+
+A validação Windows automatizada usa executáveis fictícios e confirma que `-WhatIf` não altera os arquivos de teste. Isso não substitui a revisão manual do caminho de destino, backup e confirmação antes de uma sincronização real no terminal selecionado.
+
 ## Serviço persistente do Cloudflare Tunnel — etapa separada
 
 O instalador `install_windows_autostart.ps1` registra somente as três tarefas agendadas do MT5, Controlador e Streamlit. Ele **não instala nem registra o serviço Windows `cloudflared`** e não cria a conta, o túnel, o DNS, o hostname ou a aplicação Cloudflare Access. Portanto, instalar as tarefas do ecossistema, isoladamente, não conclui o acesso remoto 24/7.
