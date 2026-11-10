@@ -1063,3 +1063,37 @@ def test_assistant_chat_without_explicit_consent_fails_before_fiscal_context_or_
     assert status.startswith("400")
     assert body["error"] == "Consentimento explícito para envio do contexto à OpenAI é obrigatório."
     assert not database.exists()
+
+
+def test_assistant_conversation_store_blocks_cross_owner_history_append_and_delete(tmp_path):
+    store = AssistantConversationStore(tmp_path / "assistant-owner-isolation.sqlite3")
+    owner_a = "owner-a@example.com"
+    owner_b = "owner-b@example.com"
+
+    conversation_id = store.append(owner_a, None, "user", "mensagem privada do titular A")
+    store.append(owner_a, conversation_id, "assistant", "resposta privada do titular A")
+
+    with pytest.raises(PermissionError, match="conversa não encontrada"):
+        store.history(owner_b, conversation_id)
+
+    with pytest.raises(PermissionError, match="conversa não encontrada"):
+        store.append(owner_b, conversation_id, "user", "tentativa de inserir mensagem")
+
+    with pytest.raises(PermissionError, match="conversa não encontrada"):
+        store.delete(owner_b, conversation_id)
+
+    assert store.history(owner_a, conversation_id) == [
+        {"role": "user", "content": "mensagem privada do titular A", "created_at": store.history(owner_a, conversation_id)[0]["created_at"]},
+        {"role": "assistant", "content": "resposta privada do titular A", "created_at": store.history(owner_a, conversation_id)[1]["created_at"]},
+    ]
+    assert len(store.list(owner_a)) == 1
+    assert store.list(owner_b) == []
+
+
+def test_assistant_conversation_owner_identity_is_case_insensitive(tmp_path):
+    store = AssistantConversationStore(tmp_path / "assistant-owner-normalization.sqlite3")
+    conversation_id = store.append(
+        "Owner@Example.com", None, "user", "mensagem do mesmo titular"
+    )
+
+    assert store.history("owner@example.com", conversation_id)[0]["content"] == "mensagem do mesmo titular"
