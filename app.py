@@ -330,6 +330,26 @@ def application(environ, start_response):
     if not is_local_health_probe and not SECURITY.allow(environ):
         return _json_response(start_response, HTTPStatus.TOO_MANY_REQUESTS, {"error": "Limite de requisições excedido", "request_id": request_id}, request_id, environ)
 
+    # Remote deployments must authenticate every private API read as well as
+    # writes. Keep only the minimal liveness probe public; /api/health and
+    # /api/status expose operational details and therefore require identity.
+    remote_access_required = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "").strip().lower() in {"1", "true", "yes"}
+    if (
+        remote_access_required
+        and method == "GET"
+        and path.startswith("/api/")
+        and path != "/api/health/live"
+    ):
+        authorized, reason = _authorize_remote_mutation(environ)
+        if not authorized:
+            return _json_response(
+                start_response,
+                _remote_identity_http_status(reason),
+                {"error": "Identidade autenticada necessária.", "request_id": request_id},
+                request_id,
+                environ,
+            )
+
     # Native EA aliases have a dedicated loopback/Host gate. Keep the
     # exception allowlist exact: no generic local POST bypass is permitted.
     local_ea_route_aliases = {
