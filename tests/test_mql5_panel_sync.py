@@ -401,8 +401,10 @@ def test_mql5_sync_refuses_to_overwrite_preexisting_backup_artifacts():
     backup_start = text.index("$backupSource =")
     backup_try = text.index("try {", backup_start)
     collision_guard = text.index("$backupCollision =", backup_start)
-    assert backup_start < collision_guard < backup_try
+    directory_create = text.index("New-Item -ItemType Directory -Force -Path $destinationDir")
+    assert backup_start < collision_guard < directory_create < backup_try
+    assert "$stamp = (Get-Date -Format 'yyyyMMdd-HHmmss-fff') + '-' + [guid]::NewGuid().ToString('N')" in text
     assert "$backupTargets = @($backupSource, $backupBinary, $backupProvenance, $backupLog)" in text
-    assert "Test-Path -LiteralPath $_" in text[collision_guard:backup_try]
-    assert "Backup com nome já existente" in text[collision_guard:backup_try]
-    assert "nenhum artefato do EA foi alterado" in text[collision_guard:backup_try]
+    assert "Test-Path -LiteralPath $_" in text[collision_guard:directory_create]
+    assert "Backup com nome já existente" in text[collision_guard:directory_create]
+    assert "nenhum artefato do EA foi alterado" in text[collision_guard:directory_create]
