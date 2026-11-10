@@ -549,27 +549,37 @@ def test_reserve_rejects_future_realized_event_date(tmp_path):
 
 def test_summary_exposes_monthly_planning_only_and_excludes_unverified_or_future_rows(tmp_path):
     import json
+    import sqlite3
 
     reserve = make_reserve(tmp_path / "monthly-planning.sqlite3")
-    for reference, amount, occurred_on, notes in (
-        ("MONTH-JAN-1", 100, "2026-01-12", ""),
-        ("MONTH-FEB-1", 200, "2026-02-03", ""),
-        ("MONTH-FEB-2", -50, "2026-02-18", ""),
-        (
-            "MONTH-MAR-UNVERIFIED",
-            900,
-            "2026-03-01",
-            json.dumps({"tax_classification_status": "USER_DECLARED_PENDING_REVIEW"}),
-        ),
-        ("AFTER-REFERENCE-DAY", 800, "2026-11-06", ""),
+    for reference, amount, occurred_on in (
+        ("MONTH-JAN-1", 100, "2026-01-12"),
+        ("MONTH-FEB-1", 200, "2026-02-03"),
+        ("MONTH-FEB-2", -50, "2026-02-18"),
+        ("AFTER-REFERENCE-DAY", 800, "2026-11-06"),
     ):
         reserve.record_realized_result(OWNER, {
             "category": "BR_DAY_TRADE",
             "realized_result_brl": amount,
             "reference": reference,
             "occurred_on": occurred_on,
-            "notes": notes,
         })
+
+    # Recreate a historical row carrying the internal exclusion marker.
+    # The public write path correctly rejects user attempts to set this marker.
+    with sqlite3.connect(reserve.database_path) as db:
+        db.execute(
+            "INSERT INTO fiscal_reserve_entries "
+            "(entry_id, owner_id, category, entry_type, realized_result_brl, "
+            "reserve_rate, reserve_amount_brl, reference, occurred_on, created_at, notes) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "legacy-monthly-unverified", OWNER, "BR_DAY_TRADE", "REALIZED_RESULT",
+                900.0, 20.0, 180.0, "MONTH-MAR-UNVERIFIED",
+                "2026-03-01", "2026-03-01T12:00:00+00:00",
+                json.dumps({"tax_classification_status": "USER_DECLARED_PENDING_REVIEW"}),
+            ),
+        )
 
     summary = reserve.summary(OWNER, as_of=date(2026, 11, 5))
     monthly = summary["monthly_planning"]
