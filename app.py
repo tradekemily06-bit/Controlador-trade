@@ -376,15 +376,21 @@ def application(environ, start_response):
         identity_header = os.environ.get("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "").strip()
         identity_key = "HTTP_" + identity_header.upper().replace("-", "_") if identity_header else ""
         has_proxy_identity = bool(identity_key and str(environ.get(identity_key) or "").strip())
-        if has_proxy_identity:
+        client = str(environ.get("REMOTE_ADDR") or "").strip()
+        is_loopback = client in {"127.0.0.1", "::1"}
+        if has_proxy_identity or not is_loopback:
             authorized, reason = _authorize_remote_mutation(environ)
+            failure_status = _remote_identity_http_status(reason)
+            failure_message = "Identidade autenticada necessária."
         else:
             authorized, reason = _authorize_local_runtime(environ)
+            failure_status = HTTPStatus.FORBIDDEN
+            failure_message = "Acesso local do terminal não autorizado."
         if not authorized:
             return _json_response(
                 start_response,
-                _remote_identity_http_status(reason) if has_proxy_identity else HTTPStatus.FORBIDDEN,
-                {"error": "Identidade autenticada necessária." if has_proxy_identity else "Acesso local do terminal não autorizado."},
+                failure_status,
+                {"error": failure_message},
                 request_id,
                 environ,
             )
