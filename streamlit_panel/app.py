@@ -64,7 +64,7 @@ st.markdown("""
 .st-key-panel-toggle .closed-status { color: #7F8B97; font-size: 10px; font-weight: 800; letter-spacing: .06em; padding-left: 0; }
 .st-key-panel-toggle .closed-signal { max-width: 190px; font-size: 13px; line-height: 1.25; font-weight: 900; letter-spacing: .025em; white-space: nowrap; }
 .st-key-panel-toggle .closed-score { color: #E9EEF3; font-size: 11px; line-height: 1.2; font-weight: 700; white-space: nowrap; }
-.st-key-control-hub-shell { width: min(100%, 980px); margin: 1rem auto 2rem; padding: clamp(1rem, 2vw, 1.5rem); background: #10151B; border: 1px solid #25303B; border-radius: 24px; }
+.st-key-control-hub-shell { width: 100%; max-width: none; margin: 1rem 0 2rem; padding: clamp(1rem, 2vw, 1.5rem); background: #10151B; border: 1px solid #25303B; border-radius: 24px; }
 .st-key-control-hub-shell .hub-title { color: #E9EEF3; font-size: 1.35rem; font-weight: 800; padding: .35rem 0 .9rem; }
 .st-key-control-hub-shell .demo-pill-wrap { display: flex; justify-content: flex-end; padding-top: .3rem; }
 .st-key-control-hub-shell .system-state-value { color: #7F8B97; text-align: right; font-size: .78rem; font-weight: 800; }
@@ -1029,6 +1029,7 @@ def show_fiscal() -> None:
             col.metric(label, money(item.get("reserve_amount_brl")))
             col.caption("Resultado: " + money(item.get("realized_result_brl")))
     except Exception as exc:
+        summary_available = False
         st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
         summary = {}
 
@@ -1768,6 +1769,82 @@ def show_finance_overview() -> None:
         )
 
 
+def _kill_switch_activation_payload(reason: Any, confirmed: Any) -> dict[str, Any]:
+    """Require an explicit confirmation and a bounded operator reason."""
+    if confirmed is not True:
+        raise ValueError("Confirme explicitamente a ativação do Kill Switch.")
+    if not isinstance(reason, str) or not reason.strip() or len(reason.strip()) > 240:
+        raise ValueError("Informe um motivo de até 240 caracteres.")
+    return dict([("confirmed", True), ("reason", reason.strip())])
+
+
+def show_kill_switch() -> None:
+    """Expose only the guarded activation path; deactivation is intentionally absent."""
+    st.subheader("Proteção operacional · Kill Switch")
+    st.caption(
+        "A ativação bloqueia novas execuções. Ela não cancela solicitações já encaminhadas; "
+        "essas solicitações precisam ter seus estados reconciliados."
+    )
+    try:
+        status = api("/api/health")
+        observability = status.get("operational_observability", {})
+        kill = observability.get("kill_switch", {}) if isinstance(observability, dict) else {}
+        enabled = kill.get("enabled") is True if isinstance(kill, dict) else None
+        kill_state = kill.get("state") if isinstance(kill, dict) else None
+        if enabled is True or kill_state == "ACTIVE":
+            st.error("KILL SWITCH ATIVO · novas execuções bloqueadas")
+            reason = kill.get("reason")
+            if isinstance(reason, str) and reason.strip():
+                st.caption(f"Motivo registrado: {reason}")
+        elif enabled is False and kill_state == "CLEAR":
+            st.success("Kill Switch confirmado como inativo pelo runtime.")
+        else:
+            st.warning(
+                "Estado do Kill Switch não confirmado pelo runtime. "
+                "Não interprete ausência de conexão como proteção inativa."
+            )
+        execution = observability.get("execution", {}) if isinstance(observability, dict) else {}
+        st.caption(
+            "Estado de execução: "
+            + str(execution.get("state", "não informado"))
+            + " · REAL: DESABILITADO"
+        )
+    except Exception:
+        st.error(
+            "Não foi possível consultar o estado atual. A ativação continuará protegida "
+            "pela confirmação do servidor; confira a conectividade antes de prosseguir."
+        )
+
+    with st.form("guarded_kill_switch_activation_form"):
+        reason = st.text_input("Motivo obrigatório da ativação", max_chars=240)
+        confirmed = st.checkbox(
+            "Confirmo que quero bloquear novas execuções neste runtime."
+        )
+        submitted = st.form_submit_button("Ativar Kill Switch")
+    if not submitted:
+        return
+    try:
+        payload = _kill_switch_activation_payload(reason, confirmed)
+        result = api("/api/runtime/kill-switch/activate", "POST", payload)
+        if result.get("activated") is True and result.get("execution_allowed") is False:
+            st.success("Kill Switch ativado. Novas execuções estão bloqueadas.")
+            st.warning(
+                "Solicitações já encaminhadas não foram canceladas. "
+                "Reconcilie os identificadores pendentes/desconhecidos antes de qualquer retomada."
+            )
+            pending = result.get("pending_request_ids", [])
+            unknown = result.get("unknown_request_ids", [])
+            if pending or unknown:
+                st.write("Solicitações pendentes:", pending)
+                st.write("Solicitações com estado desconhecido:", unknown)
+        else:
+            st.error("O runtime não confirmou a ativação. Verifique o estado operacional.")
+    except ValueError as exc:
+        st.error(str(exc))
+    except Exception:
+        st.error("Não foi possível confirmar a ativação. Consulte o estado do runtime antes de repetir.")
+
+
 def show_readonly_module(module_name: str) -> None:
     """Render mapped runtime views and guarded controls for the selected module."""
     if module_name == "Financeiro":
@@ -1779,7 +1856,6 @@ def show_readonly_module(module_name: str) -> None:
         "Gestão de Risco": ("Gestão de Risco", "/api/risk"),
         "Notificações": ("Central de Notificações", "/api/notifications"),
         "Ambiente MT5 DEMO": ("Conexões e ambiente", "/api/connections"),
-        "Kill Switch": ("Proteção operacional", "/api/health"),
         "Memória": ("Memória de decisões", "/api/memory?limit=50"),
         "Estatísticas": ("Estatísticas operacionais", "/api/statistics"),
         "Relatórios": ("Resumo operacional", "/api/statistics"),
@@ -1793,6 +1869,9 @@ def show_readonly_module(module_name: str) -> None:
         "Multi-Broker": ("Disponibilidade de conexões", "/api/connections"),
         "Auditoria": ("Auditoria operacional", "/api/security/audit"),
     }
+    if module_name == "Kill Switch":
+        show_kill_switch()
+        return
     if module_name == "Análise de Mercado":
         show_market_analysis()
         return
@@ -3001,6 +3080,8 @@ AREAS = {
 AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]
 AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]
 AREAS["MAIS / ADMIN"] = list(_REFERENCE_TABS["MAIS / ADMIN"])
+if "Kill Switch" not in AREAS["MAIS / ADMIN"]:
+    AREAS["MAIS / ADMIN"].append("Kill Switch")
 if "panel_open" not in st.session_state:
     st.session_state.panel_open = True
 
@@ -3041,6 +3122,8 @@ with st.container(key="control-hub-shell"):
         show_fiscal()
     elif module == "Assistente do Ecossistema":
         show_assistant()
+    elif module == "Kill Switch":
+        show_kill_switch()
     else:
         show_readonly_module(module)
 

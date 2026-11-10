@@ -1028,7 +1028,7 @@ def test_every_reference_navigation_module_has_a_functional_streamlit_route():
     dedicated_routes = {"Análise de Mercado", "Replay", "Simulador"}
     configured_modules.discard("MT5 DEMO / Simulação")
     configured_modules.add("Ambiente MT5 DEMO")
-    special_routes = {"Financeiro", "Reserva Fiscal", "Assistente do Ecossistema"}
+    special_routes = {"Financeiro", "Reserva Fiscal", "Assistente do Ecossistema", "Kill Switch"}
     assert configured_modules <= (readonly_modules | dedicated_routes | special_routes)
     assert 'if module_name == "Financeiro":' in source
     assert "show_finance_overview()" in source
@@ -1046,6 +1046,7 @@ def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid
     from math import isfinite
 
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert "summary_available = False" in source[source.index("def show_fiscal()"):source.index("def show_readonly_module")]
     tree = ast.parse(source)
     finite_helper = next(
         node for node in tree.body
