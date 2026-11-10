@@ -259,7 +259,7 @@ def test_streamlit_requires_explicit_openai_consent_before_chat_submission():
 
 
     assistant_start = source.index("def show_assistant()")
-    assistant_end = source.index("\\ndef ", assistant_start + 1)
+    assistant_end = source.index("\ndef ", assistant_start + 1)
     assistant_view = source[assistant_start:assistant_end]
     assert 'st.session_state["assistant_clear_consent_before_render"] = True' in assistant_view
     assert 'if st.session_state.pop("assistant_clear_consent_before_render", False):' in assistant_view
