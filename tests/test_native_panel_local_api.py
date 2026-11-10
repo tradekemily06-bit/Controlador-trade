@@ -294,3 +294,46 @@ def test_native_ea_read_only_allowlist_stays_loopback_and_host_restricted(monkey
 
         status, _ = _request(path, host="attacker.example")
         assert status.startswith("403"), path
+
+
+def test_native_ea_preferences_read_uses_local_gate_when_proxy_identity_is_absent(monkeypatch):
+    _allow_native_local(monkeypatch)
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "Cf-Access-Authenticated-User-Email")
+
+    status, payload = _request("/api/preferences")
+
+    assert status.startswith("200")
+    assert "preferences" in payload
+
+
+def test_authenticated_streamlit_can_read_shared_endpoint_in_remote_mode(monkeypatch):
+    _allow_native_local(monkeypatch)
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "Cf-Access-Authenticated-User-Email")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+
+    status, payload = _request(
+        "/api/preferences",
+        identity_header="Cf-Access-Authenticated-User-Email",
+        identity_value="owner@example.com",
+    )
+
+    assert status.startswith("200")
+    assert "preferences" in payload
+
+
+def test_invalid_proxy_identity_does_not_fall_back_to_native_local_gate(monkeypatch):
+    _allow_native_local(monkeypatch)
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "Cf-Access-Authenticated-User-Email")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+
+    status, payload = _request(
+        "/api/preferences",
+        identity_header="Cf-Access-Authenticated-User-Email",
+        identity_value="attacker@example.com",
+    )
+
+    assert status.startswith("403")
+    assert "Identidade autenticada necessária." in payload["error"]
