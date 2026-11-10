@@ -85,7 +85,7 @@ class ApiContractTests(unittest.TestCase):
     def test_reports_endpoint_rejects_out_of_range_limit(self):
         status, _, payload = self.request("/api/reports", query="limit=201")
         self.assertEqual(status, "400 Bad Request")
-        self.assertIn("limit", payload["error"])
+        self.assertEqual(payload["error"], "Entrada inválida")
 
     def test_security_audit_endpoint_is_read_only_redacted_and_limited(self):
         import app as app_module
