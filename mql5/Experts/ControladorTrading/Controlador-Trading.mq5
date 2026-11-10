@@ -927,7 +927,7 @@ void ActivateKillSwitch(){
 void RefreshDecisionView(){
    string r; int code=0;
    if(!Http("GET","/api/runtime/analysis/latest","",r,code)){
-      SetLabel(Obj("INFO1"),"Motor de decisao: runtime indisponivel",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO1"),"Leitura decisao: runtime indisponivel",20,361,9,C'255,118,118');
       SetLabel(Obj("INFO2"),"Nenhuma decisao nova foi criada.",20,381,9,C'205,215,230');
       SetLabel(Obj("INFO3"),"Ultima leitura nao confirmada.",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Somente leitura.",20,421,9,C'205,215,230');
