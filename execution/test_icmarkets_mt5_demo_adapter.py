@@ -254,6 +254,21 @@ def test_query_order_reconciles_external_deal_as_executed():
     assert observation.status.value == "EXECUTED"
 
 
+def test_query_order_rejects_non_positive_or_non_decimal_tickets_before_mt5_access():
+    mt5 = FakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
+
+    for ticket in ("0", "-1", "+1", "１２３", "12x", "1" * 21):
+        try:
+            adapter.query_order(ticket)
+        except ValueError as exc:
+            assert "ticket MT5 decimal positivo" in str(exc)
+        else:
+            raise AssertionError(f"ticket inválido aceito: {ticket!r}")
+
+    assert mt5.calls == []
+
+
 def test_query_order_reconciles_canceled_external_order_as_not_executed():
     mt5 = FakeMT5()
     adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
