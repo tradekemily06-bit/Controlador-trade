@@ -201,6 +201,7 @@ $sourceHash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
 $destinationHash = if (Test-Path -LiteralPath $destination -PathType Leaf) { (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash } else { '' }
 $binary = [System.IO.Path]::ChangeExtension($destination, '.ex5')
 $provenance = "$binary.provenance.json"
+$log = [System.IO.Path]::ChangeExtension($destination, '.log')
 $sourceWriteTime = (Get-Item -LiteralPath $source).LastWriteTime
 $binaryUsable = $false
 if ((Test-Path -LiteralPath $binary -PathType Leaf) -and (Test-Path -LiteralPath $provenance -PathType Leaf)) {
@@ -227,7 +228,7 @@ if (-not $Force -and $sourceHash -eq $destinationHash -and -not $binaryUsable) {
     Write-Host "Fonte já sincronizada, mas EX5 ausente/desatualizado; recompilando."
 }
 
-$actionDescription = "Substituir Controlador-Trading.mq5 e compilar o EA (.ex5) no terminal MT5 selecionado"
+$actionDescription = "Substituir o fonte .mq5 e o binário .ex5, atualizar a proveniência e recriar/remover o log de compilação no terminal MT5 selecionado"
 if (-not $PSCmdlet.ShouldProcess($destination, $actionDescription)) {
     Write-Host 'Sincronização/compilação não executada; nenhum arquivo do EA foi alterado.'
     return
@@ -238,9 +239,11 @@ $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $backupSource = "$destination.$stamp.bak"
 $backupBinary = [System.IO.Path]::ChangeExtension($destination, '.ex5') + ".$stamp.bak"
 $backupProvenance = "$provenance.$stamp.bak"
+$backupLog = "$log.$stamp.bak"
 if (Test-Path -LiteralPath $destination) { Copy-WithRetry -Source $destination -Destination $backupSource }
 if (Test-Path -LiteralPath $binary) { Copy-WithRetry -Source $binary -Destination $backupBinary }
 if (Test-Path -LiteralPath $provenance) { Copy-WithRetry -Source $provenance -Destination $backupProvenance }
+if (Test-Path -LiteralPath $log) { Copy-WithRetry -Source $log -Destination $backupLog }
 
 Copy-WithRetry -Source $source -Destination $destination
 $copiedSourceHash = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash
@@ -248,10 +251,10 @@ if ($copiedSourceHash -ne $sourceHash) {
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
     Restore-File -Backup $backupProvenance -Target $provenance
+    Restore-File -Backup $backupLog -Target $log
     throw "A fonte mudou durante a sincronização; destino restaurado: $destination"
 }
 
-$log = [System.IO.Path]::ChangeExtension($destination, '.log')
 if (Test-Path -LiteralPath $log) { Remove-Item -LiteralPath $log -Force }
 $compileStartedAt = Get-Date
 $explicitLog = $log
@@ -328,6 +331,7 @@ Remove-Item -LiteralPath $log -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $backupSource -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $backupBinary -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $backupProvenance -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $backupLog -Force -ErrorAction SilentlyContinue
 
 Write-Host "MQL5 sincronizado e compilado com sucesso."
 Write-Host "Proveniência: $provenance"
