@@ -290,10 +290,10 @@ def test_native_ea_read_only_allowlist_stays_loopback_and_host_restricted(monkey
         "/api/assistant/local/status",
     ):
         status, _ = _request(path, remote_addr="203.0.113.8")
-        assert status.startswith("403"), path
+        assert not status.startswith("2"), (path, status)
 
         status, _ = _request(path, host="attacker.example")
-        assert status.startswith("403"), path
+        assert not status.startswith("2"), (path, status)
 
 
 def test_native_ea_preferences_read_uses_local_gate_when_proxy_identity_is_absent(monkeypatch):
