@@ -854,9 +854,9 @@ void RenderView(){
       SetLabel(Obj("INFO4"),"Estatisticas: atualizando...",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Noticias: atualizando...",20,441,9,C'205,215,230');
       SetButton(Obj("ANALYZE"),"ANALISAR",20,284,172,30);
-      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
-      SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
-      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
+      if(ObjectFind(0,Obj("CYCLE"))>=0) ObjectDelete(0,Obj("CYCLE"));
+      if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
+      if(ObjectFind(0,Obj("CLOSE"))>=0) ObjectDelete(0,Obj("CLOSE"));
       SetLabel(Obj("CYCLEID"),"Ciclo DEMO: "+(last_cycle_id==""?"aguardando":"atualizado"),20,465,8,C'145,160,180');
       SetLabel(Obj("EXTID"),"Execucao: "+(last_external_id==""?"sem atividade":"registrada"),20,483,8,C'145,160,180');
       SetLabel(Obj("PRICE"),"Preco atual: —",20,501,9,C'190,200,215');
@@ -1241,10 +1241,10 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
       else if(active_view=="ASSISTENTE") RefreshAssistantStatus();
       else Analyze();
    }
-   else if(sparam==Obj("CYCLE")) RunCycle();
-   else if(sparam==Obj("SAVE")) SaveConfig();
-   else if(sparam==Obj("LEVERAGE_TOGGLE")) { leverage_enabled=!leverage_enabled; SaveConfig(); }
-   else if(sparam==Obj("CLOSE")) CloseCycle();
+   else if(sparam==Obj("CYCLE")) { if(active_view=="COCKPIT") RunCycle(); }
+   else if(sparam==Obj("SAVE")) { if(active_view=="CONFIG") SaveConfig(); }
+   else if(sparam==Obj("LEVERAGE_TOGGLE")) { if(active_view=="CONFIG") { leverage_enabled=!leverage_enabled; SaveConfig(); } }
+   else if(sparam==Obj("CLOSE")) { if(active_view=="COCKPIT") CloseCycle(); }
    else if(sparam==Obj("REC_REFRESH")) RefreshRecoveryInventory();
    else if(sparam==Obj("REC_PREV")){ recovery_selected=MathMax(0,recovery_selected-1); recovery_close_armed=false; RenderRecoverySelection(); }
    else if(sparam==Obj("REC_NEXT")){ recovery_selected=MathMin(ArraySize(recovery_items)-1,recovery_selected+1); recovery_close_armed=false; RenderRecoverySelection(); }
