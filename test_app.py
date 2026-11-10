@@ -314,6 +314,35 @@ def test_remote_mutation_is_blocked_without_trusted_identity():
 
 
 
+def test_runtime_reconcile_requires_trusted_remote_identity(monkeypatch):
+    import app as app_module
+
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.delenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", raising=False)
+    monkeypatch.setattr(
+        app_module.SERVICE,
+        "reconcile_mt5_cycle",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("reconciliation must not run without trusted identity")),
+    )
+    body = json.dumps({"cycle_id": "cycle-1", "external_id": "ticket-1"}).encode()
+    captured = {}
+
+    def start_response(status, headers):
+        captured["status"] = status
+
+    environ = {
+        "PATH_INFO": "/api/runtime/reconcile",
+        "REQUEST_METHOD": "POST",
+        "CONTENT_LENGTH": str(len(body)),
+        "REMOTE_ADDR": "10.0.0.25",
+        "wsgi.input": io.BytesIO(body),
+    }
+    result = b"".join(application(environ, start_response))
+
+    assert captured["status"].startswith("503")
+    assert json.loads(result)["error"] == "trusted identity header is not configured"
+
+
 def test_fiscal_pending_api_returns_conflict_for_duplicate_reference(tmp_path, monkeypatch):
     import app
     from finance.fiscal_pending_queue import FiscalPendingQueue
