@@ -307,3 +307,85 @@ def test_assistant_question_requires_consent_and_posts_only_after_explicit_autho
         server.shutdown()
         server.server_close()
         worker.join(timeout=5)
+
+
+
+def test_assistant_saved_conversation_can_be_opened_and_deleted_from_panel(monkeypatch):
+    import json
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    calls = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def _send(self, payload, status=200):
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            calls.append(("GET", self.path))
+            if self.path == "/api/assistant/status":
+                return self._send({"available": True, "message": "Provedor pronto.", "model": "modelo-teste"})
+            if self.path == "/api/assistant/conversations":
+                return self._send({"conversations": [{
+                    "conversation_id": "conversation-saved-001",
+                    "title": "Revisão de risco",
+                    "updated_at": "2026-11-10T12:00:00-03:00",
+                }]})
+            if self.path == "/api/assistant/history?conversation_id=conversation-saved-001":
+                return self._send({"messages": [
+                    {"role": "user", "content": "Revise meu risco."},
+                    {"role": "assistant", "content": "Vamos conferir os limites."},
+                ]})
+            if self.path == "/api/runtime/analysis/latest":
+                return self._send({"available": False, "analysis": None})
+            if self.path == "/api/health":
+                return self._send({"health": "OK", "execution_allowed": False, "real": "DESABILITADO", "components": {}})
+            if self.path == "/api/preferences":
+                return self._send({"preferences": {}})
+            return self._send({"error": "not found"}, 404)
+
+        def do_DELETE(self):
+            calls.append(("DELETE", self.path))
+            if self.path == "/api/assistant/conversations?conversation_id=conversation-saved-001":
+                return self._send({"deleted": True})
+            return self._send({"error": "not found"}, 404)
+
+        def log_message(self, format, *args):
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    try:
+        monkeypatch.setenv("CONTROLADOR_API_BASE_URL", f"http://127.0.0.1:{server.server_port}")
+        monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "false")
+        monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "test-owner")
+        monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "false")
+
+        app = AppTest.from_file(str(PANEL_APP)).run(timeout=30)
+        area = next(item for item in app.radio if item.label == "Áreas principais")
+        area.set_value("ASSISTENTE DO ECOSSISTEMA").run(timeout=30)
+        assert not app.exception
+        assert any(item.label == "Conversas anteriores" for item in app.selectbox)
+
+        app.button(key="load_assistant_conversation").click().run(timeout=30)
+        assert not app.exception
+        assert ("GET", "/api/assistant/history?conversation_id=conversation-saved-001") in calls
+        assert app.session_state["assistant_conversation_id"] == "conversation-saved-001"
+        assert {"role": "user", "content": "Revise meu risco."} in app.session_state["assistant_history"]
+        assert {"role": "assistant", "content": "Vamos conferir os limites."} in app.session_state["assistant_history"]
+
+        app.button(key="delete_assistant_conversation").click().run(timeout=30)
+        assert not app.exception
+        assert ("DELETE", "/api/assistant/conversations?conversation_id=conversation-saved-001") in calls
+        assert app.session_state["assistant_conversation_id"] is None
+        assert app.session_state["assistant_history"] == []
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=5)
