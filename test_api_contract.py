@@ -61,6 +61,32 @@ class ApiContractTests(unittest.TestCase):
                 "single:test-owner", None,
             )
 
+    def test_reports_endpoint_returns_read_only_decision_summary_and_bounded_records(self):
+        import app as app_module
+        sample_records = [
+            {"decision_id": "decision-1", "signal": "COMPRA", "outcome": None},
+            {"decision_id": "decision-2", "signal": "VENDA", "outcome": "WIN"},
+        ]
+        summary = {"total": 2, "wins": 1, "losses": 0, "win_rate": 100.0}
+        with patch.object(app_module.SERVICE, "memory_view", return_value=sample_records) as memory_view, \
+             patch.object(app_module.SERVICE, "statistics", return_value=summary), \
+             patch.object(app_module.SERVICE, "memory", sample_records):
+            status, _, payload = self.request("/api/reports", query="limit=2")
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(payload["summary"], summary)
+        self.assertEqual(payload["records"], sample_records)
+        self.assertEqual(payload["record_count"], 2)
+        self.assertEqual(payload["source"], "decision_memory")
+        self.assertTrue(payload["read_only"])
+        self.assertFalse(payload["execution_allowed"])
+        self.assertIn("generated_at", payload)
+        memory_view.assert_called_once_with(2)
+
+    def test_reports_endpoint_rejects_out_of_range_limit(self):
+        status, _, payload = self.request("/api/reports", query="limit=201")
+        self.assertEqual(status, "400 Bad Request")
+        self.assertIn("limit", payload["error"])
+
     def test_security_audit_endpoint_is_read_only_redacted_and_limited(self):
         import app as app_module
         sample = [{
