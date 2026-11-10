@@ -325,6 +325,8 @@ def test_fiscal_assistant_runtime_validator_is_read_only_and_checks_safe_contrac
         "$assistant.may_execute_orders -eq $false",
         "$assistant.may_enable_real -eq $false",
         "$assistant.may_move_money -eq $false",
+        "migração transacional do esquema",
+        "Faça backup do SQLite antes",
         "chamada paga foi criada",
         "exit 2",
     ):
