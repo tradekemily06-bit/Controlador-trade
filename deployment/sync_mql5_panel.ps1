@@ -245,15 +245,18 @@ if (Test-Path -LiteralPath $binary) { Copy-WithRetry -Source $binary -Destinatio
 if (Test-Path -LiteralPath $provenance) { Copy-WithRetry -Source $provenance -Destination $backupProvenance }
 if (Test-Path -LiteralPath $log) { Copy-WithRetry -Source $log -Destination $backupLog }
 
-Copy-WithRetry -Source $source -Destination $destination
-$copiedSourceHash = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash
-if ($copiedSourceHash -ne $sourceHash) {
+try {
+    Copy-WithRetry -Source $source -Destination $destination
+    $copiedSourceHash = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash
+    if ($copiedSourceHash -ne $sourceHash) {
+        throw "A fonte mudou durante a sincronização; destino será restaurado: $destination"
+    }
+} catch {
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
     Restore-File -Backup $backupProvenance -Target $provenance
     Restore-File -Backup $backupLog -Target $log
-    Restore-File -Backup $backupLog -Target $log
-    throw "A fonte mudou durante a sincronização; destino restaurado: $destination"
+    throw "Falha ao substituir a fonte MQL5; arquivos anteriores restaurados. $($_.Exception.Message)"
 }
 
 if (Test-Path -LiteralPath $log) { Remove-Item -LiteralPath $log -Force }
