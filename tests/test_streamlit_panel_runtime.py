@@ -118,6 +118,15 @@ def test_all_streamlit_module_destinations_render_without_uncaught_exceptions(mo
         area.set_value(area_name).run(timeout=30)
         assert not app.exception, f"area failed to render: {area_name}"
 
+        if area_name in {"FINANCEIRO", "RESERVA FISCAL", "ASSISTENTE DO ECOSSISTEMA"}:
+            expected_heading = {
+                "FINANCEIRO": "Financeiro",
+                "RESERVA FISCAL": "Reserva Fiscal",
+                "ASSISTENTE DO ECOSSISTEMA": "Assistente do Ecossistema",
+            }[area_name]
+            assert any(item.value == expected_heading for item in app.subheader), f"dedicated area failed to render: {area_name}"
+            continue
+
         module = next(item for item in app.radio if item.label == "Módulos")
         for module_name in list(module.options):
             module = next(item for item in app.radio if item.label == "Módulos")
