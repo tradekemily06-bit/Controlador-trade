@@ -43,10 +43,9 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 
 $mt5Script = Join-Path $ProjectRoot 'deployment\start_mt5_runtime.ps1'
 $controllerScript = Join-Path $ProjectRoot 'deployment\start_controlador_runtime.ps1'
-$syncScript = Join-Path $ProjectRoot 'deployment\sync_mql5_panel.ps1'
 $streamlitScript = Join-Path $ProjectRoot 'deployment\start_streamlit_panel.ps1'
 
-foreach ($path in @($mt5Script, $controllerScript, $syncScript, $streamlitScript)) {
+foreach ($path in @($mt5Script, $controllerScript, $streamlitScript)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Arquivo de inicialização não encontrado: $path"
     }
@@ -84,5 +83,5 @@ if ($AutostartMode -eq 'AtStartupS4U') {
 }
 Write-Host 'MT5, Controlador e Streamlit serão supervisionados; o painel web permanece em 127.0.0.1:8501.'
 Write-Host 'Configure o Tunnel para o hostname do painel apontar à porta 8501; mantenha a API 8000 privada.'
-Write-Host 'O painel MQL5 é sincronizado e compilado automaticamente pelo supervisor do Controlador após o MT5 DEMO ficar válido; não há uma segunda tarefa concorrente de compilação.'
+Write-Host 'A inicialização não altera nem compila o EA MQL5. Atualizações do EA exigem execução explícita e separada do utilitário de manutenção.'
 Write-Host 'Nenhuma senha, token ou credencial foi gravada por este instalador.'
