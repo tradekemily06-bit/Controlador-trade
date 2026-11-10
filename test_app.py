@@ -234,6 +234,59 @@ def test_runtime_cycle_displays_wait_when_executor_does_not_accept_execution(mon
     assert data["execution_allowed"] is False
 
 
+def test_runtime_cycle_without_execution_object_cannot_show_actionable_candidate(monkeypatch):
+    import app
+
+    orchestration = SimpleNamespace(
+        timestamp=datetime(2026, 10, 16, 12, tzinfo=timezone.utc),
+        decision=SimpleNamespace(decision="EXECUTAR", reason="candidate passed analysis"),
+        analysis=SimpleNamespace(
+            signal=SimpleNamespace(value="VENDER"),
+            score=88.0,
+            reason="candidate is strong",
+            confirmed=True,
+            symbol="EURUSD",
+            timeframe="5m",
+        ),
+        quality=SimpleNamespace(score=88.0, level=SimpleNamespace(value="FORTE"), actionable=True),
+        snapshot=SimpleNamespace(market_context=None),
+        market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=tuple(
+            Candle(datetime(2026, 10, 16, 11, tzinfo=timezone.utc) + timedelta(minutes=i), 100, 101, 99, 100, 1)
+            for i in range(3)
+        )),
+        senior_context=SimpleNamespace(cycle_id="senior-cycle-no-execution"),
+    )
+    cycle = SimpleNamespace(
+        orchestration=orchestration,
+        execution=None,
+        plan=None,
+        automation_lifecycle=None,
+    )
+    fake_result = SimpleNamespace(stopped=True, stop_reason="execution not dispatched", cycles=(cycle,))
+    monkeypatch.setattr(app.SERVICE, "get_preferences", lambda: {"selected_mode": "DEMO", "leverage_enabled": False})
+    monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **kwargs: fake_result)
+    monkeypatch.setattr(
+        app.SERVICE,
+        "schedule_mt5_timed_exit",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("timed exit must not be scheduled")),
+    )
+
+    status, data = call_app(
+        "/api/runtime/cycle",
+        "POST",
+        {"symbol": "EURUSD", "timeframe": "5m", "limit": 20, "amount": 0.01, "duration_seconds": 60},
+    )
+
+    assert status.startswith("200")
+    assert data["runtime"]["candidate_decision"] == "EXECUTAR"
+    assert data["runtime"]["candidate_signal"] == "VENDER"
+    assert data["runtime"]["decision"] == "AGUARDAR"
+    assert data["runtime"]["signal"] == "AGUARDAR"
+    assert data["runtime"]["quality"]["actionable"] is False
+    assert data["runtime"]["timed_exit_scheduled"] is False
+    assert data["execution_allowed"] is False
+
+
 def test_runtime_cycle_rejects_boolean_sizing_and_invalid_limits_before_service(monkeypatch):
     import app
 
