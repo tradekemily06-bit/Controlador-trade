@@ -20,9 +20,11 @@ No diretório raiz do repositório:
 
    Esta dependência é específica do ambiente Windows com terminal MT5; instalar o Streamlit, por si só, não instala nem conecta o terminal.
 
-4. Inicie o runtime do Ecossistema em um primeiro PowerShell:
+4. Inicie o runtime do Ecossistema em um primeiro PowerShell. Para conectar ao terminal IC Markets MT5 DEMO instalado neste computador, selecione explicitamente o provider MT5:
 
-   `$env:CONTROLADOR_SINGLE_USER_IDENTITY="local-dev-owner"; $env:CONTROLADOR_REMOTE_ACCESS_REQUIRED="false"; $env:CONTROLADOR_LOCAL_MUTATIONS_ALLOWED="true"; py -3.12 app.py`
+   `$env:CONTROLADOR_EXECUTION_PROVIDER="ic_markets_mt5_demo"; $env:CONTROLADOR_SINGLE_USER_IDENTITY="local-dev-owner"; $env:CONTROLADOR_REMOTE_ACCESS_REQUIRED="false"; $env:CONTROLADOR_LOCAL_MUTATIONS_ALLOWED="true"; py -3.12 app.py`
+
+   O provider padrão do código é `paper`; ele não conecta ao terminal MT5. Portanto, instalar `MetaTrader5` sem definir `CONTROLADOR_EXECUTION_PROVIDER="ic_markets_mt5_demo"` não conclui a integração. Use a opção `paper` somente quando estiver testando o painel sem conexão com a corretora. Antes de usar o provider MT5, confirme no terminal que a conta conectada é DEMO. Para habilitar o Assistente, defina `OPENAI_API_KEY` no ambiente protegido do processo que inicia o runtime; nunca coloque a chave no painel, no Git ou no comando que será compartilhado.
 
 5. Em um segundo PowerShell, na mesma pasta do projeto, inicie o painel:
 
