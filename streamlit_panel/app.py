@@ -266,6 +266,10 @@ def _assistant_consent_scope() -> str:
 
 
 def show_assistant() -> None:
+    # Consent is single-use: clear it before rebuilding the widgets after every
+    # submitted question, so the next question requires a fresh user action.
+    if st.session_state.pop("assistant_clear_consent_before_render", False):
+        st.session_state["assistant_openai_consent"] = False
     consent_scope = _assistant_consent_scope()
     previous_scope = st.session_state.get("assistant_consent_scope")
     if consent_scope != previous_scope:
@@ -277,6 +281,8 @@ def show_assistant() -> None:
         st.session_state["assistant_connection_tested"] = False
         _reset_assistant_conversation()
         st.session_state.pop("saved_assistant_conversation", None)
+        st.session_state.pop("assistant_submission_warning", None)
+        st.session_state.pop("assistant_submission_error", None)
         st.session_state["assistant_consent_scope"] = consent_scope
     st.subheader("Assistente do Ecossistema")
     st.caption("Somente leitura · não envia ordens, não movimenta dinheiro e não substitui orientação fiscal profissional.")
@@ -380,11 +386,21 @@ def show_assistant() -> None:
         with st.chat_message(message["role"]):
             st.write(message["content"])
 
+    submission_warning = st.session_state.pop("assistant_submission_warning", None)
+    submission_error = st.session_state.pop("assistant_submission_error", None)
+    if submission_warning:
+        st.warning(submission_warning)
+    if submission_error:
+        st.error(submission_error)
+
     prompt = st.chat_input(
         "Pergunte sobre o Ecossistema, risco ou Reserva Fiscal",
         disabled=(not assistant_available) or (not consent_to_openai),
     )
     if prompt:
+        # The permission authorizes this submission only, including failed
+        # attempts whose delivery status may need recovery from conversation history.
+        st.session_state["assistant_clear_consent_before_render"] = True
         try:
             response = api(
                 "/api/assistant/chat",
@@ -405,14 +421,19 @@ def show_assistant() -> None:
             # A 503 may still have persisted the user message locally; api() keeps
             # its conversation ID so it remains recoverable from saved history.
             if st.session_state.get("assistant_conversation_id"):
-                st.warning(
+                st.session_state["assistant_submission_warning"] = (
                     "A consulta não recebeu resposta. Se o runtime informou que "
                     "a mensagem ficou no histórico, abra essa conversa em "
                     "“Conversas anteriores” depois de restabelecer o serviço."
                 )
-            st.error("Falha no Assistente: " + str(exc))
+            st.session_state["assistant_submission_error"] = "Falha no Assistente: " + str(exc)
+            st.rerun()
         except Exception:
-            st.error("Não foi possível enviar a consulta ao Assistente. Verifique a conexão e tente novamente. Detalhes técnicos não são exibidos no painel.")
+            st.session_state["assistant_submission_error"] = (
+                "Não foi possível enviar a consulta ao Assistente. "
+                "Verifique a conexão e tente novamente. Detalhes técnicos não são exibidos no painel."
+            )
+            st.rerun()
 
 
 
@@ -424,6 +445,32 @@ def _is_finite_number(value: Any) -> bool:
         return isfinite(value)
     except (OverflowError, TypeError, ValueError):
         return False
+
+
+def _valid_monthly_planning(monthly: Any, expected_year: int) -> bool:
+    """Validate optional month-by-month planning data before displaying it."""
+    if not isinstance(monthly, dict):
+        return False
+    if monthly.get("year") != expected_year or monthly.get("kind") != "PLANNING_ESTIMATE_ONLY":
+        return False
+    if monthly.get("tax_assessment") is not False:
+        return False
+    months = monthly.get("months")
+    if not isinstance(months, list) or len(months) != 12:
+        return False
+    for index, item in enumerate(months, start=1):
+        if not isinstance(item, dict) or item.get("month") != f"{expected_year:04d}-{index:02d}":
+            return False
+        entries = item.get("entries")
+        if isinstance(entries, bool) or not isinstance(entries, int) or not 0 <= entries <= 1_000_000_000:
+            return False
+        realized = item.get("realized_result_brl")
+        if not _is_finite_number(realized) or not -1_000_000_000_000 <= realized <= 1_000_000_000_000:
+            return False
+        reserve = item.get("reserve_amount_brl")
+        if not _is_finite_number(reserve) or not 0 <= reserve <= 1_000_000_000_000:
+            return False
+    return True
 
 
 def _safe_fiscal_count(value: Any) -> int:
@@ -879,6 +926,29 @@ def show_fiscal() -> None:
             money(selected_period.get("realized_result_brl")),
         )
         c.metric("Estimativa acumulada · Brasil", money(summary.get("total_reserved_brl")))
+        as_of_year = date.fromisoformat(summary["as_of"]).year
+        monthly_planning = summary.get("monthly_planning")
+        st.markdown(f"#### Histórico mensal de planejamento · {as_of_year}")
+        st.caption(
+            "Consolidação anual dos lançamentos brasileiros elegíveis já registrados. "
+            "Não representa apuração mensal de imposto, não compensa prejuízos e não desconta créditos de IRRF."
+        )
+        if _valid_monthly_planning(monthly_planning, as_of_year):
+            st.dataframe(
+                [{
+                    "Competência": item["month"],
+                    "Lançamentos": item["entries"],
+                    "Resultado registrado": money(item["realized_result_brl"]),
+                    "Reserva estimada": money(item["reserve_amount_brl"]),
+                } for item in monthly_planning["months"]],
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.caption(
+                "Histórico mensal indisponível ou inválido nesta resposta. "
+                "Os valores não foram estimados nem substituídos por zeros."
+            )
         rate_source_label = {
             "DEFAULT": "padrão inicial do sistema",
             "USER_CONFIGURED": "configurado pelo usuário",
@@ -1394,7 +1464,7 @@ def show_fiscal() -> None:
             if candidates:
                 st.dataframe([{"Abertura UTC": item.get("opened_at_utc"), "Encerramento UTC": item.get("occurred_at_utc"), "Ativo": item.get("symbol"), "Ticket final": item.get("ticket"), "Negócios somados": item.get("deal_count"), "Saídas": item.get("closing_deal_count"), "Resultado líquido da posição": item.get("net_result_account_currency"), "Moeda": item.get("account_currency")} for item in candidates], use_container_width=True, hide_index=True)
                 if account_currency == "BRL":
-                    st.warning("A confirmação abaixo registra somente posições que você classificar expressamente como Brasil · day trade. O resultado agrega os negócios da posição e concilia os volumes; confira o extrato da corretora antes de confirmar.")
+                    st.warning("A confirmação abaixo guarda a posição na fila brasileira de revisão fiscal, ainda como pendente. Ela não entra na reserva nem nos totais. A classificação de mercado é declarada por você e não verificada independentemente; confira o extrato da corretora antes de confirmar.")
                     for candidate in candidates:
                         ticket = str(candidate.get("ticket", "")).strip()
                         if not ticket:
@@ -1403,14 +1473,14 @@ def show_fiscal() -> None:
                             st.write(f"**{candidate.get('symbol', 'Ativo')} · ticket {ticket}**")
                             st.caption(f"Encerramento UTC: {candidate.get('occurred_at_utc', '—')} · Resultado líquido da posição: {candidate.get('net_result_account_currency', '—')} {account_currency} · Negócios somados: {candidate.get('deal_count', '—')}")
                             classified = st.checkbox("Confirmo que a operação ocorreu em mercado brasileiro elegível e atende ao conceito fiscal de day trade: mesmo ativo, mesma instituição e mesmo dia.", key="mt5_class_" + ticket)
-                            confirmed = st.form_submit_button("Confirmar e registrar esta posição")
+                            confirmed = st.form_submit_button("Confirmar e guardar como pendência")
                         if confirmed:
                             if not classified:
-                                st.error("Marque a confirmação de classificação antes de registrar.")
+                                st.error("Marque a confirmação da classificação declarada antes de guardar a pendência.")
                             else:
                                 try:
                                     result = api("/api/fiscal-reserve/mt5-confirm", "POST", {"ticket": ticket, "category": "BR_DAY_TRADE", "market_scope": "BR_ELIGIBLE_MARKET", "confirmed": True})
-                                    st.success(f"Ticket {ticket} registrado. A referência impede duplicidade.")
+                                    st.success(f"Ticket {ticket} guardado na fila brasileira de revisão fiscal. Continua pendente, sem cálculo e fora dos totais. A referência impede duplicidade.")
                                     st.session_state.fiscal_mt5_confirmed_tickets = set(st.session_state.get("fiscal_mt5_confirmed_tickets", set())) | {ticket}
                                     st.rerun()
                                 except Exception as exc:
@@ -1637,14 +1707,78 @@ def show_simulator() -> None:
 
 
 
+def show_finance_overview() -> None:
+    """Keep the general Financeiro entry while fiscal workflows have their own area."""
+    st.subheader("Financeiro")
+    st.caption(
+        "Visão geral financeira do Ecossistema. A Reserva Fiscal continua em uma área principal própria, "
+        "onde ficam lançamentos, histórico completo, filas e revisões documentais."
+    )
+    try:
+        summary = api("/api/fiscal-reserve?limit=50&offset=0")
+        if not (
+            _valid_fiscal_summary(summary)
+            and _valid_fiscal_history_page(summary, 0)
+        ):
+            raise ValueError("Resumo financeiro indisponível ou inválido.")
+        month = summary.get("periods", {}).get("month", {})
+        columns = st.columns(3)
+        columns[0].metric(
+            "Reserva estimada · Brasil",
+            money(summary.get("total_reserved_brl")),
+        )
+        columns[1].metric(
+            "Reserva estimada · mês",
+            money(month.get("reserve_amount_brl")),
+        )
+        columns[2].metric(
+            "Resultado realizado · mês",
+            money(month.get("realized_result_brl")),
+        )
+        st.caption(
+            f"Período mensal: {month.get('start', '—')} a {month.get('end', '—')} · "
+            "valores de planejamento, não apuração de imposto."
+        )
+        foreign = summary.get("foreign_pending", {})
+        try:
+            domestic = api("/api/fiscal-reserve/domestic-pending/summary")
+        except Exception:
+            domestic = {}
+        pending_columns = st.columns(2)
+        domestic_count = (
+            str(_safe_fiscal_count(domestic.get("total", 0)))
+            if _valid_pending_queue_summary(domestic, "results")
+            else "Indisponível"
+        )
+        foreign_count = (
+            str(_safe_fiscal_count(foreign.get("total", 0)))
+            if isinstance(foreign, dict) and foreign.get("available") is True
+            else "Indisponível"
+        )
+        pending_columns[0].metric("Pendências brasileiras", domestic_count)
+        pending_columns[1].metric("Pendências do exterior", foreign_count)
+        st.info(
+            "As pendências permanecem fora dos totais e não geram reserva. "
+            "Para registrar, consultar documentos e revisar itens, abra a área principal Reserva Fiscal."
+        )
+    except Exception:
+        st.warning(
+            "A visão financeira não pôde validar os dados do runtime. "
+            "Nenhum valor foi estimado nesta tela."
+        )
+
+
 def show_readonly_module(module_name: str) -> None:
     """Render mapped runtime views and guarded controls for the selected module."""
+    if module_name == "Financeiro":
+        show_finance_overview()
+        return
     views = {
         "Operação": ("Estado operacional", "/api/health"),
         "Motor de Decisão": ("Motor de Decisão · última análise", "/api/runtime/analysis/latest"),
         "Gestão de Risco": ("Gestão de Risco", "/api/risk"),
         "Notificações": ("Central de Notificações", "/api/notifications"),
-        "MT5 DEMO / Simulação": ("Conexões e ambiente", "/api/connections"),
+        "Ambiente MT5 DEMO": ("Conexões e ambiente", "/api/connections"),
         "Kill Switch": ("Proteção operacional", "/api/health"),
         "Memória": ("Memória de decisões", "/api/memory?limit=50"),
         "Estatísticas": ("Estatísticas operacionais", "/api/statistics"),
@@ -1863,7 +1997,71 @@ def show_readonly_module(module_name: str) -> None:
                 st.dataframe(rows, use_container_width=True, hide_index=True)
             else:
                 st.info("Nenhum registro corresponde aos filtros selecionados.")
-            st.caption("WIN/LOSS/DRAW são anotações de estudo manual, não resultados financeiros confirmados pela corretora.")
+
+            pending_outcome_records = [
+                item for item in records
+                if isinstance(item.get("decision_id"), str)
+                and bool(item.get("decision_id", "").strip())
+                and item.get("confirmed") is True
+                and str(item.get("signal") or "").upper() in {"COMPRA", "VENDA"}
+                and not str(item.get("outcome") or "").strip()
+            ]
+            st.markdown("#### Registrar resultado de estudo · WIN/LOSS")
+            st.caption(
+                "Registre manualmente o desfecho de uma decisão confirmada de COMPRA ou VENDA. "
+                "Esta anotação não consulta a corretora, não comprova lucro/prejuízo e não altera ordens."
+            )
+            if pending_outcome_records:
+                outcome_labels = {
+                    str(item["decision_id"]): (
+                        f"{item.get('symbol') or 'Ativo não informado'} · "
+                        f"{item.get('timeframe') or 'Período não informado'} · "
+                        f"{str(item.get('signal') or '').upper()} · "
+                        f"score {item.get('score', '—')} · {item.get('created_at') or 'data não informada'}"
+                    )
+                    for item in pending_outcome_records
+                }
+                with st.form("memory_manual_outcome_form"):
+                    selected_decision_id = st.selectbox(
+                        "Decisão confirmada sem resultado",
+                        options=list(outcome_labels),
+                        format_func=lambda value: outcome_labels.get(value, value),
+                    )
+                    selected_outcome = st.selectbox(
+                        "Resultado observado · anotação manual",
+                        ["WIN", "LOSS", "DRAW", "OPEN", "VOID"],
+                    )
+                    confirm_manual_outcome = st.checkbox(
+                        "Confirmo que este resultado é uma anotação manual de estudo, não uma confirmação independente da corretora."
+                    )
+                    outcome_submit = st.form_submit_button(
+                        "Salvar resultado manual",
+                        disabled=not confirm_manual_outcome,
+                    )
+                if outcome_submit and confirm_manual_outcome:
+                    try:
+                        saved_outcome = api(
+                            "/api/outcome",
+                            "POST",
+                            {
+                                "decision_id": selected_decision_id,
+                                "outcome": selected_outcome,
+                            },
+                        )
+                        if (
+                            saved_outcome.get("decision_id") == selected_decision_id
+                            and saved_outcome.get("outcome") == selected_outcome
+                            and saved_outcome.get("outcome_source") == "MANUAL_STUDY"
+                        ):
+                            st.success("Resultado manual registrado no histórico de decisões.")
+                            st.rerun()
+                        else:
+                            st.warning("O runtime não confirmou o registro. Confira o histórico antes de tentar novamente.")
+                    except Exception:
+                        st.error("Não foi possível registrar o resultado manual. O estado do histórico não foi confirmado.")
+            else:
+                st.info("Não há decisões direcionais confirmadas sem resultado manual nos 50 registros carregados.")
+            st.caption("WIN/LOSS/DRAW/OPEN/VOID são anotações manuais de estudo; não são resultados financeiros confirmados pela corretora.")
             st.caption("Somente leitura · execução permitida: NÃO · REAL: DESABILITADO")
             return
 
@@ -2109,7 +2307,7 @@ def show_readonly_module(module_name: str) -> None:
             st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
             return
 
-        if module_name == "MT5 DEMO / Simulação":
+        if module_name == "Ambiente MT5 DEMO":
             st.markdown("#### Ambiente de operação conectado")
             st.metric("IC Markets · MT5 DEMO", str(data.get("ic_markets_mt5_demo", "NÃO CONFIRMADO")))
             cols = st.columns(2)
@@ -2788,9 +2986,21 @@ def render_latest_signal(closed: bool = False) -> None:
         st.markdown(f'<div class="open-score">{score_label}</div>', unsafe_allow_html=True)
 
 
-# Four approved navigation areas from the extracted reference JSON.
-# Streamlit is the product; the JSON supplies the visual and navigation specification.
-AREAS = {name: list(modules) for name, modules in CONFIG["open_state"]["tabs"].items()}
+# Keep the supplied Figma reference JSON untouched. The active Streamlit
+# navigation separates complex product modules into their own destinations.
+# "MT5 DEMO / Simulação" in the reference is operational environment/recovery,
+# not the historical Simulador module already housed under ESTUDO.
+_REFERENCE_TABS = CONFIG["open_state"]["tabs"]
+AREAS = {
+    name: [
+        "Ambiente MT5 DEMO" if module == "MT5 DEMO / Simulação" else module
+        for module in _REFERENCE_TABS[name]
+    ]
+    for name in ("COCKPIT", "ANÁLISE", "ESTUDO")
+}
+AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]
+AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]
+AREAS["MAIS / ADMIN"] = list(_REFERENCE_TABS["MAIS / ADMIN"])
 if "panel_open" not in st.session_state:
     st.session_state.panel_open = True
 
@@ -2818,14 +3028,19 @@ with st.container(key="control-hub-shell"):
 
     area = st.radio("Áreas principais", list(AREAS), horizontal=True, key="main_area_navigation", label_visibility="collapsed")
     st.divider()
-    module = st.radio("Módulos", AREAS[area], horizontal=False, key="module_navigation", label_visibility="collapsed")
+    if area in {"RESERVA FISCAL", "ASSISTENTE DO ECOSSISTEMA"}:
+        module = AREAS[area][0]
+    else:
+        # The previous Financeiro selector may remain in Streamlit session state
+        # after navigation changes; normalize it before rendering the new options.
+        if st.session_state.get("module_navigation") not in AREAS[area]:
+            st.session_state["module_navigation"] = AREAS[area][0]
+        module = st.radio("Módulos", AREAS[area], horizontal=False, key="module_navigation", label_visibility="collapsed")
 
-    if module == "Financeiro":
-        financial = st.radio("Financeiro", ["Reserva Fiscal", "Assistente do Ecossistema"], horizontal=True, key="financeiro_section", label_visibility="collapsed")
-        if financial == "Reserva Fiscal":
-            show_fiscal()
-        else:
-            show_assistant()
+    if module == "Reserva Fiscal":
+        show_fiscal()
+    elif module == "Assistente do Ecossistema":
+        show_assistant()
     else:
         show_readonly_module(module)
 

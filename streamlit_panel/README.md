@@ -20,9 +20,11 @@ No diretório raiz do repositório:
 
    Esta dependência é específica do ambiente Windows com terminal MT5; instalar o Streamlit, por si só, não instala nem conecta o terminal.
 
-4. Inicie o runtime do Ecossistema em um primeiro PowerShell:
+4. Inicie o runtime do Ecossistema em um primeiro PowerShell. Para conectar ao terminal IC Markets MT5 DEMO instalado neste computador, selecione explicitamente o provider MT5:
 
-   `$env:CONTROLADOR_SINGLE_USER_IDENTITY="local-dev-owner"; $env:CONTROLADOR_REMOTE_ACCESS_REQUIRED="false"; $env:CONTROLADOR_LOCAL_MUTATIONS_ALLOWED="true"; py -3.12 app.py`
+   `$env:CONTROLADOR_EXECUTION_PROVIDER="ic_markets_mt5_demo"; $env:CONTROLADOR_SINGLE_USER_IDENTITY="local-dev-owner"; $env:CONTROLADOR_REMOTE_ACCESS_REQUIRED="false"; $env:CONTROLADOR_LOCAL_MUTATIONS_ALLOWED="true"; py -3.12 app.py`
+
+   O provider padrão do código é `paper`; ele não conecta ao terminal MT5. Portanto, instalar `MetaTrader5` sem definir `CONTROLADOR_EXECUTION_PROVIDER="ic_markets_mt5_demo"` não conclui a integração. Use a opção `paper` somente quando estiver testando o painel sem conexão com a corretora. Antes de usar o provider MT5, confirme no terminal que a conta conectada é DEMO. Para habilitar o Assistente, defina `OPENAI_API_KEY` no ambiente protegido do processo que inicia o runtime; nunca coloque a chave no painel, no Git ou no comando que será compartilhado.
 
 5. Em um segundo PowerShell, na mesma pasta do projeto, inicie o painel:
 
@@ -46,9 +48,13 @@ No host Windows remoto, `deployment/bootstrap_windows_runtime.ps1` também insta
 
 ## Módulos no painel
 
-- Reserva Fiscal e Assistente do Ecossistema ficam agrupados dentro de Financeiro, sem criar novos grupos de navegação. Categorias sem cálculo validado ficam pendentes e fora dos totais; a estimativa brasileira identificada na interface é planejamento, não apuração de imposto devido.
+- **Reserva Fiscal** possui uma área principal própria no Streamlit, com estimativas, histórico, períodos, filas brasileira/estrangeira e revisões. O histórico mensal consolida os 12 meses do ano de referência apenas com lançamentos brasileiros elegíveis até a data de referência; não compensa prejuízos, não desconta IRRF e não é apuração mensal de imposto. Categorias sem cálculo validado ficam pendentes e fora dos totais; a estimativa brasileira identificada na interface é planejamento, não apuração de imposto devido.
+- **Financeiro** continua disponível em **MAIS / ADMIN** como visão geral consolidada de reservas estimadas, resultado mensal e contagem de pendências. Os lançamentos, filas, revisões e histórico completo ficam na área principal independente **Reserva Fiscal**.
+- **Assistente do Ecossistema** possui uma área principal própria, independente de Financeiro, com suas conversas, histórico e contexto operacional filtrado.
+- Memória permite anotar manualmente WIN/LOSS/DRAW/OPEN/VOID para decisões direcionais confirmadas. Essas anotações são de estudo e não são resultados financeiros confirmados pela corretora.
 - A fila estrangeira registra instituição, custódia, tipo de contrato, custo de aquisição, taxas e imposto pago no exterior na moeda original quando informados. Esses campos são evidências declaradas para triagem; não confirmam localização fiscal, enquadramento, conversão cambial ou crédito tributário e não geram cálculo automático.
-- O Assistente do Ecossistema é acessado pelo seletor interno de Financeiro. A interface lista até 30 conversas salvas, permite abrir o histórico recente e excluir uma conversa somente após ação explícita do usuário.
+- O Assistente do Ecossistema fica disponível como área principal independente. A interface lista até 30 conversas salvas, permite abrir o histórico recente e excluir uma conversa somente após ação explícita do usuário.
+- No COCKPIT, **Ambiente MT5 DEMO** mostra a integração/estado operacional do terminal DEMO, saídas temporizadas e recuperação/reconciliação de posições. Não é o simulador histórico: **Replay** e **Simulador** permanecem em ESTUDO.
 - A pergunta, as mensagens recentes da conversa e um resumo operacional filtrado são enviados à OpenAI quando o usuário envia uma consulta. As mensagens também ficam armazenadas no histórico local do Assistente no servidor do Ecossistema. A chave OpenAI permanece no servidor; não envie senhas, códigos de acesso ou dados bancários sensíveis.
 - A consulta de status do Assistente verifica a configuração local do cliente, mas não testa conectividade nem validade da chave. O botão **Testar conexão com a OpenAI** envia somente uma mensagem técnica fixa, sem pergunta, histórico ou dados fiscais; o teste não substitui o consentimento explícito exigido para cada consulta com contexto.
 - Replay e Simulador têm limitações descritas na própria interface. O backtest atual não integra Risk Manager, margem, alavancagem, swap ou conversão para a moeda da conta. Não o trate como previsão nem como backtest financeiro completo.
@@ -58,7 +64,7 @@ No host Windows remoto, `deployment/bootstrap_windows_runtime.ps1` também insta
 
 - O JSON contém a estrutura de navegação e tokens visuais extraídos das referências.
 - **As cinco imagens originais listadas no JSON (8870.jpg, 8871.jpg, 8872.jpg, 8873.jpg e 8878.jpg) não estão presentes neste branch do repositório.** Portanto, ainda não é possível fazer a comparação visual final.
-- As quatro áreas visuais do Figma permanecem intactas; Financeiro contém as duas funções solicitadas, sem alterar o JSON ou inventar uma quinta área visual.
+- O JSON fornecido como referência do Figma permanece intacto, com seus quatro grupos originais. A navegação efetiva do Streamlit acrescenta destinos principais próprios para Reserva Fiscal e Assistente do Ecossistema, pois são módulos completos e independentes. Essa adaptação não edita nem recria o Figma.
 - Não modificar nem recriar as imagens ou o arquivo original do Figma. A validação visual só poderá avançar quando as cinco imagens originais forem disponibilizadas para comparação, mantendo os arquivos intactos.
 - O Streamlit é acessado como painel web e conversa com o runtime do Ecossistema; não é desenhado nativamente sobre o gráfico MT5. A conexão funcional com MT5 deve ser validada no runtime DEMO antes do uso operacional.
 

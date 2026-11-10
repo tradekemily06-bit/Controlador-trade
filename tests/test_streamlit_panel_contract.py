@@ -74,6 +74,9 @@ def test_streamlit_mt5_preview_requires_explicit_classification_and_confirmation
     assert 'account_currency == "BRL"' in source
     assert '"/api/fiscal-reserve/mt5-pending-result"' in source
     assert "Guardar como pendência" in source
+    assert "Confirmar e guardar como pendência" in source
+    assert "fila brasileira de revisão fiscal" in source
+    assert "Continua pendente, sem cálculo e fora dos totais." in source
 
 
 def test_streamlit_panel_preserves_signed_foreign_results_as_pending():
@@ -255,6 +258,14 @@ def test_streamlit_requires_explicit_openai_consent_before_chat_submission():
     assert '"consent_to_openai": True' in source
 
 
+    assistant_start = source.index("def show_assistant()")
+    assistant_end = source.index("\ndef ", assistant_start + 1)
+    assistant_view = source[assistant_start:assistant_end]
+    assert 'st.session_state["assistant_clear_consent_before_render"] = True' in assistant_view
+    assert 'if st.session_state.pop("assistant_clear_consent_before_render", False):' in assistant_view
+    assert 'st.session_state["assistant_openai_consent"] = False' in assistant_view
+    assert 'st.rerun()' in assistant_view
+
 def test_streamlit_foreign_pending_forms_capture_structured_evidence_and_display_it():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     for field in (
@@ -365,7 +376,7 @@ def test_streamlit_closed_panel_shows_signal_score_and_system_availability():
     end = source.index("st.stop()", start) + len("st.stop()")
     closed_state = source[start:end]
     helper_start = source.index("def render_latest_signal(")
-    helper_end = source.index("# Four approved navigation areas", helper_start)
+    helper_end = source.index("# Keep the supplied Figma reference JSON untouched", helper_start)
     helper = source[helper_start:helper_end]
 
     assert 'st.button("C", key="open_control_hub", help="Abrir painel")' in closed_state
@@ -388,7 +399,8 @@ def test_streamlit_open_panel_is_rendered_inside_a_single_shell():
     assert 'with st.container(key="control-hub-shell"):' in source
     assert '<div class="hub-title">Controlador-Trader</div>' in source
     assert '<span class="demo-pill">DEMO</span>' in source
-    assert '["Reserva Fiscal", "Assistente do Ecossistema"]' in source
+    assert 'AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]' in source
+    assert 'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]' in source
 
 
 def test_streamlit_open_and_closed_panel_share_the_latest_signal_and_score():
@@ -400,7 +412,7 @@ def test_streamlit_open_and_closed_panel_share_the_latest_signal_and_score():
     open_end = source.index('if st.button("Fechar painel"', open_start)
     opened = source[open_start:open_end]
     helper_start = source.index("def render_latest_signal(")
-    helper_end = source.index("# Four approved navigation areas", helper_start)
+    helper_end = source.index("# Keep the supplied Figma reference JSON untouched", helper_start)
     helper = source[helper_start:helper_end]
 
     assert "render_latest_signal(closed=True)" in closed
@@ -435,15 +447,18 @@ def test_streamlit_leverage_control_persists_only_the_preference_without_executi
 
 
 
-def test_financeiro_groups_fiscal_reserve_and_assistant_inside_the_four_reference_areas():
+def test_financeiro_overview_remains_available_with_dedicated_fiscal_and_assistant_areas():
     config = json.loads((PANEL_DIR / "controlador_trader_referencia_visual.json").read_text(encoding="utf-8"))
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert list(config["open_state"]["tabs"]) == ["COCKPIT", "ANÁLISE", "ESTUDO", "MAIS / ADMIN"]
-    assert 'AREAS["MAIS / ADMIN"].append(' not in source
-    assert 'if module == "Financeiro":' in source
-    assert 'financial = st.radio(' in source
-    assert '["Reserva Fiscal", "Assistente do Ecossistema"]' in source
-    assert 'if financial == "Reserva Fiscal":' in source
+    assert config["open_state"]["tabs"]["MAIS / ADMIN"][0] == "Financeiro"
+    assert 'AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]' in source
+    assert 'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]' in source
+    assert 'AREAS["MAIS / ADMIN"] = list(_REFERENCE_TABS["MAIS / ADMIN"])' in source
+    assert 'if module_name == "Financeiro":' in source
+    assert "show_finance_overview()" in source
+    assert 'if module == "Reserva Fiscal":' in source
+    assert 'elif module == "Assistente do Ecossistema":' in source
     assert "show_fiscal()" in source
     assert "show_assistant()" in source
 
@@ -452,7 +467,9 @@ def test_streamlit_readme_identifies_the_streamlit_panel_as_user_facing_and_figm
     readme = (PANEL_DIR / "README.md").read_text(encoding="utf-8")
     assert "O Figma é somente referência visual" in readme
     assert "painel de uso pretendido" in readme
-    assert "Reserva Fiscal e Assistente do Ecossistema ficam agrupados dentro de Financeiro" in readme
+    assert "**Financeiro** continua disponível em **MAIS / ADMIN**" in readme
+    assert "**Reserva Fiscal** possui uma área principal própria" in readme
+    assert "**Assistente do Ecossistema** possui uma área principal própria" in readme
 
 
 
@@ -473,14 +490,14 @@ def test_streamlit_module_dispatch_has_no_unreachable_duplicate_handlers():
         "module_name == 'Escola / Tutorial / Onboarding'",
         "module_name == 'Estatísticas'",
         "module_name == 'Relatórios'",
-        "module_name == 'MT5 DEMO / Simulação'",
+        "module_name == 'Ambiente MT5 DEMO'",
         "module_name == 'Conexões'",
         "module_name == 'Multi-Broker'",
     ):
         assert rendered.count(expression) == 1
     assert "module_name in {'Memória', 'Replay'}" not in rendered
     assert "module_name in {'Motor de Decisão', 'Estatísticas', 'Relatórios'}" not in rendered
-    assert "module_name in {'MT5 DEMO / Simulação', 'Conexões', 'Multi-Broker'}" not in rendered
+    assert "module_name in {'Ambiente MT5 DEMO', 'Conexões', 'Multi-Broker'}" not in rendered
 
 
 def test_streamlit_local_quickstart_configures_the_required_fiscal_owner_identity():
@@ -829,7 +846,7 @@ def test_streamlit_security_view_discloses_deployment_boundaries():
 
 def test_streamlit_mt5_demo_connections_and_multibroker_views_are_distinct():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
-    start = source.index('if module_name == "MT5 DEMO / Simulação":')
+    start = source.index('if module_name == "Ambiente MT5 DEMO":')
     end = source.index('if module_name == "Kill Switch":', start)
     views = source[start:end]
     assert 'if module_name == "Conexões":' in views
@@ -1009,10 +1026,16 @@ def test_every_reference_navigation_module_has_a_functional_streamlit_route():
                                 if isinstance(key, ast.Constant) and isinstance(key.value, str)
                             )
     dedicated_routes = {"Análise de Mercado", "Replay", "Simulador"}
-    special_routes = {"Financeiro"}
+    configured_modules.discard("MT5 DEMO / Simulação")
+    configured_modules.add("Ambiente MT5 DEMO")
+    special_routes = {"Financeiro", "Reserva Fiscal", "Assistente do Ecossistema"}
     assert configured_modules <= (readonly_modules | dedicated_routes | special_routes)
-    assert 'if module == "Financeiro":' in source
-    assert 'st.radio("Financeiro", ["Reserva Fiscal", "Assistente do Ecossistema"]' in source
+    assert 'if module_name == "Financeiro":' in source
+    assert "show_finance_overview()" in source
+    assert 'if module == "Reserva Fiscal":' in source
+    assert 'elif module == "Assistente do Ecossistema":' in source
+    assert 'AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]' in source
+    assert 'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]' in source
     assert 'show_assistant()' in source
     assert "show_fiscal()" in source
 
@@ -1694,9 +1717,11 @@ def test_every_reference_navigation_module_has_an_explicit_streamlit_handler():
         for group in re.findall(r"if module_name in \{([^}]+)\}:", source)
         for module in re.findall(r"[\"']([^\"']+)[\"']", group)
     }
-    # Financeiro is intentionally routed by the top-level panel dispatcher to
-    # the shared Reserva Fiscal view rather than by show_readonly_module.
-    explicitly_routed = explicit_handlers | grouped_handlers | {"Financeiro"}
+    # The active navigation retains Financeiro as a read-only overview and
+    # renames the old MT5 label without editing the supplied reference JSON.
+    configured_modules.discard("MT5 DEMO / Simulação")
+    configured_modules.add("Ambiente MT5 DEMO")
+    explicitly_routed = explicit_handlers | grouped_handlers | {"Reserva Fiscal", "Assistente do Ecossistema"}
     missing = configured_modules - explicitly_routed
 
     assert not missing, f"Navigation modules without an explicit Streamlit handler: {sorted(missing)}"
@@ -1728,6 +1753,9 @@ def test_windows_bootstrap_installs_and_supervises_the_streamlit_panel():
     assert "GetEnvironmentVariable('CONTROLADOR_SINGLE_USER_IDENTITY', 'Machine')" in supervisor
     assert "não corresponde à identidade persistida no escopo de Máquina" in supervisor
     assert "127.0.0.1:8501" in readme
+    assert 'CONTROLADOR_EXECUTION_PROVIDER="ic_markets_mt5_demo"' in readme
+    assert "O provider padrão do código é `paper`" in readme
+    assert "OPENAI_API_KEY" in readme
     assert "hostname do painel" in runbook
     assert "porta 8000 não deve ser publicada" in runbook
     assert "0.0.0.0" not in supervisor
@@ -1854,7 +1882,9 @@ def test_streamlit_assistant_surfaces_only_sanitized_actionable_api_errors():
     end = source.index('\n\n\ndef _is_finite_number', start)
     submit_block = source[start:end]
     assert 'except RuntimeError as exc:' in submit_block
-    assert 'st.error("Falha no Assistente: " + str(exc))' in submit_block
+    assert 'st.session_state["assistant_submission_error"] = "Falha no Assistente: " + str(exc)' in submit_block
+    assert 'st.session_state["assistant_submission_warning"]' in submit_block
+    assert 'st.rerun()' in submit_block
     assert 'except Exception:' in submit_block
     assert "Detalhes técnicos não são exibidos no painel." in submit_block
 
@@ -1896,7 +1926,7 @@ def test_streamlit_api_rejects_invalid_or_non_object_json_responses():
 def test_closed_panel_health_uses_only_online_or_unavailable_labels():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     helper_start = source.index("def render_latest_signal(")
-    helper_end = source.index("# Four approved navigation areas", helper_start)
+    helper_end = source.index("# Keep the supplied Figma reference JSON untouched", helper_start)
     helper = source[helper_start:helper_end]
     assert '"OK": "SISTEMA ONLINE"' in helper
     assert '"WARNING": "INDISPONÍVEL"' in helper
@@ -1918,7 +1948,7 @@ def test_open_panel_health_uses_only_online_or_unavailable_labels():
 def test_streamlit_signal_strip_refreshes_periodically_in_both_panel_states():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     helper_start = source.index("def render_latest_signal(")
-    helper_end = source.index("# Four approved navigation areas", helper_start)
+    helper_end = source.index("# Keep the supplied Figma reference JSON untouched", helper_start)
     helper = source[helper_start:helper_end]
     assert '@st.fragment(run_every="15s")' in source
     assert "def render_latest_signal(closed: bool = False)" in source
@@ -2007,11 +2037,13 @@ def test_every_reference_navigation_module_has_a_real_panel_handler_or_view():
         for values in config["open_state"]["tabs"].values()
         for module in values
     }
+    modules.discard("MT5 DEMO / Simulação")
+    modules.update({"Ambiente MT5 DEMO", "Reserva Fiscal", "Assistente do Ecossistema"})
     handlers = set(re.findall(r'module_name == "([^"]+)"', source))
     views_start = source.index("def show_readonly_module")
     views_end = source.index('    if module_name == "Análise de Mercado":', views_start)
     view_keys = set(re.findall(r'^\s*"([^"]+)": \(', source[views_start:views_end], re.MULTILINE))
-    custom_modules = {"Financeiro", "Análise de Mercado", "Replay", "Simulador"}
+    custom_modules = {"Reserva Fiscal", "Assistente do Ecossistema", "Análise de Mercado", "Replay", "Simulador"}
 
     assert modules == handlers.union(view_keys).union(custom_modules)
 
@@ -2029,3 +2061,37 @@ def test_streamlit_fiscal_review_history_explicitly_shows_unverified_identity_an
     assert source.count('"Identidade verificada": "NÃO VERIFICADA" if item.get("reviewer_identity_status") == "DECLARED_NOT_VERIFIED" else "Estado inválido"') == 2
     assert source.count('"Registro profissional verificado": "NÃO VERIFICADO" if item.get("professional_registration_verified") is False else "Estado inválido"') == 2
     assert source.count('"Observações": item.get("review_notes", "")') == 2
+
+def test_streamlit_memory_allows_manual_outcomes_for_confirmed_directional_decisions():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    memory_start = source.index('if module_name == "Memória":')
+    memory_end = source.index('if module_name == "Motor de Decisão":', memory_start)
+    memory_view = source[memory_start:memory_end]
+
+    assert "pending_outcome_records = [" in memory_view
+    assert 'item.get("confirmed") is True' in memory_view
+    assert 'in {"COMPRA", "VENDA"}' in memory_view
+    assert 'and not str(item.get("outcome") or "").strip()' in memory_view
+    assert 'api(' in memory_view
+    assert '"/api/outcome"' in memory_view
+    assert '"decision_id": selected_decision_id' in memory_view
+    assert '"outcome": selected_outcome' in memory_view
+    assert '["WIN", "LOSS", "DRAW", "OPEN", "VOID"]' in memory_view
+    assert 'saved_outcome.get("outcome_source") == "MANUAL_STUDY"' in memory_view
+    assert "anotação manual de estudo, não uma confirmação independente da corretora" in memory_view
+
+def test_streamlit_fiscal_monthly_planning_validates_and_labels_the_annual_estimate():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert "def _valid_monthly_planning(monthly: Any, expected_year: int)" in source
+    assert 'monthly.get("kind") != "PLANNING_ESTIMATE_ONLY"' in source
+    assert 'monthly.get("tax_assessment") is not False' in source
+    assert 'len(months) != 12' in source
+    assert 'item.get("month") != f"{expected_year:04d}-{index:02d}"' in source
+    assert 'monthly_planning = summary.get("monthly_planning")' in source
+    assert "Histórico mensal de planejamento" in source
+    assert '"Competência": item["month"]' in source
+    assert '"Lançamentos": item["entries"]' in source
+    assert '"Resultado registrado": money(item["realized_result_brl"])' in source
+    assert '"Reserva estimada": money(item["reserve_amount_brl"])' in source
+    assert "não compensa prejuízos e não desconta créditos de IRRF" in source
+    assert "Os valores não foram estimados nem substituídos por zeros." in source
