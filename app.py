@@ -579,8 +579,13 @@ def application(environ, start_response):
             if not pending_id or "/" in pending_id:
                 raise ValueError("pending_id inválido")
             if method == "GET":
+                try:
+                    reviews = FISCAL_DOMESTIC_PENDING_QUEUE.list_reviews(fiscal_owner_id, pending_id)
+                except ValueError:
+                    # Missing and foreign-owned identifiers have the same public read result.
+                    reviews = []
                 return _json_response(start_response, HTTPStatus.OK,
-                                      {"reviews": FISCAL_DOMESTIC_PENDING_QUEUE.list_reviews(fiscal_owner_id, pending_id),
+                                      {"reviews": reviews,
                                        "status_unchanged": "PENDING_CLASSIFICATION",
                                        "reserve_calculated": False},
                                       request_id, environ)
@@ -627,8 +632,13 @@ def application(environ, start_response):
             if not pending_id or "/" in pending_id:
                 raise ValueError("pending_id inválido")
             if method == "GET":
+                try:
+                    reviews = FISCAL_PENDING_QUEUE.list_reviews(fiscal_owner_id, pending_id)
+                except ValueError:
+                    # Missing and foreign-owned identifiers have the same public read result.
+                    reviews = []
                 return _json_response(start_response, HTTPStatus.OK,
-                                      {"reviews": FISCAL_PENDING_QUEUE.list_reviews(fiscal_owner_id, pending_id),
+                                      {"reviews": reviews,
                                        "status_unchanged": "PENDING_CLASSIFICATION",
                                        "reserve_calculated": False},
                                       request_id, environ)
