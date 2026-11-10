@@ -1954,6 +1954,628 @@ def show_readonly_module(module_name: str) -> None:
 
     try:
         data = api(endpoint)
+        if module_name == "Segurança":
+            storage = data.get("production_storage", {}) if isinstance(data, dict) else {}
+            gate = data.get("production_operation_gate", {}) if isinstance(data, dict) else {}
+            storage_state = storage.get("state") if isinstance(storage, dict) else None
+            gate_state = gate.get("storage_state") if isinstance(gate, dict) else None
+            identity_provider = data.get("trusted_identity_provider") if isinstance(data, dict) else None
+            tenant_isolation = data.get("tenant_isolation") if isinstance(data, dict) else None
+            real_state = data.get("real") if isinstance(data, dict) else None
+            cols = st.columns(2)
+            cols[0].metric("Armazenamento", str(storage_state or "NÃO CONFIRMADO"))
+            cols[1].metric("Gate operacional", str(gate_state or "NÃO CONFIRMADO"))
+            cols = st.columns(2)
+            cols[0].metric("Provedor de identidade", str(identity_provider or "NÃO CONFIRMADO"))
+            cols[1].metric("Isolamento de tenant", str(tenant_isolation or "NÃO CONFIRMADO"))
+            st.caption("Execução REAL: " + str(real_state or "NÃO CONFIRMADO"))
+            st.caption("Esta tela exibe indicadores declarados pelo runtime; não substitui auditoria de configuração, teste de isolamento ou revisão de infraestrutura.")
+            st.caption("Somente leitura · nenhuma permissão de execução é concedida.")
+            return
+
+        if module_name == "Configurações":
+            prefs = data.get("preferences", {}) if isinstance(data, dict) else {}
+            candle = prefs.get("candle", {}) if isinstance(prefs.get("candle"), dict) else {}
+            notifications = prefs.get("notifications", {}) if isinstance(prefs.get("notifications"), dict) else {}
+            st.caption("Preferências de apresentação e conveniência. Salvar aqui não autoriza ordens, autonomia, alteração de risco ou execução REAL.")
+            cols = st.columns(4)
+            cols[0].metric("Ativo padrão", str(prefs.get("default_symbol", "—")))
+            cols[1].metric("Período padrão", str(prefs.get("default_timeframe", "—")))
+            cols[2].metric("Tema", str(prefs.get("chart_theme", "—")))
+            cols[3].metric("Modo selecionado", "DEMO · REAL bloqueado")
+
+            with st.expander("Preferências gerais e de análise", expanded=True):
+                with st.form("safe_general_preferences_form"):
+                    default_symbol = st.text_input("Ativo padrão", value=str(prefs.get("default_symbol", "EURUSD")), max_chars=32)
+                    timeframe_options = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"]
+                    current_timeframe = str(prefs.get("default_timeframe", "5m"))
+                    default_timeframe = st.selectbox("Período padrão", timeframe_options, index=timeframe_options.index(current_timeframe) if current_timeframe in timeframe_options else 1)
+                    theme_options = ["DARK", "LIGHT", "SYSTEM"]
+                    current_theme = str(prefs.get("chart_theme", "DARK")).upper()
+                    chart_theme = st.selectbox("Tema do gráfico", theme_options, index=theme_options.index(current_theme) if current_theme in theme_options else 0)
+                    st.info("Proteções obrigatórias: candle fechado e filtros de confirmação permanecem ativos e não podem ser desligados por esta tela.")
+                    show_technical_details = st.checkbox("Mostrar detalhes técnicos por padrão", value=prefs.get("show_technical_details_by_default") is True)
+                    general_submit = st.form_submit_button("Salvar preferências gerais")
+                if general_submit:
+                    if not default_symbol.strip():
+                        st.error("Informe um ativo padrão.")
+                    else:
+                        try:
+                            api("/api/preferences", "POST", {
+                                "default_symbol": default_symbol.strip().upper(),
+                                "default_timeframe": default_timeframe,
+                                "chart_theme": chart_theme,
+                                "show_technical_details_by_default": show_technical_details,
+                            })
+                            st.success("Preferências gerais salvas.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Não foi possível salvar as preferências gerais: {exc}")
+
+            with st.expander("Aparência dos candles"):
+                with st.form("safe_candle_preferences_form"):
+                    style_options = ["CANDLESTICK", "HOLLOW", "OHLC", "LINE"]
+                    current_style = str(candle.get("style", "CANDLESTICK")).upper()
+                    candle_style = st.selectbox("Estilo", style_options, index=style_options.index(current_style) if current_style in style_options else 0)
+                    color_options = ["DEFAULT", "CUSTOM", "MONOCHROME"]
+                    current_color_mode = str(candle.get("color_mode", "DEFAULT")).upper()
+                    candle_color_mode = st.selectbox("Modo de cores", color_options, index=color_options.index(current_color_mode) if current_color_mode in color_options else 0)
+                    bullish_color = st.text_input("Cor de alta (HEX)", value=str(candle.get("bullish_color", "#58d68d")), max_chars=7)
+                    bearish_color = st.text_input("Cor de baixa (HEX)", value=str(candle.get("bearish_color", "#ff7676")), max_chars=7)
+                    wick_color = st.text_input("Cor do pavio (HEX)", value=str(candle.get("wick_color", "#aab5c8")), max_chars=7)
+                    border_enabled = st.checkbox("Exibir bordas", value=candle.get("border_enabled") is not False)
+                    show_wicks = st.checkbox("Exibir pavios", value=candle.get("show_wicks") is not False)
+                    show_bodies = st.checkbox("Exibir corpos", value=candle.get("show_bodies") is not False)
+                    candle_submit = st.form_submit_button("Salvar aparência dos candles")
+                if candle_submit:
+                    colors = (bullish_color, bearish_color, wick_color)
+                    if any(len(color) not in (4, 7) or not color.startswith("#") for color in colors):
+                        st.error("Use cores HEX válidas, como #58d68d.")
+                    else:
+                        try:
+                            api("/api/preferences/candles", "POST", {
+                                "style": candle_style,
+                                "color_mode": candle_color_mode,
+                                "bullish_color": bullish_color,
+                                "bearish_color": bearish_color,
+                                "wick_color": wick_color,
+                                "border_enabled": border_enabled,
+                                "show_wicks": show_wicks,
+                                "show_bodies": show_bodies,
+                            })
+                            st.success("Aparência dos candles salva.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Não foi possível salvar a aparência dos candles: {exc}")
+
+            with st.expander("Preferências de notificações"):
+                notification_labels = {
+                    "important_enabled": "Alertas importantes",
+                    "system_updates_enabled": "Atualizações do sistema",
+                    "security_enabled": "Segurança",
+                    "market_enabled": "Mercado",
+                    "risk_enabled": "Risco",
+                    "connection_enabled": "Conexões",
+                    "execution_enabled": "Execução",
+                    "learning_enabled": "Aprendizado",
+                    "recovery_enabled": "Recuperação",
+                    "info_enabled": "Informativos",
+                }
+                with st.form("safe_notification_preferences_form"):
+                    notification_values = {
+                        key: st.checkbox(label, value=notifications.get(key) is True, key="notification_pref_" + key)
+                        for key, label in notification_labels.items()
+                    }
+                    st.checkbox("Alertas críticos (sempre ativos)", value=True, disabled=True)
+                    notification_submit = st.form_submit_button("Salvar notificações")
+                if notification_submit:
+                    try:
+                        api("/api/preferences/notifications", "POST", notification_values)
+                        st.success("Preferências de notificações salvas. Alertas críticos continuam ativos.")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"Não foi possível salvar as notificações: {exc}")
+
+            st.markdown("#### Limites de autorização")
+            safety_cols = st.columns(3)
+            safety_cols[0].metric("Operação autônoma", "DESABILITADA")
+            safety_cols[1].metric("Execução REAL", "DESABILITADA")
+            safety_cols[2].metric("Execução permitida", "NÃO")
+            st.caption("Estas configurações não alteram limites de risco, não ativam autonomia, não enviam ordens e não liberam REAL.")
+            return
+
+        if module_name == "Escola / Tutorial / Onboarding":
+            guide = data.get("guide", {}) if isinstance(data, dict) else {}
+            steps = guide.get("steps", []) if isinstance(guide, dict) else []
+            steps = [step for step in steps if isinstance(step, dict)] if isinstance(steps, list) else []
+            st.caption("Roteiro guiado para localizar e compreender os módulos do Ecossistema. A marcação de etapas fica apenas nesta sessão do Streamlit.")
+            st.subheader(str(guide.get("title") or "Primeiros passos no Ecossistema"))
+            if not steps:
+                st.warning("O roteiro de onboarding não está disponível no runtime.")
+                st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
+                return
+            completed = 0
+            for index, step in enumerate(steps, start=1):
+                step_id = str(step.get("step_id") or f"step-{index}")
+                title = str(step.get("title") or f"Etapa {index}")
+                purpose = str(step.get("purpose") or "Objetivo não informado.")
+                location = str(step.get("location") or "—").replace("_", " ").title()
+                with st.expander(f"{index}. {title} · {location}", expanded=(index == 1)):
+                    st.write(purpose)
+                    st.caption("Próximo passo: " + str(step.get("action_hint") or "Consulte o módulo correspondente."))
+                    if step.get("technical_details_hidden") is True:
+                        st.caption("Detalhes técnicos ficam ocultos nesta orientação inicial.")
+                    done = st.checkbox("Marcar etapa como revisada", key=f"onboarding_reviewed_{step_id}")
+                    if done:
+                        completed += 1
+            st.progress(completed / len(steps))
+            st.caption(f"Etapas revisadas nesta sessão: {completed}/{len(steps)}")
+            st.success(str(guide.get("completion_message") or "Roteiro concluído.")) if completed == len(steps) else st.info("Você pode continuar o roteiro em qualquer ordem; a marcação não altera o runtime.")
+            if guide.get("execution_authorized") is not False:
+                st.error("O roteiro não confirmou explicitamente o bloqueio de execução. Não use esta tela como autorização.")
+            else:
+                st.caption("Este roteiro é educativo. Execução autorizada: NÃO · REAL: DESABILITADO")
+            return
+
+        if module_name == "Memória":
+            records = data.get("records", []) if isinstance(data, dict) else []
+            records = [item for item in records if isinstance(item, dict)] if isinstance(records, list) else []
+            st.caption("Histórico de decisões de análise mais recentes. Resultados anotados são registros de estudo manual.")
+            outcomes = [str(item.get("outcome") or "SEM RESULTADO").upper() for item in records]
+            cols = st.columns(4)
+            cols[0].metric("Registros carregados", len(records))
+            cols[1].metric("Vitórias anotadas", sum(value == "WIN" for value in outcomes))
+            cols[2].metric("Derrotas anotadas", sum(value == "LOSS" for value in outcomes))
+            cols[3].metric("Sem resultado", sum(value == "SEM RESULTADO" for value in outcomes))
+            if not records:
+                st.info("Nenhum registro de decisão disponível neste runtime.")
+                st.caption("Histórico somente leitura · execução permitida: NÃO · REAL: DESABILITADO")
+                return
+            result_values = sorted(set(outcomes))
+            signal_values = sorted({str(item.get("signal") or "—").upper() for item in records})
+            filter_cols = st.columns(2)
+            selected_result = filter_cols[0].selectbox("Filtrar resultado anotado", ["Todos"] + result_values, key="memory_result_filter")
+            selected_signal = filter_cols[1].selectbox("Filtrar sinal", ["Todos"] + signal_values, key="memory_signal_filter")
+            filtered = [
+                item for item in records
+                if (selected_result == "Todos" or str(item.get("outcome") or "SEM RESULTADO").upper() == selected_result)
+                and (selected_signal == "Todos" or str(item.get("signal") or "—").upper() == selected_signal)
+            ]
+            rows = [{
+                "Data/hora": item.get("created_at", "—"),
+                "Ativo": item.get("symbol") or "—",
+                "Timeframe": item.get("timeframe") or "—",
+                "Sinal": item.get("signal") or "—",
+                "Pontuação": item.get("score", "—"),
+                "Confirmado para análise": "SIM" if item.get("confirmed") is True else "NÃO",
+                "Resultado anotado": item.get("outcome") or "SEM RESULTADO",
+                "Origem do resultado": item.get("outcome_source") or "—",
+                "Motivo": item.get("reason") or "—",
+            } for item in filtered]
+            st.caption(f"Exibindo {len(filtered)} de {len(records)} registros carregados; a API fornece até 50 decisões recentes nesta tela.")
+            if rows:
+                st.dataframe(rows, use_container_width=True, hide_index=True)
+            else:
+                st.info("Nenhum registro corresponde aos filtros selecionados.")
+
+            pending_outcome_records = [
+                item for item in records
+                if isinstance(item.get("decision_id"), str)
+                and bool(item.get("decision_id", "").strip())
+                and item.get("confirmed") is True
+                and str(item.get("signal") or "").upper() in {"COMPRA", "VENDA"}
+                and not str(item.get("outcome") or "").strip()
+            ]
+            st.markdown("#### Registrar resultado de estudo · WIN/LOSS")
+            st.caption(
+                "Registre manualmente o desfecho de uma decisão confirmada de COMPRA ou VENDA. "
+                "Esta anotação não consulta a corretora, não comprova lucro/prejuízo e não altera ordens."
+            )
+            if pending_outcome_records:
+                outcome_labels = {
+                    str(item["decision_id"]): (
+                        f"{item.get('symbol') or 'Ativo não informado'} · "
+                        f"{item.get('timeframe') or 'Período não informado'} · "
+                        f"{str(item.get('signal') or '').upper()} · "
+                        f"score {item.get('score', '—')} · {item.get('created_at') or 'data não informada'}"
+                    )
+                    for item in pending_outcome_records
+                }
+                with st.form("memory_manual_outcome_form"):
+                    selected_decision_id = st.selectbox(
+                        "Decisão confirmada sem resultado",
+                        options=list(outcome_labels),
+                        format_func=lambda value: outcome_labels.get(value, value),
+                    )
+                    selected_outcome = st.selectbox(
+                        "Resultado observado · anotação manual",
+                        ["WIN", "LOSS", "DRAW", "OPEN", "VOID"],
+                    )
+                    confirm_manual_outcome = st.checkbox(
+                        "Confirmo que este resultado é uma anotação manual de estudo, não uma confirmação independente da corretora."
+                    )
+                    outcome_submit = st.form_submit_button(
+                        "Salvar resultado manual",
+                        disabled=not confirm_manual_outcome,
+                    )
+                if outcome_submit and confirm_manual_outcome:
+                    try:
+                        saved_outcome = api(
+                            "/api/outcome",
+                            "POST",
+                            {
+                                "decision_id": selected_decision_id,
+                                "outcome": selected_outcome,
+                            },
+                        )
+                        if (
+                            saved_outcome.get("decision_id") == selected_decision_id
+                            and saved_outcome.get("outcome") == selected_outcome
+                            and saved_outcome.get("outcome_source") == "MANUAL_STUDY"
+                        ):
+                            st.success("Resultado manual registrado no histórico de decisões.")
+                            st.rerun()
+                        else:
+                            st.warning("O runtime não confirmou o registro. Confira o histórico antes de tentar novamente.")
+                    except Exception:
+                        st.error("Não foi possível registrar o resultado manual. O estado do histórico não foi confirmado.")
+            else:
+                st.info("Não há decisões direcionais confirmadas sem resultado manual nos 50 registros carregados.")
+            st.caption("WIN/LOSS/DRAW/OPEN/VOID são anotações manuais de estudo; não são resultados financeiros confirmados pela corretora.")
+            st.caption("Somente leitura · execução permitida: NÃO · REAL: DESABILITADO")
+            return
+
+        if module_name == "Motor de Decisão":
+            st.caption("Leitura da última análise calculada pelo runtime. Esta tela não solicita uma nova análise nem envia ordens.")
+            if data.get("available") is not True:
+                st.info("Ainda não existe uma análise recente disponível neste runtime. Abra Análise de Mercado e solicite uma análise em DEMO/SIMULAÇÃO.")
+                st.caption("REAL: DESABILITADO · execução permitida: NÃO")
+                return
+            latest = data.get("analysis") or {}
+            details = latest.get("analysis") or {}
+            cycle = latest.get("analysis_cycle") or {}
+            signal = str(latest.get("signal") or "AGUARDAR").upper()
+            candidate = str(latest.get("candidate_signal") or details.get("candidate_signal") or "—").upper()
+            score = latest.get("score", details.get("score", "—"))
+            cols = st.columns(4)
+            cols[0].metric("Decisão efetiva", signal)
+            cols[1].metric("Pontuação", f"{score}/100" if score != "—" else "—")
+            cols[2].metric("Ativo", details.get("symbol", cycle.get("symbol", "—")))
+            cols[3].metric("Timeframe", details.get("timeframe", cycle.get("timeframe", "—")))
+            st.write("Justificativa: " + str(latest.get("reason") or details.get("reason") or "Não informada."))
+            st.caption("Sinal candidato do motor: " + candidate + " · candidato não significa autorização de operação.")
+            st.caption("Horário: " + str(cycle.get("timestamp") or "não informado"))
+            st.caption("Somente leitura · execução permitida: NÃO · REAL: DESABILITADO")
+            return
+
+        if module_name == "Operação":
+            st.markdown("#### Estado operacional · última consulta")
+            st.caption("Os indicadores abaixo são consultados ao abrir esta tela ou ao clicar em Atualizar; não representam transmissão contínua.")
+            if st.button("Atualizar painel de operação", key="refresh_operation_overview"):
+                for cache_key in ("operation_health", "operation_connections", "operation_risk", "latest_operation_analysis"):
+                    st.session_state.pop(cache_key, None)
+            read_models = (
+                ("operation_health", "/api/health"),
+                ("operation_connections", "/api/connections"),
+                ("operation_risk", "/api/risk"),
+                ("latest_operation_analysis", "/api/runtime/analysis/latest"),
+            )
+            for cache_key, route in read_models:
+                if cache_key not in st.session_state:
+                    try:
+                        st.session_state[cache_key] = api(route)
+                        st.session_state[cache_key + "_error"] = ""
+                    except Exception as exc:
+                        st.session_state[cache_key] = None
+                        st.session_state[cache_key + "_error"] = str(exc)
+            health = st.session_state.get("operation_health") or {}
+            connections = st.session_state.get("operation_connections") or {}
+            risk = st.session_state.get("operation_risk") or {}
+            latest_payload = st.session_state.get("latest_operation_analysis")
+            observability = health.get("operational_observability") or {}
+            market_data = observability.get("market_data") or {}
+            execution = observability.get("execution") or {}
+            recovery = observability.get("recovery") or {}
+            reconciliation = observability.get("reconciliation") or {}
+            kill_switch = observability.get("kill_switch") or {}
+            runtime_health = observability.get("runtime_health") or {}
+            status_cols = st.columns(4)
+            status_cols[0].metric("Modo", health.get("mode", "—"))
+            status_cols[1].metric("Saúde geral", health.get("health", "—"))
+            status_cols[2].metric("MT5 DEMO", health.get("mt5_demo", "—"))
+            status_cols[3].metric("Execução REAL", health.get("real", "DESABILITADO"))
+            st.caption("Execução permitida: NÃO · este painel apresenta telemetria; não envia ordens.")
+            if not health:
+                st.warning("Estado do runtime indisponível: " + str(st.session_state.get("operation_health_error") or "sem resposta"))
+            st.markdown("#### Segurança e continuidade")
+            safety_cols = st.columns(4)
+            safety_cols[0].metric("Kill Switch", "ATIVO" if kill_switch.get("enabled") is True else str(kill_switch.get("state") or "DESCONHECIDO"))
+            safety_cols[1].metric("Recuperação", recovery.get("state", "DESCONHECIDA"))
+            safety_cols[2].metric("Reconciliação", reconciliation.get("state", "DESCONHECIDA"))
+            safety_cols[3].metric("Saúde operacional", runtime_health.get("state", "DESCONHECIDA"))
+            if kill_switch.get("reason"):
+                st.warning("Motivo do Kill Switch: " + str(kill_switch["reason"]))
+            if recovery.get("message"):
+                st.caption("Recuperação: " + str(recovery["message"]))
+            pending_ids = reconciliation.get("pending_request_ids") or []
+            unknown_ids = reconciliation.get("unknown_request_ids") or []
+            if pending_ids or unknown_ids:
+                st.warning(f"Reconciliação necessária · {len(pending_ids)} solicitação(ões) pendente(s) · {len(unknown_ids)} estado(s) desconhecido(s). Não retome operações sem reconciliar.")
+            st.markdown("#### Mercado e conexão")
+            market_cols = st.columns(4)
+            market_cols[0].metric("Dados de mercado", market_data.get("health", "DESCONHECIDOS"))
+            market_cols[1].metric("Ativo observado", market_data.get("symbol") or "—")
+            market_cols[2].metric("Timeframe", market_data.get("timeframe") or "—")
+            market_cols[3].metric("Candles", market_data.get("candle_count") if market_data.get("candle_count") is not None else "—")
+            st.caption(str(market_data.get("message") or "Estado reportado pelo runtime; não é confirmação independente da corretora."))
+            if market_data.get("stale") is True or market_data.get("gap_count", 0):
+                st.warning(f"Dados podem estar desatualizados ou com lacunas · lacunas: {market_data.get('gap_count', '—')}")
+            connection_rows = [{"Componente": key, "Estado": value} for key, value in connections.items() if isinstance(value, (str, int, float, bool))]
+            if connection_rows:
+                st.dataframe(connection_rows, use_container_width=True, hide_index=True)
+            st.markdown("#### Limites de risco configurados")
+            configured_limits = risk.get("configured_limits") or {}
+            risk_cols = st.columns(3)
+            risk_cols[0].metric("Limite de perda diária", money(configured_limits.get("daily_loss_limit")))
+            risk_cols[1].metric("Máximo de operações", configured_limits.get("max_operations", "—"))
+            risk_cols[2].metric("Perdas consecutivas", configured_limits.get("max_consecutive_losses", "—"))
+            st.caption("São parâmetros configurados, não P&L atual nem prova de que todos os limites foram aplicados a uma execução.")
+            if risk.get("allowed") is not True:
+                st.warning("Barreira de risco não liberou a operação: " + str(risk.get("reason") or "motivo não informado"))
+            elif risk:
+                st.info("A avaliação da barreira de risco está positiva, mas isso não autoriza execução neste painel.")
+            st.markdown("#### Último sinal recebido")
+            latest_error = st.session_state.get("latest_operation_analysis_error", "")
+            if latest_error:
+                st.warning("Último sinal indisponível: " + latest_error)
+            elif not isinstance(latest_payload, dict) or latest_payload.get("available") is not True:
+                st.info("Ainda não há análise disponível neste runtime. Abra Análise de Mercado e solicite uma análise em DEMO/SIMULAÇÃO.")
+            else:
+                latest = latest_payload.get("analysis") or {}
+                details = latest.get("analysis") or {}
+                cycle = latest.get("analysis_cycle") or {}
+                signal = str(latest.get("signal") or "AGUARDAR").upper()
+                score = latest.get("score", details.get("score", "—"))
+                signal_cols = st.columns(4)
+                signal_cols[0].metric("Sinal", signal)
+                signal_cols[1].metric("Pontuação", f"{score}/100" if score != "—" else "—")
+                signal_cols[2].metric("Ativo", details.get("symbol", cycle.get("symbol", "—")))
+                signal_cols[3].metric("Período", details.get("timeframe", cycle.get("timeframe", "—")))
+                st.caption("Horário da análise: " + str(cycle.get("timestamp") or "não informado"))
+                st.write(latest.get("reason") or details.get("reason") or "Sem justificativa fornecida pelo motor.")
+                st.caption("Sinal informativo · não é ordem, recomendação garantida ou autorização de execução.")
+            for cache_key, _route in read_models:
+                error = st.session_state.get(cache_key + "_error", "")
+                if error:
+                    st.caption(f"Consulta {cache_key.replace('operation_', '').replace('_', ' ')}: {error}")
+        if module_name == "Notificações":
+            try:
+                all_payload = api("/api/notifications/all")
+                all_items = all_payload.get("items", []) if isinstance(all_payload, dict) else []
+            except Exception as exc:
+                all_items = []
+                st.warning(f"Histórico completo indisponível: {exc}")
+            items = data.get("items", [])
+            summary_cols = st.columns(3)
+            summary_cols[0].metric("Alertas ativos", data.get("count", len(items)))
+            summary_cols[1].metric("Críticos ativos", data.get("critical_count", 0))
+            summary_cols[2].metric("Exigem atenção", data.get("unread", sum(1 for item in items if item.get("requires_attention"))))
+            if not all_items and not items:
+                st.success("Nenhuma notificação registrada ou ativa.")
+                return
+            st.markdown("#### Histórico de notificações")
+            if all_items:
+                severity_options = ["TODAS"] + sorted({str(item.get("severity", "INFO")).upper() for item in all_items})
+                selected_severity = st.selectbox("Filtrar gravidade", severity_options, key="notification_history_severity")
+                visible_items = [
+                    item for item in all_items
+                    if selected_severity == "TODAS" or str(item.get("severity", "INFO")).upper() == selected_severity
+                ]
+                display_rows = []
+                for item in visible_items:
+                    display_rows.append({
+                        "Horário": item.get("created_at") or item.get("timestamp") or "—",
+                        "Gravidade": str(item.get("severity", "INFO")).upper(),
+                        "Categoria": str(item.get("kind", "SYSTEM")).upper(),
+                        "Título": item.get("title", "Notificação"),
+                        "Mensagem": item.get("message", ""),
+                        "Atenção necessária": bool(item.get("requires_attention", False)),
+                        "Bloqueante": bool(item.get("blocking", False)),
+                    })
+                st.dataframe(display_rows, use_container_width=True, hide_index=True)
+                notification_csv = io.StringIO(newline="")
+                notification_writer = csv.DictWriter(
+                    notification_csv,
+                    fieldnames=list(display_rows[0].keys()) if display_rows else [
+                        "Horário", "Gravidade", "Categoria", "Título", "Mensagem",
+                        "Atenção necessária", "Bloqueante",
+                    ],
+                    delimiter=";",
+                )
+                notification_writer.writeheader()
+                notification_writer.writerows(display_rows)
+                st.download_button(
+                    "Exportar notificações filtradas · CSV",
+                    data="\ufeff" + notification_csv.getvalue(),
+                    file_name="controlador-trading-notificacoes.csv",
+                    mime="text/csv; charset=utf-8",
+                    key="notification_history_csv_download",
+                )
+                st.caption(f"Exibindo {len(display_rows)} de {len(all_items)} notificação(ões) retornada(s) pelo runtime.")
+            else:
+                st.info("Não foi possível obter o histórico completo; abaixo estão os alertas ativos disponíveis.")
+                for item in items:
+                    severity = str(item.get("severity", "INFO")).upper()
+                    message = f"{item.get('title', 'Notificação')} — {item.get('message', '')}"
+                    if severity == "CRITICAL":
+                        st.error(message)
+                    elif severity == "IMPORTANT":
+                        st.warning(message)
+                    else:
+                        st.info(message)
+            st.caption("Alertas críticos permanecem ativos independentemente das preferências. Histórico somente leitura; esta tela não marca, apaga ou altera notificações.")
+            st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
+            return
+
+        if module_name == "Gestão de Risco":
+            limits = data.get("configured_limits", {}) if isinstance(data, dict) else {}
+            allowed = data.get("allowed") is True
+            st.caption("Painel de limites configurados pelo Risk Manager. Estes valores não são o P&L atual da conta nem uma autorização de ordem.")
+            cols = st.columns(3)
+            cols[0].metric("Limite de perda diária", str(limits.get("daily_loss_limit", "—")))
+            cols[1].metric("Máximo de operações", str(limits.get("max_operations", "—")))
+            cols[2].metric("Máximo de perdas consecutivas", str(limits.get("max_consecutive_losses", "—")))
+            if allowed:
+                st.success("Gate de risco reportado: LIBERADO")
+            else:
+                st.error("Gate de risco reportado: BLOQUEADO")
+            st.markdown("#### Motivo informado pelo motor")
+            st.write(str(data.get("reason") or "O motor não forneceu uma justificativa."))
+            st.markdown("#### Dados externos")
+            st.metric("Provedor de notícias", str(data.get("news_provider", "NÃO CONFIGURADO")))
+            if str(data.get("news_provider", "")).upper() == "UNCONFIGURED":
+                st.info("O provedor de notícias não está configurado; não trate esta tela como confirmação de filtro de notícias em tempo real.")
+            st.caption("Leitura somente informativa · não altera limites, não libera execução e não envia ordens.")
+            st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
+            return
+
+        if module_name == "Auditoria":
+            events = data.get("events", [])
+            persistence = str(data.get("persistence") or "UNKNOWN").upper()
+            cols = st.columns(4)
+            cols[0].metric("Eventos retidos", data.get("count", len(events)))
+            cols[1].metric("Eventos exibidos", data.get("returned", len(events)))
+            cols[2].metric("Limite de retenção", data.get("retention_limit", "—"))
+            cols[3].metric("Persistência", {
+                "DURABLE": "PERSISTENTE",
+                "NOT_CONFIGURED": "NÃO CONFIGURADA",
+                "WRITE_FAILED": "FALHA DE GRAVAÇÃO",
+                "READ_FAILED": "FALHA DE LEITURA",
+                "SCHEMA_INVALID": "ESQUEMA INVÁLIDO",
+                "UNAVAILABLE": "INDISPONÍVEL",
+            }.get(persistence, "NÃO CONFIRMADA"))
+            if persistence not in {"DURABLE", "NOT_CONFIGURED"}:
+                st.error("A trilha de auditoria não confirmou persistência no SQLite. O histórico em memória pode não sobreviver a uma reinicialização.")
+            elif persistence == "NOT_CONFIGURED":
+                st.warning("Persistência SQLite não configurada. O histórico pode existir somente em memória.")
+            if events:
+                st.dataframe(events, use_container_width=True, hide_index=True)
+            else:
+                st.info("Nenhum evento de segurança foi registrado nesta instância.")
+            st.caption("Registro de segurança somente leitura. Hashes de cliente, endereços IP, credenciais e corpos de requisição não são exibidos.")
+            st.caption("A trilha é limitada à retenção configurada no runtime; não substitui armazenamento centralizado nem auditoria externa.")
+            st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
+            return
+
+        if module_name == "Ambiente MT5 DEMO":
+            st.markdown("#### Ambiente de operação conectado")
+            st.metric("IC Markets · MT5 DEMO", str(data.get("ic_markets_mt5_demo", "NÃO CONFIRMADO")))
+            cols = st.columns(2)
+            cols[0].metric("Núcleo de decisão", str(data.get("decision_core", "NÃO CONFIRMADO")))
+            cols[1].metric("Gateway de execução", str(data.get("execution_gateway", "NÃO CONFIRMADO")))
+            st.metric("Execução REAL", str(data.get("real", "DESABILITADO")))
+            st.caption("Esta tela informa o estado reportado pelo runtime. Ela não confirma que o terminal MT5 esteja aberto neste computador nem que o EA esteja instalado.")
+            st.caption("Modo permitido: DEMO/SIMULAÇÃO · Execução automática: NÃO")
+            st.markdown("#### Saídas temporizadas DEMO")
+            try:
+                timed_payload = api("/api/runtime/timed-exits")
+                timed_items = timed_payload.get("timed_exits", [])
+                if not isinstance(timed_items, list):
+                    timed_items = []
+                if not timed_items:
+                    st.caption("Nenhuma saída temporizada registrada.")
+                for timed_item in timed_items:
+                    if not isinstance(timed_item, dict):
+                        continue
+                    timed_state = str(timed_item.get("state") or "UNKNOWN").upper()
+                    st.write(f"**Ticket {timed_item.get('external_id', '—')} · {timed_state}**")
+                    st.caption(f"Prazo alvo: {timed_item.get('due_at', '—')} · próxima tentativa: {timed_item.get('next_attempt_at', '—')} · tentativas: {timed_item.get('attempts', 0)}")
+                    if timed_item.get("message"):
+                        st.caption(str(timed_item["message"]))
+                st.caption("Horários best-effort: indisponibilidade do MT5, rede ou runtime pode atrasar o fechamento.")
+            except Exception as exc:
+                st.warning(f"Status de saídas temporizadas indisponível: {exc}")
+            st.markdown("#### Recuperação de posições DEMO")
+            st.caption("A lista é recuperada do ledger persistente. A consulta ao MT5 é somente leitura; o fechamento exige confirmação explícita e só fica disponível depois que o MT5 confirmar que a posição continua aberta.")
+            try:
+                recovery_payload = api("/api/runtime/positions/recovery")
+                recovery_items = recovery_payload.get("positions", [])
+                if not isinstance(recovery_items, list):
+                    recovery_items = []
+                st.metric("Ciclos pendentes de recuperação", len(recovery_items))
+                if not recovery_items:
+                    st.success("Nenhum ciclo DEMO pendente de recuperação foi encontrado no ledger.")
+                for index, item in enumerate(recovery_items):
+                    if not isinstance(item, dict):
+                        continue
+                    cycle_id = item.get("cycle_id")
+                    external_id = item.get("external_id")
+                    state = str(item.get("recovery_state") or "UNKNOWN").upper()
+                    if not isinstance(cycle_id, str) or not cycle_id.strip() or not isinstance(external_id, str) or not external_id.strip():
+                        st.error("Registro de recuperação incompleto. Nenhuma ação foi habilitada.")
+                        continue
+                    with st.expander(f"Ticket {external_id} · {state}", expanded=(index == 0)):
+                        detail_cols = st.columns(2)
+                        detail_cols[0].write("**Ciclo**")
+                        detail_cols[0].code(cycle_id)
+                        detail_cols[1].write("**Ticket MT5**")
+                        detail_cols[1].code(external_id)
+                        st.caption("A listagem não consulta o broker e não afirma que a posição esteja aberta.")
+                        if state == "BLOCKED_ACCOUNT_IDENTITY":
+                            st.error("Fechamento bloqueado: a identidade da conta original não pode ser comprovada.")
+                        elif state == "BROKER_CONFIRMED_OPEN":
+                            st.success("MT5 confirmou anteriormente que esta posição continua aberta.")
+                        elif state == "RECONCILIATION_REQUIRED":
+                            if st.button("Consultar posição no MT5 · somente leitura", key=f"reconcile_demo_position_{cycle_id}"):
+                                try:
+                                    observed = api("/api/runtime/close/reconcile", "POST", {"cycle_id": cycle_id, "external_id": external_id}).get("close_reconciliation", {})
+                                    observed_state = str(observed.get("state") or "UNKNOWN").upper()
+                                    if observed_state == "CLOSED":
+                                        st.success("MT5 confirmou: posição encerrada.")
+                                    elif observed_state == "OPEN":
+                                        st.success("MT5 confirmou: posição ainda aberta. O fechamento explícito ficará disponível após atualizar a lista.")
+                                    else:
+                                        st.warning("MT5 não conseguiu confirmar o estado. Nenhum novo fechamento foi enviado.")
+                                    st.rerun()
+                                except Exception as exc:
+                                    st.error(f"Reconciliação não concluída: {exc}")
+                        elif state != "BROKER_CONFIRMED_OPEN":
+                            st.warning(f"Estado de recuperação: {state}. Ação de fechamento indisponível.")
+                        if state == "BROKER_CONFIRMED_OPEN":
+                            with st.form(f"close_demo_position_form_{cycle_id}"):
+                                confirmed = st.checkbox("Confirmo que desejo solicitar o fechamento desta posição DEMO específica.", key=f"confirm_close_demo_{cycle_id}")
+                                submitted = st.form_submit_button("Fechar esta posição DEMO", disabled=not confirmed)
+                            if submitted:
+                                try:
+                                    closed = api("/api/runtime/close", "POST", {"cycle_id": cycle_id, "external_id": external_id})
+                                    if closed.get("closed") is True and closed.get("close_state") == "CLOSED":
+                                        st.success("Fechamento confirmado pelo runtime.")
+                                    else:
+                                        st.warning("Fechamento inconclusivo. A posição permanece no inventário para reconciliação.")
+                                    st.rerun()
+                                except Exception as exc:
+                                    st.error(f"Fechamento não confirmado: {exc}")
+            except Exception as exc:
+                st.warning(f"Inventário de recuperação indisponível: {exc}")
+            st.caption("Nenhuma posição é fechada automaticamente. REAL permanece DESABILITADO.")
+            return
+
+        if module_name == "Conexões":
+            st.markdown("#### Estado dos serviços e integrações")
+            components = [
+                ("Núcleo de decisão", data.get("decision_core", "NÃO CONFIRMADO")),
+                ("Gateway de execução", data.get("execution_gateway", "NÃO CONFIRMADO")),
+                ("IC Markets · MT5 DEMO", data.get("ic_markets_mt5_demo", "NÃO CONFIRMADO")),
+                ("cTrader", data.get("cTrader", "NÃO CONFIGURADO")),
+                ("SaaS", data.get("saas", "NÃO CONFIRMADO")),
+                ("REAL", data.get("real", "DESABILITADO")),
+            ]
+            for label, state in components:
+                st.write(f"**{label}:** {state}")
+            st.caption("Estado de disponibilidade reportado pelo runtime; não equivale a teste de conectividade de cada corretora.")
+            st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
+            return
+
         if module_name == "Multi-Broker":
             st.markdown("#### Disponibilidade multi-corretora")
             st.metric("Integração MT5 DEMO", str(data.get("ic_markets_mt5_demo", "NÃO CONFIRMADO")))
