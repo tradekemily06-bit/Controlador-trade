@@ -55,8 +55,6 @@ def test_read_only_windows_validator_covers_deployment_surface():
     assert "$payload.execution.real" not in text
     assert "Register-ScheduledTask" not in text
     assert "Start-Process" not in text
-    assert text.count("function Get-LocalJson") == 1
-    assert text.count("function Add-Check") == 1
     assert "mt5.initialize(path=p)" in text
     assert "$Mt5TerminalPath | Out-Null" in text
     assert "Invoke-WebRequest -UseBasicParsing -Method Post" not in text
@@ -341,6 +339,8 @@ def test_fiscal_assistant_runtime_validator_is_read_only_and_checks_safe_contrac
     assert "Invoke-WebRequest -UseBasicParsing -Method Post" not in text
     assert "/api/assistant/chat" not in text
     assert "Start-Process" not in text
+    assert text.count("function Get-LocalJson") == 1
+    assert text.count("function Add-Check") == 1
 
 def test_controller_restart_budget_limits_rate_not_runtime_uptime():
     text = _read("deployment/start_controlador_runtime.ps1")
