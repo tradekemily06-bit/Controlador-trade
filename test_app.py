@@ -398,10 +398,10 @@ def test_mt5_position_recovery_api_is_authenticated_and_read_only(monkeypatch):
         "broker_query_performed": False,
         "order_sent": False,
     }]
-    monkeypatch.setattr(app, "_authorize_remote_mutation", lambda environ: (True, "trusted"))
+    monkeypatch.setattr(app, "_authorize_local_runtime", lambda environ: (True, "trusted"))
     monkeypatch.setattr(app.SERVICE, "list_mt5_position_recovery", lambda: expected)
 
-    status, data = call_app("/api/runtime/positions/recovery")
+    status, data = call_app("/api/runtime/positions/recovery/local")
 
     assert status.startswith("200")
     assert data["positions"] == expected
