@@ -458,9 +458,7 @@ class FiscalPendingQueue:
                 "SELECT 1 FROM fiscal_reserve_pending_foreign WHERE owner_id = ? AND pending_id = ?",
                 (owner_id, pending_id),
             ).fetchone():
-                # A missing or foreign-owned record has the same empty read
-                # result. Do not disclose whether another owner's ID exists.
-                return []
+                raise ValueError("pendência não encontrada")
             rows = db.execute(
                 "SELECT * FROM fiscal_pending_reviews WHERE owner_id = ? AND pending_id = ? ORDER BY created_at DESC, review_id DESC",
                 (owner_id, pending_id),
