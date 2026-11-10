@@ -153,3 +153,9 @@ def test_backup_refuses_empty_runtime_directory(tmp_path: Path):
     with pytest.raises(ValueError, match="no portable state files"):
         create_backup(runtime, tmp_path / "empty.zip")
     assert not (tmp_path / "empty.zip").exists()
+
+
+
+def test_private_runtime_backup_directory_is_git_ignored():
+    ignore_rules = (Path(__file__).resolve().parents[1] / ".gitignore").read_text(encoding="utf-8")
+    assert ".runtime-backups/" in ignore_rules.splitlines()
