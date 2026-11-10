@@ -55,8 +55,9 @@ def test_summary_periods_use_inclusive_local_calendar_dates_and_exclude_prior_pe
     assert periods["month"]["entries"] == 5
     assert periods["month"]["realized_result_brl"] == 300.0
     assert periods["year"]["start"] == "2026-01-01"
-    assert periods["year"]["entries"] == 6
-    assert periods["year"]["realized_result_brl"] == 320.0
+    # The year includes all seven 2026 records, including both Nov 9 entries.
+    assert periods["year"]["entries"] == 7
+    assert periods["year"]["realized_result_brl"] == 350.0
 
 
 def test_summary_periods_handle_leap_day_and_year_end_without_date_overflow(tmp_path, monkeypatch):
