@@ -1,3 +1,4 @@
+[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
 param(
     [string]$ProjectRoot = (Split-Path -Parent $PSScriptRoot),
     [string]$PythonExe = 'python',
@@ -182,7 +183,6 @@ $dataPath = Resolve-Mt5DataPath -RequestedPath $Mt5DataPath -TerminalPath $Mt5Te
 $terminalInstallPath = Split-Path -Parent $Mt5TerminalPath
 $destinationDir = Join-Path $dataPath 'MQL5\Experts\ControladorTrading'
 $destination = Join-Path $destinationDir 'Controlador-Trading.mq5'
-New-Item -ItemType Directory -Force -Path $destinationDir | Out-Null
 
 if ([string]::IsNullOrWhiteSpace($MetaEditorPath)) {
     $candidate = Join-Path $terminalInstallPath 'metaeditor64.exe'
@@ -227,6 +227,13 @@ if (-not $Force -and $sourceHash -eq $destinationHash -and -not $binaryUsable) {
     Write-Host "Fonte já sincronizada, mas EX5 ausente/desatualizado; recompilando."
 }
 
+$actionDescription = "Substituir Controlador-Trading.mq5 e compilar o EA (.ex5) no terminal MT5 selecionado"
+if (-not $PSCmdlet.ShouldProcess($destination, $actionDescription)) {
+    Write-Host 'Sincronização/compilação não executada; nenhum arquivo do EA foi alterado.'
+    return
+}
+
+New-Item -ItemType Directory -Force -Path $destinationDir | Out-Null
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $backupSource = "$destination.$stamp.bak"
 $backupBinary = [System.IO.Path]::ChangeExtension($destination, '.ex5') + ".$stamp.bak"
