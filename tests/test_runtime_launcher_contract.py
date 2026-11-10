@@ -401,6 +401,14 @@ def test_mql5_sync_requires_explicit_confirmation_and_supports_whatif():
     assert 'Falha inesperada na sincronização/compilação; artefatos anteriores restaurados.' in text
     assert text.index('try {\n    if (Test-Path -LiteralPath $log)') < text.index('& $MetaEditorPath "/compile:$destination"')
     assert "Remove-Item -LiteralPath $backupLog -Force -ErrorAction SilentlyContinue" in text
+    assert "$script:RestoreFailures = [System.Collections.Generic.List[string]]::new()" in text
+    assert "function Assert-RestoreComplete" in text
+    assert "ROLLBACK_INCOMPLETO" in text
+    assert "Write-Error \"Falha ao restaurar" in text
+    assert "Get-FileHash -LiteralPath $Backup -Algorithm SHA256" in text
+    assert "Get-FileHash -LiteralPath $Target -Algorithm SHA256" in text
+    assert text.count("$script:RestoreFailures.Clear()") >= 7
+    assert text.count("Assert-RestoreComplete") >= 8
     assert text.index("$PSCmdlet.ShouldProcess") < text.index("New-Item -ItemType Directory -Force -Path $destinationDir")
     assert text.index("$PSCmdlet.ShouldProcess") < text.index("Copy-WithRetry -Source $source -Destination $destination")
     assert text.index("$PSCmdlet.ShouldProcess") < text.index('& $MetaEditorPath "/compile:$destination"')
