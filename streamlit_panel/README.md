@@ -116,3 +116,9 @@ A prioridade de entrega é concluir e validar a interface Streamlit como painel 
 - Depois da aprovação visual, o usuário poderá iniciar uma rodada controlada de testes do Ecossistema nas áreas efetivamente liberadas, sem esperar a conclusão dos dois módulos. Essa rodada deve usar somente dados de teste e MT5 DEMO; funcionalidades indisponíveis devem continuar claramente identificadas.
 - A liberação para teste não equivale à aprovação de produção: continuam obrigatórios o runtime persistente, identidade/autorização remota, armazenamento durável, validação real do MT5 DEMO e verificação de recuperação/backup.
 - REAL permanece bloqueado. Nenhuma ação de interface, teste visual ou teste prático concede autorização para enviar ordens reais.
+
+### Integração funcional dentro do gráfico MT5
+
+O EA MQL5 desenha a interface nativamente no gráfico por objetos do próprio terminal. A navegação nativa foi atualizada para as seis áreas aprovadas, na ordem COCKPIT, ANÁLISE, ESTUDO, RESERVA FISCAL, ASSISTENTE DO ECOSSISTEMA e CENTRAL; cada área expõe seus módulos em uma segunda faixa de botões. Os módulos sem tela/integração MQL5 concluída são identificados como em desenvolvimento, sem simular ações ou resultados. Os módulos já ligados reutilizam os endpoints do runtime do Ecossistema, compartilhados com o painel Streamlit.
+
+Esta atualização de navegação no código-fonte ainda não equivale à instalação no terminal: a compilação no MetaEditor, a sincronização do EA para a pasta Experts, a execução no gráfico e a validação visual/interativa em MT5 DEMO continuam pendentes. Não foi enviada nenhuma ordem e REAL continua bloqueado. A interface Streamlit continua sendo uma aplicação operacional separada; o EA é a camada nativa que aparece no gráfico MT5. Não se afirma que o Streamlit seja incorporado como HTML dentro do gráfico.
