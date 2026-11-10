@@ -1153,7 +1153,7 @@ void RenderView(){
       SetButton(Obj("ANALYZE"),"VALIDAR AMBIENTE",20,284,172,30);
       RefreshHealth();
       RefreshSecondary();
-      SetLabel(Obj("INFO1"),"Ambiente: DEMO / SIMULACAO",20,361,9,C'88,214,141');
+      SetLabel(Obj("INFO1"),"Runtime: "+(runtime_ok?"conectado":"indisponivel")+"; DEMO nao confirmado",20,361,9,runtime_ok?C'88,214,141':C'255,118,118');
       SetLabel(Obj("INFO2"),"Risco: avaliacao atual",20,381,9,C'205,215,230');
       SetLabel(Obj("INFO3"),"Replay: indisponivel nesta interface",20,401,9,C'255,209,102');
       SetLabel(Obj("INFO4"),"Protecao operacional ativa",20,421,9,C'205,215,230');
