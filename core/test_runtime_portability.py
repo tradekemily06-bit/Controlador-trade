@@ -159,3 +159,18 @@ def test_backup_refuses_empty_runtime_directory(tmp_path: Path):
 def test_private_runtime_backup_directory_is_git_ignored():
     ignore_rules = (Path(__file__).resolve().parents[1] / ".gitignore").read_text(encoding="utf-8")
     assert ".runtime-backups/" in ignore_rules.splitlines()
+
+
+
+def test_backup_refuses_to_overwrite_existing_archive(tmp_path: Path):
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / "operation-memory.json").write_text('{"version":1}', encoding="utf-8")
+    archive = tmp_path / "protected-backup.zip"
+    create_backup(runtime, archive)
+    original = archive.read_bytes()
+
+    (runtime / "operation-memory.json").write_text('{"version":2}', encoding="utf-8")
+    with pytest.raises(FileExistsError, match="refusing to overwrite"):
+        create_backup(runtime, archive)
+    assert archive.read_bytes() == original
