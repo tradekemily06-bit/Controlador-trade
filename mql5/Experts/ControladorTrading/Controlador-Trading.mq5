@@ -306,6 +306,7 @@ string ViewForModule(string area,string module){
       if(module=="Financeiro") return "FINANCE";
       if(module=="Configurações") return "CONFIG";
       if(module=="Conexões") return "CONNECTIONS";
+      if(module=="Segurança") return "SECURITY";
       if(module=="Auditoria") return "AUDIT";
    }
    return "UNAVAILABLE";
@@ -891,6 +892,27 @@ void RefreshConnections(){
    SetLabel(Obj("INFO4"),"cTrader: "+(ctrader==""?"nao informado":ctrader)+" • SaaS: "+(saas==""?"nao informado":saas),20,421,8,C'205,215,230');
    SetLabel(Obj("INFO5"),"REAL: "+(real==""?"estado nao informado":real),20,441,9,C'255,155,155');
 }
+void RefreshSecurityView(){
+   string r; int code=0;
+   if(!Http("GET","/api/health","",r,code)){
+      SetLabel(Obj("INFO1"),"Seguranca: runtime indisponivel",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Estado de armazenamento nao confirmado.",20,381,8,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Gate operacional nao confirmado.",20,401,8,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Identidade e isolamento nao confirmados.",20,421,8,C'205,215,230');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • verifique a configuracao.",20,441,8,C'255,155,155');
+      return;
+   }
+   string storage=JsonObjectValue(r,"production_storage","state");
+   string gate=JsonObjectValue(r,"production_operation_gate","storage_state");
+   string identity=JsonObjectValue(r,"identity","trusted_identity_provider");
+   string tenant=JsonObjectValue(r,"identity","tenant_isolation");
+   string real=JsonValue(r,"real");
+   SetLabel(Obj("INFO1"),"Armazenamento: "+(storage==""?"nao confirmado":storage),20,361,8,C'205,215,230');
+   SetLabel(Obj("INFO2"),"Gate operacional: "+(gate==""?"nao confirmado":gate),20,381,8,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Provedor identidade: "+(identity==""?"nao configurado":identity),20,401,8,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Isolamento: "+(tenant==""?"nao confirmado":tenant),20,421,8,C'205,215,230');
+   SetLabel(Obj("INFO5"),"REAL: "+(real==""?"DESABILITADO / nao informado":real)+" • somente leitura",20,441,8,C'255,155,155');
+}
 void RefreshFinanceOverview(){
    string r; int code=0;
    if(!Http("GET","/api/fiscal-reserve?limit=50&offset=0","",r,code)){
@@ -1129,6 +1151,11 @@ void RenderView(){
       SetLabel(Obj("SUB"),"CONEXOES • estado reportado pelos provedores",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR CONEXOES",20,284,172,30);
       RefreshConnections();
+   }else if(active_view=="SECURITY"){
+      ClearCockpitFields();
+      SetLabel(Obj("SUB"),"SEGURANCA • postura reportada pelo runtime",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR SEGURANCA",20,284,172,30);
+      RefreshSecurityView();
    }else if(active_view=="FINANCE"){
       ClearCockpitFields();
       SetLabel(Obj("SUB"),"FINANCEIRO • visao geral fiscal; nao representa saldo bancario",20,47,9,C'150,165,185');
@@ -1203,9 +1230,9 @@ void RefreshHealth(){
    string mt5=JsonValue(r,"mt5_demo");
    string engine=JsonValue(r,"decision_engine");
    SetLabel(Obj("RUNTIME"),"Sistema: online",20,104,10,C'88,214,141');
-   SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),20,124,10,C'88,214,141');
+   SetLabel(Obj("MODE"),"Modo: "+(mode==""?"nao informado":mode)+" • MT5: "+(mt5==""?"nao confirmado":mt5),20,124,10,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • autorizacao separada",20,441,9,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
-   if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="UNAVAILABLE" || active_view=="MEMORIA" || active_view=="RISK" || active_view=="STATS" || active_view=="CONNECTIONS" || active_view=="REPORTS" || active_view=="AUDIT" || active_view=="FINANCE") return;
+   if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="UNAVAILABLE" || active_view=="MEMORIA" || active_view=="RISK" || active_view=="STATS" || active_view=="CONNECTIONS" || active_view=="SECURITY" || active_view=="REPORTS" || active_view=="AUDIT" || active_view=="FINANCE") return;
    SetLabel(Obj("INFO1"),"Analise do ecossistema: "+(engine==""?"online":engine),20,361,9,C'205,215,230');
 }
 void RefreshMarketAssets(){
@@ -1495,6 +1522,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
       else if(active_view=="RISK") RefreshRiskView();
       else if(active_view=="STATS") RefreshStatistics();
       else if(active_view=="CONNECTIONS") RefreshConnections();
+      else if(active_view=="SECURITY") RefreshSecurityView();
       else if(active_view=="FINANCE") RefreshFinanceOverview();
       else if(active_view=="REPORTS") RefreshReports();
       else if(active_view=="AUDIT") RefreshAuditView();
