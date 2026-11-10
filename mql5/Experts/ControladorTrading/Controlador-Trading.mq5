@@ -16,6 +16,8 @@ string active_view="COCKPIT";
 string active_area="COCKPIT";
 string active_module="Operação";
 string assistant_conversation_id="";
+string assistant_answer="";
+int assistant_answer_page=0;
 bool assistant_consent_armed=false;
 string selected_mode="DEMO";
 bool leverage_enabled=false;
@@ -752,7 +754,7 @@ void ClearCockpitFields(){
       if(ObjectFind(0,Obj(names[i]))>=0) ObjectDelete(0,Obj(names[i]));
 }
 void ClearAssistantControls(){
-   string names[]={"ASSISTANT_PROMPT","ASSISTANT_INPUT","ASSISTANT_CONSENT","ASSISTANT_SEND"};
+   string names[]={"ASSISTANT_PROMPT","ASSISTANT_INPUT","ASSISTANT_CONSENT","ASSISTANT_SEND","ASSISTANT_PREV","ASSISTANT_NEXT","ASSISTANT_PAGE"};
    for(int i=0;i<ArraySize(names);i++)
       if(ObjectFind(0,Obj(names[i]))>=0) ObjectDelete(0,Obj(names[i]));
 }
@@ -773,6 +775,26 @@ void RenderFiscal(){
    SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
    RefreshFiscal();
 }
+void RenderAssistantAnswer(){
+   int total_chars=StringLen(assistant_answer);
+   int page_size=330;
+   int page_count=(total_chars+page_size-1)/page_size;
+   if(page_count<1) page_count=1;
+   assistant_answer_page=MathMax(0,MathMin(assistant_answer_page,page_count-1));
+   int offset=assistant_answer_page*page_size;
+   SetLabel(Obj("INFO1"),StringSubstr(assistant_answer,offset,66),20,361,8,C'205,215,230');
+   SetLabel(Obj("INFO2"),StringSubstr(assistant_answer,offset+66,66),20,381,8,C'205,215,230');
+   SetLabel(Obj("INFO3"),StringSubstr(assistant_answer,offset+132,66),20,401,8,C'205,215,230');
+   SetLabel(Obj("INFO4"),StringSubstr(assistant_answer,offset+198,66),20,421,8,C'205,215,230');
+   SetLabel(Obj("INFO5"),StringSubstr(assistant_answer,offset+264,66),20,441,8,C'205,215,230');
+   SetButton(Obj("ASSISTANT_PREV"),"ANTERIOR",20,470,104,26);
+   SetLabel(Obj("ASSISTANT_PAGE"),"RESPOSTA "+IntegerToString(assistant_answer_page+1)+"/"+IntegerToString(page_count),138,476,8,C'150,165,185');
+   SetButton(Obj("ASSISTANT_NEXT"),"PROXIMA",296,470,114,26);
+   ObjectSetInteger(0,Obj("ASSISTANT_PREV"),OBJPROP_STATE,false);
+   ObjectSetInteger(0,Obj("ASSISTANT_NEXT"),OBJPROP_STATE,false);
+   ObjectSetInteger(0,Obj("ASSISTANT_PREV"),OBJPROP_BGCOLOR,assistant_answer_page>0?C'35,43,58':C'20,25,32');
+   ObjectSetInteger(0,Obj("ASSISTANT_NEXT"),OBJPROP_BGCOLOR,assistant_answer_page<page_count-1?C'35,43,58':C'20,25,32');
+}
 void RenderAssistant(){
    ClearCockpitFields();
    SetLabel(Obj("SUB"),"ASSISTENTE DO ECOSSISTEMA • leitura e orientacao",20,47,9,C'150,165,185');
@@ -787,11 +809,14 @@ void RenderAssistant(){
    SetChatEdit(Obj("ASSISTANT_INPUT"),"",20,266,390,34);
    SetButton(Obj("ASSISTANT_CONSENT"),assistant_consent_armed?"CONSENTIMENTO OPENAI: SIM":"CONSENTIMENTO OPENAI: NAO",20,307,220,28);
    SetButton(Obj("ASSISTANT_SEND"),"ENVIAR",248,307,162,28);
-   SetLabel(Obj("INFO1"),"A pergunta e o contexto filtrado serao enviados a OpenAI.",20,361,8,C'205,215,230');
-   SetLabel(Obj("INFO2"),"O assistente nao executa ordens nem movimenta dinheiro.",20,381,8,C'205,215,230');
-   SetLabel(Obj("INFO3"),"REAL: BLOQUEADO",20,401,8,C'255,155,155');
-   SetLabel(Obj("INFO4"),"Resposta aparecera apos o envio.",20,421,8,C'205,215,230');
-   SetLabel(Obj("INFO5"),"Historico completo permanece no servidor.",20,441,8,C'145,160,180');
+   if(assistant_answer!="") RenderAssistantAnswer();
+   else{
+      SetLabel(Obj("INFO1"),"A pergunta e o contexto filtrado serao enviados a OpenAI.",20,361,8,C'205,215,230');
+      SetLabel(Obj("INFO2"),"O assistente nao executa ordens nem movimenta dinheiro.",20,381,8,C'205,215,230');
+      SetLabel(Obj("INFO3"),"REAL: BLOQUEADO",20,401,8,C'255,155,155');
+      SetLabel(Obj("INFO4"),"Resposta aparecera apos o envio.",20,421,8,C'205,215,230');
+      SetLabel(Obj("INFO5"),"Historico completo permanece no servidor.",20,441,8,C'145,160,180');
+   }
    RefreshAssistantStatus();
 }
 void SendAssistantMessage(){
@@ -821,13 +846,10 @@ void SendAssistantMessage(){
    }
    assistant_conversation_id=JsonValue(response,"conversation_id");
    PersistAssistantConversation();
-   string answer=JsonValue(response,"answer");
-   if(answer=="") answer="Resposta vazia ou formato inesperado.";
-   SetLabel(Obj("INFO1"),"Resposta: "+StringSubstr(answer,0,66),20,361,8,C'205,215,230');
-   SetLabel(Obj("INFO2"),StringSubstr(answer,66,66),20,381,8,C'205,215,230');
-   SetLabel(Obj("INFO3"),StringSubstr(answer,132,66),20,401,8,C'205,215,230');
-   SetLabel(Obj("INFO4"),"Conversa persistida no servidor do Ecossistema.",20,421,8,C'88,214,141');
-   SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • sem execucao ou movimentacao.",20,441,8,C'255,155,155');
+   assistant_answer=JsonValue(response,"answer");
+   if(assistant_answer=="") assistant_answer="Resposta vazia ou formato inesperado.";
+   assistant_answer_page=0;
+   RenderAssistantAnswer();
    ObjectSetString(0,Obj("ASSISTANT_INPUT"),OBJPROP_TEXT,"");
 }
 void RenderView(){
@@ -1218,6 +1240,8 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("M6")) { SelectModule(5); return; }
    else if(sparam==Obj("ASSISTANT_CONSENT")) { assistant_consent_armed=!assistant_consent_armed; SetButton(Obj("ASSISTANT_CONSENT"),assistant_consent_armed?"CONSENTIMENTO OPENAI: SIM":"CONSENTIMENTO OPENAI: NAO",20,307,220,28); }
    else if(sparam==Obj("ASSISTANT_SEND")) SendAssistantMessage();
+   else if(sparam==Obj("ASSISTANT_PREV")) { if(active_view=="ASSISTENTE" && assistant_answer_page>0) { assistant_answer_page--; RenderAssistantAnswer(); } }
+   else if(sparam==Obj("ASSISTANT_NEXT")) { if(active_view=="ASSISTENTE" && (assistant_answer_page+1)*330<StringLen(assistant_answer)) { assistant_answer_page++; RenderAssistantAnswer(); } }
    else if(sparam==Obj("ANALYZE")) {
       if(active_view=="ANALISE") Analyze();
       else if(active_view=="CONFIG") RefreshPreferences();
