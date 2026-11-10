@@ -408,6 +408,7 @@ def test_windows_ci_parses_and_exercises_runtime_backup_and_restore_scripts():
     assert "restore_runtime.ps1" in workflow
     assert "Runtime backup restore content mismatch" in workflow
     assert "Runtime restore did not reject overwriting existing state" in workflow
+    assert "$global:LASTEXITCODE = 0" in workflow
 
 
 
