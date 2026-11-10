@@ -1458,13 +1458,20 @@ def application(environ, start_response):
             execution = cycle.execution
             orchestration = cycle.orchestration
             timed_exit = SERVICE.schedule_mt5_timed_exit(cycle, duration_seconds=duration_seconds)
-            decision_value = getattr(orchestration.decision.decision, "value", orchestration.decision.decision)
+            candidate_decision_value = getattr(orchestration.decision.decision, "value", orchestration.decision.decision)
+            automation_state = getattr(getattr(cycle.automation_lifecycle, "state", None), "value", None)
+            execution_gate_blocked = execution is None and automation_state == "BLOCKED"
+            decision_value = "AGUARDAR" if execution_gate_blocked else candidate_decision_value
             candidate_signal = orchestration.analysis.signal.value
             display_signal = candidate_signal if decision_value == "EXECUTAR" else "AGUARDAR"
             display_reason = (
-                orchestration.analysis.reason
-                if decision_value == "EXECUTAR"
-                else orchestration.decision.reason
+                f"Análise concluída; execução bloqueada pelo runtime: {result.stop_reason or 'autorização de execução ausente'}."
+                if execution_gate_blocked
+                else (
+                    orchestration.analysis.reason
+                    if decision_value == "EXECUTAR"
+                    else orchestration.decision.reason
+                )
             )
             payload = {
                 "stopped": result.stopped,
@@ -1475,6 +1482,7 @@ def application(environ, start_response):
                     "timeframe": orchestration.analysis.timeframe,
                 },
                 "decision": decision_value,
+                "candidate_decision": candidate_decision_value,
                 "signal": display_signal,
                 "candidate_signal": candidate_signal,
                 "score": orchestration.analysis.score,
