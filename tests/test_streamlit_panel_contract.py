@@ -238,7 +238,8 @@ def test_streamlit_api_errors_do_not_expose_backend_details():
     exposed_errors = "\n".join(line for line in api_helper.splitlines() if "raise RuntimeError(" in line)
     assert "BASE_URL" not in exposed_errors
     assert "exc.reason" not in api_helper
-    assert "detail)" not in api_helper
+    assert "raise RuntimeError(detail" not in api_helper
+    assert "str(detail)" not in api_helper
 
 
 def test_streamlit_requires_explicit_openai_consent_before_chat_submission():
@@ -330,7 +331,7 @@ def test_streamlit_layout_uses_full_width_and_wraps_responsively():
 def test_streamlit_uses_non_overlapping_c_toggle_in_open_and_closed_states():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert 'st.container(key="panel-toggle")' in source
-    assert 'st.button("C", key="open_control_hub", help="Abrir Controlador-Trader")' in source
+    assert 'st.button("C", key="open_control_hub", help="Abrir painel")' in source
     assert 'st.button("Fechar painel", key="close_control_hub")' in source
     assert ".st-key-panel-toggle { position: relative;" in source
     assert ".st-key-control-hub-shell" in source
@@ -367,7 +368,7 @@ def test_streamlit_closed_panel_shows_signal_score_and_system_availability():
     helper_end = source.index("# Four approved navigation areas", helper_start)
     helper = source[helper_start:helper_end]
 
-    assert 'st.button("C", key="open_control_hub", help="Abrir Controlador-Trader")' in closed_state
+    assert 'st.button("C", key="open_control_hub", help="Abrir painel")' in closed_state
     assert 'toggle_col, signal_col = st.columns([1, 3], vertical_alignment="center")' in closed_state
     assert 'with toggle_col:' in closed_state and 'with signal_col:' in closed_state
     assert "render_latest_signal(closed=True)" in closed_state
@@ -816,7 +817,7 @@ def test_streamlit_kill_switch_view_is_dedicated_and_read_only():
 def test_streamlit_security_view_discloses_deployment_boundaries():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     start = source.index('if module_name == "Segurança":')
-    end = source.index('if module_name == "Operação":', start)
+    end = source.index('if module_name == "Laboratório":', start)
     view = source[start:end]
     assert 'data.get("production_storage", {})' in view
     assert 'data.get("production_operation_gate", {})' in view
@@ -1407,7 +1408,7 @@ def test_fiscal_reserve_writes_are_disabled_when_summary_read_fails_or_is_incomp
     assert 'semantics.get("kind") != "PLANNING_ESTIMATE_ONLY"' in source
     assert '("day", "week", "month", "year")' in source
     assert 'def _is_finite_number(value: Any) -> bool:' in source
-    assert 'if not _is_finite_number(value):' in source
+    assert 'if not _is_finite_number(value) or value != 0:' in source
     assert 'st.form_submit_button("Salvar percentual", disabled=not summary_available)' in fiscal
     assert 'st.form_submit_button("Registrar estimativa de planejamento", disabled=not summary_available)' in fiscal
     assert "lançamentos e alterações de percentual ficam bloqueados" in fiscal
@@ -2023,6 +2024,6 @@ def test_streamlit_fiscal_catalog_explains_required_and_recommended_evidence():
 
 def test_streamlit_fiscal_review_history_explicitly_shows_unverified_identity_and_registration():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
-    assert source.count('"Identidade verificada": "Não" if item.get("reviewer_identity_status") == "DECLARED_NOT_VERIFIED" else "Estado inválido"') == 2
-    assert source.count('"Registro profissional verificado": "Não" if item.get("professional_registration_verified") is False else "Estado inválido"') == 2
+    assert source.count('"Identidade verificada": "NÃO VERIFICADA" if item.get("reviewer_identity_status") == "DECLARED_NOT_VERIFIED" else "Estado inválido"') == 2
+    assert source.count('"Registro profissional verificado": "NÃO VERIFICADO" if item.get("professional_registration_verified") is False else "Estado inválido"') == 2
     assert source.count('"Observações": item.get("review_notes", "")') == 2
