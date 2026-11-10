@@ -812,3 +812,232 @@ def test_domestic_pending_intake_and_review_forms_call_runtime_without_calculati
         server.shutdown()
         server.server_close()
         worker.join(timeout=5)
+
+
+def test_foreign_pending_review_form_posts_and_refreshes_history_without_booking(monkeypatch):
+    import json
+    import threading
+    from datetime import date
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    calls = []
+    pending_id = "foreign-pending-existing-001"
+    reviews = []
+    as_of = date.today().isoformat()
+    week = date.fromordinal(date.today().toordinal() - date.today().weekday()).isoformat()
+    month = date.today().replace(day=1).isoformat()
+    year = date.today().replace(month=1, day=1).isoformat()
+
+    def fiscal_summary():
+        bounds = {
+            "day": (as_of, as_of), "week": (week, as_of),
+            "month": (month, as_of), "year": (year, as_of),
+        }
+        return {
+            "as_of": as_of,
+            "categories": {
+                "BR_DAY_TRADE": {
+                    "entries": 0, "rate": 20.0, "realized_result_brl": 0.0,
+                    "reserve_amount_brl": 0.0, "rate_source": "USER_CONFIGURED",
+                },
+                "FOREIGN_FINANCIAL_ASSET": {
+                    "entries": 0, "classification_status": "PENDING_CLASSIFICATION",
+                    "rate_available": False, "realized_result_brl": 0.0,
+                    "reserve_amount_brl": 0.0,
+                },
+            },
+            "periods": {
+                name: {
+                    "start": start, "end": end, "entries": 0,
+                    "realized_result_brl": 0.0, "reserve_amount_brl": 0.0,
+                }
+                for name, (start, end) in bounds.items()
+            },
+            "total_reserved_brl": 0.0,
+            "reserve_semantics": {
+                "kind": "PLANNING_ESTIMATE_ONLY",
+                "tax_liability_confirmed": False,
+                "monthly_tax_assessment": False,
+                "monthly_loss_offsets_calculated": False,
+                "irrf_credits_calculated": False,
+            },
+            "foreign_pending": {
+                "available": False, "included_in_totals": False,
+                "reserve_calculated": False,
+            },
+            "history": [],
+            "history_page": {
+                "total": 0, "limit": 50, "offset": 0,
+                "returned": 0, "has_more": False,
+            },
+            "monthly_planning": None,
+        }
+
+    def foreign_item():
+        return {
+            "pending_id": pending_id,
+            "reference": "foreign-statement-001",
+            "instrument": "ETF",
+            "occurred_on": as_of,
+            "original_amount": 125.5,
+            "original_currency": "USD",
+            "status": "PENDING_CLASSIFICATION",
+        }
+
+    class Handler(BaseHTTPRequestHandler):
+        def _send(self, payload, status=200):
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            calls.append(("GET", self.path))
+            if self.path.startswith("/api/fiscal-reserve?"):
+                return self._send(fiscal_summary())
+            if self.path == "/api/fiscal-reserve/domestic-pending?limit=50&offset=0":
+                return self._send({"items": [], "total": 0, "limit": 50, "offset": 0})
+            if self.path == "/api/fiscal-reserve/domestic-pending/summary":
+                periods = {
+                    name: {
+                        "start": start, "end": end, "total": 0, "results": 0,
+                    }
+                    for name, (start, end) in {
+                        "day": (as_of, as_of), "week": (week, as_of),
+                        "month": (month, as_of), "year": (year, as_of),
+                    }.items()
+                }
+                return self._send({
+                    "available": True, "as_of": as_of, "total": 0,
+                    "periods": periods,
+                    "classification_status": "PENDING_CLASSIFICATION",
+                    "included_in_totals": False, "reserve_calculated": False,
+                })
+            if self.path == "/api/fiscal-reserve/pending?limit=50&offset=0":
+                return self._send({
+                    "items": [foreign_item()], "total": 1, "limit": 50, "offset": 0,
+                })
+            if self.path == f"/api/fiscal-reserve/pending/{pending_id}/reviews":
+                return self._send({
+                    "status_unchanged": "PENDING_CLASSIFICATION",
+                    "reserve_calculated": False,
+                    "reviews": list(reviews),
+                })
+            return self._send({})
+
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", "0"))
+            payload = json.loads(self.rfile.read(length) or b"{}")
+            calls.append(("POST", self.path, payload))
+            if self.path == f"/api/fiscal-reserve/pending/{pending_id}/reviews":
+                review = {
+                    **payload,
+                    "reviewer_identity_status": "DECLARED_NOT_VERIFIED",
+                    "professional_registration_verified": False,
+                    "review_notes": payload.get("review_notes", ""),
+                }
+                reviews.append(review)
+                return self._send({
+                    "review": review,
+                    "status_unchanged": "PENDING_CLASSIFICATION",
+                    "reserve_calculated": False,
+                }, 201)
+            return self._send({"error": "not found"}, 404)
+
+        def log_message(self, format, *args):
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    try:
+        monkeypatch.setenv(
+            "CONTROLADOR_API_BASE_URL",
+            f"http://127.0.0.1:{server.server_port}",
+        )
+        monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "false")
+        monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "test-owner")
+        monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "false")
+
+        app = AppTest.from_file(str(PANEL_APP)).run(timeout=30)
+        area = next(item for item in app.radio if item.label == "Áreas principais")
+        area.set_value("RESERVA FISCAL").run(timeout=30)
+        assert not app.exception
+
+        assert any(item.label == "Pendência estrangeira para revisão" for item in app.selectbox)
+        next(
+            item for item in app.text_input
+            if item.key == "foreign_review_jurisdiction"
+        ).set_value("Estados Unidos")
+        next(
+            item for item in app.text_input
+            if item.key == "foreign_reviewer_name"
+        ).set_value("Profissional declarado")
+        next(
+            item for item in app.text_input
+            if item.key == "foreign_professional_registration"
+        ).set_value("REG-DECLARADO-001")
+        next(
+            item for item in app.text_input
+            if item.key == "foreign_evidence_reference"
+        ).set_value("parecer-estrangeiro-001")
+        app.button(
+            key="FormSubmitter:foreign_review_form-Guardar evidência da revisão"
+        ).click().run(timeout=30)
+
+        assert not app.exception
+        review_posts = [
+            item for item in calls
+            if item[0] == "POST"
+            and item[1] == f"/api/fiscal-reserve/pending/{pending_id}/reviews"
+        ]
+        assert len(review_posts) == 1
+        payload = review_posts[0][2]
+        assert payload["candidate_classification"] == "FOREIGN_FINANCIAL_INVESTMENT"
+        assert payload["confirmed_jurisdiction"] == "Estados Unidos"
+        assert payload["reviewer_name"] == "Profissional declarado"
+        assert payload["reviewer_role"] == "contador"
+        assert payload["professional_registration"] == "REG-DECLARADO-001"
+        assert payload["evidence_reference"] == "parecer-estrangeiro-001"
+        assert payload["reviewed_on"] == as_of
+
+        review_gets = [
+            index for index, item in enumerate(calls)
+            if item[0] == "GET"
+            and item[1] == f"/api/fiscal-reserve/pending/{pending_id}/reviews"
+        ]
+        post_index = next(
+            index for index, item in enumerate(calls)
+            if item[0] == "POST"
+            and item[1] == f"/api/fiscal-reserve/pending/{pending_id}/reviews"
+        )
+        assert any(index > post_index for index in review_gets)
+        assert len(reviews) == 1
+        assert reviews[0]["reviewer_identity_status"] == "DECLARED_NOT_VERIFIED"
+        assert reviews[0]["professional_registration_verified"] is False
+        assert reviews[0]["candidate_classification"] == "FOREIGN_FINANCIAL_INVESTMENT"
+        assert not any(
+            item[0] == "POST" and item[1] in {
+                "/api/fiscal-reserve/results",
+                "/api/fiscal-reserve/rates",
+                "/api/fiscal-reserve/pending-result",
+            }
+            for item in calls
+        )
+        assert any(
+            item.label == "Classificação candidata revisada"
+            for item in app.selectbox
+        )
+        assert any(
+            item.value == "NÃO VERIFICADA"
+            for frame in app.dataframe
+            for row in frame.value.to_dict(orient="records")
+            for item in []
+        ) is False
+        assert app.dataframe, "the refreshed foreign review history should render"
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=5)
