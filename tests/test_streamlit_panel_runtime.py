@@ -23,6 +23,7 @@ def test_streamlit_panel_starts_and_exposes_the_expected_main_areas(monkeypatch)
         "COCKPIT",
         "ANÁLISE",
         "ESTUDO",
+        "FINANCEIRO",
         "RESERVA FISCAL",
         "ASSISTENTE DO ECOSSISTEMA",
         "CENTRAL",
@@ -78,16 +79,14 @@ def test_streamlit_assistant_consent_is_disabled_without_owner_identity(monkeypa
     assert not app.exception
 
 
-def test_streamlit_financeiro_remains_available_under_central(monkeypatch):
+def test_streamlit_financeiro_has_its_own_main_area(monkeypatch):
     app = _open_panel(monkeypatch)
     area = next(item for item in app.radio if item.label == "Áreas principais")
-    area.set_value("CENTRAL").run(timeout=30)
+    area.set_value("FINANCEIRO").run(timeout=30)
 
     assert not app.exception
-    module = next(item for item in app.radio if item.label == "Módulos")
-    assert "Financeiro" in list(module.options)
-
-    module.set_value("Financeiro").run(timeout=30)
+    assert not any(item.label == "Módulos" for item in app.radio)
+    assert any(item.value == "Financeiro" for item in app.subheader)
     assert not app.exception
     assert any(item.value == "Financeiro" for item in app.subheader)
 
@@ -114,7 +113,7 @@ def test_kill_switch_panel_requires_reason_and_explicit_confirmation(monkeypatch
 
 def test_all_streamlit_module_destinations_render_without_uncaught_exceptions(monkeypatch):
     app = _open_panel(monkeypatch)
-    for area_name in ("COCKPIT", "ANÁLISE", "ESTUDO", "CENTRAL"):
+    for area_name in ("COCKPIT", "ANÁLISE", "ESTUDO", "FINANCEIRO", "CENTRAL"):
         area = next(item for item in app.radio if item.label == "Áreas principais")
         area.set_value(area_name).run(timeout=30)
         assert not app.exception, f"area failed to render: {area_name}"
