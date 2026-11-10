@@ -2079,3 +2079,19 @@ def test_streamlit_memory_allows_manual_outcomes_for_confirmed_directional_decis
     assert '["WIN", "LOSS", "DRAW", "OPEN", "VOID"]' in memory_view
     assert 'saved_outcome.get("outcome_source") == "MANUAL_STUDY"' in memory_view
     assert "anotação manual de estudo, não uma confirmação independente da corretora" in memory_view
+
+def test_streamlit_fiscal_monthly_planning_validates_and_labels_the_annual_estimate():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert "def _valid_monthly_planning(monthly: Any, expected_year: int)" in source
+    assert 'monthly.get("kind") != "PLANNING_ESTIMATE_ONLY"' in source
+    assert 'monthly.get("tax_assessment") is not False' in source
+    assert 'len(months) != 12' in source
+    assert 'item.get("month") != f"{expected_year:04d}-{index:02d}"' in source
+    assert 'monthly_planning = summary.get("monthly_planning")' in source
+    assert "Histórico mensal de planejamento" in source
+    assert '"Competência": item["month"]' in source
+    assert '"Lançamentos": item["entries"]' in source
+    assert '"Resultado registrado": money(item["realized_result_brl"])' in source
+    assert '"Reserva estimada": money(item["reserve_amount_brl"])' in source
+    assert "não compensa prejuízos e não desconta créditos de IRRF" in source
+    assert "Os valores não foram estimados nem substituídos por zeros." in source
