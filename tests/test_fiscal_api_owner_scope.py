@@ -1082,9 +1082,11 @@ def test_assistant_conversation_store_blocks_cross_owner_history_append_and_dele
     with pytest.raises(PermissionError, match="conversa não encontrada"):
         store.delete(owner_b, conversation_id)
 
-    assert store.history(owner_a, conversation_id) == [
-        {"role": "user", "content": "mensagem privada do titular A", "created_at": store.history(owner_a, conversation_id)[0]["created_at"]},
-        {"role": "assistant", "content": "resposta privada do titular A", "created_at": store.history(owner_a, conversation_id)[1]["created_at"]},
+    owner_history = store.history(owner_a, conversation_id)
+    assert [message["role"] for message in owner_history] == ["user", "assistant"]
+    assert [message["content"] for message in owner_history] == [
+        "mensagem privada do titular A",
+        "resposta privada do titular A",
     ]
     assert len(store.list(owner_a)) == 1
     assert store.list(owner_b) == []
