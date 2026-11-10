@@ -18,6 +18,8 @@ def test_fiscal_reserve_and_ecosystem_assistant_have_dedicated_streamlit_areas()
     assert "show_fiscal()" in source
     assert "show_assistant()" in source
     assert 'AREAS["MAIS / ADMIN"] = list(_REFERENCE_TABS["MAIS / ADMIN"])' in source
+    assert "show_finance_overview()" in source
+    assert "Visão geral financeira do Ecossistema." in source
     assert 'if module_name == "Financeiro":' in source
     assert "show_finance_overview()" in source
     assert "**Reserva Fiscal** possui uma área principal própria" in readme
