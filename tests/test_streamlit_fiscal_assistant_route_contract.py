@@ -101,12 +101,28 @@ def _literal_panel_api_method_calls():
 
     tree = ast.parse(PANEL_SOURCE)
     calls = set()
+
+    def literal_route_prefix(expression):
+        if isinstance(expression, ast.Constant) and isinstance(expression.value, str):
+            return expression.value.split("?", 1)[0]
+        if isinstance(expression, ast.BinOp) and isinstance(expression.op, ast.Add):
+            return literal_route_prefix(expression.left)
+        if isinstance(expression, ast.JoinedStr):
+            for part in expression.values:
+                if isinstance(part, ast.Constant) and isinstance(part.value, str) and part.value:
+                    return part.value.split("?", 1)[0]
+                if isinstance(part, ast.FormattedValue):
+                    break
+        return None
+
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name) or node.func.id != "api":
             continue
-        if not node.args or not isinstance(node.args[0], ast.Constant) or not isinstance(node.args[0].value, str):
+        if not node.args:
             continue
-        route = node.args[0].value.split("?", 1)[0]
+        route = literal_route_prefix(node.args[0])
+        if not route or not route.startswith("/api/"):
+            continue
         method = "GET"
         if len(node.args) > 1 and isinstance(node.args[1], ast.Constant) and isinstance(node.args[1].value, str):
             method = node.args[1].value.upper()
