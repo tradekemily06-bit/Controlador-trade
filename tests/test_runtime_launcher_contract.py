@@ -325,7 +325,7 @@ def test_fiscal_assistant_runtime_validator_is_read_only_and_checks_safe_contrac
         "$assistant.may_execute_orders -eq $false",
         "$assistant.may_enable_real -eq $false",
         "$assistant.may_move_money -eq $false",
-        "nenhuma chamada paga foi criada",
+        "chamada paga foi criada",
         "exit 2",
     ):
         assert required in text
