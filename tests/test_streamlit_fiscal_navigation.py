@@ -12,7 +12,7 @@ def test_fiscal_reserve_and_ecosystem_assistant_have_dedicated_streamlit_areas()
     # Preserve the supplied Figma reference JSON, but allow the active
     # Streamlit product to give cross-cutting modules their own destinations.
     assert 'AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]' in source
-    assert 'AREAS["ASSISTENTE"] = ["Assistente do Ecossistema"]' in source
+    assert 'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]' in source
     assert 'if module == "Reserva Fiscal":' in source
     assert 'elif module == "Assistente do Ecossistema":' in source
     assert "show_fiscal()" in source
