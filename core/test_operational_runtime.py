@@ -164,3 +164,19 @@ def test_kill_switch_remains_active_in_process_when_persistence_fails(tmp_path):
     assert runtime.kill_switch.state.enabled is True
     assert runtime.kill_switch.state.reason == "falha crítica"
     assert runtime.gateway._kill_switch is runtime.kill_switch
+
+
+def test_kill_switch_does_not_report_success_without_persistent_storage(tmp_path):
+    runtime = build_operational_runtime(tmp_path)
+    runtime.operational_recorder.safety_store = None
+
+    try:
+        runtime.operational_recorder.activate_kill_switch("persistência indisponível")
+    except RuntimeError as exc:
+        assert "armazenamento persistente" in str(exc)
+    else:
+        raise AssertionError("ativação sem persistência não pode ser confirmada")
+
+    assert runtime.kill_switch.state.enabled is True
+    assert runtime.kill_switch.state.reason == "persistência indisponível"
+    assert runtime.gateway._kill_switch is runtime.kill_switch
