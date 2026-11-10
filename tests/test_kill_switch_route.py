@@ -49,7 +49,7 @@ def test_kill_switch_activation_requires_authenticated_owner(monkeypatch, tmp_pa
     status, payload = _post_kill_switch(identity=None)
 
     assert status == "401 Unauthorized"
-    assert payload["execution_allowed"] is False
+    assert "Identidade autenticada necessária" in payload["error"]
     assert runtime.kill_switch.state.enabled is False
 
 
