@@ -435,15 +435,16 @@ def test_streamlit_leverage_control_persists_only_the_preference_without_executi
 
 
 
-def test_financeiro_groups_fiscal_reserve_and_assistant_inside_the_four_reference_areas():
+def test_financeiro_functions_have_dedicated_top_level_areas_without_changing_figma_reference():
     config = json.loads((PANEL_DIR / "controlador_trader_referencia_visual.json").read_text(encoding="utf-8"))
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert list(config["open_state"]["tabs"]) == ["COCKPIT", "ANÁLISE", "ESTUDO", "MAIS / ADMIN"]
-    assert 'AREAS["MAIS / ADMIN"].append(' not in source
-    assert 'if module == "Financeiro":' in source
-    assert 'financial = st.radio(' in source
-    assert '["Reserva Fiscal", "Assistente do Ecossistema"]' in source
-    assert 'if financial == "Reserva Fiscal":' in source
+    assert config["open_state"]["tabs"]["MAIS / ADMIN"][0] == "Financeiro"
+    assert 'AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]' in source
+    assert 'AREAS["ASSISTENTE"] = ["Assistente do Ecossistema"]' in source
+    assert 'if module != "Financeiro"' in source
+    assert 'if module == "Reserva Fiscal":' in source
+    assert 'elif module == "Assistente do Ecossistema":' in source
     assert "show_fiscal()" in source
     assert "show_assistant()" in source
 
@@ -452,7 +453,8 @@ def test_streamlit_readme_identifies_the_streamlit_panel_as_user_facing_and_figm
     readme = (PANEL_DIR / "README.md").read_text(encoding="utf-8")
     assert "O Figma é somente referência visual" in readme
     assert "painel de uso pretendido" in readme
-    assert "Reserva Fiscal e Assistente do Ecossistema ficam agrupados dentro de Financeiro" in readme
+    assert "Reserva Fiscal possui uma área principal própria" in readme
+    assert "Assistente do Ecossistema possui uma área principal própria" in readme
 
 
 
@@ -473,14 +475,14 @@ def test_streamlit_module_dispatch_has_no_unreachable_duplicate_handlers():
         "module_name == 'Escola / Tutorial / Onboarding'",
         "module_name == 'Estatísticas'",
         "module_name == 'Relatórios'",
-        "module_name == 'MT5 DEMO / Simulação'",
+        "module_name == 'Conexão MT5 DEMO'",
         "module_name == 'Conexões'",
         "module_name == 'Multi-Broker'",
     ):
         assert rendered.count(expression) == 1
     assert "module_name in {'Memória', 'Replay'}" not in rendered
     assert "module_name in {'Motor de Decisão', 'Estatísticas', 'Relatórios'}" not in rendered
-    assert "module_name in {'MT5 DEMO / Simulação', 'Conexões', 'Multi-Broker'}" not in rendered
+    assert "module_name in {'Conexão MT5 DEMO', 'Conexões', 'Multi-Broker'}" not in rendered
 
 
 def test_streamlit_local_quickstart_configures_the_required_fiscal_owner_identity():
@@ -829,7 +831,7 @@ def test_streamlit_security_view_discloses_deployment_boundaries():
 
 def test_streamlit_mt5_demo_connections_and_multibroker_views_are_distinct():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
-    start = source.index('if module_name == "MT5 DEMO / Simulação":')
+    start = source.index('if module_name == "Conexão MT5 DEMO":')
     end = source.index('if module_name == "Kill Switch":', start)
     views = source[start:end]
     assert 'if module_name == "Conexões":' in views
@@ -1009,10 +1011,16 @@ def test_every_reference_navigation_module_has_a_functional_streamlit_route():
                                 if isinstance(key, ast.Constant) and isinstance(key.value, str)
                             )
     dedicated_routes = {"Análise de Mercado", "Replay", "Simulador"}
-    special_routes = {"Financeiro"}
+    configured_modules.discard("Financeiro")
+    configured_modules.discard("MT5 DEMO / Simulação")
+    configured_modules.add("Conexão MT5 DEMO")
+    special_routes = {"Reserva Fiscal", "Assistente do Ecossistema"}
     assert configured_modules <= (readonly_modules | dedicated_routes | special_routes)
-    assert 'if module == "Financeiro":' in source
-    assert 'st.radio("Financeiro", ["Reserva Fiscal", "Assistente do Ecossistema"]' in source
+    assert 'if module == "Reserva Fiscal":' in source
+    assert 'elif module == "Assistente do Ecossistema":' in source
+    assert 'if module == "Financeiro":' not in source
+    assert 'AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]' in source
+    assert 'AREAS["ASSISTENTE"] = ["Assistente do Ecossistema"]' in source
     assert 'show_assistant()' in source
     assert "show_fiscal()" in source
 
@@ -1694,9 +1702,13 @@ def test_every_reference_navigation_module_has_an_explicit_streamlit_handler():
         for group in re.findall(r"if module_name in \{([^}]+)\}:", source)
         for module in re.findall(r"[\"']([^\"']+)[\"']", group)
     }
-    # Financeiro is intentionally routed by the top-level panel dispatcher to
-    # the shared Reserva Fiscal view rather than by show_readonly_module.
-    explicitly_routed = explicit_handlers | grouped_handlers | {"Financeiro"}
+    # The reference still lists Financeiro and the old MT5 label. The active
+    # Streamlit navigation turns them into standalone finance destinations
+    # and a clearer connection label without editing the reference JSON.
+    configured_modules.discard("Financeiro")
+    configured_modules.discard("MT5 DEMO / Simulação")
+    configured_modules.add("Conexão MT5 DEMO")
+    explicitly_routed = explicit_handlers | grouped_handlers | {"Reserva Fiscal", "Assistente do Ecossistema"}
     missing = configured_modules - explicitly_routed
 
     assert not missing, f"Navigation modules without an explicit Streamlit handler: {sorted(missing)}"
@@ -2007,11 +2019,14 @@ def test_every_reference_navigation_module_has_a_real_panel_handler_or_view():
         for values in config["open_state"]["tabs"].values()
         for module in values
     }
+    modules.discard("Financeiro")
+    modules.discard("MT5 DEMO / Simulação")
+    modules.update({"Conexão MT5 DEMO", "Reserva Fiscal", "Assistente do Ecossistema"})
     handlers = set(re.findall(r'module_name == "([^"]+)"', source))
     views_start = source.index("def show_readonly_module")
     views_end = source.index('    if module_name == "Análise de Mercado":', views_start)
     view_keys = set(re.findall(r'^\s*"([^"]+)": \(', source[views_start:views_end], re.MULTILINE))
-    custom_modules = {"Financeiro", "Análise de Mercado", "Replay", "Simulador"}
+    custom_modules = {"Reserva Fiscal", "Assistente do Ecossistema", "Análise de Mercado", "Replay", "Simulador"}
 
     assert modules == handlers.union(view_keys).union(custom_modules)
 
