@@ -144,3 +144,12 @@ def test_sqlite3_backup_captures_committed_wal_pages(tmp_path: Path):
         assert connection.execute("SELECT reference FROM fiscal_entries").fetchone() == (
             "wal-committed-entry",
         )
+
+
+
+def test_backup_refuses_empty_runtime_directory(tmp_path: Path):
+    runtime = tmp_path / "empty-runtime"
+    runtime.mkdir()
+    with pytest.raises(ValueError, match="no portable state files"):
+        create_backup(runtime, tmp_path / "empty.zip")
+    assert not (tmp_path / "empty.zip").exists()
