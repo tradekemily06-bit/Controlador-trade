@@ -64,7 +64,7 @@ def test_native_mt5_module_navigation_recreates_base_controls_without_background
     assert 'SelectArea("CENTRAL")' in events
     assert 'else if(active_view=="RESERVA") RefreshFiscal();' not in timer
     assert 'else if(active_view=="ASSISTENTE") RefreshAssistantStatus();' not in timer
-    assert 'if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="UNAVAILABLE" || active_view=="MEMORIA" || active_view=="RISK" || active_view=="STATS" || active_view=="CONNECTIONS" || active_view=="REPORTS" || active_view=="AUDIT") return;' in health
+    assert 'if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="UNAVAILABLE" || active_view=="MEMORIA" || active_view=="RISK" || active_view=="STATS" || active_view=="CONNECTIONS" || active_view=="REPORTS" || active_view=="AUDIT" || active_view=="FINANCE") return;' in health
     assert '"REC_REFRESH"' in clear_fields and '"REC_CLOSE"' in clear_fields
 
 
@@ -259,3 +259,21 @@ def test_native_reports_and_audit_modules_are_real_read_only_screens():
     assert 'else if(active_view=="AUDIT") RefreshAuditView();' in events
     assert "execution_allowed" not in reports
     assert "client_hash" not in audit
+
+
+def test_native_finance_overview_uses_fiscal_api_without_claiming_cash_balance():
+    source = EA.read_text(encoding="utf-8")
+    routing = source.split("string ViewForModule(", 1)[1].split("void RenderNavigation()", 1)[0]
+    finance = source.split("void RefreshFinanceOverview()", 1)[1].split("void RefreshReports()", 1)[0]
+    events = source.split("void OnChartEvent", 1)[1]
+
+    assert 'if(module=="Financeiro") return "FINANCE";' in routing
+    assert 'Http("GET","/api/fiscal-reserve?limit=50&offset=0","",r,code)' in finance
+    assert 'JsonValue(r,"total_reserved_brl")' in finance
+    assert 'JsonObjectValue(r,"periods","month")' in finance
+    assert 'JsonValue(month,"reserve_amount_brl")' in finance
+    assert 'JsonValue(month,"realized_result_brl")' in finance
+    assert 'Http("GET","/api/fiscal-reserve/domestic-pending/summary","",domestic_response,domestic_code)' in finance
+    assert "nao representa saldo bancario ou equity" in finance
+    assert "Pendencias fora dos totais" in finance
+    assert 'else if(active_view=="FINANCE") RefreshFinanceOverview();' in events
