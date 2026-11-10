@@ -1774,7 +1774,7 @@ def _kill_switch_activation_payload(reason: Any, confirmed: Any) -> dict[str, An
         raise ValueError("Confirme explicitamente a ativação do Kill Switch.")
     if not isinstance(reason, str) or not reason.strip() or len(reason.strip()) > 240:
         raise ValueError("Informe um motivo de até 240 caracteres.")
-    return {"confirmed": True, "reason": reason.strip()}
+    return dict([("confirmed", True), ("reason", reason.strip())])
 
 
 def show_kill_switch() -> None:
@@ -3078,7 +3078,7 @@ AREAS = {
 }
 AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]
 AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]
-AREAS["MAIS / ADMIN"] = list(_REFERENCE_TABS["MAIS / ADMIN"])
+AREAS["MAIS / ADMIN"] = list(_REFERENCE_TABS["MAIS / ADMIN"])\nif "Kill Switch" not in AREAS["MAIS / ADMIN"]:\n    AREAS["MAIS / ADMIN"].append("Kill Switch")
 if "panel_open" not in st.session_state:
     st.session_state.panel_open = True
 
