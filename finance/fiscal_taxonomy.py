@@ -77,7 +77,8 @@ FOREIGN_CATEGORIES: dict[str, dict[str, Any]] = {
     "FOREIGN_FINANCIAL_INVESTMENT": {
         "label": "Exterior · aplicação financeira",
         "scope": "FOREIGN",
-        "requires": ["residencia_fiscal", "natureza_do_rendimento", "evento", "moeda", "fx_method"],
+        "requires": ["residencia_fiscal", "natureza_do_rendimento", "evento", "moeda", "fx_method", "instituicao_ou_autocustodia", "local_custodia", "tipo_de_contrato"],
+        "recommended_evidence": ["custo_de_aquisicao", "taxas_e_custos", "imposto_pago_no_exterior", "extrato_da_instituicao"],
         "calculation_status": "NOT_AUTOMATED",
         "booking_enabled": False,
         "limitations": ["Não aplicar percentual genérico; classificar evento e método cambial antes."],
@@ -93,7 +94,8 @@ FOREIGN_CATEGORIES: dict[str, dict[str, Any]] = {
     "FOREIGN_CRYPTO": {
         "label": "Exterior · criptoativos",
         "scope": "FOREIGN",
-        "requires": ["custodia", "local_da_operacao", "evento", "moeda", "fx_method"],
+        "requires": ["custodia", "local_da_operacao", "evento", "moeda", "fx_method", "instituicao_ou_autocustodia"],
+        "recommended_evidence": ["identificacao_do_criptoativo", "historico_de_transacoes", "taxas_e_custos", "imposto_pago_no_exterior"],
         "calculation_status": "NOT_AUTOMATED",
         "booking_enabled": False,
         "limitations": ["Exige determinar custódia, localização e natureza do evento."],
@@ -110,6 +112,7 @@ def fiscal_classification_catalog() -> dict[str, Any]:
                 "instrument_families": list(item.get("instrument_families", [])),
                 "requires": list(item["requires"]),
                 "limitations": list(item["limitations"]),
+                "recommended_evidence": list(item.get("recommended_evidence", [])),
             }
             for key, item in group.items()
         }

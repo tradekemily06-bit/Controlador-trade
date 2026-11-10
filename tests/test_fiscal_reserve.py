@@ -1,4 +1,7 @@
 import os
+import pytest
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from finance.fiscal_reserve import FiscalReserve
 from finance.fiscal_schema import migrate_fiscal_schema
 
@@ -318,13 +321,22 @@ def test_unverified_mt5_declarations_in_legacy_ledger_are_preserved_but_excluded
         "tax_liability_confirmed": False,
         "reserve_semantics": "PLANNING_ESTIMATE_ONLY",
     }
-    reserve.record_realized_result(OWNER, {
-        "category": "BR_DAY_TRADE",
-        "realized_result_brl": 250.0,
-        "reference": "MT5-DEMO:UNVERIFIED-LEGACY-001",
-        "occurred_on": "2026-11-04",
-        "notes": json.dumps(evidence, separators=(",", ":")),
-    })
+    # Recreate a historical row written before the inclusion marker was
+    # reserved by the service. New user notes must not be able to set this state.
+    import sqlite3
+    with sqlite3.connect(reserve.database_path) as db:
+        db.execute(
+            "INSERT INTO fiscal_reserve_entries "
+            "(entry_id, owner_id, category, entry_type, realized_result_brl, "
+            "reserve_rate, reserve_amount_brl, reference, occurred_on, created_at, notes) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "legacy-unverified-entry", OWNER, "BR_DAY_TRADE", "REALIZED_RESULT",
+                250.0, 20.0, 50.0, "MT5-DEMO:UNVERIFIED-LEGACY-001",
+                "2026-11-04", "2026-11-04T12:00:00+00:00",
+                json.dumps(evidence, separators=(",", ":")),
+            ),
+        )
 
     summary = reserve.summary(OWNER, as_of=date(2026, 11, 4))
     assert summary["total_reserved_brl"] == 0.0
@@ -380,3 +392,139 @@ def test_every_public_reserve_operation_rejects_missing_or_invalid_owner(tmp_pat
                 assert "identidade proprietária" in str(exc)
             else:
                 raise AssertionError("fiscal reserve operation must reject invalid owner identity")
+
+
+def test_reserve_rejects_coerced_numeric_values(tmp_path):
+    reserve = make_reserve(tmp_path / "strict-reserve-money.sqlite3")
+    for value in ("1000", True, [], {}, float("nan"), float("inf")):
+        try:
+            reserve.record_realized_result(OWNER, {
+                "category": "BR_DAY_TRADE",
+                "realized_result_brl": value,
+                "reference": "STRICT-RESERVE-" + str(type(value).__name__) + str(value)[:5],
+                "occurred_on": "2026-11-04",
+            })
+        except ValueError as exc:
+            assert "realized_result_brl" in str(exc)
+        else:
+            raise AssertionError("reserve amount must reject coerced or non-finite values")
+    for value in ("20", True, [], {}, float("nan"), float("inf")):
+        try:
+            reserve.update_rate(OWNER, "BR_DAY_TRADE", value)
+        except ValueError as exc:
+            assert "percentual" in str(exc)
+        else:
+            raise AssertionError("reserve rate must reject coerced or non-finite values")
+    assert reserve.summary(OWNER)["total_reserved_brl"] == 0
+
+
+def test_reserve_rejects_coerced_category_reference_date_and_notes(tmp_path):
+    reserve = make_reserve(tmp_path / "strict-reserve-metadata.sqlite3")
+    base = {
+        "category": "BR_DAY_TRADE",
+        "realized_result_brl": 100,
+        "reference": "STRICT-METADATA-001",
+        "occurred_on": "2026-11-04",
+        "notes": "evidência",
+    }
+    for field, value in (
+        ("category", ["BR_DAY_TRADE"]),
+        ("reference", ["STRICT-METADATA-001"]),
+        ("occurred_on", ["2026-11-04"]),
+        ("notes", {"text": "evidência"}),
+    ):
+        try:
+            reserve.record_realized_result(
+                OWNER, {**base, field: value, "reference": "STRICT-" + field.upper()}
+            )
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"{field} must reject non-text values")
+    assert reserve.summary(OWNER)["total_reserved_brl"] == 0
+
+
+
+def test_reserve_settings_and_history_are_isolated_between_owner_ids(tmp_path):
+    reserve = make_reserve(tmp_path / "fiscal-owner-isolation.sqlite3")
+    owner_a = "single:owner-a"
+    owner_b = "single:owner-b"
+
+    reserve.update_rate(owner_a, "BR_DAY_TRADE", 17)
+    reserve.record_realized_result(owner_a, {
+        "category": "BR_DAY_TRADE",
+        "realized_result_brl": 1000,
+        "reference": "OWNER-A-TRADE-001",
+        "occurred_on": "2026-11-04",
+    })
+
+    assert reserve.settings(owner_a) == {"BR_DAY_TRADE": 17.0}
+    assert reserve.settings(owner_b) == {}
+    assert reserve.summary(owner_b)["total_reserved_brl"] == 0
+    assert reserve.summary(owner_b)["history"] == []
+
+    reserve.update_rate(owner_b, "BR_DAY_TRADE", 23)
+    assert reserve.settings(owner_a) == {"BR_DAY_TRADE": 17.0}
+    assert reserve.settings(owner_b) == {"BR_DAY_TRADE": 23.0}
+    assert reserve.summary(owner_a)["total_reserved_brl"] == 170
+    assert reserve.summary(owner_b)["total_reserved_brl"] == 0
+
+
+def test_user_notes_cannot_set_reserved_legacy_exclusion_marker(tmp_path):
+    reserve = make_reserve(tmp_path / "reserved-marker.sqlite3")
+    payload = {
+        "category": "BR_DAY_TRADE",
+        "realized_result_brl": 250.0,
+        "reference": "USER-NOTE-MARKER-001",
+        "occurred_on": "2026-11-04",
+        "notes": "Anotação comum USER_DECLARED_PENDING_REVIEW",
+    }
+    import pytest
+    with pytest.raises(ValueError, match="marcador interno reservado"):
+        reserve.record_realized_result(OWNER, payload)
+    assert reserve.summary(OWNER)["history_page"]["total"] == 0
+    assert reserve.summary(OWNER)["total_reserved_brl"] == 0.0
+
+
+def test_history_offset_is_bounded_before_sqlite_binding(tmp_path):
+    reserve = make_reserve(tmp_path / "bounded-history.sqlite3")
+    for invalid_offset in (-1, 1_000_000_001, 2**63):
+        try:
+            reserve.summary(OWNER, history_offset=invalid_offset)
+        except ValueError as exc:
+            assert "history_offset" in str(exc)
+        else:
+            raise AssertionError("out-of-range history offset must be rejected")
+    valid = reserve.summary(OWNER, history_offset=1_000_000_000)
+    assert valid["history_page"]["offset"] == 1_000_000_000
+    assert valid["history"] == []
+
+
+def test_fiscal_reserve_rejects_non_text_owner_identity(tmp_path):
+    import pytest
+
+    reserve = make_reserve(tmp_path / "strict-owner-identity.sqlite3")
+    for invalid_owner in (None, 123, True, [], {}, object()):
+        with pytest.raises(ValueError, match="identidade proprietária"):
+            reserve.settings(invalid_owner)
+
+
+def test_every_reserve_connection_enables_sqlite_foreign_keys(tmp_path):
+    reserve = make_reserve(tmp_path / "foreign-keys.sqlite3")
+    with reserve._connect() as db:
+        assert db.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+
+
+def test_reserve_rejects_future_realized_event_date(tmp_path):
+    reserve = make_reserve(tmp_path / "future-reserve-event.sqlite3")
+    tomorrow = (
+        datetime.now(ZoneInfo("America/Sao_Paulo")).date() + timedelta(days=1)
+    ).isoformat()
+    with pytest.raises(ValueError, match="occurred_on não pode estar no futuro"):
+        reserve.record_realized_result(OWNER, {
+            "category": "BR_DAY_TRADE",
+            "realized_result_brl": 100,
+            "reference": "FUTURE-RESERVE-EVENT",
+            "occurred_on": tomorrow,
+        })
+    assert reserve.summary(OWNER)["total_reserved_brl"] == 0

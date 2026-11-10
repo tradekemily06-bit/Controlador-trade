@@ -58,3 +58,28 @@ def test_every_non_automated_category_is_explicitly_pending_and_not_reserved():
         "pending_included_in_totals": False,
         "pending_reserve_calculated": False,
     }
+
+
+
+def test_foreign_taxonomy_exposes_required_and_recommended_evidence_without_enabling_calculation():
+    catalog = fiscal_classification_catalog()
+    investment = catalog["foreign"]["FOREIGN_FINANCIAL_INVESTMENT"]
+    crypto = catalog["foreign"]["FOREIGN_CRYPTO"]
+
+    assert "instituicao_ou_autocustodia" in investment["requires"]
+    assert "local_custodia" in investment["requires"]
+    assert "tipo_de_contrato" in investment["requires"]
+    assert "custo_de_aquisicao" in investment["recommended_evidence"]
+    assert "imposto_pago_no_exterior" in investment["recommended_evidence"]
+    assert "instituicao_ou_autocustodia" in crypto["requires"]
+    assert investment["calculation_status"] == "NOT_AUTOMATED"
+    assert investment["booking_enabled"] is False
+    assert crypto["calculation_status"] == "NOT_AUTOMATED"
+    assert crypto["booking_enabled"] is False
+
+
+def test_recommended_evidence_lists_are_copy_safe():
+    first = fiscal_classification_catalog()
+    first["foreign"]["FOREIGN_FINANCIAL_INVESTMENT"]["recommended_evidence"].append("tampering")
+    second = fiscal_classification_catalog()
+    assert "tampering" not in second["foreign"]["FOREIGN_FINANCIAL_INVESTMENT"]["recommended_evidence"]

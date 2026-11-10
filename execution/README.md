@@ -16,3 +16,12 @@ A camada de execução é broker-agnostic e permanece separada da decisão e do 
 ## Segurança
 
 Nenhum adapter pode contornar o `ExecutionGateway`, o `DemoReadiness`, o kill switch, a proteção contra duplicidade ou as validações de modo DEMO.
+
+
+## Identidade da conta MT5 em operações REAL
+
+- O adaptador MT5 REAL calcula uma impressão digital pseudônima a partir do login e servidor da conta; os valores brutos não são gravados no ledger.
+- A impressão digital é persistida junto ao ticket externo da abertura e preservada nas transições do ledger.
+- O fechamento e a reconciliação somente leitura exigem correspondência exata com a conta que originou a posição.
+- Se a conta não fornecer identidade verificável, se o ledger legado não possuir a impressão digital, ou se a conta conectada divergir, o caminho automatizado bloqueia o fechamento/reconciliação. Não há adoção automática de registros antigos.
+- Essa proteção não substitui a validação do terminal MT5 DEMO, nem autoriza execução REAL. REAL continua desabilitado.

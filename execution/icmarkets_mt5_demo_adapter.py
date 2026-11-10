@@ -5,16 +5,25 @@ from datetime import datetime, time, timezone, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import math
 import hashlib
+import os
 from typing import Any
 
 from core.models import Signal
 from core.operational_state import OperationalState
 from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
-from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
+from execution.mt5_session_lock import MT5_TERMINAL_SESSION_LOCK, serialized_mt5_session
+from execution.ports import (
+    ExecutionMode, ExecutionRequest, ExecutionResult,
+    PositionCloseObservation, PositionCloseObservationStatus,
+)
 
 
 class MT5AdapterError(RuntimeError):
     """Raised when the MT5 runtime cannot be used safely."""
+
+
+class MT5DealNotFoundError(MT5AdapterError):
+    """Raised when MT5 is available but the requested closed deal is absent."""
 
 
 @dataclass(frozen=True)
@@ -25,9 +34,11 @@ class ICMarketsMT5DemoConfig:
     deviation: int = 20
     magic: int = 2609001
     risk_day_timezone: str = "UTC"
+    terminal_path: str | None = None
 
 
 class ICMarketsMT5DemoAdapter:
+    requires_account_fingerprint = False
     """IC Markets MT5 DEMO boundary.
 
     Uses the official MetaTrader5 Python package against a running MT5 terminal.
@@ -38,6 +49,7 @@ class ICMarketsMT5DemoAdapter:
 
     def __init__(self, config: ICMarketsMT5DemoConfig | None = None, mt5_module: Any = None) -> None:
         self.config = config or ICMarketsMT5DemoConfig()
+        self._session_lock = MT5_TERMINAL_SESSION_LOCK
         try:
             # UTC has no daylight-saving rules and is available directly from
             # the standard library. Keep the default runtime independent of
@@ -50,6 +62,11 @@ class ICMarketsMT5DemoAdapter:
             raise ValueError("risk_day_timezone deve ser um timezone IANA válido.")
         self._mt5 = mt5_module
 
+    @property
+    def session_lock(self):
+        """Shared lock for a complete MT5 read-and-persist critical section."""
+        return self._session_lock
+
     def _module(self) -> Any:
         if self._mt5 is None:
             try:
@@ -61,11 +78,42 @@ class ICMarketsMT5DemoAdapter:
             self._mt5 = mt5
         return self._mt5
 
+    def _initialize(self, mt5: Any) -> bool:
+        """Initialize only the configured terminal; reject a different MT5 instance."""
+        terminal_path = self.config.terminal_path or os.environ.get("CONTROLADOR_MT5_TERMINAL_PATH") or None
+        try:
+            if not terminal_path:
+                return bool(mt5.initialize())
+            if not mt5.initialize(path=terminal_path):
+                return False
+            terminal = mt5.terminal_info()
+            expected = os.path.normcase(os.path.realpath(terminal_path))
+            actual = (
+                os.path.normcase(
+                    os.path.realpath(
+                        os.path.join(getattr(terminal, "path", ""), os.path.basename(terminal_path))
+                    )
+                )
+                if terminal is not None
+                else ""
+            )
+            if actual != expected:
+                mt5.shutdown()
+                return False
+            return True
+        except Exception:
+            try:
+                mt5.shutdown()
+            except Exception:
+                pass
+            return False
+
+    @serialized_mt5_session
     def is_available(self) -> bool:
         mt5 = None
         try:
             mt5 = self._module()
-            if not mt5.initialize():
+            if not self._initialize(mt5):
                 return False
             account = mt5.account_info()
             return account is not None and self._is_demo_account(account, mt5)
@@ -82,10 +130,21 @@ class ICMarketsMT5DemoAdapter:
     def _account_fingerprint(account: Any) -> str | None:
         """Return a stable pseudonymous key; never return the raw login or server."""
         login = getattr(account, "login", None)
+        login_text = str(login).strip() if login is not None else ""
         server = str(getattr(account, "server", "") or "").strip()
-        if login is None or not str(login).strip() or not server:
+        # MT5 account logins are positive numeric identifiers. Refuse partial or
+        # malformed identity rather than creating a weak, collision-prone key.
+        if (
+            not login_text.isascii()
+            or not login_text.isdigit()
+            or len(login_text) > 20
+            or int(login_text or "0") <= 0
+            or not server
+            or len(server) > 255
+            or any(ord(char) < 32 or ord(char) == 127 for char in server)
+        ):
             return None
-        raw = f"{server.casefold()}|{str(login).strip()}".encode("utf-8")
+        raw = f"{server.casefold()}|{login_text}".encode("utf-8")
         return hashlib.sha256(raw).hexdigest()[:32]
 
     @staticmethod
@@ -115,6 +174,7 @@ class ICMarketsMT5DemoAdapter:
         steps = (amount - minimum) / step
         return math.isclose(steps, round(steps), rel_tol=0.0, abs_tol=1e-9)
 
+    @serialized_mt5_session
     def read_operational_state(self) -> OperationalState:
         """Read a fail-closed DEMO operational snapshot from MT5.
 
@@ -125,7 +185,7 @@ class ICMarketsMT5DemoAdapter:
         the consecutive-loss field remains unknown and risk gates fail closed.
         """
         mt5 = self._module()
-        if not mt5.initialize():
+        if not self._initialize(mt5):
             raise MT5AdapterError(f"MT5 indisponível: {self._last_error(mt5)}")
         try:
             account = mt5.account_info()
@@ -322,17 +382,22 @@ class ICMarketsMT5DemoAdapter:
         finally:
             mt5.shutdown()
 
+    @serialized_mt5_session
     def read_closed_deal_candidates(self, lookback_days: int = 30, *, include_private: bool = False) -> dict[str, Any]:
         """Return complete, fully closed DEMO position results for human fiscal review."""
         if not isinstance(lookback_days, int) or isinstance(lookback_days, bool) or not 1 <= lookback_days <= 365:
             raise ValueError("lookback_days deve estar entre 1 e 365")
         mt5 = self._module()
-        if not mt5.initialize():
+        if not self._initialize(mt5):
             raise MT5AdapterError(f"MT5 indisponível: {self._last_error(mt5)}")
         try:
             account = mt5.account_info()
             if account is None or not self._is_demo_account(account, mt5):
                 raise MT5AdapterError("conta MT5 não confirmada como DEMO; consulta fiscal bloqueada.")
+            account_fingerprint = self._account_fingerprint(account)
+            account_currency = str(getattr(account, "currency", "") or "UNKNOWN").strip().upper()
+            if include_private and not account_fingerprint:
+                raise MT5AdapterError("identidade da conta MT5 DEMO incompleta; consulta fiscal bloqueada.")
             history_fn = getattr(mt5, "history_deals_get", None)
             if not callable(history_fn):
                 raise MT5AdapterError("histórico de negócios MT5 indisponível.")
@@ -410,22 +475,32 @@ class ICMarketsMT5DemoAdapter:
                 ):
                     withheld += 1
                     continue
-                opening = sorted(opening, key=lambda deal: (
-                    int(getattr(deal, "time_msc", 0) or 0),
-                    int(getattr(deal, "time", 0) or 0),
-                    int(getattr(deal, "ticket", 0) or 0),
-                ))
-                closing = sorted(closing, key=lambda deal: (
-                    int(getattr(deal, "time_msc", 0) or 0),
-                    int(getattr(deal, "time", 0) or 0),
-                    int(getattr(deal, "ticket", 0) or 0),
-                ))
-                first_opening_deal = opening[0]
-                final_deal = closing[-1]
-                opening_timestamp = getattr(first_opening_deal, "time", None)
-                timestamp = getattr(final_deal, "time", None)
-                ticket = str(getattr(final_deal, "ticket", "") or "")
-                if not ticket.isdigit() or not opening_timestamp or not timestamp:
+                try:
+                    def deal_order_key(deal: Any) -> tuple[int, int, int]:
+                        return (
+                            int(getattr(deal, "time_msc", 0) or 0),
+                            int(getattr(deal, "time", 0) or 0),
+                            int(getattr(deal, "ticket", 0) or 0),
+                        )
+
+                    opening = sorted(opening, key=deal_order_key)
+                    closing = sorted(closing, key=deal_order_key)
+                    first_opening_deal = opening[0]
+                    final_deal = closing[-1]
+                    opening_timestamp = int(getattr(first_opening_deal, "time", 0) or 0)
+                    timestamp = int(getattr(final_deal, "time", 0) or 0)
+                    ticket = str(getattr(final_deal, "ticket", "") or "")
+                    if (
+                        not ticket.isdigit()
+                        or len(ticket) > 20
+                        or opening_timestamp <= 0
+                        or timestamp <= 0
+                    ):
+                        withheld += 1
+                        continue
+                    opened_at_utc = datetime.fromtimestamp(opening_timestamp, timezone.utc).isoformat()
+                    occurred_at_utc = datetime.fromtimestamp(timestamp, timezone.utc).isoformat()
+                except (TypeError, ValueError, OverflowError, OSError):
                     withheld += 1
                     continue
                 candidates.append({
@@ -436,16 +511,28 @@ class ICMarketsMT5DemoAdapter:
                     **components,
                     "net_result_account_currency": round(sum(components.values()), 8),
                     "account_currency": str(getattr(account, "currency", "") or "UNKNOWN"),
-                    "opened_at_utc": datetime.fromtimestamp(int(opening_timestamp), timezone.utc).isoformat(),
-                    "occurred_at_utc": datetime.fromtimestamp(int(timestamp), timezone.utc).isoformat(),
+                    "opened_at_utc": opened_at_utc,
+                    "occurred_at_utc": occurred_at_utc,
                     "deal_count": len(position_deals),
                     "closing_deal_count": len(closing),
                     "result_scope": "FULL_CLOSED_POSITION",
                 })
+            # Re-read account identity after all history queries. MT5 can switch
+            # accounts while the terminal remains initialized; never return a
+            # fiscal candidate if the account changed during this scan.
+            final_account = mt5.account_info()
+            if (
+                final_account is None
+                or not self._is_demo_account(final_account, mt5)
+                or self._account_fingerprint(final_account) != account_fingerprint
+                or str(getattr(final_account, "currency", "") or "UNKNOWN").strip().upper()
+                != account_currency
+            ):
+                raise MT5AdapterError("conta MT5 mudou ou não pôde ser reconfirmada durante a consulta; resultado fiscal bloqueado.")
             return {
                 "source": "IC Markets MT5 DEMO",
-                "account_currency": str(getattr(account, "currency", "") or "UNKNOWN"),
-                **({"account_fingerprint": self._account_fingerprint(account)} if include_private else {}),
+                "account_currency": account_currency,
+                **({"account_fingerprint": account_fingerprint} if include_private else {}),
                 "lookback_days": lookback_days,
                 "count": len(candidates),
                 "withheld_incomplete_positions": withheld,
@@ -456,6 +543,7 @@ class ICMarketsMT5DemoAdapter:
         finally:
             mt5.shutdown()
 
+    @serialized_mt5_session
     def read_closed_deal_candidate(self, ticket: str) -> dict[str, Any]:
         """Re-read one exact final closing ticket and its complete DEMO position history."""
         raw_ticket = str(ticket or "").strip()
@@ -467,7 +555,7 @@ class ICMarketsMT5DemoAdapter:
             if str(item.get("ticket", "")) == raw_ticket
         ]
         if len(matches) != 1:
-            raise MT5AdapterError("ticket não encontrado como encerramento integral e conciliado de posição no histórico DEMO.")
+            raise MT5DealNotFoundError("ticket não encontrado como encerramento integral e conciliado de posição no histórico DEMO.")
         return {
             **matches[0],
             "source": preview.get("source"),
@@ -477,12 +565,13 @@ class ICMarketsMT5DemoAdapter:
             "notice": preview.get("notice"),
         }
 
+    @serialized_mt5_session
     def query_order(self, external_id: str) -> ExternalOrderObservation:
         """Read external DEMO order/deal status for P121; never resubmits."""
         if not isinstance(external_id, str) or not external_id.strip():
             raise ValueError("external_id inválido")
         mt5 = self._module()
-        if not mt5.initialize():
+        if not self._initialize(mt5):
             raise MT5AdapterError(f"MT5 indisponível: {self._last_error(mt5)}")
         try:
             account = mt5.account_info()
@@ -511,6 +600,7 @@ class ICMarketsMT5DemoAdapter:
         finally:
             mt5.shutdown()
 
+    @serialized_mt5_session
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
         if request.mode is not ExecutionMode.DEMO:
             return ExecutionResult(False, "IC Markets MT5 adapter aceita somente DEMO.")
@@ -520,13 +610,19 @@ class ICMarketsMT5DemoAdapter:
             return ExecutionResult(False, "volume/amount deve ser maior que zero e finito.")
 
         mt5 = self._module()
-        if not mt5.initialize():
+        if not self._initialize(mt5):
             return ExecutionResult(False, f"MT5 indisponível: {self._last_error(mt5)}")
 
         try:
             account = mt5.account_info()
             if account is None or not self._is_demo_account(account, mt5):
-                return ExecutionResult(False, "conta MT5 não confirmada como DEMO; ordem bloqueada.")
+                return ExecutionResult(False, "conta MT5 não confirmada; ordem bloqueada.")
+            account_fingerprint = self._account_fingerprint(account)
+            if self.requires_account_fingerprint and account_fingerprint is None:
+                return ExecutionResult(
+                    False,
+                    "identidade pseudônima da conta MT5 indisponível; ordem REAL bloqueada.",
+                )
 
             symbol = self.config.symbol or request.symbol
             if not isinstance(symbol, str) or not symbol.strip():
@@ -581,21 +677,44 @@ class ICMarketsMT5DemoAdapter:
                     "MT5 aceitou a ordem, mas não forneceu identificador externo; confirmação bloqueada.",
                 )
 
-            return ExecutionResult(True, "ordem DEMO enviada e confirmada pelo MT5.", str(external_id))
+            return ExecutionResult(
+                True,
+                "ordem enviada e confirmada pelo MT5.",
+                str(external_id),
+                account_fingerprint,
+            )
         finally:
             mt5.shutdown()
 
-    def close_position(self, external_id: str) -> ExecutionResult:
-        """Close only the confirmed DEMO position identified by this adapter's order ticket."""
+    @serialized_mt5_session
+    def close_position(
+        self,
+        external_id: str,
+        *,
+        expected_account_fingerprint: str | None = None,
+    ) -> ExecutionResult:
+        """Close only the position identified by this adapter's order ticket and account fingerprint."""
         if not isinstance(external_id, str) or not external_id.strip():
             return ExecutionResult(False, "external_id inválido; fechamento bloqueado.")
         mt5 = self._module()
-        if not mt5.initialize():
+        if not self._initialize(mt5):
             return ExecutionResult(False, f"MT5 indisponível: {self._last_error(mt5)}")
         try:
             account = mt5.account_info()
             if account is None or not self._is_demo_account(account, mt5):
-                return ExecutionResult(False, "conta MT5 não confirmada como DEMO; fechamento bloqueado.")
+                return ExecutionResult(False, "conta MT5 não confirmada; fechamento bloqueado.")
+            current_fingerprint = self._account_fingerprint(account)
+            if self.requires_account_fingerprint and (
+                expected_account_fingerprint is None
+                or current_fingerprint is None
+                or current_fingerprint != expected_account_fingerprint
+            ):
+                return ExecutionResult(
+                    False,
+                    "a conta MT5 conectada não corresponde à conta registrada na abertura; fechamento bloqueado.",
+                )
+            if expected_account_fingerprint is not None and current_fingerprint != expected_account_fingerprint:
+                return ExecutionResult(False, "impressão digital da conta MT5 divergente; fechamento bloqueado.")
             try:
                 target_ticket = int(external_id)
             except (TypeError, ValueError):
@@ -632,7 +751,7 @@ class ICMarketsMT5DemoAdapter:
                 and int(getattr(p, "magic", -1)) == self.config.magic
             )
             if len(matches) != 1:
-                return ExecutionResult(False, "posição DEMO do Controlador não encontrada de forma única; fechamento bloqueado.")
+                return ExecutionResult(False, "posição MT5 do Controlador não encontrada de forma única; fechamento bloqueado.")
             position = matches[0]
             symbol = str(getattr(position, "symbol", "")).strip()
             volume = float(getattr(position, "volume", 0.0))
@@ -676,7 +795,119 @@ class ICMarketsMT5DemoAdapter:
             )
             if any(int(getattr(p, "ticket", -1)) == int(position.ticket) for p in remaining):
                 return ExecutionResult(False, "MT5 confirmou o fechamento, mas a posição Controlador ainda permanece aberta.")
-            return ExecutionResult(True, "posição DEMO fechada e confirmada pelo MT5.", str(close_external_id))
+            return ExecutionResult(True, "posição MT5 do Controlador fechada e confirmada pelo MT5.", str(close_external_id))
+        finally:
+            mt5.shutdown()
+
+    @serialized_mt5_session
+    def reconcile_position_close(
+        self,
+        external_id: str,
+        *,
+        expected_account_fingerprint: str | None = None,
+    ) -> PositionCloseObservation:
+        """Read MT5 account, open-position, and deal history; never sends an order."""
+        unknown = PositionCloseObservationStatus.UNKNOWN
+        if not isinstance(external_id, str) or not external_id.strip():
+            return PositionCloseObservation(unknown, "external_id inválido para reconciliação.")
+        try:
+            target_ticket = int(external_id)
+        except (TypeError, ValueError):
+            return PositionCloseObservation(unknown, "external_id não é um ticket MT5 numérico.")
+
+        mt5 = self._module()
+        if not self._initialize(mt5):
+            return PositionCloseObservation(unknown, f"MT5 indisponível: {self._last_error(mt5)}")
+        try:
+            account = mt5.account_info()
+            if account is None or not self._is_demo_account(account, mt5):
+                return PositionCloseObservation(unknown, "tipo de conta MT5 não confirmado; reconciliação bloqueada.")
+            current_fingerprint = self._account_fingerprint(account)
+            if self.requires_account_fingerprint and (
+                expected_account_fingerprint is None
+                or current_fingerprint is None
+                or current_fingerprint != expected_account_fingerprint
+            ):
+                return PositionCloseObservation(
+                    unknown,
+                    "a conta MT5 conectada não corresponde à conta registrada na abertura.",
+                )
+            if expected_account_fingerprint is not None and current_fingerprint != expected_account_fingerprint:
+                return PositionCloseObservation(unknown, "impressão digital da conta MT5 divergente.")
+
+            deal_fn = getattr(mt5, "history_deals_get", None)
+            order_fn = getattr(mt5, "history_orders_get", None)
+            positions_fn = getattr(mt5, "positions_get", None)
+            if not callable(deal_fn) or not callable(positions_fn):
+                return PositionCloseObservation(unknown, "MT5 não oferece histórico de negócios e posições para reconciliação.")
+
+            opening_deals = deal_fn(ticket=target_ticket)
+            if opening_deals is None:
+                return PositionCloseObservation(unknown, "MT5 não confirmou o histórico do ticket de abertura.")
+            position_ids = {
+                int(getattr(deal, "position_id", 0) or 0)
+                for deal in opening_deals
+                if str(getattr(deal, "position_id", "")).isdigit()
+                and int(getattr(deal, "position_id", 0) or 0) > 0
+            }
+            if not position_ids and callable(order_fn):
+                opening_orders = order_fn(ticket=target_ticket)
+                if opening_orders is None:
+                    return PositionCloseObservation(unknown, "MT5 não confirmou o histórico da ordem de abertura.")
+                position_ids = {
+                    int(getattr(order, "position_id", 0) or 0)
+                    for order in opening_orders
+                    if str(getattr(order, "position_id", "")).isdigit()
+                    and int(getattr(order, "position_id", 0) or 0) > 0
+                }
+            if len(position_ids) != 1:
+                return PositionCloseObservation(unknown, "ticket não pôde ser associado a uma única posição MT5.")
+
+            position_id = next(iter(position_ids))
+            positions = positions_fn()
+            if positions is None:
+                return PositionCloseObservation(unknown, "MT5 não confirmou a lista de posições abertas.")
+            owned_open = tuple(
+                position for position in positions
+                if int(getattr(position, "ticket", -1)) == position_id
+                and int(getattr(position, "magic", -1)) == self.config.magic
+            )
+            if len(owned_open) == 1:
+                return PositionCloseObservation(
+                    PositionCloseObservationStatus.OPEN,
+                    "posição do Controlador continua aberta no MT5; nenhuma nova ordem foi enviada.",
+                )
+            if len(owned_open) > 1:
+                return PositionCloseObservation(unknown, "mais de uma posição corresponde à identidade MT5.")
+
+            closing_deals = deal_fn(position=position_id)
+            if closing_deals is None:
+                return PositionCloseObservation(unknown, "MT5 não confirmou o histórico de fechamento da posição.")
+            close_entries = {
+                value for value in (
+                    getattr(mt5, "DEAL_ENTRY_OUT", None),
+                    getattr(mt5, "DEAL_ENTRY_OUT_BY", None),
+                ) if value is not None
+            }
+            confirmed_closes = tuple(
+                deal for deal in closing_deals
+                if getattr(deal, "entry", None) in close_entries
+                and int(getattr(deal, "magic", -1)) == self.config.magic
+            )
+            if confirmed_closes:
+                return PositionCloseObservation(
+                    PositionCloseObservationStatus.CLOSED,
+                    "histórico MT5 confirma negócio de saída e a posição não está aberta.",
+                )
+            return PositionCloseObservation(
+                unknown,
+                "posição não aparece aberta, mas não há negócio de saída verificável no histórico.",
+            )
+        except Exception as exc:
+            return PositionCloseObservation(
+                unknown,
+                f"falha ao consultar evidências MT5: {type(exc).__name__}",
+            )
         finally:
             mt5.shutdown()
 
@@ -689,6 +920,7 @@ class ICMarketsMT5DemoAdapter:
 
 
 class ICMarketsMT5RealAdapter(ICMarketsMT5DemoAdapter):
+    requires_account_fingerprint = True
     """IC Markets MT5 REAL boundary used only behind the REAL gateway.
 
     The inherited MT5 mechanics are deliberately reused so DEMO and REAL do
@@ -713,5 +945,10 @@ class ICMarketsMT5RealAdapter(ICMarketsMT5DemoAdapter):
         demo_shaped_request = replace(request, mode=ExecutionMode.DEMO)
         result = super().execute(demo_shaped_request)
         if result.accepted:
-            return ExecutionResult(True, "ordem REAL enviada e confirmada pelo MT5.", result.external_id)
+            return ExecutionResult(
+                True,
+                "ordem REAL enviada e confirmada pelo MT5.",
+                result.external_id,
+                result.account_fingerprint,
+            )
         return result

@@ -101,6 +101,28 @@ def test_controller_supervisor_pins_runtime_paths_and_demo_safety_environment():
         assert required in text
 
 
+
+def test_controller_supervisor_pins_remote_identity_and_local_ea_boundary():
+    text = _read("deployment/start_controlador_runtime.ps1")
+    required = (
+        "$env:CONTROLADOR_REMOTE_ACCESS_REQUIRED = 'true'",
+        "$env:CONTROLADOR_LOCAL_MUTATIONS_ALLOWED = 'true'",
+        "$env:CONTROLADOR_LOCAL_MUTATION_HOSTS = 'localhost,127.0.0.1,[::1]'",
+        "$env:CONTROLADOR_TRUSTED_IDENTITY_HEADER = 'Cf-Access-Authenticated-User-Email'",
+        "if ([string]::IsNullOrWhiteSpace([string]$env:CONTROLADOR_SINGLE_USER_IDENTITY)) {",
+        "CONTROLADOR_SINGLE_USER_IDENTITY não configurado",
+        "$env:CONTROLADOR_BIND_HOST = '127.0.0.1'",
+    )
+    for item in required:
+        assert item in text
+
+    # The single-user identity gate must run before the supervisor can launch
+    # the API process; a missing pin must fail closed at startup.
+    identity_gate = text.index("CONTROLADOR_SINGLE_USER_IDENTITY não configurado")
+    supervisor_launch = text.index("Start-Process")
+    assert identity_gate < supervisor_launch
+
+
 def test_mt5_supervisor_logs_specific_health_gate_failure_reason():
     text = _read("deployment/start_mt5_runtime.ps1")
     assert "MT5_HEALTH_DIAGNOSTIC=" in text
@@ -310,3 +332,46 @@ def test_fiscal_assistant_runtime_validator_is_read_only_and_checks_safe_contrac
     assert "Invoke-WebRequest -UseBasicParsing -Method Post" not in text
     assert "/api/assistant/chat" not in text
     assert "Start-Process" not in text
+
+def test_controller_restart_budget_limits_rate_not_runtime_uptime():
+    text = _read("deployment/start_controlador_runtime.ps1")
+    assert "[int]$MaxRestartsPerHour = 6" in text
+    assert "$restartTimes.Count -ge $MaxRestartsPerHour" in text
+    assert "RESTART_LIMIT_EXCEEDED; aguardando cooldown para nova tentativa" in text
+    assert "$retryAt = $restartTimes[0].AddHours(1)" in text
+    assert "while ((Get-Date) -lt $retryAt)" in text
+    assert "continue" in text.split("if ($restartTimes.Count -ge $MaxRestartsPerHour)", 1)[1].split("$restartTimes.Add($now)", 1)[0]
+    assert "while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf))" in text
+
+def test_streamlit_restart_budget_pauses_and_resumes_without_ending_supervisor():
+    text = _read("deployment/start_streamlit_panel.ps1")
+    assert "$retryAt = $restartTimes[0].AddHours(1)" in text
+    assert "while ((Get-Date) -lt $retryAt)" in text
+    assert "Start-Sleep -Seconds ([Math]::Min(60, $remainingSeconds))" in text
+    assert "continue" in text.split("if ($restartTimes.Count -ge $MaxRestartsPerHour)", 1)[1].split("Write-PanelStatus 'STARTING'", 1)[0]
+    assert "break" not in text.split("if ($restartTimes.Count -ge $MaxRestartsPerHour)", 1)[1].split("Write-PanelStatus 'STARTING'", 1)[0]
+    assert "while ($true)" in text
+
+
+def test_windows_autostart_offers_boot_mode_and_unbounded_task_runtime():
+    text = _read("deployment/install_windows_autostart.ps1")
+    assert "[ValidateSet('Interactive', 'AtStartupS4U')]" in text
+    assert "New-ScheduledTaskTrigger -AtStartup" in text
+    assert "New-TimeSpan -Seconds 0" in text
+    assert "StartWhenAvailable" in text
+    assert "New-ScheduledTaskPrincipal -UserId $currentIdentity.Name -LogonType S4U" in text
+    assert 'Register-ScheduledTask -TaskName "$TaskPrefix-MT5"' in text
+    assert 'Register-ScheduledTask -TaskName "$TaskPrefix-Controlador"' in text
+    assert 'Register-ScheduledTask -TaskName "$TaskPrefix-Streamlit"' in text
+    assert "-MultipleInstances IgnoreNew" in text
+    assert "-RestartCount 3" in text
+    assert "-RestartInterval (New-TimeSpan -Minutes 1)" in text
+
+
+def test_remote_runtime_docs_distinguish_windows_supervisors_from_cloudflare_tunnel_service():
+    text = _read("deployment/WINDOWS_MT5_REMOTE_RUNTIME.md")
+    assert "cloudflared.exe service install" in text
+    assert "O instalador `install_windows_autostart.ps1` registra somente as três tarefas" in text
+    assert "não instala nem registra o serviço Windows `cloudflared`" in text
+    assert "porta 8000" in text
+    assert "AtStartupS4U" in text

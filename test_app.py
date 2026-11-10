@@ -92,27 +92,70 @@ def test_runtime_cycle_exposes_authoritative_cycle_lineage(monkeypatch):
     )
     fake_result = SimpleNamespace(stopped=True, stop_reason="blocked", cycles=(cycle,))
     monkeypatch.setattr(app.SERVICE, "get_preferences", lambda: {"selected_mode": "DEMO", "leverage_enabled": False})
-    monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **kwargs: fake_result)
+    received = {}
+    monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **kwargs: received.update(kwargs) or fake_result)
+    monkeypatch.setattr(app.SERVICE, "schedule_mt5_timed_exit", lambda cycle, duration_seconds: {"state": "NOT_APPLICABLE", "scheduled": False, "message": "sem execução aceita"})
 
     status, data = call_app(
         "/api/runtime/cycle",
         "POST",
-        {"symbol": "EURUSD", "timeframe": "5m", "limit": 3, "amount": 0.01, "duration_seconds": 60},
+        {"symbol": "EURUSD", "timeframe": "5m", "limit": 20, "amount": 0.01, "duration_seconds": 60, "confirmed": False, "filters_ok": False, "entry_conditions": ["client-asserted"]},
     )
 
     assert status.startswith("200")
+    assert received == {
+        "symbol": "EURUSD",
+        "timeframe": "5m",
+        "limit": 20,
+        "amount": 0.01,
+        "duration_seconds": 60,
+    }
     assert data["runtime"]["cycle_id"] == "senior-cycle-001"
     assert data["runtime"]["request_id"] == "req-001"
+    assert data["runtime"]["position_close_policy"] == "MANUAL_EXPLICIT"
+    assert data["runtime"]["duration_seconds_applied"] is False
+    assert data["runtime"]["timed_exit"]["state"] == "NOT_APPLICABLE"
+    assert data["runtime"]["timed_exit_scheduled"] is False
     assert data["execution_allowed"] is False
 
 
 
-def test_runtime_close_validates_cycle_before_mt5_side_effect(monkeypatch):
+def test_runtime_cycle_rejects_boolean_sizing_and_invalid_limits_before_service(monkeypatch):
+    import app
+
+    monkeypatch.setattr(app.SERVICE, "get_preferences", lambda: {"selected_mode": "DEMO", "leverage_enabled": False})
+    monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **kwargs: (_ for _ in ()).throw(AssertionError("service must not be called")))
+    invalid_payloads = (
+        {"symbol": "EURUSD", "amount": True},
+        {"symbol": "EURUSD", "duration_seconds": True},
+        {"symbol": "EURUSD", "limit": True},
+        {"symbol": "EURUSD", "limit": 3},
+        {"symbol": "EURUSD", "amount": float("nan")},
+        {"symbol": "EURUSD", "duration_seconds": 86401},
+    )
+    for payload in invalid_payloads:
+        status, data = call_app("/api/runtime/cycle", "POST", payload)
+        assert status.startswith("400"), (payload, status, data)
+
+
+def test_runtime_close_uses_cycle_bound_durable_close_service(monkeypatch):
     import app
 
     calls = []
-    monkeypatch.setattr(app.SERVICE, "validate_mt5_cycle_identity", lambda **kwargs: calls.append(("validate", kwargs)))
-    monkeypatch.setattr(app.SERVICE, "close_mt5_position", lambda **kwargs: calls.append(("close", kwargs)) or SimpleNamespace(accepted=False, message="blocked", external_id=None))
+    monkeypatch.setattr(
+        app.SERVICE,
+        "close_mt5_position",
+        lambda **kwargs: calls.append(kwargs) or SimpleNamespace(
+            accepted=False,
+            message="resposta ambígua; reconciliação necessária",
+            external_id=None,
+        ),
+    )
+    monkeypatch.setattr(
+        app.SERVICE,
+        "reconcile_mt5_cycle",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("opening-order reconciliation is not close evidence")),
+    )
 
     status, data = call_app(
         "/api/runtime/close",
@@ -121,11 +164,48 @@ def test_runtime_close_validates_cycle_before_mt5_side_effect(monkeypatch):
     )
 
     assert status.startswith("200")
-    assert calls == [
-        ("validate", {"cycle_id": "cycle-1", "external_id": "external-1"}),
-        ("close", {"external_id": "external-1"}),
-    ]
+    assert calls == [{"cycle_id": "cycle-1", "external_id": "external-1"}]
     assert data["closed"] is False
+    assert data["close_state"] == "UNKNOWN"
+    assert data["reconciliation"] is None
+
+
+def test_runtime_close_reconciliation_route_is_read_only(monkeypatch):
+    import app
+
+    observed = {}
+    monkeypatch.setattr(
+        app.SERVICE,
+        "reconcile_mt5_position_close",
+        lambda **kwargs: observed.update(kwargs) or {
+            "request_id": "request-1",
+            "external_id": "ticket-1",
+            "state": "OPEN",
+            "message": "position still open",
+            "read_only": True,
+            "order_sent": False,
+        },
+    )
+
+    status, data = call_app(
+        "/api/runtime/close/reconcile",
+        "POST",
+        {"cycle_id": "cycle-1", "external_id": "ticket-1"},
+    )
+    assert status.startswith("200")
+    assert observed == {"cycle_id": "cycle-1", "external_id": "ticket-1"}
+    assert data["close_reconciliation"]["read_only"] is True
+    assert data["close_reconciliation"]["order_sent"] is False
+
+
+def test_runtime_close_reconciliation_rejects_coerced_identity_types():
+    status, data = call_app(
+        "/api/runtime/close/reconcile",
+        "POST",
+        {"cycle_id": None, "external_id": "ticket-1"},
+    )
+    assert status.startswith("400")
+    assert "cycle_id" in data["error"]
 
 def test_runtime_reconcile_forwards_cycle_lineage(monkeypatch):
     import app
@@ -304,3 +384,75 @@ def test_mt5_historical_backtest_api_is_read_only(monkeypatch):
     assert data["lookahead"] is False
 
 
+
+def test_mt5_position_recovery_api_is_authenticated_and_read_only(monkeypatch):
+    import app
+
+    expected = [{
+        "cycle_id": "cycle-demo-recovery",
+        "external_id": "ticket-900",
+        "recovery_state": "RECONCILIATION_REQUIRED",
+        "broker_query_performed": False,
+        "order_sent": False,
+    }]
+    monkeypatch.setattr(app, "_authorize_remote_mutation", lambda environ: (True, "trusted"))
+    monkeypatch.setattr(app.SERVICE, "list_mt5_position_recovery", lambda: expected)
+
+    status, data = call_app("/api/runtime/positions/recovery")
+
+    assert status.startswith("200")
+    assert data["positions"] == expected
+    assert data["read_only"] is True
+    assert data["broker_query_performed"] is False
+    assert data["orders_sent"] is False
+
+
+
+
+def test_mt5_timed_exit_status_api_is_authenticated_and_read_only(monkeypatch):
+    import app
+
+    expected = [{
+        "request_id": "request-1",
+        "cycle_id": "cycle-1",
+        "external_id": "12345",
+        "due_at": "2026-11-05T12:01:00+00:00",
+        "next_attempt_at": "2026-11-05T12:01:00+00:00",
+        "state": "SCHEDULED",
+        "attempts": 0,
+        "message": "",
+        "best_effort": True,
+    }]
+    monkeypatch.setattr(app, "_authorize_remote_mutation", lambda environ: (True, "trusted"))
+    monkeypatch.setattr(app.SERVICE, "list_mt5_timed_exits", lambda: expected)
+
+    status, data = call_app("/api/runtime/timed-exits")
+
+    assert status.startswith("200")
+    assert data["timed_exits"] == expected
+    assert data["read_only"] is True
+    assert data["orders_sent"] is False
+
+
+
+
+def test_updates_api_returns_safe_503_when_notification_history_is_unavailable(monkeypatch):
+    import app
+    from core.ecosystem_state_store import NotificationHistoryUnavailableError
+
+    monkeypatch.setattr(app, "_authorize_internal_update", lambda _environ: (True, "trusted"))
+
+    def unavailable(*_args, **_kwargs):
+        raise NotificationHistoryUnavailableError("internal sqlite path and details")
+
+    monkeypatch.setattr(app.SERVICE, "publish_ecosystem_update", unavailable)
+
+    status, data = call_app(
+        "/api/updates",
+        "POST",
+        {"title": "Atualização", "message": "Teste de persistência."},
+    )
+
+    assert status.startswith("503")
+    assert data["error"] == "Histórico de notificações indisponível; nenhuma nova notificação foi publicada."
+    assert "sqlite" not in data["error"].lower()

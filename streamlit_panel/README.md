@@ -22,15 +22,17 @@ No diretório raiz do repositório:
 
 4. Inicie o runtime do Ecossistema em um primeiro PowerShell:
 
-   `$env:CONTROLADOR_REMOTE_ACCESS_REQUIRED="false"; $env:CONTROLADOR_LOCAL_MUTATIONS_ALLOWED="true"; py -3.12 app.py`
+   `$env:CONTROLADOR_SINGLE_USER_IDENTITY="local-dev-owner"; $env:CONTROLADOR_REMOTE_ACCESS_REQUIRED="false"; $env:CONTROLADOR_LOCAL_MUTATIONS_ALLOWED="true"; py -3.12 app.py`
 
 5. Em um segundo PowerShell, na mesma pasta do projeto, inicie o painel:
 
-   `py -3.12 -m streamlit run streamlit_panel/app.py --server.address 127.0.0.1 --server.port 8501`
+   `$env:CONTROLADOR_SINGLE_USER_IDENTITY="local-dev-owner"; py -3.12 -m streamlit run streamlit_panel/app.py --server.address 127.0.0.1 --server.port 8501`
 
 A URL local padrão será `http://127.0.0.1:8501`. Mantenha os dois terminais abertos enquanto estiver usando o painel: um executa a API/runtime na porta 8000 e o outro executa a interface Streamlit na porta 8501.
 
 A autorização local acima é somente para desenvolvimento no próprio computador. Não use essas variáveis como configuração de acesso remoto e não exponha as portas 8000 ou 8501 à internet.
+
+No host Windows remoto, `deployment/bootstrap_windows_runtime.ps1` também instala `streamlit_panel/requirements.txt`. Depois, `deployment/install_windows_autostart.ps1` registra três tarefas supervisionadas: MT5, API/runtime e Streamlit. O supervisor Streamlit mantém a interface em `127.0.0.1:8501`, encaminha chamadas à API privada em `127.0.0.1:8000` e grava estado/logs em `.runtime`. A tarefa não cria nem configura o Cloudflare Tunnel; a rota pública protegida deve apontar somente para a porta 8501.
 
 ## Integração e segurança
 
@@ -44,10 +46,11 @@ A autorização local acima é somente para desenvolvimento no próprio computad
 
 ## Módulos no painel
 
-- A Reserva Fiscal aparece como módulo próprio em MAIS / ADMIN e também permanece acessível por Financeiro para compatibilidade. Categorias sem cálculo validado ficam pendentes e fora dos totais; a estimativa brasileira identificada na interface é planejamento, não apuração de imposto devido.
-- O Assistente do Ecossistema é acrescentado como módulo funcional próprio em MAIS / ADMIN. A interface lista até 30 conversas salvas, permite abrir o histórico recente e excluir uma conversa somente após ação explícita do usuário.
+- A Reserva Fiscal e o Assistente do Ecossistema ficam agrupados dentro de Financeiro, sem criar novos grupos de navegação. Categorias sem cálculo validado ficam pendentes e fora dos totais; a estimativa brasileira identificada na interface é planejamento, não apuração de imposto devido.
+- A fila estrangeira registra instituição, custódia, tipo de contrato, custo de aquisição, taxas e imposto pago no exterior na moeda original quando informados. Esses campos são evidências declaradas para triagem; não confirmam localização fiscal, enquadramento, conversão cambial ou crédito tributário e não geram cálculo automático.
+- O Assistente do Ecossistema é acessado pelo seletor interno de Financeiro. A interface lista até 30 conversas salvas, permite abrir o histórico recente e excluir uma conversa somente após ação explícita do usuário.
 - A pergunta, as mensagens recentes da conversa e um resumo operacional filtrado são enviados à OpenAI quando o usuário envia uma consulta. As mensagens também ficam armazenadas no histórico local do Assistente no servidor do Ecossistema. A chave OpenAI permanece no servidor; não envie senhas, códigos de acesso ou dados bancários sensíveis.
-- A consulta de status do Assistente verifica a configuração local do cliente, mas não testa conectividade nem validade da chave. A conexão real não é considerada validada até um teste autorizado.
+- A consulta de status do Assistente verifica a configuração local do cliente, mas não testa conectividade nem validade da chave. O botão **Testar conexão com a OpenAI** envia somente uma mensagem técnica fixa, sem pergunta, histórico ou dados fiscais; o teste não substitui o consentimento explícito exigido para cada consulta com contexto.
 - Replay e Simulador têm limitações descritas na própria interface. O backtest atual não integra Risk Manager, margem, alavancagem, swap ou conversão para a moeda da conta. Não o trate como previsão nem como backtest financeiro completo.
 - Os demais módulos só devem ser considerados operacionais quando suas integrações forem efetivamente implementadas e validadas.
 
@@ -55,7 +58,7 @@ A autorização local acima é somente para desenvolvimento no próprio computad
 
 - O JSON contém a estrutura de navegação e tokens visuais extraídos das referências.
 - **As cinco imagens originais listadas no JSON (8870.jpg, 8871.jpg, 8872.jpg, 8873.jpg e 8878.jpg) não estão presentes neste branch do repositório.** Portanto, ainda não é possível fazer a comparação visual final.
-- As quatro áreas visuais do Figma permanecem como referência; o Assistente é um módulo funcional próprio em MAIS / ADMIN, sem alterar o JSON ou inventar uma quinta área visual.
+- As quatro áreas visuais do Figma permanecem intactas; Financeiro contém as duas funções solicitadas, sem alterar o JSON ou inventar uma quinta área visual.
 - Não modificar nem recriar as imagens ou o arquivo original do Figma. A validação visual só poderá avançar quando as cinco imagens originais forem disponibilizadas para comparação, mantendo os arquivos intactos.
 - O Streamlit é acessado como painel web e conversa com o runtime do Ecossistema; não é desenhado nativamente sobre o gráfico MT5. A conexão funcional com MT5 deve ser validada no runtime DEMO antes do uso operacional.
 

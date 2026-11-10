@@ -23,6 +23,7 @@ jobs:
       - name: Install test dependencies
         run: |
           python -m pip install --upgrade pip pytest
+          python -m pip install -r requirements.txt
           python -m pip install -r streamlit_panel/requirements.txt
 
       - name: Run P1.9 robustness tests
@@ -57,7 +58,10 @@ jobs:
           }
           trap cleanup EXIT
 
-          docker run -d --name controlador-trade-ci -p 7860:7860 controlador-trade:ci
+          docker run -d --name controlador-trade-ci -p 7860:7860 \
+            -e CONTROLADOR_SINGLE_USER_IDENTITY=container-smoke-user \
+            -e CONTROLADOR_RUNTIME_DIR=/tmp/controlador-runtime-ci \
+            controlador-trade:ci
 
           for attempt in {1..60}; do
             health_status="$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}starting{{end}}' controlador-trade-ci 2>/dev/null || true)"
@@ -94,7 +98,8 @@ jobs:
             'validate_windows_runtime.ps1',
             'validate_fiscal_assistant_runtime.ps1',
             'install_windows_autostart.ps1',
-            'bootstrap_windows_runtime.ps1'
+            'bootstrap_windows_runtime.ps1',
+            'start_streamlit_panel.ps1'
           )
           foreach ($relative in $paths) {
             $path = Join-Path $deployment $relative

@@ -30,6 +30,7 @@ class ExecutionLedgerRecord:
     status: ExecutionLedgerStatus
     cycle_id: str | None = None
     external_id: str | None = None
+    account_fingerprint: str | None = None
 
 
 class ExecutionLedger:
@@ -77,6 +78,13 @@ class ExecutionLedger:
                 raise ValueError("ledger de execução inválido.") from exc
             cycle_id = raw.get("cycle_id")
             external_id = raw.get("external_id")
+            account_fingerprint = raw.get("account_fingerprint")
+            if account_fingerprint is not None and (
+                not isinstance(account_fingerprint, str)
+                or len(account_fingerprint) != 32
+                or any(char not in "0123456789abcdef" for char in account_fingerprint)
+            ):
+                raise ValueError("ledger de execução inválido.")
             if cycle_id is not None and (not isinstance(cycle_id, str) or not cycle_id.strip()):
                 raise ValueError("ledger de execução inválido.")
             if external_id is not None and (not isinstance(external_id, str) or not external_id.strip()):
@@ -85,6 +93,7 @@ class ExecutionLedger:
                 status=status,
                 cycle_id=cycle_id.strip() if cycle_id else None,
                 external_id=external_id.strip() if external_id else None,
+                account_fingerprint=account_fingerprint,
             )
         return records
 
@@ -96,6 +105,7 @@ class ExecutionLedger:
                 "status": record.status.value,
                 **({"cycle_id": record.cycle_id} if record.cycle_id else {}),
                 **({"external_id": record.external_id} if record.external_id else {}),
+                **({"account_fingerprint": record.account_fingerprint} if record.account_fingerprint else {}),
             }
             for key, record in sorted(self._records.items())
         }
@@ -169,20 +179,43 @@ class ExecutionLedger:
     def mark_unknown(self, request_id: str) -> None:
         self._transition(request_id, ExecutionLedgerStatus.UNKNOWN)
 
-    def bind_external_id(self, request_id: str, external_id: str) -> None:
+    def bind_external_id(
+        self,
+        request_id: str,
+        external_id: str,
+        *,
+        account_fingerprint: str | None = None,
+    ) -> None:
         self._validate_id(request_id)
         self._validate_identity(external_id, "external_id", required=True)
         external_id = external_id.strip()
+        if account_fingerprint is not None and (
+            not isinstance(account_fingerprint, str)
+            or len(account_fingerprint) != 32
+            or any(char not in "0123456789abcdef" for char in account_fingerprint)
+        ):
+            raise ValueError("account_fingerprint inválido.")
         def mutation() -> None:
             current = self._records.get(request_id)
             if current is None:
                 raise ValueError("request_id não foi reservado.")
             if current.external_id is not None and current.external_id != external_id:
                 raise ValueError("external_id já associado a outro identificador.")
+            if (
+                current.account_fingerprint is not None
+                and account_fingerprint is not None
+                and current.account_fingerprint != account_fingerprint
+            ):
+                raise ValueError("account_fingerprint não corresponde à conta previamente registrada.")
             for other_request_id, other in self._records.items():
                 if other_request_id != request_id and other.external_id == external_id:
                     raise ValueError("external_id já associado a outro request_id.")
-            self._records[request_id] = ExecutionLedgerRecord(current.status, current.cycle_id, external_id)
+            self._records[request_id] = ExecutionLedgerRecord(
+                current.status,
+                current.cycle_id,
+                external_id,
+                account_fingerprint or current.account_fingerprint,
+            )
         self._mutate_locked(mutation)
 
     def find_by_cycle_id(self, cycle_id: str) -> tuple[tuple[str, ExecutionLedgerRecord], ...]:
@@ -201,12 +234,18 @@ class ExecutionLedger:
                 ExecutionLedgerStatus.RECONCILED_EXECUTED if executed else ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
                 current.cycle_id,
                 current.external_id,
+                current.account_fingerprint,
             )
         self._mutate_locked(mutation)
 
     def records(self) -> tuple[str, ...]:
         self._load()
         return tuple(sorted(self._records))
+
+    def entries(self) -> tuple[tuple[str, ExecutionLedgerRecord], ...]:
+        """Return a stable snapshot of request identities for read-only recovery views."""
+        self._load()
+        return tuple((key, self._records[key]) for key in sorted(self._records))
 
     @staticmethod
     def _validate_id(request_id: str) -> None:
@@ -228,6 +267,11 @@ class ExecutionLedger:
                 raise ValueError("request_id não foi reservado.")
             if current.status not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
                 raise ValueError(f"transição inválida de {current.status.value} para {status.value}.")
-            self._records[request_id] = ExecutionLedgerRecord(status, current.cycle_id, current.external_id)
+            self._records[request_id] = ExecutionLedgerRecord(
+                status,
+                current.cycle_id,
+                current.external_id,
+                current.account_fingerprint,
+            )
         self._mutate_locked(mutation)
 

@@ -20,6 +20,9 @@ from zoneinfo import ZoneInfo
 DEFAULT_RATES = {
     "BR_DAY_TRADE": 20.0,
 }
+MAX_FISCAL_HISTORY_OFFSET = 1_000_000_000
+# Reserved legacy marker: user-entered notes must never control fiscal inclusion.
+_UNVERIFIED_LEGACY_MARKER = "USER_DECLARED_PENDING_REVIEW"
 # Keep the legacy category readable for historical rows, but never configure
 # or seed a generic foreign tax percentage.
 VALID_CATEGORIES = frozenset({"BR_DAY_TRADE", "FOREIGN_FINANCIAL_ASSET"})
@@ -62,6 +65,9 @@ class FiscalReserve:
             connection = sqlite3.connect(self.database_path, timeout=10)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA busy_timeout = 10000")
+        # SQLite disables foreign-key enforcement on every new connection by default.
+        # Enable it here so every repository operation honors the migrated schema.
+        connection.execute("PRAGMA foreign_keys = ON")
         try:
             yield connection
             connection.commit()
@@ -130,18 +136,20 @@ class FiscalReserve:
 
     @staticmethod
     def _category(value: Any) -> str:
-        category = str(value or "").strip().upper()
+        if not isinstance(value, str):
+            raise ValueError("categoria deve ser texto")
+        category = value.strip().upper()
         if category not in VALID_CATEGORIES:
             raise ValueError("categoria deve ser BR_DAY_TRADE ou FOREIGN_FINANCIAL_ASSET")
         return category
 
     @staticmethod
     def _money(value: Any, field: str) -> float:
-        if isinstance(value, bool):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ValueError(f"{field} deve ser numérico")
         try:
             amount = float(value)
-        except (TypeError, ValueError) as exc:
+        except (OverflowError, TypeError, ValueError) as exc:
             raise ValueError(f"{field} deve ser numérico") from exc
         if amount != amount or amount in (float("inf"), float("-inf")):
             raise ValueError(f"{field} deve ser finito")
@@ -151,7 +159,11 @@ class FiscalReserve:
 
     @staticmethod
     def _require_owner(owner_id: str) -> str:
-        owner = str(owner_id or "").strip()
+        # Owner IDs are security principals, not values to coerce. Reject
+        # booleans, numbers, and custom objects rather than invoking __str__.
+        if not isinstance(owner_id, str):
+            raise ValueError("identidade proprietária obrigatória e inválida")
+        owner = owner_id.strip()
         if not owner or len(owner) > 160:
             raise ValueError("identidade proprietária obrigatória e inválida")
         return owner
@@ -212,17 +224,36 @@ class FiscalReserve:
                 "mantenha-o pendente até classificação tributária e conversão cambial validadas"
             )
         result = self._money(payload.get("realized_result_brl"), "realized_result_brl")
-        reference = str(payload.get("reference") or "").strip()
-        if not reference:
-            raise ValueError("reference é obrigatório para rastreabilidade")
-        occurred_on = str(payload.get("occurred_on") or datetime.now(ZoneInfo("America/Sao_Paulo")).date().isoformat())
+        raw_reference = payload.get("reference")
+        if not isinstance(raw_reference, str):
+            raise ValueError("reference deve ser texto")
+        reference = raw_reference.strip()
+        if not reference or len(reference) > 160:
+            raise ValueError("reference é obrigatório e deve ter até 160 caracteres")
+        raw_occurred_on = payload.get("occurred_on")
+        if raw_occurred_on is None:
+            occurred_on = datetime.now(ZoneInfo("America/Sao_Paulo")).date().isoformat()
+        elif isinstance(raw_occurred_on, str):
+            occurred_on = raw_occurred_on.strip()
+        else:
+            raise ValueError("occurred_on deve ser texto no formato YYYY-MM-DD")
         try:
             parsed_date = datetime.strptime(occurred_on, "%Y-%m-%d").date()
             if parsed_date.isoformat() != occurred_on:
                 raise ValueError
         except ValueError as exc:
             raise ValueError("occurred_on deve usar YYYY-MM-DD") from exc
-        notes = str(payload.get("notes") or "").strip()[:1000]
+        today = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
+        if parsed_date > today:
+            raise ValueError("occurred_on não pode estar no futuro")
+        raw_notes = payload.get("notes", "")
+        if not isinstance(raw_notes, str):
+            raise ValueError("notes deve ser texto")
+        notes = raw_notes.strip()
+        if _UNVERIFIED_LEGACY_MARKER.casefold() in notes.casefold():
+            raise ValueError("notes contém marcador interno reservado para registros legados")
+        if len(notes) > 1000:
+            raise ValueError("notes deve ter até 1000 caracteres")
         with self._connect() as db:
             # Serialize writers before checking the idempotency key. The unique
             # index remains the final guard if multiple workers race.
@@ -272,8 +303,14 @@ class FiscalReserve:
         owner_id = self._require_owner(owner_id)
         if isinstance(history_limit, bool) or not isinstance(history_limit, int) or not 1 <= history_limit <= 500:
             raise ValueError("history_limit deve estar entre 1 e 500")
-        if isinstance(history_offset, bool) or not isinstance(history_offset, int) or history_offset < 0:
-            raise ValueError("history_offset deve ser um inteiro não negativo")
+        if (
+            isinstance(history_offset, bool)
+            or not isinstance(history_offset, int)
+            or not 0 <= history_offset <= MAX_FISCAL_HISTORY_OFFSET
+        ):
+            raise ValueError(
+                f"history_offset deve estar entre 0 e {MAX_FISCAL_HISTORY_OFFSET}"
+            )
         rates = self.settings(owner_id)
         reference_day = as_of or datetime.now(ZoneInfo("America/Sao_Paulo")).date()
         week_start = reference_day.fromordinal(reference_day.toordinal() - reference_day.weekday())

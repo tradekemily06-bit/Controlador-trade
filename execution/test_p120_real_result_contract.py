@@ -47,3 +47,39 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
 
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("missing-external-id") is ExecutionLedgerStatus.UNKNOWN
+
+
+class MissingAccountFingerprintAdapter:
+    def is_available(self):
+        return True
+
+    def execute(self, request):
+        return ExecutionResult(True, "accepted without account identity", "ticket-unknown")
+
+
+def test_accepted_without_account_fingerprint_is_unknown_and_cannot_be_closed(tmp_path: Path):
+    registry = BrokerRegistry()
+    registry.register("fake", MissingAccountFingerprintAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
+    admission = RealAdmissionBoundary().admit(
+        admission_id="adm", audit_id="audit", audit_verified=True,
+        authorization_active=True, safety_ready=True, broker_available=True, broker_id="fake",
+    )
+    safety = RealSafetyGate().evaluate(
+        authorization_active=True, kill_switch_clear=True, market_healthy=True,
+        recovery_safe=True, risk_approved=True, broker_available=True,
+    )
+    request = ExecutionRequest("TEST", Signal.COMPRA, 1.0, 60, ExecutionMode.REAL, request_id="missing-account-fingerprint")
+    result = gateway.execute(
+        broker="fake", request_id="missing-account-fingerprint", request=request,
+        authorization=authorization, admission=admission, safety=safety,
+        confirmation=RealManualConfirmationGate().prepare(
+            request=request, now=datetime(2026, 1, 1, tzinfo=timezone.utc)
+        ),
+    )
+    assert result.status is RealGatewayStatus.UNKNOWN
+    assert ledger.status("missing-account-fingerprint") is ExecutionLedgerStatus.UNKNOWN
+    assert ledger.record_for("missing-account-fingerprint").external_id == "ticket-unknown"
+    assert ledger.record_for("missing-account-fingerprint").account_fingerprint is None

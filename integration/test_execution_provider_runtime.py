@@ -17,3 +17,11 @@ def test_mt5_demo_provider_uses_explicit_risk_day_timezone(monkeypatch):
     monkeypatch.setenv("CONTROLADOR_RISK_DAY_TIMEZONE", "America/Sao_Paulo")
     executor = build_demo_execution_port("ic_markets_mt5_demo", symbol="EURUSD")
     assert executor.config.risk_day_timezone == "America/Sao_Paulo"
+
+    
+
+def test_mt5_demo_provider_pins_configured_terminal_path(monkeypatch):
+    terminal_path = r"C:\Program Files\MetaTrader 5\terminal64.exe"
+    monkeypatch.setenv("CONTROLADOR_MT5_TERMINAL_PATH", terminal_path)
+    executor = build_demo_execution_port("ic_markets_mt5_demo", symbol="EURUSD")
+    assert executor.config.terminal_path == terminal_path

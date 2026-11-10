@@ -7,9 +7,10 @@ Este é o desenho de uso diário do Controlador Trading: um único runtime Windo
 - terminal MetaTrader 5 conectado à conta IC Markets DEMO
 - Python + dependências do projeto
 - pacote MetaTrader5 de requirements-mt5.txt
-- Controlador Trading ouvindo somente em 127.0.0.1:8000
-- Cloudflare Tunnel como transporte HTTPS sem porta inbound pública
-- Cloudflare Access como identidade na frente do hostname
+- Controlador Trading (API/MT5) ouvindo somente em 127.0.0.1:8000, sem rota pública direta
+- Painel Streamlit ouvindo somente em 127.0.0.1:8501 e chamando a API pela interface loopback
+- Cloudflare Tunnel como transporte HTTPS sem porta inbound pública, com o hostname do painel roteado para `http://127.0.0.1:8501`
+- Cloudflare Access protegendo o hostname do painel e inserindo a identidade confiável; a porta 8000 não deve ser publicada no Tunnel
 
 ## Variáveis obrigatórias do runtime remoto
 
@@ -21,8 +22,29 @@ CONTROLADOR_LOCAL_MUTATIONS_ALLOWED=true
 CONTROLADOR_LOCAL_MUTATION_HOSTS=localhost,127.0.0.1,[::1]
 CONTROLADOR_TRUSTED_IDENTITY_HEADER=Cf-Access-Authenticated-User-Email
 CONTROLADOR_SINGLE_USER_IDENTITY=usuario-individual-autorizado@example.com
+
+`CONTROLADOR_SINGLE_USER_IDENTITY` é uma configuração local obrigatória: defina-a no escopo de Máquina do Windows com o e-mail individual exato permitido na política Cloudflare Access, antes de instalar as tarefas agendadas. Não use domínio inteiro, grupo ou identidade compartilhada. O bootstrap não cria esse valor automaticamente e o instalador recusa registrar as tarefas quando ele está ausente. Não grave tokens ou senhas nesse valor.
 CONTROLADOR_RUNTIME_DIR=C:\\Controlador-trade\\.runtime
 CONTROLADOR_SECURITY_AUDIT_DB=C:\\Controlador-trade\\.runtime\\security-audit.sqlite
+
+### Configuração mínima do Tunnel gerenciado localmente
+
+Use uma rota de hostname para o Streamlit e exija que o próprio `cloudflared` valide o JWT do Access antes de encaminhar ao origin. Substitua os três valores entre sinais de menor/maior pelos dados da sua conta e aplicação Access; não copie valores fictícios para produção.
+
+```yaml
+ingress:
+  - hostname: painel.seu-dominio.example
+    service: http://127.0.0.1:8501
+    originRequest:
+      access:
+        required: true
+        teamName: <seu-team-name>
+        audTag:
+          - <aud-tag-da-aplicacao-access>
+  - service: http_status:404
+```
+
+Não crie uma segunda rota pública para `127.0.0.1:8000`. A API é chamada pelo Streamlit localmente. O `Cf-Access-Authenticated-User-Email` usado pela aplicação identifica o usuário, mas não é uma assinatura criptográfica: a barreira de autenticidade da borda é a validação do JWT `Cf-Access-Jwt-Assertion` pelo `cloudflared` com `required: true`, além da origem inacessível diretamente. Se a aplicação for movida para fora desse caminho protegido por Tunnel, a API/origin deverá validar assinatura, emissor e audiência do JWT antes de confiar na identidade. Não substitua essa validação por simples decodificação do token.
 
 ## Assistente do Ecossistema
 
@@ -44,7 +66,7 @@ CONTROLADOR_UPDATE_TOKEN continua sendo segredo de ambiente quando o endpoint in
 
 ## Supervisão e recuperação contínua
 
-Os launchers de MT5 e Controlador atuam como supervisores do processo, além do início no logon. Se um processo cair, o supervisor registra o evento, aplica um atraso de recuperação e tenta reiniciar dentro de um orçamento limitado de reinícios por hora. O limite evita loops agressivos em caso de falha persistente.
+Os launchers de MT5, Controlador e Streamlit atuam como supervisores do processo, além do início automático do host. O supervisor do Streamlit também mantém o processo vivo: ao atingir o orçamento móvel de reinícios por hora, permanece em `RECOVERING`, aguarda a tentativa mais antiga sair da janela de uma hora e retoma automaticamente. Esse orçamento limita a frequência de tentativas, não encerra o painel nem define prazo de uso. O runtime não tem prazo de expiração nem encerra o supervisor ao atingir o orçamento de reinícios. Se um processo cair, o supervisor registra o evento, aplica um atraso de recuperação e tenta reiniciar dentro de um orçamento móvel de reinícios por hora (o Controlador usa 6/h por padrão). Ao atingir o orçamento, permanece ativo em estado `RECOVERING`, aguarda até que a tentativa mais antiga saia da janela móvel de uma hora e então retoma as tentativas automaticamente. Esse limite regula a frequência de reinícios, não o tempo total de disponibilidade, e evita loops agressivos em falhas persistentes. Falhas que não provem estado DEMO seguro e ausência de posições/ordens continuam bloqueadas e podem exigir intervenção humana.
 
 O Agendador de Tarefas também recebe uma política de reinício para falha da própria tarefa. Isso cria duas camadas complementares: recuperação do processo pelo supervisor e recuperação do host da tarefa pelo Windows.
 
@@ -78,10 +100,17 @@ Exemplo do modo 24/7: `-AutostartMode AtStartupS4U`. A configuração é feita u
 
 O instalador não grava senha, token ou segredo. O Controlador continua fazendo preflight DEMO e não transforma uma falha do MT5 em autorização: sem DEMO válido, a execução permanece bloqueada.
 
+## Serviço persistente do Cloudflare Tunnel — etapa separada
+
+O instalador `install_windows_autostart.ps1` registra somente as três tarefas agendadas do MT5, Controlador e Streamlit. Ele **não instala nem registra o serviço Windows `cloudflared`** e não cria a conta, o túnel, o DNS, o hostname ou a aplicação Cloudflare Access. Portanto, instalar as tarefas do ecossistema, isoladamente, não conclui o acesso remoto 24/7.
+
+No host Windows permanente, crie/configure o Tunnel no painel Cloudflare, publique exclusivamente o hostname do Streamlit em `http://127.0.0.1:8501`, configure a validação obrigatória do Access na borda e instale o conector como serviço Windows usando o comando oficial `cloudflared.exe service install <TUNNEL_TOKEN>` em terminal elevado. O token é segredo: não o coloque no Git, em scripts versionados, logs, prints ou mensagens. Confirme no Windows que o serviço `cloudflared` está em execução e no painel Cloudflare que o Tunnel está `Healthy`. A porta 8000 permanece privada.
+
+A documentação oficial recomenda executar o Tunnel como serviço para iniciar no boot e continuar ativo enquanto o origin estiver online: https://developers.cloudflare.com/tunnel/features/locally-managed-tunnels/as-a-service/ e https://developers.cloudflare.com/tunnel/get-started/. A instalação do serviço não substitui a validação de rota, Access, hostname e health do painel.
 ## Proteção Cloudflare Access
 A rota publicada deve estar protegida por uma aplicação Cloudflare Access e o Tunnel deve exigir a validação do Access antes de encaminhar o tráfego ao origin. Para túnel gerenciado localmente, isso corresponde a `originRequest.access.required: true` com o `teamName` e o `audTag` da aplicação; em túnel gerenciado remotamente, configure a mesma exigência nas opções da rota. Assim, o header de identidade usado pelo Controlador chega somente depois da autenticação/validação na borda.
 
-O origin continua em `http://127.0.0.1:8000`; não é necessário expor a porta 8000 na Internet. O uso direto no notebook é permitido para mutações somente quando a origem é loopback e o Host é um dos Hosts locais configurados; acessos pelo hostname público continuam exigindo a identidade confiável do Cloudflare Access.
+O origin da API continua em `http://127.0.0.1:8000` e o origin web do Streamlit é `http://127.0.0.1:8501`. O hostname HTTPS do painel deve apontar para a porta 8501, protegido por Cloudflare Access; a porta 8000 permanece privada e não deve ser publicada como hostname/rota pública. O Streamlit encaminha o cabeçalho de identidade recebido do proxy para a API, que compara a identidade com `CONTROLADOR_SINGLE_USER_IDENTITY`. As rotas remotas de mutação continuam exigindo o cabeçalho de identidade confiável do Cloudflare Access. Há uma exceção estreita para o EA nativo no mesmo host: os endpoints `/api/runtime/*/local` exigem simultaneamente `CONTROLADOR_LOCAL_MUTATIONS_ALLOWED=true`, cliente loopback (`127.0.0.1` ou `::1`) e Host na allowlist `CONTROLADOR_LOCAL_MUTATION_HOSTS`. O runtime não confia em cabeçalho de identidade fornecido pelo próprio EA. Além do loopback e da allowlist de Host, a rota local rejeita qualquer requisição que carregue o cabeçalho de identidade confiável configurado para o Cloudflare Access; isso protege também contra um túnel/reverse proxy que conecte ao origin por loopback. A implantação ainda precisa confirmar que o Cloudflare Access encaminha esse cabeçalho ao origin; notebook/celular devem usar exclusivamente o hostname HTTPS protegido.
 
 ## Regras de segurança
 - REAL não é habilitado por padrão; quando necessário, usa o fluxo REAL controlado e separado, com autorização, auditoria, admission, safety gate e confirmação humana.
@@ -96,6 +125,8 @@ O origin continua em `http://127.0.0.1:8000`; não é necessário expor a porta 
 - /api/health responder pelo hostname HTTPS.
 - /api/status e `/api/runtime/real/status` devem refletir o estado real do runtime; ausência de pré-requisitos mantém REAL bloqueado.
 - login/identidade do Access validado.
+- tarefa Windows do Streamlit ativa e `http://127.0.0.1:8501/_stcore/health` saudável no host
+- hostname HTTPS do painel roteado à porta 8501 com Cloudflare Access; porta 8000 não publicada
 - GET funcionar no celular e notebook.
 - uma preferência alterada em um dispositivo aparecer no outro.
 - o estado sobreviver a reinício.

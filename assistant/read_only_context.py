@@ -6,26 +6,142 @@ This module does not execute trades, change settings, move funds, or infer tax o
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from math import isfinite
+import re
 from typing import Any
 
 from finance.fiscal_taxonomy import fiscal_classification_catalog
 
 
-def _count(value: Any) -> int:
+def _iso_date(value: Any) -> str:
+    if not isinstance(value, str) or re.fullmatch(r"\d{4}-\d{2}-\d{2}", value) is None:
+        return ""
+    candidate = value[:10]
     try:
-        return max(0, int(value))
-    except (TypeError, ValueError, OverflowError):
+        datetime.strptime(candidate, "%Y-%m-%d")
+    except ValueError:
+        return ""
+    return candidate
+
+
+def _safe_currency_codes(value: Any) -> list[str]:
+    if not isinstance(value, (list, tuple, set)):
+        return []
+    # Currency codes are data, not objects to stringify. Accept only bounded
+    # strings so hostile/custom objects cannot run __str__ during sanitization.
+    return sorted({
+        code.upper() for code in value
+        if isinstance(code, str)
+        and len(code) == 3
+        and code.isascii()
+        and code.isalpha()
+    })[:10]
+
+
+def _is_finite_number(value: Any) -> bool:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return isfinite(value)
+    except (OverflowError, TypeError, ValueError):
+        return False
+
+
+def _count(value: Any) -> int:
+    # Counts come from trusted service aggregates and must be actual integers.
+    # Coercing strings or fractional floats can silently turn malformed data
+    # into plausible-looking totals in the assistant context.
+    if isinstance(value, bool) or not isinstance(value, int):
         return 0
+    # Keep corrupted or adversarial aggregates from becoming enormous
+    # numeric payloads in the external assistant prompt.
+    return min(max(0, value), 1_000_000_000)
+
+
+def _fiscal_number(value: Any, field: str) -> bool:
+    """Validate bounded fiscal aggregates before they enter external context."""
+    if not _is_finite_number(value):
+        return False
+    if field == "rate":
+        return 0 <= value <= 100
+    if field == "reserve_amount_brl":
+        return 0 <= value <= 1_000_000_000_000
+    if field == "realized_result_brl":
+        return -1_000_000_000_000 <= value <= 1_000_000_000_000
+    return False
 
 
 def _decision_summary(item: Any) -> dict[str, Any]:
     if not isinstance(item, dict):
         return {}
-    # Exclude decision IDs, symbols, reasons and any free-form/user-provided text.
+    # Only forward controlled enum values and validated primitives. A string
+    # type check alone is insufficient: free-form text can carry prompt
+    # injection or private notes into the external assistant context.
+    safe: dict[str, Any] = {}
+    signal = item.get("signal")
+    if isinstance(signal, str) and signal in {
+        "COMPRA", "COMPRAR", "VENDA", "VENDER", "AGUARDAR",
+        "BUY", "SELL", "WAIT",
+    }:
+        safe["signal"] = signal
+    score = item.get("score")
+    if _is_finite_number(score) and 1 <= score <= 100:
+        safe["score"] = score
+    confirmed = item.get("confirmed")
+    if isinstance(confirmed, bool):
+        safe["confirmed"] = confirmed
+    outcome = item.get("outcome")
+    if isinstance(outcome, str) and outcome in {
+        "WIN", "LOSS", "DRAW", "OPEN", "VOID", "UNKNOWN",
+    }:
+        safe["outcome"] = outcome
+    created_at = item.get("created_at")
+    if isinstance(created_at, str) and len(created_at) <= 40:
+        try:
+            datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+        except ValueError:
+            pass
+        else:
+            safe["created_at"] = created_at
+    return safe
+
+
+def _safe_bool(value: Any) -> bool:
+    """Accept only actual booleans; strings such as \"false\" are not truthy evidence."""
+    return value if isinstance(value, bool) else False
+
+
+def _safe_state_token(value: Any, limit: int = 32) -> str:
+    """Keep operational labels to bounded uppercase identifiers, never free text."""
+    if (
+        not isinstance(value, str)
+        or isinstance(limit, bool)
+        or not isinstance(limit, int)
+        or not 1 <= limit <= 48
+        or len(value) > limit
+    ):
+        return "UNKNOWN"
+    return value if re.fullmatch(rf"[A-Z0-9_-]{{1,{limit}}}", value) else "UNKNOWN"
+
+
+
+
+_COMPONENT_KEYS = (
+    "decision_engine", "memory", "replay", "statistics", "risk_gate",
+    "automation", "learning", "news", "mt5_demo", "real", "saas",
+    "production_storage", "production_operation_gate",
+    "trusted_identity_provider", "tenant_isolation",
+)
+
+
+def _component_summary(value: Any) -> dict[str, str]:
+    """Forward only known component names and bounded machine-state tokens."""
+    if not isinstance(value, dict):
+        return {}
     return {
-        key: item[key]
-        for key in ("created_at", "signal", "score", "confirmed", "outcome")
-        if key in item and isinstance(item[key], (str, int, float, bool, type(None)))
+        key: _safe_state_token(value.get(key), 48)
+        for key in _COMPONENT_KEYS
+        if key in value
     }
 
 
@@ -37,11 +153,11 @@ def _risk_summary(value: Any) -> dict[str, Any]:
     if isinstance(limits, dict):
         for key in ("daily_loss_limit", "max_operations", "max_consecutive_losses"):
             item = limits.get(key)
-            if isinstance(item, (int, float)) and not isinstance(item, bool):
+            if _is_finite_number(item):
                 safe_limits[key] = item
     return {
         "available": True,
-        "allowed": bool(value.get("allowed", False)),
+        "allowed": _safe_bool(value.get("allowed")),
         "configured_limits": safe_limits,
     }
 
@@ -61,32 +177,32 @@ def _operations_summary(value: Any) -> dict[str, Any]:
         "available": True,
         "execution": {
             "allowed": False,
-            "mode": str(execution.get("mode", "UNKNOWN"))[:24],
-            "state": str(execution.get("state", "UNKNOWN"))[:32],
+            "mode": _safe_state_token(execution.get("mode"), 24),
+            "state": _safe_state_token(execution.get("state")),
             "real": "DISABLED",
         },
         "reconciliation": {
-            "state": str(reconciliation.get("state", "UNKNOWN"))[:32],
-            "pending_count": len(reconciliation.get("pending_request_ids", [])) if isinstance(reconciliation.get("pending_request_ids", []), list) else 0,
-            "unknown_count": len(reconciliation.get("unknown_request_ids", [])) if isinstance(reconciliation.get("unknown_request_ids", []), list) else 0,
+            "state": _safe_state_token(reconciliation.get("state")),
+            "pending_count": _count(len(reconciliation.get("pending_request_ids", []))) if isinstance(reconciliation.get("pending_request_ids", []), list) else 0,
+            "unknown_count": _count(len(reconciliation.get("unknown_request_ids", []))) if isinstance(reconciliation.get("unknown_request_ids", []), list) else 0,
         },
         "recovery": {
-            "state": str(recovery.get("state", "UNKNOWN"))[:32],
-            "can_resume": bool(recovery.get("can_resume", False)),
+            "state": _safe_state_token(recovery.get("state")),
+            "can_resume": _safe_bool(recovery.get("can_resume")),
         },
         "kill_switch": {
-            "state": str(kill.get("state", "UNKNOWN"))[:24],
-            "enabled": bool(kill.get("enabled", False)),
+            "state": _safe_state_token(kill.get("state"), 24),
+            "enabled": _safe_bool(kill.get("enabled")),
         },
         "runtime_health": {
-            "state": str(health.get("state", "UNKNOWN"))[:24],
+            "state": _safe_state_token(health.get("state"), 24),
             "ledger_entries": _count(health.get("ledger_entries")),
             "pending_executions": _count(health.get("pending_executions")),
             "unknown_executions": _count(health.get("unknown_executions")),
         },
         "market_data": {
-            "health": str(market.get("health", "UNKNOWN"))[:24],
-            "safe_for_analysis": bool(market.get("safe_for_analysis", False)),
+            "health": _safe_state_token(market.get("health"), 24),
+            "safe_for_analysis": _safe_bool(market.get("safe_for_analysis")),
             "candle_count": _count(market.get("candle_count")),
             "gap_count": _count(market.get("gap_count")),
             "stale": market.get("stale") if isinstance(market.get("stale"), bool) else None,
@@ -100,7 +216,7 @@ def _statistics_summary(value: Any) -> dict[str, Any]:
     safe = {}
     for key in ("total", "total_decisions", "actionable", "wins", "losses", "draws", "open", "win_rate"):
         item = value.get(key)
-        if isinstance(item, (int, float)) and not isinstance(item, bool):
+        if _is_finite_number(item):
             safe[key] = item
     periods = value.get("periods")
     if isinstance(periods, dict):
@@ -110,7 +226,7 @@ def _statistics_summary(value: Any) -> dict[str, Any]:
             if isinstance(row, dict):
                 safe["periods"][period] = {
                     key: row[key] for key in ("total", "actionable", "wins", "losses", "draws", "open", "win_rate")
-                    if key in row and isinstance(row[key], (int, float)) and not isinstance(row[key], bool)
+                    if key in row and _is_finite_number(row[key])
                 }
     safe["available"] = True
     return safe
@@ -128,18 +244,14 @@ def _fiscal_periods(value: Any) -> dict[str, dict[str, Any]]:
         item: dict[str, Any] = {}
         for key in ("start", "end"):
             raw = row.get(key)
-            if isinstance(raw, str) and len(raw) >= 10:
-                candidate = raw[:10]
-                try:
-                    datetime.strptime(candidate, "%Y-%m-%d")
-                    item[key] = candidate
-                except ValueError:
-                    pass
+            candidate = _iso_date(raw)
+            if candidate:
+                item[key] = candidate
         if "entries" in row:
             item["entries"] = _count(row.get("entries"))
         for key in ("realized_result_brl", "reserve_amount_brl"):
             raw = row.get(key)
-            if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+            if _fiscal_number(raw, key):
                 item[key] = raw
         safe[period] = item
     return safe
@@ -175,13 +287,11 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
         "currency": "BRL",
     }
     as_of = fiscal.get("as_of") if isinstance(fiscal, dict) else None
-    if isinstance(as_of, str) and len(as_of) >= 10:
-        try:
-            fiscal_context["as_of"] = datetime.strptime(as_of[:10], "%Y-%m-%d").date().isoformat()
-        except ValueError:
-            pass
+    safe_as_of = _iso_date(as_of)
+    if safe_as_of:
+        fiscal_context["as_of"] = safe_as_of
     total_reserved = fiscal.get("total_reserved_brl") if isinstance(fiscal, dict) else None
-    if isinstance(total_reserved, (int, float)) and not isinstance(total_reserved, bool):
+    if _fiscal_number(total_reserved, "reserve_amount_brl"):
         fiscal_context["total_reserved_brl"] = total_reserved
     if isinstance(fiscal, dict):
         fiscal_context["categories"] = fiscal.get("categories", {}) if isinstance(fiscal.get("categories"), dict) else {}
@@ -216,10 +326,14 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
                     "rate_available": False,
                 }
                 continue
-            safe_item = {"entries": _count(item.get("entries"))}
+            safe_item = {
+                "entries": _count(item.get("entries")),
+                "rate_kind": "USER_CONFIGURED_PLANNING_RATE",
+                "tax_rate_verified": False,
+            }
             for key in ("rate", "realized_result_brl", "reserve_amount_brl"):
                 value = item.get(key)
-                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                if _fiscal_number(value, key):
                     safe_item[key] = value
             safe_categories[category] = safe_item
         fiscal_context["categories"] = safe_categories
@@ -232,15 +346,22 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
                 "total": _count(pending_summary.get("total")),
                 "realized_results": _count(pending_summary.get("realized_results")),
                 "asset_amounts": _count(pending_summary.get("asset_amounts")),
-                "currencies": sorted({
-                    str(currency).upper()
-                    for currency in pending_summary.get("currencies", [])
-                    if currency
-                }),
+                "currencies": _safe_currency_codes(pending_summary.get("currencies", [])),
+                "evidence_completeness": {
+                    key: _count(pending_summary.get("evidence_completeness", {}).get(key))
+                    for key in (
+                        "total",
+                        "missing_institution",
+                        "missing_custody_location",
+                        "missing_contract_type",
+                        "missing_core_evidence",
+                    )
+                    if isinstance(pending_summary.get("evidence_completeness"), dict)
+                },
                 "periods": {
                     str(period): {
-                        "start": str(values.get("start", ""))[:10],
-                        "end": str(values.get("end", ""))[:10],
+                        "start": _iso_date(values.get("start")),
+                        "end": _iso_date(values.get("end")),
                         "total": _count(values.get("total")),
                         "realized_results": _count(values.get("realized_results")),
                         "asset_amounts": _count(values.get("asset_amounts")),
@@ -248,7 +369,7 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
                     for period, values in pending_summary.get("periods", {}).items()
                     if period in {"day", "week", "month", "year"} and isinstance(values, dict)
                 },
-                "as_of": str(pending_summary.get("as_of", ""))[:10],
+                "as_of": _iso_date(pending_summary.get("as_of")),
                 "classification_status": "PENDING_CLASSIFICATION",
                 "included_in_totals": False,
                 "reserve_calculated": False,
@@ -265,15 +386,15 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
                 "total": _count(domestic_summary.get("total")),
                 "periods": {
                     str(period): {
-                        "start": str(values.get("start", ""))[:10],
-                        "end": str(values.get("end", ""))[:10],
+                        "start": _iso_date(values.get("start")),
+                        "end": _iso_date(values.get("end")),
                         "total": _count(values.get("total")),
                         "results": _count(values.get("results")),
                     }
                     for period, values in domestic_summary.get("periods", {}).items()
                     if period in {"day", "week", "month", "year"} and isinstance(values, dict)
                 },
-                "as_of": str(domestic_summary.get("as_of", ""))[:10],
+                "as_of": _iso_date(domestic_summary.get("as_of")),
                 "classification_status": "PENDING_CLASSIFICATION",
                 "included_in_totals": False,
                 "reserve_calculated": False,
@@ -283,21 +404,18 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
     fiscal_context["domestic_pending"] = domestic_pending_context
     recent_decisions = service.memory_view(limit=5)
 
-    components = status.get("components", {})
-    safe_components = {}
-    if isinstance(components, dict):
-        for key, value in components.items():
-            if isinstance(value, (str, int, float, bool)):
-                safe_components[str(key)[:64]] = str(value)[:48] if isinstance(value, str) else value
+    # Component labels are a fixed application contract. Do not forward
+    # arbitrary keys or free-form status strings from service/provider data.
+    safe_components = _component_summary(status.get("components"))
 
     return {
         "as_of": datetime.now(timezone.utc).isoformat(),
         "sources": ["system_status", "risk_status", "operational_observability", "statistics", "fiscal_reserve", "fiscal_pending_queue_summary", "fiscal_domestic_pending_queue_summary", "recent_decisions"],
         "system": {
-            "mode": str(status.get("mode", "UNKNOWN"))[:24],
+            "mode": _safe_state_token(status.get("mode"), 24),
             "execution_allowed": False,
             "real": "DESABILITADO",
-            "health": str(status.get("health", "UNKNOWN"))[:24],
+            "health": _safe_state_token(status.get("health"), 24),
             "components": safe_components,
         },
         "risk": _risk_summary(risk),

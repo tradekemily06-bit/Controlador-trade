@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.runtime_process_lock import RuntimeProcessLock
+from core.runtime_process_lock import RuntimeProcessLock, RuntimeProcessLockSet
 
 
 def test_runtime_process_lock_creates_and_releases_lock_file(tmp_path):
@@ -8,13 +8,16 @@ def test_runtime_process_lock_creates_and_releases_lock_file(tmp_path):
     lock = RuntimeProcessLock(path)
     lock.acquire()
     assert path.exists()
+    assert lock.is_acquired is True
     lock.release()
+    assert lock.is_acquired is False
     lock.release()
 
 
 def test_runtime_process_lock_rejects_reentrant_acquire_on_same_instance(tmp_path):
     lock = RuntimeProcessLock(tmp_path / "runtime.lock")
     lock.acquire()
+    assert lock.is_acquired is True
     try:
         try:
             lock.acquire()
@@ -24,3 +27,299 @@ def test_runtime_process_lock_rejects_reentrant_acquire_on_same_instance(tmp_pat
             raise AssertionError("reentrada do mesmo lock deveria ser recusada")
     finally:
         lock.release()
+    assert lock.is_acquired is False
+
+
+def test_runtime_process_lock_serializes_distinct_instances_for_same_path(tmp_path):
+    path = tmp_path / "runtime.lock"
+    first = RuntimeProcessLock(path)
+    second = RuntimeProcessLock(path)
+
+    first.acquire()
+    try:
+        assert first.is_acquired is True
+        assert second.is_acquired is False
+        try:
+            second.acquire()
+        except RuntimeError as exc:
+            assert "outra instância" in str(exc)
+        else:
+            raise AssertionError("uma segunda instância deveria ser bloqueada")
+
+        # A failed acquisition must not leave the second object holding a
+        # descriptor that could be mistaken for ownership.
+        assert second.is_acquired is False
+    finally:
+        first.release()
+
+    # The same second instance must remain usable after the owner releases.
+    second.acquire()
+    assert second.is_acquired is True
+    second.release()
+    assert second.is_acquired is False
+
+
+def test_runtime_lock_sets_block_different_runtimes_sharing_one_database(tmp_path):
+    shared_database = tmp_path / "shared" / "fiscal.sqlite3"
+    first = RuntimeProcessLockSet(
+        tmp_path / "runtime-a" / "runtime.lock",
+        [shared_database],
+    )
+    second = RuntimeProcessLockSet(
+        tmp_path / "runtime-b" / "runtime.lock",
+        [shared_database],
+    )
+
+    first.acquire()
+    try:
+        assert first.is_acquired is True
+        assert second.is_acquired is False
+        try:
+            second.acquire()
+        except RuntimeError as exc:
+            assert "outra instância" in str(exc)
+        else:
+            raise AssertionError(
+                "runtime diferente não pode ignorar o lock do banco compartilhado"
+            )
+        assert second.is_acquired is False
+    finally:
+        first.release()
+
+    second.acquire()
+    assert second.is_acquired is True
+    second.release()
+    assert second.is_acquired is False
+
+
+def test_runtime_lock_set_rolls_back_partial_acquisition(tmp_path):
+    shared_database = tmp_path / "shared" / "assistant.sqlite3"
+    owner = RuntimeProcessLockSet(
+        tmp_path / "runtime-owner" / "runtime.lock",
+        [shared_database],
+    )
+    contender = RuntimeProcessLockSet(
+        tmp_path / "runtime-contender" / "runtime.lock",
+        [shared_database],
+    )
+
+    owner.acquire()
+    try:
+        try:
+            contender.acquire()
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("o lock compartilhado deveria bloquear o contender")
+        assert contender.is_acquired is False
+    finally:
+        owner.release()
+
+    # The contender's earlier partial lock (if acquired before the conflict)
+    # must have been released, so a fresh lock set can now acquire every path.
+    fresh = RuntimeProcessLockSet(
+        tmp_path / "runtime-contender" / "runtime.lock",
+        [shared_database],
+    )
+    fresh.acquire()
+    assert fresh.is_acquired is True
+    fresh.release()
+
+
+def test_lock_set_preserves_acquisition_error_when_rollback_also_fails(tmp_path):
+    lock_set = RuntimeProcessLockSet(tmp_path / "runtime.lock")
+    released = []
+
+    class _AcquiredLock:
+        def acquire(self):
+            return None
+
+        def release(self):
+            released.append("release")
+            raise OSError("rollback release failed")
+
+    class _FailingLock:
+        def acquire(self):
+            raise ValueError("original acquisition failure")
+
+        def release(self):
+            raise AssertionError("unacquired lock must not be released")
+
+    lock_set._locks = [_AcquiredLock(), _FailingLock()]
+
+    try:
+        lock_set.acquire()
+    except ValueError as exc:
+        assert str(exc) == "original acquisition failure"
+    else:
+        raise AssertionError("the original acquisition error must be propagated")
+
+    assert released == ["release"]
+    assert lock_set.is_acquired is False
+
+
+def test_runtime_lock_closes_descriptor_when_lock_backend_setup_fails(tmp_path, monkeypatch):
+    import core.runtime_process_lock as lock_module
+    from pathlib import Path
+
+    path = tmp_path / "runtime.lock"
+    path.touch()
+    original_open = Path.open
+    opened = []
+
+    class _TrackedHandle:
+        def __init__(self, handle):
+            self._handle = handle
+            self.closed = False
+
+        def __getattr__(self, name):
+            return getattr(self._handle, name)
+
+        def close(self):
+            self.closed = True
+            self._handle.close()
+
+    def tracked_open(self, *args, **kwargs):
+        handle = _TrackedHandle(original_open(self, *args, **kwargs))
+        opened.append(handle)
+        return handle
+
+    class _BrokenBackend:
+        LK_NBLCK = 1
+
+        @staticmethod
+        def locking(_fd, _mode, _count):
+            raise ValueError("backend initialization failed")
+
+    monkeypatch.setattr(Path, "open", tracked_open)
+    monkeypatch.setattr(lock_module, "msvcrt", _BrokenBackend)
+    lock = RuntimeProcessLock(path)
+
+    try:
+        lock.acquire()
+    except ValueError as exc:
+        assert str(exc) == "backend initialization failed"
+    else:
+        raise AssertionError("the original backend setup failure must propagate")
+
+    assert len(opened) == 1
+    assert opened[0].closed is True
+    assert lock.is_acquired is False
+
+
+def test_lock_set_retains_failed_release_for_a_later_retry(tmp_path):
+    lock_set = RuntimeProcessLockSet(tmp_path / "runtime.lock")
+
+    class _RetryableLock:
+        def __init__(self):
+            self.is_acquired = True
+            self.calls = 0
+
+        def acquire(self):
+            self.is_acquired = True
+
+        def release(self):
+            self.calls += 1
+            if self.calls == 1:
+                raise OSError("temporary close failure")
+            self.is_acquired = False
+
+    lock = _RetryableLock()
+    lock_set._locks = [lock]
+    lock_set._acquired = [lock]
+
+    try:
+        lock_set.release()
+    except RuntimeError as exc:
+        assert "liberar" in str(exc)
+    else:
+        raise AssertionError("the first release failure must be reported")
+
+    assert lock_set._acquired == [lock]
+    assert lock.is_acquired is True
+    assert lock_set.is_acquired is True
+
+    lock_set.release()
+    assert lock.calls == 2
+    assert lock.is_acquired is False
+    assert lock_set._acquired == []
+    assert lock_set.is_acquired is False
+
+
+def test_lock_set_retries_only_locks_whose_release_failed(tmp_path):
+    lock_set = RuntimeProcessLockSet(tmp_path / "runtime.lock")
+
+    class _TrackedLock:
+        def __init__(self, fail_first_release=False):
+            self.is_acquired = True
+            self.fail_first_release = fail_first_release
+            self.release_calls = 0
+
+        def acquire(self):
+            self.is_acquired = True
+
+        def release(self):
+            self.release_calls += 1
+            if self.fail_first_release and self.release_calls == 1:
+                raise OSError("temporary unlock failure")
+            self.is_acquired = False
+
+    already_released = _TrackedLock()
+    retry_required = _TrackedLock(fail_first_release=True)
+    lock_set._locks = [already_released, retry_required]
+    lock_set._acquired = [already_released, retry_required]
+
+    try:
+        lock_set.release()
+    except RuntimeError as exc:
+        assert "liberar" in str(exc)
+    else:
+        raise AssertionError("the partial release failure must be reported")
+
+    assert already_released.release_calls == 1
+    assert already_released.is_acquired is False
+    assert retry_required.release_calls == 1
+    assert retry_required.is_acquired is True
+    assert lock_set._acquired == [retry_required]
+    assert lock_set.is_acquired is False
+
+    lock_set.release()
+
+    assert already_released.release_calls == 1
+    assert retry_required.release_calls == 2
+    assert retry_required.is_acquired is False
+    assert lock_set._acquired == []
+    assert lock_set.is_acquired is False
+
+
+
+def test_lock_set_rolls_back_partial_acquisition_on_keyboard_interrupt(tmp_path):
+    lock_set = RuntimeProcessLockSet(tmp_path / "runtime.lock")
+    released = []
+
+    class _AcquiredLock:
+        def acquire(self):
+            return None
+
+        def release(self):
+            released.append("released")
+
+    class _InterruptedLock:
+        def acquire(self):
+            raise KeyboardInterrupt("cancelled during lock acquisition")
+
+        def release(self):
+            raise AssertionError("interrupted lock was never acquired")
+
+    lock_set._locks = [_AcquiredLock(), _InterruptedLock()]
+
+    try:
+        lock_set.acquire()
+    except KeyboardInterrupt as exc:
+        assert str(exc) == "cancelled during lock acquisition"
+    else:
+        raise AssertionError("KeyboardInterrupt must propagate after rollback")
+
+    assert released == ["released"]
+    assert lock_set._acquired == []
+    assert lock_set.is_acquired is False

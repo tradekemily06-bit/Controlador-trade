@@ -51,3 +51,16 @@ def test_validated_source_still_requires_knowledge_validation_and_never_grants_e
 
     assert admitted.knowledge_validated is True
     assert admitted.operation_eligible is False
+
+
+def test_knowledge_admission_rejects_missing_manual_review_evidence():
+    import pytest
+
+    gate = LearningSourceGate()
+    source = gate.intake(
+        source_id="unreviewed-knowledge",
+        source_type=LearningSourceType.LINK,
+        uri="https://example.com/unreviewed",
+    )
+    with pytest.raises(ValueError, match="review evidence"):
+        gate.admit_knowledge(source, knowledge_validated=True)

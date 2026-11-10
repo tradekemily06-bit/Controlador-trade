@@ -4,6 +4,8 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
+from execution.mt5_session_lock import serialized_mt5_session
+
 from core.p122_broker_market_data import BrokerMarketDataPort, BrokerMarketDataRequest
 from data.models import Candle
 from data.normalizer import normalize_candle
@@ -42,28 +44,46 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
         self._mt5 = mt5_module
         self._terminal_path = terminal_path or os.environ.get("CONTROLADOR_MT5_TERMINAL_PATH") or None
 
-    def _initialize(self, mt5: Any) -> bool:
+    @serialized_mt5_session
+    def initialize_terminal(self, mt5: Any) -> bool:
+        """Initialize and verify the configured terminal, cleaning up on failure."""
         if not self._terminal_path:
-            return bool(mt5.initialize())
-        if not mt5.initialize(path=self._terminal_path):
-            return False
-        terminal = mt5.terminal_info()
-        expected = os.path.normcase(os.path.realpath(self._terminal_path))
-        actual = (
-            os.path.normcase(
-                os.path.realpath(
-                    os.path.join(getattr(terminal, "path", ""), os.path.basename(self._terminal_path))
+            try:
+                return bool(mt5.initialize())
+            except Exception as exc:
+                try:
+                    mt5.shutdown()
+                except Exception:
+                    pass
+                raise MT5MarketDataError("falha ao inicializar o terminal MT5") from exc
+        try:
+            if not mt5.initialize(path=self._terminal_path):
+                return False
+            terminal = mt5.terminal_info()
+            expected = os.path.normcase(os.path.realpath(self._terminal_path))
+            actual = (
+                os.path.normcase(
+                    os.path.realpath(
+                        os.path.join(getattr(terminal, "path", ""), os.path.basename(self._terminal_path))
+                    )
                 )
+                if terminal is not None
+                else ""
             )
-            if terminal is not None
-            else ""
-        )
-        if actual != expected:
-            mt5.shutdown()
-            raise MT5MarketDataError(
-                "terminal MT5 conectado não corresponde ao caminho configurado; leitura bloqueada."
-            )
-        return True
+            if actual != expected:
+                mt5.shutdown()
+                raise MT5MarketDataError(
+                    "terminal MT5 conectado não corresponde ao caminho configurado; leitura bloqueada."
+                )
+            return True
+        except MT5MarketDataError:
+            raise
+        except Exception as exc:
+            try:
+                mt5.shutdown()
+            except Exception:
+                pass
+            raise MT5MarketDataError("falha ao verificar o terminal MT5 configurado") from exc
 
     def _module(self) -> Any:
         if self._mt5 is None:
@@ -110,13 +130,14 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
         )
         return self.fetch_market_data(broker_request)
 
+    @serialized_mt5_session
     def fetch_market_data(self, request: BrokerMarketDataRequest) -> tuple[Candle, ...]:
         if not isinstance(request, BrokerMarketDataRequest):
             raise TypeError("request deve ser BrokerMarketDataRequest")
 
         mt5 = self._module()
         timeframe = self._timeframe(request.timeframe)
-        if not self._initialize(mt5):
+        if not self.initialize_terminal(mt5):
             raise MT5MarketDataError(f"MT5 indisponível: {self._last_error(mt5)}")
 
         try:

@@ -77,6 +77,31 @@ def _assistant(store, completion, monkeypatch):
     )
 
 
+def test_readiness_distinguishes_present_credentials_from_client_initialization_failure(monkeypatch):
+    assistant = EcosystemAssistant(
+        store=FakeStore(),
+        service=object(),
+        fiscal=object(),
+        client_factory=lambda: object(),
+        model="fake-model",
+    )
+    monkeypatch.setenv("OPENAI_API_KEY", "configured-secret")
+    monkeypatch.setattr(
+        assistant,
+        "_client",
+        lambda: (_ for _ in ()).throw(AssistantUnavailableError("SDK indisponível")),
+    )
+
+    status = assistant.readiness()
+
+    assert status["available"] is False
+    assert status["credentials_configured"] is True
+    assert status["client_initialized"] is False
+    assert status["connection_tested"] is False
+    assert status["status"] == "CLIENT_INITIALIZATION_FAILED"
+    assert "configured-secret" not in str(status)
+
+
 def test_readiness_never_claims_provider_connection_was_tested():
     assistant = EcosystemAssistant(
         store=FakeStore(),
@@ -158,6 +183,7 @@ def test_ask_provider_error_is_sanitized_and_user_message_remains_in_history(mon
         )
         assert "secret-provider-detail" not in str(exc)
         assert "OPENAI_API_KEY" not in str(exc)
+        assert exc.conversation_id == "conversation-test"
     else:
         raise AssertionError("provider errors must be returned as a sanitized failure")
 
@@ -193,3 +219,170 @@ def test_assistant_system_rules_require_period_aware_fiscal_estimates_and_no_gen
     assert "não some períodos nem invente valores" in chat_module.SYSTEM_PROMPT
     assert "Nunca apresente nem recomende percentual genérico para resultados estrangeiros" in chat_module.SYSTEM_PROMPT
     assert "A Reserva Fiscal é planejamento, não cálculo definitivo de imposto" in chat_module.SYSTEM_PROMPT
+
+
+def test_assistant_never_describes_user_configured_planning_rate_as_verified_tax_rate():
+    assert "USER_CONFIGURED_PLANNING_RATE" in chat_module.SYSTEM_PROMPT or (
+        "taxa de planejamento configurada pelo usuário" in chat_module.SYSTEM_PROMPT
+    )
+    assert "não uma alíquota oficial verificada pelo sistema" in chat_module.SYSTEM_PROMPT
+
+
+
+def test_non_json_context_is_rejected_before_user_message_is_persisted(monkeypatch):
+    class ExplosiveString:
+        def __str__(self):
+            raise AssertionError("unexpected context objects must not be stringified")
+
+    store = FakeStore()
+    completion = FakeCompletion()
+    assistant = _assistant(store, completion, monkeypatch)
+
+    monkeypatch.setattr(
+        chat_module,
+        "collect_read_only_context",
+        lambda *args, **kwargs: {"unexpected": ExplosiveString()},
+    )
+
+    try:
+        assistant.ask(
+            identity="single:owner",
+            message="Pergunta privada",
+            fiscal_owner_id="single:owner",
+        )
+    except AssistantUnavailableError as exc:
+        assert str(exc) == (
+            "Contexto do ecossistema indisponível; mensagem não foi enviada."
+        )
+    else:
+        raise AssertionError("non-JSON context must fail closed")
+
+    assert store.messages == []
+    assert completion.calls == []
+
+
+def test_non_finite_context_is_rejected_before_user_message_is_persisted(monkeypatch):
+    store = FakeStore()
+    completion = FakeCompletion()
+    assistant = _assistant(store, completion, monkeypatch)
+
+    monkeypatch.setattr(
+        chat_module,
+        "collect_read_only_context",
+        lambda *args, **kwargs: {"unexpected": float("nan")},
+    )
+
+    try:
+        assistant.ask(
+            identity="single:owner",
+            message="Pergunta privada",
+            fiscal_owner_id="single:owner",
+        )
+    except AssistantUnavailableError as exc:
+        assert str(exc) == (
+            "Contexto do ecossistema indisponível; mensagem não foi enviada."
+        )
+    else:
+        raise AssertionError("non-finite context must fail closed")
+
+    assert store.messages == []
+    assert completion.calls == []
+
+def test_oversized_context_is_rejected_without_truncating_json_or_persisting_message(monkeypatch):
+    store = FakeStore()
+    completion = FakeCompletion()
+    assistant = _assistant(store, completion, monkeypatch)
+
+    monkeypatch.setattr(
+        chat_module,
+        "collect_read_only_context",
+        lambda *args, **kwargs: {"large_but_json_safe": "x" * chat_module.MAX_CONTEXT_CHARS},
+    )
+
+    try:
+        assistant.ask(
+            identity="single:owner",
+            message="Pergunta privada",
+            fiscal_owner_id="single:owner",
+        )
+    except AssistantUnavailableError as exc:
+        assert str(exc) == (
+            "Contexto do ecossistema indisponível; mensagem não foi enviada."
+        )
+    else:
+        raise AssertionError("oversized context must fail closed")
+
+    assert store.messages == []
+    assert completion.calls == []
+
+
+
+def test_provider_configuration_failure_preserves_persisted_conversation_id(monkeypatch):
+    store = FakeStore()
+    completion = FakeCompletion()
+    assistant = _assistant(store, completion, monkeypatch)
+
+    def unavailable_client():
+        raise AssistantUnavailableError("Assistente não configurado: chave OpenAI ausente no servidor.", conversation_id="unrelated-conversation")
+
+    monkeypatch.setattr(assistant, "_client", unavailable_client)
+
+    try:
+        assistant.ask(
+            identity="single:owner",
+            message="Pergunta privada",
+            fiscal_owner_id="single:owner",
+        )
+    except AssistantUnavailableError as exc:
+        assert str(exc) == (
+            "Assistente não configurado: chave OpenAI ausente no servidor."
+        )
+        assert exc.conversation_id == "conversation-test"
+    else:
+        raise AssertionError("provider setup failure must be reported")
+
+    assert store.messages[-1][2] == "user"
+    assert store.messages[-1][3] == "Pergunta privada"
+    assert store.messages[-1][1] == "conversation-test"
+    assert completion.calls == []
+
+
+
+def test_explicit_connection_test_sends_only_fixed_prompt_and_never_context_or_history(monkeypatch):
+    store = FakeStore()
+    completion = FakeCompletion("OK")
+    assistant = _assistant(store, completion, monkeypatch)
+
+    result = assistant.test_connection()
+
+    assert result["success"] is True
+    assert result["connection_tested"] is True
+    assert result["context_sent"] is False
+    assert result["history_sent"] is False
+    assert result["conversation_saved"] is False
+    assert completion.calls == [{
+        "model": "fake-model",
+        "messages": [{"role": "user", "content": "Responda somente: OK"}],
+        "temperature": 0,
+        "max_completion_tokens": 5,
+    }]
+    assert store.messages == []
+
+
+def test_explicit_connection_test_sanitizes_provider_failure(monkeypatch):
+    class FailingCompletion:
+        def create(self, **kwargs):
+            raise RuntimeError("secret OPENAI_API_KEY=must-not-leak")
+
+    assistant = _assistant(FakeStore(), FailingCompletion(), monkeypatch)
+
+    try:
+        assistant.test_connection()
+    except AssistantUnavailableError as exc:
+        assert str(exc) == (
+            "Teste de conexão falhou. Confira a configuração do provedor e tente novamente."
+        )
+        assert "secret" not in str(exc)
+        assert "must-not-leak" not in str(exc)
+    else:
+        raise AssertionError("provider failure must be reported as a sanitized failure")

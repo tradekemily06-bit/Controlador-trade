@@ -1,5 +1,7 @@
 import ast
 import json
+import re
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +38,24 @@ def test_streamlit_panel_connects_assistant_and_fiscal_to_existing_api():
     assert "REAL permanece bloqueado" in source or "REAL" in source
 
 
+
+
+def test_streamlit_api_uses_case_insensitive_trusted_identity_extraction():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert "from trusted_identity import trusted_identity_from_headers" in source
+    assert "identity = trusted_identity_from_headers(incoming, IDENTITY_HEADER)" in source
+
+def test_streamlit_api_blocks_redirects_before_forwarding_trusted_identity():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    api_start = source.index("class _NoRedirectHandler")
+    api_end = source.index("\ndef api(", api_start)
+    redirect_guard = source[api_start:api_end]
+    assert "urllib.request.HTTPRedirectHandler" in redirect_guard
+    assert "def redirect_request(" in redirect_guard
+    assert "return None" in redirect_guard
+    assert "_API_OPENER = urllib.request.build_opener(_NoRedirectHandler)" in redirect_guard
+    assert "with _API_OPENER.open(request, timeout=TIMEOUT)" in source
+    assert "urllib.request.urlopen(request, timeout=TIMEOUT)" not in source
 
 def test_streamlit_fiscal_panel_records_losses_and_pages_the_ledger():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
@@ -184,6 +204,54 @@ def test_streamlit_disables_assistant_chat_when_provider_is_unavailable():
     assert "disabled=(not assistant_available) or (not consent_to_openai)" in source
 
 
+
+
+
+def test_streamlit_restores_assistant_conversation_id_after_provider_failure():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    api_start = source.index("def api(")
+    api_end = source.index(chr(10) + "def money(", api_start)
+    api_helper = source[api_start:api_end]
+
+    assert 'error_payload = json.loads(detail)' in api_helper
+    assert 'failed_conversation_id = error_payload.get("conversation_id")' in api_helper
+    assert 'path == "/api/assistant/chat"' in api_helper
+    assert 'st.session_state.assistant_conversation_id = failed_conversation_id' in api_helper
+    assert 'raise RuntimeError(f"API indisponível (HTTP {exc.code}): {message}") from None' in api_helper
+    assert 'error_payload.get("error"' not in api_helper
+    assert 'safe_messages = {' in api_helper
+    assert 'if exc.code == 503 and path == "/api/assistant/chat":' in api_helper
+    assert "A pergunta pode ter sido salva no histórico" in api_helper
+    assert "abra a conversa antes de reenviar para evitar duplicidade" in api_helper
+    assert 'raise RuntimeError("Runtime indisponível. Verifique a conexão com o serviço.") from None' in api_helper
+
+
+def test_streamlit_api_errors_do_not_expose_backend_details():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    api_start = source.index("def api(")
+    api_end = source.index(chr(10) + "def money(", api_start)
+    api_helper = source[api_start:api_end]
+
+    assert "detail = exc.read().decode" in api_helper
+    assert "message = safe_messages.get(exc.code" in api_helper
+    assert "BASE_URL" not in api_helper
+    assert "exc.reason" not in api_helper
+    assert "detail)" not in api_helper
+
+
+def test_streamlit_requires_explicit_openai_consent_before_chat_submission():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index('    consent_to_openai = st.checkbox(')
+    end = source.index('    if "assistant_history" not in st.session_state:', start)
+    consent_block = source[start:end]
+
+    assert 'key="assistant_openai_consent"' in consent_block
+    assert "value=True" not in consent_block
+    assert "if not consent_to_openai:" in consent_block
+    assert "disabled=(not assistant_available) or (not consent_to_openai)" in source
+    assert '"consent_to_openai": True' in source
+
+
 def test_streamlit_foreign_pending_forms_capture_structured_evidence_and_display_it():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     for field in (
@@ -255,36 +323,88 @@ def test_streamlit_layout_uses_full_width_and_wraps_responsively():
 
 
 
-def test_streamlit_uses_the_same_fixed_c_toggle_in_open_and_closed_states():
+def test_streamlit_uses_non_overlapping_c_toggle_in_open_and_closed_states():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert 'st.container(key="panel-toggle")' in source
     assert 'st.button("C", key="open_control_hub")' in source
-    assert 'st.button("C", key="close_control_hub")' in source
-    assert ".st-key-panel-toggle { position: fixed;" in source
-    assert "border-radius: 50%" in source
-    assert "closed_panel_signal(" in source
+    assert 'st.button("Fechar painel", key="close_control_hub")' in source
+    assert ".st-key-panel-toggle { position: relative;" in source
+    assert ".st-key-control-hub-shell" in source
+    assert "position: fixed;" not in source[source.index(".st-key-panel-toggle {"):source.index("*, *::before")]
+    assert 'key="main_area_navigation"' in source
+    assert 'key="module_navigation"' in source
+
+def test_closed_panel_signal_helper_validates_signal_and_score_bands():
+    helper_path = PANEL_DIR / "presentation.py"
+    helper_source = helper_path.read_text(encoding="utf-8")
+    tree = ast.parse(helper_source)
+    function = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "closed_panel_signal"
+    )
+    namespace = {"Any": Any}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), str(helper_path), "exec"), namespace)
+    render = namespace["closed_panel_signal"]
+
+    assert render({"signal": "BUY", "analysis": {"score": 69}}) == ("↑ COMPRAR", "69% · FRACA", "#46D6AD")
+    assert render({"signal": "SELL", "analysis": {"score": 70}}) == ("↓ VENDER", "70% · MODERADA", "#FF667A")
+    assert render({"signal": "WAIT", "analysis": {"score": 80}}) == ("AGUARDAR", "80% · FORTE", "#E8C66A")
+    assert render({"signal": "BUY", "analysis": {"score": 0}}) == ("INDISPONÍVEL", "—", "#7F8B97")
+    assert render({"signal": "UNKNOWN", "analysis": {"score": 99}}) == ("INDISPONÍVEL", "—", "#7F8B97")
+    assert render({"signal": "BUY", "analysis": {"score": True}}) == ("INDISPONÍVEL", "—", "#7F8B97")
 
 
-def test_streamlit_closed_panel_shows_only_c_and_last_validated_signal_summary():
+def test_streamlit_closed_panel_shows_signal_score_and_system_availability():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     start = source.index("if not st.session_state.panel_open:")
     end = source.index("st.stop()", start) + len("st.stop()")
     closed_state = source[start:end]
+    helper_start = source.index("def render_latest_signal(")
+    helper_end = source.index("# Four approved navigation areas", helper_start)
+    helper = source[helper_start:helper_end]
+
     assert 'st.button("C", key="open_control_hub")' in closed_state
-    assert 'st.session_state.get("market_analysis_result")' in closed_state
-    assert "closed_signal" in closed_state
-    assert "closed_score" in closed_state
+    assert 'toggle_col, signal_col = st.columns([1, 3], vertical_alignment="center")' in closed_state
+    assert 'with toggle_col:' in closed_state and 'with signal_col:' in closed_state
+    assert "render_latest_signal(closed=True)" in closed_state
+    assert 'api("/api/health")' in helper
+    assert 'api("/api/runtime/analysis/latest")' in helper
+    assert "closed_panel_signal(latest_analysis)" in helper
+    assert "closed-signal" in helper
+    assert "closed-score" in helper
+    assert "closed-status" in helper
     assert "Controlador-Trader" not in closed_state
     assert "Histórico" not in closed_state
-    assert "INDISPONÍVEL" not in closed_state
+    assert "market_analysis_result" not in closed_state
+    assert "conversation" not in closed_state
 
-
-def test_closed_panel_uses_the_standalone_validated_signal_helper():
+def test_streamlit_open_panel_is_rendered_inside_a_single_shell():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
-    assert "from presentation import closed_panel_signal" in source
-    assert "closed_panel_signal(" in source
+    assert 'with st.container(key="control-hub-shell"):' in source
+    assert '<div class="hub-title">Controlador-Trader</div>' in source
+    assert '<span class="demo-pill">DEMO</span>' in source
+    assert '["Reserva Fiscal", "Assistente do Ecossistema"]' in source
 
 
+def test_streamlit_open_and_closed_panel_share_the_latest_signal_and_score():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    closed_start = source.index("if not st.session_state.panel_open:")
+    closed_end = source.index("st.stop()", closed_start)
+    closed = source[closed_start:closed_end]
+    open_start = source.index('with st.container(key="control-hub-shell"):')
+    open_end = source.index('if st.button("Fechar painel"', open_start)
+    opened = source[open_start:open_end]
+    helper_start = source.index("def render_latest_signal(")
+    helper_end = source.index("# Four approved navigation areas", helper_start)
+    helper = source[helper_start:helper_end]
+
+    assert "render_latest_signal(closed=True)" in closed
+    assert "render_latest_signal(closed=False)" in opened
+    assert 'api("/api/runtime/analysis/latest")' in helper
+    assert "closed_panel_signal(latest_analysis)" in helper
+    assert "closed-signal" in helper and "closed-score" in helper
+    assert "open-signal" in helper and "open-score" in helper
+    assert "position: fixed;" not in source[source.index(".st-key-panel-toggle {"):source.index("*, *::before")]
 
 def test_streamlit_does_not_fill_unimplemented_modules_with_placeholder_copy():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
@@ -310,13 +430,16 @@ def test_streamlit_leverage_control_persists_only_the_preference_without_executi
 
 
 
-def test_assistant_is_a_standalone_module_inside_streamlit_without_changing_figma_tabs():
+def test_financeiro_groups_fiscal_reserve_and_assistant_inside_the_four_reference_areas():
     config = json.loads((PANEL_DIR / "controlador_trader_referencia_visual.json").read_text(encoding="utf-8"))
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert list(config["open_state"]["tabs"]) == ["COCKPIT", "ANÁLISE", "ESTUDO", "MAIS / ADMIN"]
-    assert 'AREAS["MAIS / ADMIN"].append("Assistente do Ecossistema")' in source
-    assert 'if module == "Assistente do Ecossistema":' in source
-    assert 'financial = st.radio("Financeiro", ["Reserva Fiscal", "Assistente do Ecossistema"]' not in source
+    assert 'AREAS["MAIS / ADMIN"].append(' not in source
+    assert 'if module == "Financeiro":' in source
+    assert 'financial = st.radio(' in source
+    assert '["Reserva Fiscal", "Assistente do Ecossistema"]' in source
+    assert 'if financial == "Reserva Fiscal":' in source
+    assert "show_fiscal()" in source
     assert "show_assistant()" in source
 
 
@@ -324,8 +447,47 @@ def test_streamlit_readme_identifies_the_streamlit_panel_as_user_facing_and_figm
     readme = (PANEL_DIR / "README.md").read_text(encoding="utf-8")
     assert "O Figma é somente referência visual" in readme
     assert "painel de uso pretendido" in readme
-    assert "Assistente do Ecossistema é acrescentado como módulo funcional próprio em MAIS / ADMIN" in readme
+    assert "Reserva Fiscal e Assistente do Ecossistema ficam agrupados dentro de Financeiro" in readme
 
+
+
+def test_streamlit_module_dispatch_has_no_unreachable_duplicate_handlers():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    function = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "show_readonly_module"
+    )
+    handlers = [
+        node.test
+        for node in ast.walk(function)
+        if isinstance(node, ast.If)
+    ]
+    rendered = [ast.unparse(node) for node in handlers]
+    for expression in (
+        "module_name == 'Escola / Tutorial / Onboarding'",
+        "module_name == 'Estatísticas'",
+        "module_name == 'Relatórios'",
+        "module_name == 'MT5 DEMO / Simulação'",
+        "module_name == 'Conexões'",
+        "module_name == 'Multi-Broker'",
+    ):
+        assert rendered.count(expression) == 1
+    assert "module_name in {'Memória', 'Replay'}" not in rendered
+    assert "module_name in {'Motor de Decisão', 'Estatísticas', 'Relatórios'}" not in rendered
+    assert "module_name in {'MT5 DEMO / Simulação', 'Conexões', 'Multi-Broker'}" not in rendered
+
+
+def test_streamlit_local_quickstart_configures_the_required_fiscal_owner_identity():
+    readme = (PANEL_DIR / "README.md").read_text(encoding="utf-8")
+    command = '$env:CONTROLADOR_SINGLE_USER_IDENTITY="local-dev-owner"'
+    runtime_start = 'py -3.12 app.py'
+    panel_start = '$env:CONTROLADOR_SINGLE_USER_IDENTITY="local-dev-owner"; py -3.12 -m streamlit run streamlit_panel/app.py'
+    assert command in readme
+    assert readme.index(command) < readme.index(runtime_start)
+    assert panel_start in readme
+    assert readme.index(panel_start) > readme.index(runtime_start)
+    assert "Configure `CONTROLADOR_SINGLE_USER_IDENTITY` com a identidade autorizada pelo Cloudflare Access." in readme
 
 
 def test_streamlit_operational_modules_use_live_read_only_runtime_endpoints():
@@ -349,7 +511,7 @@ def test_streamlit_operational_modules_use_live_read_only_runtime_endpoints():
 def test_streamlit_operation_screen_aggregates_read_only_runtime_telemetry_and_keeps_execution_blocked():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     start = source.index('if module_name == "Operação":')
-    end = source.index('if module_name in {"Memória", "Replay"}:', start)
+    end = source.index('if module_name == "Notificações":', start)
     screen = source[start:end]
     for route in ("/api/health", "/api/connections", "/api/risk", "/api/runtime/analysis/latest"):
         assert route in screen
@@ -395,18 +557,28 @@ def test_streamlit_market_analysis_shows_asset_session_and_news_readiness_withou
     assert 'api("/api/market/assets", "POST"' not in screen
 
 
-def test_streamlit_preferences_never_submit_execution_authority_fields():
+def test_streamlit_preferences_save_only_safe_presentation_fields():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert source.count('if module_name == "Configurações":') == 1
     start = source.index('if module_name == "Configurações":')
     end = source.index('if module_name == "Escola / Tutorial / Onboarding":', start)
     preferences_screen = source[start:end]
-    assert 'api("/api/preferences", "POST"' not in preferences_screen
-    assert "st.checkbox(" not in preferences_screen
-    assert "st.form(" not in preferences_screen
+    assert 'api("/api/preferences", "POST"' in preferences_screen
+    assert 'api("/api/preferences/candles", "POST"' in preferences_screen
+    assert 'api("/api/preferences/notifications", "POST"' in preferences_screen
+    assert "safe_general_preferences_form" in preferences_screen
+    assert "safe_candle_preferences_form" in preferences_screen
+    assert "safe_notification_preferences_form" in preferences_screen
+    for forbidden in (
+        "real_execution_enabled", "autonomous_operation_enabled",
+        "selected_mode", "risk_limits", "kill_switch",
+        "require_closed_candle", "require_filters",
+    ):
+        assert forbidden not in preferences_screen
+    assert "candle fechado e filtros de confirmação permanecem ativos" in preferences_screen
     assert 'safety_cols[1].metric("Execução REAL", "DESABILITADA")' in preferences_screen
     assert 'safety_cols[2].metric("Execução permitida", "NÃO")' in preferences_screen
-    assert "Somente leitura" in preferences_screen
+    assert "Alertas críticos (sempre ativos)" in preferences_screen
 
 
 def test_streamlit_operational_screens_render_human_readable_summaries_without_raw_json_dump():
@@ -420,12 +592,14 @@ def test_streamlit_operational_screens_render_human_readable_summaries_without_r
     settings_start = source.index('if module_name == "Configurações":')
     settings_end = source.index('if module_name == "Escola / Tutorial / Onboarding":', settings_start)
     settings_screen = source[settings_start:settings_end]
-    assert "Preferências sincronizadas do Ecossistema" in settings_screen
-    assert "Somente leitura" in settings_screen
-    assert "Salvar preferências" not in settings_screen
-    assert "Salvar aparência" not in settings_screen
-    assert "Salvar notificações" not in settings_screen
-    assert 'api("/api/preferences", "POST"' not in settings_screen
+    assert "Preferências de apresentação e conveniência" in settings_screen
+    assert "Salvar preferências gerais" in settings_screen
+    assert "Salvar aparência dos candles" in settings_screen
+    assert "Salvar notificações" in settings_screen
+    assert 'api("/api/preferences", "POST"' in settings_screen
+    assert 'api("/api/preferences/candles", "POST"' in settings_screen
+    assert 'api("/api/preferences/notifications", "POST"' in settings_screen
+    assert "Execução REAL" in settings_screen
     assert "st.json(data)" not in source
 
 
@@ -450,6 +624,8 @@ def test_streamlit_simulator_discloses_backtest_assumptions_and_no_execution():
 
     assert "Multiplicador do contrato" in source
     assert "Spread total em unidades de preço" in source
+    assert "or spread_price_units < 0:" in source
+    assert "or spread_price_units <= 0:" not in source
     assert "Execução permitida: NÃO" in source
     assert "O backtest não integra o Risk Manager" in source
 
@@ -588,6 +764,15 @@ def test_streamlit_learning_modules_show_distinct_existing_data_without_trade_au
     assert "Materiais do laboratório" in laboratory
     assert "Histórico de tentativas" in laboratory
     assert "Observações" in laboratory
+    assert 'api("/api/learning/resources", "POST"' in laboratory
+    assert 'api("/api/learning/activities", "POST"' in laboratory
+    assert 'api("/api/learning/attempts", "POST"' in laboratory
+    assert 'api("/api/learning/observations", "POST"' in laboratory
+    assert "learning_resource_create_form" in laboratory
+    assert "learning_activity_create_form" in laboratory
+    assert "learning_attempt_create_form" in laboratory
+    assert "learning_observation_create_form" in laboratory
+    assert '"validated": False' in laboratory
     assert "Execução permitida: NÃO." in laboratory
     assert "Descobertas não alteram sinais, filtros ou parâmetros de execução." in laboratory
     assert '("Laboratório", ("Laboratório de aprendizado", "/api/learning"))' not in source
@@ -655,7 +840,7 @@ def test_streamlit_statistics_and_reports_have_distinct_aggregated_views():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     statistics_start = source.index('if module_name == "Estatísticas":')
     reports_start = source.index('if module_name == "Relatórios":', statistics_start)
-    generic_start = source.index('if module_name in {"Motor de Decisão", "Estatísticas", "Relatórios"}:', reports_start)
+    generic_start = source.index('    except Exception as exc:', reports_start)
     statistics_view = source[statistics_start:reports_start]
     reports_view = source[reports_start:generic_start]
     assert 'data.get("breakdowns", {})' in statistics_view
@@ -669,6 +854,7 @@ def test_streamlit_statistics_and_reports_have_distinct_aggregated_views():
     assert "operational_report_csv_download" in reports_view
     assert 'delimiter=";"' in reports_view
     assert "report_buffer.getvalue()" in reports_view
+    assert r'data="\ufeff" + report_buffer.getvalue()' in reports_view
     assert "controlador-trading-relatorio-operacional.csv" in reports_view
     assert "não inclui credenciais, dados bancários ou ordens" in reports_view
     assert "Execução permitida: NÃO · REAL: DESABILITADO" in statistics_view
@@ -685,6 +871,10 @@ def test_streamlit_notifications_screen_reads_full_history_without_mutations():
     assert 'st.selectbox("Filtrar gravidade"' in view
     assert '"Atenção necessária": bool(item.get("requires_attention", False))' in view
     assert '"Bloqueante": bool(item.get("blocking", False))' in view
+    assert "notification_history_csv_download" in view
+    assert "Exportar notificações filtradas · CSV" in view
+    assert "notification_writer.writerows(display_rows)" in view
+    assert r'data="\ufeff" + notification_csv.getvalue()' in view
     assert "somente leitura" in view.lower()
     assert 'api("/api/notifications/all", "POST"' not in view
     assert "execução permitida: não · real: desabilitado" in view.lower()
@@ -694,7 +884,7 @@ def test_streamlit_risk_management_has_dedicated_read_only_limits_view():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert '"Gestão de Risco": ("Gestão de Risco", "/api/risk")' in source
     start = source.index('if module_name == "Gestão de Risco":')
-    end = source.index('if module_name == "Simulador":', start)
+    end = source.index('if module_name == "Auditoria":', start)
     view = source[start:end]
     assert 'data.get("configured_limits", {})' in view
     assert 'limits.get("daily_loss_limit", "—")' in view
@@ -707,19 +897,25 @@ def test_streamlit_risk_management_has_dedicated_read_only_limits_view():
     assert 'api("/api/risk", "POST"' not in view
 
 
-def test_streamlit_settings_view_reads_preferences_without_mutations():
+def test_streamlit_settings_view_has_working_safe_save_actions():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert '"Configurações": ("Preferências do Ecossistema", "/api/preferences")' in source
     start = source.index('if module_name == "Configurações":')
-    end = source.index('if module_name == "Motor de Decisão":', start)
+    end = source.index('if module_name == "Escola / Tutorial / Onboarding":', start)
     view = source[start:end]
     assert 'data.get("preferences", {})' in view
-    assert 'prefs.get("default_symbol", "—")' in view
-    assert 'prefs.get("default_timeframe", "—")' in view
-    assert 'prefs.get("leverage_enabled", False)' in view
+    assert 'prefs.get("default_symbol", "EURUSD")' in view
+    assert 'prefs.get("default_timeframe", "5m")' in view
+    assert 'api("/api/preferences", "POST"' in view
+    assert 'api("/api/preferences/candles", "POST"' in view
+    assert 'api("/api/preferences/notifications", "POST"' in view
+    assert "Salvar preferências gerais" in view
+    assert "Salvar aparência dos candles" in view
+    assert "Salvar notificações" in view
+    assert 'st.selectbox("Tema do gráfico"' in view
     assert 'safety_cols[1].metric("Execução REAL", "DESABILITADA")' in view
-    assert "execução permitida: não · real: desabilitado" in view.lower()
-    assert 'api("/api/preferences", "POST"' not in view
+    assert 'safety_cols[2].metric("Execução permitida", "NÃO")' in view
+    assert "Estas configurações não alteram limites de risco" in view
 
 
 def test_streamlit_onboarding_shows_guided_steps_without_execution_authority():
@@ -813,3 +1009,1014 @@ def test_every_reference_navigation_module_has_a_functional_streamlit_route():
     assert 'show_assistant()' in source
     assert 'elif module in {"Financeiro", "Reserva Fiscal"}:' in source
     assert "show_fiscal()" in source
+
+
+
+
+def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid_summary():
+    from math import isfinite
+
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    finite_helper = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_is_finite_number"
+    )
+    function = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_valid_fiscal_summary"
+    )
+    isolated = ast.Module(body=[finite_helper, function], type_ignores=[])
+    namespace = {"Any": Any, "isfinite": isfinite, "date": date}
+    exec(compile(isolated, str(PANEL_DIR / "app.py"), "exec"), namespace)
+    validate = namespace["_valid_fiscal_summary"]
+
+    valid = {
+        "categories": {
+            "BR_DAY_TRADE": {
+                "entries": 2,
+                "rate": 20.0,
+                "realized_result_brl": 1000.0,
+                "reserve_amount_brl": 200.0,
+            },
+            "FOREIGN_FINANCIAL_ASSET": {
+                "entries": 2,
+                "realized_result_brl": 0.0,
+                "reserve_amount_brl": 0.0,
+                "classification_status": "PENDING_CLASSIFICATION",
+                "rate_available": False,
+            },
+        },
+        "total_reserved_brl": 200.0,
+        "as_of": "2026-11-05",
+        "reserve_semantics": {
+            "kind": "PLANNING_ESTIMATE_ONLY",
+            "tax_liability_confirmed": False,
+            "monthly_tax_assessment": False,
+            "monthly_loss_offsets_calculated": False,
+            "irrf_credits_calculated": False,
+        },
+        "periods": {
+            "day": {"start": "2026-11-05", "end": "2026-11-05", "entries": 2, "realized_result_brl": 1000.0, "reserve_amount_brl": 200.0},
+            "week": {"start": "2026-11-02", "end": "2026-11-05", "entries": 2, "realized_result_brl": 1000.0, "reserve_amount_brl": 200.0},
+            "month": {"start": "2026-11-01", "end": "2026-11-05", "entries": 2, "realized_result_brl": 1000.0, "reserve_amount_brl": 200.0},
+            "year": {"start": "2026-01-01", "end": "2026-11-05", "entries": 2, "realized_result_brl": 1000.0, "reserve_amount_brl": 200.0},
+        },
+    }
+    assert validate(valid) is True
+    invalid_total = {**valid, "total_reserved_brl": 201.0}
+    assert validate(invalid_total) is False
+    invalid_main_period = {
+        **valid,
+        "periods": {
+            **valid["periods"],
+            "week": {**valid["periods"]["week"], "start": "2026-11-01"},
+        },
+    }
+    assert validate(invalid_main_period) is False
+    assert validate({**valid, "as_of": "2026-11-06"}) is False
+
+    valid_with_pending = {
+        **valid,
+        "foreign_pending": {
+            "available": True,
+            "classification_status": "PENDING_CLASSIFICATION",
+            "included_in_totals": False,
+            "reserve_calculated": False,
+            "as_of": "2026-11-05",
+            "total": 3,
+            "realized_results": 1,
+            "asset_amounts": 2,
+            "evidence_completeness": {
+                "total": 3,
+                "missing_institution": 1,
+                "missing_custody_location": 2,
+                "missing_contract_type": 1,
+                "missing_core_evidence": 2,
+            },
+            "periods": {
+                "day": {"start": "2026-11-05", "end": "2026-11-05", "total": 1, "realized_results": 1, "asset_amounts": 0},
+                "week": {"start": "2026-11-02", "end": "2026-11-05", "total": 1, "realized_results": 1, "asset_amounts": 0},
+                "month": {"start": "2026-11-01", "end": "2026-11-05", "total": 1, "realized_results": 1, "asset_amounts": 0},
+                "year": {"start": "2026-01-01", "end": "2026-11-05", "total": 1, "realized_results": 1, "asset_amounts": 0},
+            },
+        },
+    }
+    assert validate(valid_with_pending) is True
+    invalid_evidence_total = {
+        **valid_with_pending,
+        "foreign_pending": {
+            **valid_with_pending["foreign_pending"],
+            "evidence_completeness": {
+                **valid_with_pending["foreign_pending"]["evidence_completeness"],
+                "total": 2,
+            },
+        },
+    }
+    assert validate(invalid_evidence_total) is False
+    invalid_evidence_count = {
+        **valid_with_pending,
+        "foreign_pending": {
+            **valid_with_pending["foreign_pending"],
+            "evidence_completeness": {
+                **valid_with_pending["foreign_pending"]["evidence_completeness"],
+                "missing_core_evidence": 4,
+            },
+        },
+    }
+    assert validate(invalid_evidence_count) is False
+    invalid_pending_period = {
+        **valid_with_pending,
+        "foreign_pending": {
+            **valid_with_pending["foreign_pending"],
+            "periods": {
+                **valid_with_pending["foreign_pending"]["periods"],
+                "week": {
+                    **valid_with_pending["foreign_pending"]["periods"]["week"],
+                    "start": "2026-11-01",
+                },
+            },
+        },
+    }
+    assert validate(invalid_pending_period) is False
+    invalid_pending_counts = {
+        **valid_with_pending,
+        "foreign_pending": {
+            **valid_with_pending["foreign_pending"],
+            "periods": {
+                **valid_with_pending["foreign_pending"]["periods"],
+                "day": {
+                    **valid_with_pending["foreign_pending"]["periods"]["day"],
+                    "total": 2,
+                },
+            },
+        },
+    }
+    assert validate(invalid_pending_counts) is False
+    invalid_pending = {
+        **valid_with_pending,
+        "foreign_pending": {**valid_with_pending["foreign_pending"], "total": True},
+    }
+    assert validate(invalid_pending) is False
+    invalid_pending_flags = {
+        **valid_with_pending,
+        "foreign_pending": {**valid_with_pending["foreign_pending"], "included_in_totals": True},
+    }
+    assert validate(invalid_pending_flags) is False
+
+    invalid_cases = []
+    missing_period = {**valid, "periods": {key: value for key, value in valid["periods"].items() if key != "year"}}
+    invalid_cases.append(missing_period)
+    invalid_cases.append({**valid, "total_reserved_brl": float("inf")})
+    invalid_cases.append({**valid, "total_reserved_brl": 1e100})
+    invalid_cases.append({
+        **valid,
+        "categories": {
+            **valid["categories"],
+            "BR_DAY_TRADE": {**valid["categories"]["BR_DAY_TRADE"], "reserve_amount_brl": -0.01},
+        },
+    })
+    invalid_cases.append({
+        **valid,
+        "categories": {
+            **valid["categories"],
+            "BR_DAY_TRADE": {**valid["categories"]["BR_DAY_TRADE"], "realized_result_brl": 1e100},
+        },
+    })
+    invalid_cases.append({
+        **valid,
+        "categories": {
+            **valid["categories"],
+            "BR_DAY_TRADE": {**valid["categories"]["BR_DAY_TRADE"], "entries": True},
+        },
+    })
+    invalid_cases.append({
+        **valid,
+        "categories": {
+            **valid["categories"],
+            "BR_DAY_TRADE": {**valid["categories"]["BR_DAY_TRADE"], "rate": True},
+        },
+    })
+    invalid_cases.append({
+        **valid,
+        "categories": {
+            **valid["categories"],
+            "FOREIGN_FINANCIAL_ASSET": {
+                **valid["categories"]["FOREIGN_FINANCIAL_ASSET"],
+                "rate_available": True,
+            },
+        },
+    })
+    invalid_cases.append({
+        **valid,
+        "categories": {
+            **valid["categories"],
+            "FOREIGN_FINANCIAL_ASSET": {
+                **valid["categories"]["FOREIGN_FINANCIAL_ASSET"],
+                "reserve_amount_brl": 1.0,
+            },
+        },
+    })
+    invalid_cases.append({
+        **valid,
+        "categories": {
+            **valid["categories"],
+            "FOREIGN_FINANCIAL_ASSET": {
+                **valid["categories"]["FOREIGN_FINANCIAL_ASSET"],
+                "entries": 1.5,
+            },
+        },
+    })
+    invalid_cases.append({
+        **valid,
+        "categories": {
+            **valid["categories"],
+            "FOREIGN_FINANCIAL_ASSET": {
+                **valid["categories"]["FOREIGN_FINANCIAL_ASSET"],
+                "entries": 10**1000,
+            },
+        },
+    })
+    invalid_cases.append({
+        **valid,
+        "reserve_semantics": {**valid["reserve_semantics"], "tax_liability_confirmed": True},
+    })
+    invalid_cases.append({
+        **valid,
+        "periods": {
+            **valid["periods"],
+            "month": {**valid["periods"]["month"], "reserve_amount_brl": float("nan")},
+        },
+    })
+    invalid_cases.append({
+        **valid,
+        "periods": {
+            **valid["periods"],
+            "week": {**valid["periods"]["week"], "start": "2026-02-30"},
+        },
+    })
+    invalid_cases.append({
+        **valid,
+        "periods": {
+            **valid["periods"],
+            "day": {**valid["periods"]["day"], "reserve_amount_brl": -0.01},
+        },
+    })
+    invalid_cases.append({
+        **valid,
+        "periods": {
+            **valid["periods"],
+            "year": {
+                **valid["periods"]["year"],
+                "start": "2026-11-05",
+                "end": "2026-11-01",
+            },
+        },
+    })
+    invalid_cases.append({
+        **valid,
+        "periods": {
+            **valid["periods"],
+            "year": {**valid["periods"]["year"], "realized_result_brl": 1e100},
+        },
+    })
+    invalid_cases.append({
+        **valid,
+        "periods": {
+            **valid["periods"],
+            "day": {**valid["periods"]["day"], "entries": 10**1000},
+        },
+    })
+    oversized = 10**1000
+    invalid_cases.extend([
+        {**valid, "total_reserved_brl": oversized},
+        {
+            **valid,
+            "categories": {
+                **valid["categories"],
+                "BR_DAY_TRADE": {**valid["categories"]["BR_DAY_TRADE"], "rate": oversized},
+            },
+        },
+        {
+            **valid,
+            "categories": {
+                **valid["categories"],
+                "FOREIGN_FINANCIAL_ASSET": {
+                    **valid["categories"]["FOREIGN_FINANCIAL_ASSET"],
+                    "realized_result_brl": oversized,
+                },
+            },
+        },
+        {
+            **valid,
+            "periods": {
+                **valid["periods"],
+                "month": {
+                    **valid["periods"]["month"],
+                    "reserve_amount_brl": oversized,
+                },
+            },
+        },
+    ])
+    assert all(validate(candidate) is False for candidate in invalid_cases)
+
+
+def test_pending_queue_summary_validation_rejects_bad_counts_and_flags():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index("def _valid_pending_queue_summary")
+    end = source.index("def _valid_fiscal_summary", start)
+    namespace = {"date": date, "Any": Any}
+    exec(compile(source[start:end], "streamlit_panel/app.py", "exec"), namespace)
+    validate = namespace["_valid_pending_queue_summary"]
+    valid = {
+        "available": True, "as_of": "2026-11-05",
+        "classification_status": "PENDING_CLASSIFICATION",
+        "included_in_totals": False, "reserve_calculated": False, "total": 2,
+        "periods": {
+            key: {
+                "start": "2026-11-05" if key == "day" else ("2026-11-01" if key in ("month", "year") else "2026-11-02"),
+                "end": "2026-11-05", "total": 1, "results": 1,
+            }
+            for key in ("day", "week", "month", "year")
+        },
+    }
+    assert validate(valid, "results") is True
+    assert validate({**valid, "total": True}, "results") is False
+    assert validate({**valid, "included_in_totals": True}, "results") is False
+    assert validate({**valid, "periods": {**valid["periods"], "month": {**valid["periods"]["month"], "results": 1.0}}}, "results") is False
+    assert validate({**valid, "as_of": "2026-02-30"}, "results") is False
+    assert validate({
+        **valid,
+        "periods": {
+            **valid["periods"],
+            "week": {**valid["periods"]["week"], "start": "2026-11-06"},
+        },
+    }, "results") is False
+    assert validate({
+        **valid,
+        "periods": {
+            **valid["periods"],
+            "month": {**valid["periods"]["month"], "end": "2026-11-06"},
+        },
+    }, "results") is False
+    assert validate({
+        **valid,
+        "periods": {
+            **valid["periods"],
+            "day": {**valid["periods"]["day"], "start": "2026-11-04"},
+        },
+    }, "results") is False
+    assert validate({
+        **valid,
+        "periods": {
+            **valid["periods"],
+            "week": {**valid["periods"]["week"], "start": "2026-11-03"},
+        },
+    }, "results") is False
+
+
+def test_fiscal_pending_count_rendering_rejects_invalid_values():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index("def _safe_fiscal_count")
+    end = source.index("def _valid_fiscal_summary", start)
+    namespace = {"Any": Any}
+    exec(compile(source[start:end], "streamlit_panel/app.py", "exec"), namespace)
+    safe_count = namespace["_safe_fiscal_count"]
+    assert safe_count(4) == 4
+    assert safe_count(True) == 0
+    assert safe_count(4.0) == 0
+    assert safe_count(-1) == 0
+    assert safe_count(10**100) == 0
+
+def test_fiscal_reserve_writes_are_disabled_when_summary_read_fails_or_is_incomplete():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    fiscal_start = source.index("def show_fiscal()")
+    fiscal_end = source.index("\ndef ", fiscal_start + 1)
+    fiscal = source[fiscal_start:fiscal_end]
+
+    assert "summary_available = False" in fiscal
+    assert "summary_available = _valid_fiscal_summary(summary)" in fiscal
+    assert "def _valid_fiscal_summary(summary: Any) -> bool:" in source
+    assert 'categories.get("BR_DAY_TRADE")' in source
+    assert 'semantics.get("kind") != "PLANNING_ESTIMATE_ONLY"' in source
+    assert '("day", "week", "month", "year")' in source
+    assert 'def _is_finite_number(value: Any) -> bool:' in source
+    assert 'if not _is_finite_number(value):' in source
+    assert 'st.form_submit_button("Salvar percentual", disabled=not summary_available)' in fiscal
+    assert 'st.form_submit_button("Registrar estimativa de planejamento", disabled=not summary_available)' in fiscal
+    assert "lançamentos e alterações de percentual ficam bloqueados" in fiscal
+
+
+
+def test_streamlit_laboratorio_has_separate_manual_source_review_and_knowledge_admission():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index('if module_name == "Laboratório":')
+    end = source.index('if module_name == "Aprendizado":', start)
+    laboratory = source[start:end]
+
+    assert "Revisão manual de procedência" in laboratory
+    assert "não baixa" in laboratory
+    assert "não é uma varredura antivírus" in laboratory
+    assert 'api("/api/learning/sources/validate", "POST"' in laboratory
+    assert '"content_verified": True' in laboratory
+    assert '"security_checked": True' in laboratory
+    assert 'api("/api/learning/sources/admit", "POST"' in laboratory
+    assert '"knowledge_validated": True' in laboratory
+    assert 'source_status == "QUARANTINED"' in laboratory
+    assert 'source_status == "VALIDATED" and not source.get("knowledge_validated", False)' in laboratory
+    assert "Isso não autoriza operações" in laboratory
+
+
+def test_streamlit_fiscal_pending_page_validation_rejects_malformed_pagination():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index("def _recovered_pending_offset")
+    end = source.index("def _valid_fiscal_summary", start)
+    namespace = {"date": date, "Any": Any}
+    exec(compile(source[start:end], "streamlit_panel/app.py", "exec"), namespace)
+    validate_page = namespace["_valid_pending_page"]
+    validate_reviews = namespace["_valid_review_history"]
+    recover_offset = namespace["_recovered_pending_offset"]
+    assert recover_offset(0, 50) == 0
+    assert recover_offset(1, 50) == 0
+    assert recover_offset(50, 50) == 0
+    assert recover_offset(51, 50) == 50
+    assert recover_offset(101, 150) == 100
+    assert recover_offset(True, 50) == 0
+    assert recover_offset(10, -1) == 0
+    assert recover_offset(10, 2.5) == 0
+    valid_page = {
+        "items": [{"pending_id": "pending-1", "reference": "REF", "status": "PENDING_CLASSIFICATION"}],
+        "total": 3, "limit": 50, "offset": 0,
+    }
+    assert validate_page(valid_page, 0) is True
+    for invalid in (
+        {**valid_page, "total": True},
+        {**valid_page, "total": "3"},
+        {**valid_page, "limit": 100},
+        {**valid_page, "limit": 50.0},
+        {**valid_page, "offset": 50},
+        {**valid_page, "offset": 0.0},
+        {**valid_page, "items": "not-a-list"},
+        {**valid_page, "items": [None]},
+        {**valid_page, "items": [{"pending_id": 123, "status": "PENDING_CLASSIFICATION"}]},
+        {**valid_page, "items": [{"pending_id": "", "status": "PENDING_CLASSIFICATION"}]},
+        {**valid_page, "items": [{"pending_id": "x" * 81, "status": "PENDING_CLASSIFICATION"}]},
+        {**valid_page, "total": 0},
+        {**valid_page, "items": [{"pending_id": "pending-1", "status": "CLASSIFIED"}]},
+        {**valid_page, "items": [{"pending_id": "same", "status": "PENDING_CLASSIFICATION"}, {"pending_id": "same", "status": "PENDING_CLASSIFICATION"}], "total": 2},
+    ):
+        assert validate_page(invalid, 0) is False
+    assert validate_page({"items": [], "total": 0, "limit": 50, "offset": 0}, 0) is True
+    assert validate_page({"items": [], "total": 3, "limit": 50, "offset": 3}, 3) is True
+    assert validate_page({"items": [], "total": 3, "limit": 50, "offset": 50}, 50) is True
+    assert recover_offset(3, 50) == 0
+
+    valid_review = {
+        "candidate_classification": "BR_DAY_TRADE",
+        "confirmed_jurisdiction": "Brasil",
+        "reviewer_name": "Profissional declarado",
+        "reviewer_role": "contador",
+        "professional_registration": "CRC-DECLARADO",
+        "evidence_reference": "PARECER-1",
+        "reviewed_on": "2026-11-05",
+        "reviewer_identity_status": "DECLARED_NOT_VERIFIED",
+        "professional_registration_verified": False,
+    }
+    valid_history = {"reviews": [valid_review], "status_unchanged": "PENDING_CLASSIFICATION", "reserve_calculated": False}
+    assert validate_reviews(valid_history) is True
+    assert validate_reviews({"reviews": [], "status_unchanged": "PENDING_CLASSIFICATION", "reserve_calculated": False}) is True
+    assert validate_reviews({**valid_history, "reviews": [None]}) is False
+    assert validate_reviews({**valid_history, "reviews": [{**valid_review, "reviewer_identity_status": "VERIFIED"}]}) is False
+    assert validate_reviews({**valid_history, "reviews": [{**valid_review, "professional_registration_verified": True}]}) is False
+    assert validate_reviews({**valid_history, "reviews": [{**valid_review, "reviewer_name": ["nome"]}]}) is False
+    assert validate_reviews({**valid_history, "reviews": "not-a-list"}) is False
+    assert validate_reviews({**valid_history, "reserve_calculated": True}) is False
+
+
+def test_streamlit_fiscal_pending_lists_validate_pages_and_review_history_before_rendering():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert "if not _valid_pending_page(domestic_data, domestic_offset):" in source
+    assert "if not _valid_pending_page(foreign_pending_data, foreign_offset):" in source
+    assert "recovered_domestic_offset = _recovered_pending_offset(domestic_data[\"total\"], domestic_offset)" in source
+    assert "recovered_foreign_offset = _recovered_pending_offset(foreign_pending_data[\"total\"], foreign_offset)" in source
+    assert "del st.session_state.domestic_review_pending_id" in source
+    assert "del st.session_state.foreign_review_pending_id" in source
+    assert 'if not _valid_review_history(review_data):' in source
+    assert 'if not _valid_review_history(foreign_review_data):' in source
+    assert 'int(domestic_data.get("total", 0))' not in source
+    assert 'int(foreign_pending_data.get("total", 0))' not in source
+
+
+def test_streamlit_fiscal_notes_limit_matches_api_contract():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    fiscal_start = source.index("def show_fiscal()")
+    fiscal_end = source.index("\ndef ", fiscal_start + 1)
+    fiscal = source[fiscal_start:fiscal_end]
+    api_source = (PANEL_DIR.parent / "app.py").read_text(encoding="utf-8")
+    api_start = api_source.index('if path == "/api/fiscal-reserve/results" and method == "POST":')
+    api_end = api_source.index('if path == "/api/onboarding" and method == "GET":', api_start)
+    api_block = api_source[api_start:api_end]
+
+    assert '"Observações / evidências"' in fiscal
+    assert 'max_chars=160' in fiscal
+    assert 'if len(user_notes) > 160:' in api_block
+
+
+def test_streamlit_static_api_actions_have_matching_runtime_routes():
+    panel_source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    runtime_source = (PANEL_DIR.parent / "app.py").read_text(encoding="utf-8")
+    endpoints = {
+        match.split("?", 1)[0]
+        for match in re.findall(r'api\(\s*["\']([^"\']+)["\']', panel_source)
+    }
+    exact_routes = set(re.findall(r'path\s*==\s*["\']([^"\']+)["\']', runtime_source))
+    prefixes = set(re.findall(r'path\.startswith\(["\']([^"\']+)["\']\)', runtime_source))
+
+    missing = sorted(
+        endpoint for endpoint in endpoints
+        if endpoint not in exact_routes
+        and not any(endpoint.startswith(prefix) for prefix in prefixes)
+    )
+    assert not missing, f"Streamlit calls without a matching runtime route: {missing}"
+
+
+def test_streamlit_foreign_fiscal_inputs_match_api_limits():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    api_source = (PANEL_DIR.parent / "finance" / "fiscal_pending_queue.py").read_text(encoding="utf-8")
+
+    assert 'max_value=1_000_000_000_000.0' in source
+    assert 'placeholder="ETF, ação, Forex, CFD, cripto", max_chars=80' in source
+    assert 'placeholder="EUA, Brasil, outro", max_chars=80' in source
+    assert 'instrument_signed = st.text_input("Instrumento", max_chars=80)' in source
+    assert 'jurisdiction_signed = st.text_input("Jurisdição", max_chars=80)' in source
+    assert '_text(payload, "instrument", 80, required=True)' in api_source
+    assert '_text(payload, "jurisdiction", 80, required=True)' in api_source
+    assert '_positive(payload.get("original_amount"), "original_amount")' in api_source
+    assert 'number > 1e12' in api_source
+
+
+
+def test_streamlit_foreign_realized_result_text_limits_match_api():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    api_source = (PANEL_DIR.parent / "finance" / "fiscal_pending_queue.py").read_text(encoding="utf-8")
+
+    assert 'fx_source_signed = st.text_input("Fonte da cotação", max_chars=200)' in source
+    assert 'notes_signed = st.text_area("Observações", max_chars=1000)' in source
+    assert '"fx_source", 200' in api_source
+    assert '"notes", 1000' in api_source
+
+
+def test_streamlit_fiscal_review_forms_match_queue_validation_limits():
+    panel_source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    domestic_api = (PANEL_DIR.parent / "finance" / "fiscal_domestic_pending.py").read_text(encoding="utf-8")
+    foreign_api = (PANEL_DIR.parent / "finance" / "fiscal_pending_queue.py").read_text(encoding="utf-8")
+
+    domestic_start = panel_source.index('with st.form("domestic_review_form"):')
+    domestic_end = panel_source.index('if review_submit:', domestic_start)
+    domestic_form = panel_source[domestic_start:domestic_end]
+    foreign_start = panel_source.index('with st.form("foreign_review_form"):')
+    foreign_end = panel_source.index('if foreign_review_submit:', foreign_start)
+    foreign_form = panel_source[foreign_start:foreign_end]
+
+    for form in (domestic_form, foreign_form):
+        assert "max_chars=120" in form
+        assert "max_chars=160" in form
+        assert "max_chars=100" in form
+        assert "max_chars=500" in form
+        assert "max_chars=2000" in form
+
+    for api_source in (domestic_api, foreign_api):
+        assert 'required("confirmed_jurisdiction", 120)' in api_source
+        assert 'required("reviewer_name", 160)' in api_source
+        assert 'required("professional_registration", 100)' in api_source
+        assert 'required("evidence_reference", 500)' in api_source
+        assert "if len(notes) > 2000:" in api_source
+
+
+def test_streamlit_kill_switch_requires_explicit_confirmation_and_has_no_deactivation():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index('if module_name == "Kill Switch":')
+    end = source.index('if module_name == "Segurança":', start)
+    view = source[start:end]
+
+    assert 'activate_kill_switch_form' in view
+    assert 'emergency_confirm = st.checkbox(' in view
+    assert '"confirmed": True' in view
+    assert '"/api/runtime/kill-switch/activate"' in view
+    assert 'if state != "ACTIVE":' in view
+    assert 'A desativação não está disponível nesta interface.' in view
+    assert 'A ativação não as cancela.' in view
+    assert 'st.caption("Execução permitida: NÃO · REAL: DESABILITADO")' in view
+
+
+def test_streamlit_dynamic_api_actions_have_matching_runtime_route_prefixes():
+    panel_source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    runtime_source = (PANEL_DIR.parent / "app.py").read_text(encoding="utf-8")
+    dynamic_templates = {
+        match.split("{", 1)[0].split("?", 1)[0]
+        for match in re.findall(r'api\(\s*f["\']([^"\']+)["\']', panel_source)
+    }
+    exact_routes = set(re.findall(r'path\s*==\s*["\']([^"\']+)["\']', runtime_source))
+    prefixes = set(re.findall(r'path\.startswith\(["\']([^"\']+)["\']\)', runtime_source))
+
+    missing = sorted(
+        endpoint for endpoint in dynamic_templates
+        if endpoint not in exact_routes
+        and not any(endpoint.startswith(prefix) for prefix in prefixes)
+    )
+    assert not missing, f"Dynamic Streamlit API calls without a matching runtime route: {missing}"
+
+def test_kill_switch_activation_api_is_confirmed_persisted_and_never_auto_resumes():
+    runtime_source = (PANEL_DIR.parent / "app.py").read_text(encoding="utf-8")
+    route_start = runtime_source.index('if path == "/api/runtime/kill-switch/activate" and method == "POST":')
+    route_end = runtime_source.index('if path == "/api/health" and method == "GET":', route_start)
+    route = runtime_source[route_start:route_end]
+
+    assert 'confirmed is not True' in route
+    assert 'not isinstance(reason, str)' in route
+    assert 'len(reason.strip()) > 240' in route
+    assert 'OPERATIONAL_RUNTIME.operational_recorder.activate_kill_switch(reason.strip())' in route
+    assert '"execution_allowed": False' in route
+    assert '"pending_request_ids"' in route
+    assert '"unknown_request_ids"' in route
+    assert 'não são canceladas' in route
+    assert 'deactivate' not in route
+    assert 'if method == "POST" and path != "/api/updates":' in runtime_source
+    assert '_authorize_remote_mutation(environ)' in runtime_source
+    assert 'deactivate' not in route
+
+
+def test_streamlit_kill_switch_exposes_read_only_position_close_reconciliation():
+    panel_source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    runtime_source = (PANEL_DIR.parent / "app.py").read_text(encoding="utf-8")
+    controller_source = (PANEL_DIR.parent / "core" / "real_runtime_controller.py").read_text(encoding="utf-8")
+    start = panel_source.index('if module_name == "Kill Switch":')
+    end = panel_source.index('if module_name == "Segurança":', start)
+    view = panel_source[start:end]
+    route_start = runtime_source.index('if path == "/api/runtime/real/close/reconcile" and method == "POST":')
+    route_end = runtime_source.index('if path == "/api/runtime/real/close" and method == "POST":', route_start)
+    route = runtime_source[route_start:route_end]
+
+    assert 'api("/api/runtime/real/status")' in view
+    assert '"/api/runtime/real/close/reconcile"' in view
+    assert 'CONSULTAR E RECONCILIAR' in view
+    assert 'confirm_read = st.checkbox(' in view
+    assert '"request_id": selected_request' in view
+    assert '"external_id": selected_item["external_id"]' in view
+    assert 'REAL_RUNTIME.reconcile_position_close(' in route
+    assert 'REAL_RUNTIME.close_and_reconcile' not in route
+    assert '"position_close_recovery_items"' in controller_source
+
+def test_every_reference_navigation_module_has_an_explicit_streamlit_handler():
+    config = json.loads(
+        (PANEL_DIR / "controlador_trader_referencia_visual.json").read_text(encoding="utf-8")
+    )
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    configured_modules = {
+        module
+        for modules in config["open_state"]["tabs"].values()
+        for module in modules
+    }
+    explicit_handlers = set(
+        re.findall(r"(?:if|elif)\s+module_name\s*==\s*[\"']([^\"']+)[\"']", source)
+    )
+    grouped_handlers = {
+        module
+        for group in re.findall(r"if module_name in \{([^}]+)\}:", source)
+        for module in re.findall(r"[\"']([^\"']+)[\"']", group)
+    }
+    # Financeiro is intentionally routed by the top-level panel dispatcher to
+    # the shared Reserva Fiscal view rather than by show_readonly_module.
+    explicitly_routed = explicit_handlers | grouped_handlers | {"Financeiro"}
+    missing = configured_modules - explicitly_routed
+
+    assert not missing, f"Navigation modules without an explicit Streamlit handler: {sorted(missing)}"
+    assert 'elif module_name == "Simulador":\n        show_simulator()\n        return' in source
+    assert 'if module_name == "Escola / Tutorial / Onboarding":' in source
+    assert '"Escola / Tutorial / Onboarding": ("Primeiros passos", "/api/onboarding")' in source
+
+
+
+def test_windows_bootstrap_installs_and_supervises_the_streamlit_panel():
+    root = Path(__file__).resolve().parents[1]
+    bootstrap = (root / "deployment" / "bootstrap_windows_runtime.ps1").read_text(encoding="utf-8")
+    installer = (root / "deployment" / "install_windows_autostart.ps1").read_text(encoding="utf-8")
+    supervisor = (root / "deployment" / "start_streamlit_panel.ps1").read_text(encoding="utf-8")
+    readme = (PANEL_DIR / "README.md").read_text(encoding="utf-8")
+    runbook = (root / "deployment" / "WINDOWS_MT5_REMOTE_RUNTIME.md").read_text(encoding="utf-8")
+
+    assert "pip install -r streamlit_panel/requirements.txt" in bootstrap
+    assert "start_streamlit_panel.ps1" in installer
+    workflow = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "'start_streamlit_panel.ps1'" in workflow
+    assert '"$TaskPrefix-Streamlit"' in installer
+    assert "GetEnvironmentVariable('CONTROLADOR_SINGLE_USER_IDENTITY', 'Machine')" in installer
+    assert "127.0.0.1" in supervisor
+    assert "8501" in supervisor
+    assert "http://127.0.0.1:8000" in supervisor
+    assert "$env:CONTROLADOR_REMOTE_ACCESS_REQUIRED = 'true'" in supervisor
+    assert "CONTROLADOR_SINGLE_USER_IDENTITY não configurado" in supervisor
+    assert "GetEnvironmentVariable('CONTROLADOR_SINGLE_USER_IDENTITY', 'Machine')" in supervisor
+    assert "não corresponde à identidade persistida no escopo de Máquina" in supervisor
+    assert "127.0.0.1:8501" in readme
+    assert "hostname do painel" in runbook
+    assert "porta 8000 não deve ser publicada" in runbook
+    assert "0.0.0.0" not in supervisor
+
+
+def test_remote_panel_identity_boundary_requires_cloudflared_jwt_validation_and_private_api():
+    root = Path(__file__).resolve().parents[1]
+    runbook = (root / "deployment" / "WINDOWS_MT5_REMOTE_RUNTIME.md").read_text(encoding="utf-8")
+    supervisor = (root / "deployment" / "start_streamlit_panel.ps1").read_text(encoding="utf-8")
+    panel = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+
+    assert "originRequest:" in runbook
+    assert "access:" in runbook
+    assert "required: true" in runbook
+    assert "teamName:" in runbook
+    assert "audTag:" in runbook
+    assert "Cf-Access-Jwt-Assertion" in runbook
+    assert "127.0.0.1:8501" in runbook
+    assert "127.0.0.1:8000" in runbook
+    assert "porta 8000 permanece privada" in runbook
+    assert "127.0.0.1" in supervisor
+    assert "headers[IDENTITY_HEADER] = identity" in panel
+    assert "X-Forwarded-Email" not in panel
+
+
+def test_streamlit_audit_module_discloses_persistence_state_and_memory_fallback():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'persistence = str(data.get("persistence") or "UNKNOWN").upper()' in source
+    assert '"DURABLE": "PERSISTENTE"' in source
+    assert '"WRITE_FAILED": "FALHA DE GRAVAÇÃO"' in source
+    assert '"READ_FAILED": "FALHA DE LEITURA"' in source
+    assert "O histórico em memória pode não sobreviver a uma reinicialização." in source
+    assert "Persistência SQLite não configurada." in source
+
+
+def test_streamlit_fiscal_history_page_validation_rejects_malformed_rows_and_recovers_stale_offsets():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    function = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_valid_fiscal_history_page"
+    )
+    namespace = {"Any": Any, "date": date}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), str(PANEL_DIR / "app.py"), "exec"), namespace)
+    validate = namespace["_valid_fiscal_history_page"]
+
+    row = {
+        "entry_id": "entry-1",
+        "category": "BR_DAY_TRADE",
+        "reference": "FISCAL-REF-1",
+        "occurred_on": "2026-11-05",
+        "notes": "{}",
+    }
+    valid = {
+        "history": [row],
+        "history_page": {"limit": 50, "offset": 0, "returned": 1, "total": 3, "has_more": True},
+    }
+    assert validate(valid, 0) is True
+    assert validate({"history": [], "history_page": {
+        "limit": 50, "offset": 100, "returned": 0, "total": 3, "has_more": False,
+    }}, 100) is True
+    assert validate({**valid, "history": [None]}, 0) is False
+    assert validate({**valid, "history": [{**row, "owner_id": "leak"}]}, 0) is False
+    assert validate({**valid, "history": [{**row, "occurred_on": "05/11/2026"}]}, 0) is False
+    assert validate({**valid, "history_page": {**valid["history_page"], "returned": 2}}, 0) is False
+    assert validate({**valid, "history_page": {**valid["history_page"], "has_more": False}}, 0) is False
+    assert validate({**valid, "history_page": {**valid["history_page"], "offset": True}}, 0) is False
+    assert validate({**valid, "history_page": {**valid["history_page"], "limit": 50.0}}, 0) is False
+
+
+def test_streamlit_hides_fiscal_totals_history_and_forms_when_summary_is_unavailable():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index("def show_fiscal()")
+    end = source.index("\ndef ", start + 1)
+    fiscal = source[start:end]
+    guard = fiscal.index("if not summary_available:")
+    return_position = fiscal.index("        return", guard)
+    assert "Os dados fiscais não foram validados nesta consulta" in fiscal[guard:return_position]
+    assert return_position < fiscal.index('st.markdown("#### Histórico da Reserva Fiscal")')
+    assert return_position < fiscal.index('with st.form("fiscal_rate_form")')
+    assert return_position < fiscal.index('with st.form("fiscal_result_form")')
+
+
+def test_streamlit_fiscal_panel_never_displays_raw_exception_details():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index("def show_fiscal()")
+    end = source.index("\ndef ", start + 1)
+    fiscal = source[start:end]
+
+    assert "st.error(str(exc))" not in fiscal
+    assert "st.warning(str(exc))" not in fiscal
+    assert "{exc}" not in fiscal
+    assert "exc.reason" not in fiscal
+    assert "details técnicos não são exibidos no painel" in fiscal
+
+
+def test_streamlit_assistant_panel_never_displays_raw_exception_details():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index("def show_assistant()")
+    end = source.index("\ndef ", start + 1)
+    assistant = source[start:end]
+
+    assert "st.error(str(exc))" not in assistant
+    assert "{exc}" not in assistant
+    assert "Detalhes técnicos não são exibidos no painel." in assistant
+    assert "Não foi possível enviar a consulta ao Assistente." in assistant
+
+
+def test_streamlit_requires_https_for_remote_trusted_identity_api():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index("def _validate_api_base_url(")
+    end = source.index("\n\n_validate_api_base_url(", start)
+    guard = source[start:end]
+    assert 'parsed.scheme not in {"http", "https"}' in guard
+    assert "parsed.username is not None or parsed.password is not None" in guard
+    assert "ipaddress.ip_address(hostname).is_loopback" in guard
+    assert 'remote_required and not loopback and parsed.scheme != "https"' in guard
+    assert "_validate_api_base_url(BASE_URL, REMOTE_REQUIRED)" in source
+
+
+def test_streamlit_assistant_surfaces_only_sanitized_actionable_api_errors():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index('    if prompt:')
+    end = source.index('\n\n\ndef _is_finite_number', start)
+    submit_block = source[start:end]
+    assert 'except RuntimeError as exc:' in submit_block
+    assert 'st.error("Falha no Assistente: " + str(exc))' in submit_block
+    assert 'except Exception:' in submit_block
+    assert "Detalhes técnicos não são exibidos no painel." in submit_block
+
+
+def test_streamlit_latest_signal_uses_durable_snapshot_store():
+    source = (Path(__file__).resolve().parents[1] / "app.py").read_text(encoding="utf-8")
+    assert "LatestMarketAnalysisStore" in source
+    assert "CONTROLADOR_ANALYSIS_SNAPSHOT_DB" in source
+    assert "LATEST_MARKET_ANALYSIS.latest_record(symbol or None, timeframe or None)" in source
+    assert "LATEST_MARKET_ANALYSIS.save(" in source
+    assert "PERSISTENT_SQLITE" in source
+    assert "_LATEST_MARKET_ANALYSIS: dict" not in source
+
+
+def test_latest_market_analysis_endpoint_expires_old_snapshots_fail_closed():
+    source = (Path(__file__).resolve().parents[1] / "app.py").read_text(encoding="utf-8")
+    start = source.index('if path == "/api/runtime/analysis/latest" and method == "GET":')
+    end = source.index('if path == "/api/runtime/analysis" and method == "POST":', start)
+    route = source[start:end]
+    assert 'CONTROLADOR_ANALYSIS_MAX_AGE_SECONDS' in route
+    assert 'fresh = age_seconds <= max_age_seconds' in route
+    assert '"analysis": snapshot if available else None' in route
+    assert '"stale": snapshot is not None and not fresh' in route
+    assert '"unavailable_reason": "ANALYSIS_EXPIRED"' in route
+
+
+def test_streamlit_api_rejects_invalid_or_non_object_json_responses():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    api_start = source.index("def api(")
+    api_end = source.index(chr(10) + "def money(", api_start)
+    api_helper = source[api_start:api_end]
+
+    assert "except (UnicodeDecodeError, json.JSONDecodeError):" in api_helper
+    assert 'if not isinstance(result, dict):' in api_helper
+    assert api_helper.count('raise RuntimeError("Resposta inválida do serviço do Ecossistema.") from None') == 2
+
+
+
+def test_closed_panel_health_uses_only_online_or_unavailable_labels():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    helper_start = source.index("def render_latest_signal(")
+    helper_end = source.index("# Four approved navigation areas", helper_start)
+    helper = source[helper_start:helper_end]
+    assert '"OK": "SISTEMA ONLINE"' in helper
+    assert '"WARNING": "INDISPONÍVEL"' in helper
+    assert '"CRITICAL": "INDISPONÍVEL"' in helper
+    assert '"WARNING": "ATENÇÃO"' not in helper
+
+
+def test_open_panel_health_uses_only_online_or_unavailable_labels():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    health_start = source.index('health_label = {', source.index('st.markdown("**Estado do sistema**")'))
+    health_end = source.index("\n", health_start)
+    mapping = source[health_start:health_end]
+    assert '"OK": "SISTEMA ONLINE"' in mapping
+    assert '"WARNING": "INDISPONÍVEL"' in mapping
+    assert '"CRITICAL": "INDISPONÍVEL"' in mapping
+    assert '"WARNING": "ATENÇÃO"' not in mapping
+
+
+def test_streamlit_signal_strip_refreshes_periodically_in_both_panel_states():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    helper_start = source.index("def render_latest_signal(")
+    helper_end = source.index("# Four approved navigation areas", helper_start)
+    helper = source[helper_start:helper_end]
+    assert '@st.fragment(run_every="15s")' in source
+    assert "def render_latest_signal(closed: bool = False)" in source
+    assert "render_latest_signal(closed=True)" in source
+    assert "render_latest_signal(closed=False)" in source
+    assert 'api("/api/runtime/analysis/latest")' in helper
+    assert 'latest_payload.get("available") is True' in helper
+    assert 'api("/api/health")' in helper
+
+
+
+
+def test_assistant_openai_consent_is_bound_to_authenticated_identity():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index("def _assistant_consent_scope()")
+    end = source.index("\ndef show_assistant()", start)
+    helper = source[start:end]
+    assistant_start = source.index("def show_assistant()")
+    assistant_end = source.index("\ndef ", assistant_start + 1)
+    assistant = source[assistant_start:assistant_end]
+
+    assert "trusted_identity_from_headers(st.context.headers, IDENTITY_HEADER)" in helper
+    assert 'os.environ.get("CONTROLADOR_SINGLE_USER_IDENTITY", "")' in helper
+    assert 'os.environ.get("CONTROLADOR_SINGLE_USER_IDENTITY", "local-single-user")' not in helper
+    assert 'if not identity:\n        return ""' in helper
+    assert "hashlib.sha256" in helper
+    assert 'st.session_state["assistant_openai_consent"] = False' in assistant
+    assert "_reset_assistant_conversation()" in assistant
+    assert 'st.session_state.pop("saved_assistant_conversation", None)' in assistant
+    assert 'st.session_state["assistant_consent_scope"] = consent_scope' in assistant
+    assert "disabled=not bool(consent_scope)" in assistant
+
+
+
+def test_operation_overview_does_not_claim_continuous_realtime_refresh():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    start = source.index('if module_name == "Operação":')
+    end = source.index('if module_name == "Motor de Decisão":', start)
+    operation = source[start:end]
+    assert 'Estado operacional · última consulta' in operation
+    assert 'não representam transmissão contínua' in operation
+    assert 'Atualizar painel de operação' in operation
+    assert 'Estado operacional · leitura em tempo real' not in operation
+
+
+
+def test_streamlit_assistant_exposes_explicit_no_context_provider_connection_test():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert '"/api/assistant/test-connection"' in source
+    assert "Testar conexão com a OpenAI" in source
+    assert "Nenhuma pergunta, conversa ou dado fiscal foi enviado neste teste." in source
+    assert "assistant_connection_tested" in source
+
+
+def test_streamlit_foreign_pending_forms_capture_and_display_institution_custody_and_costs():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    for field in (
+        "institution",
+        "custody_location",
+        "contract_type",
+        "acquisition_cost",
+        "transaction_fees",
+        "foreign_tax_paid",
+    ):
+        assert field in source
+    assert "Instituição" in source
+    assert "Custódia declarada" in source
+    assert "Imposto pago fora (moeda original)" in source
+
+
+
+def test_streamlit_fiscal_panel_displays_only_aggregate_foreign_evidence_gaps():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'foreign_pending.get("evidence_completeness", {})' in source
+    assert "missing_core_evidence" in source
+    assert "sem instituição" in source
+    assert "não altera classificação nem calcula imposto" in source
+
+
+
+def test_every_reference_navigation_module_has_a_real_panel_handler_or_view():
+    config = json.loads((PANEL_DIR / "controlador_trader_referencia_visual.json").read_text(encoding="utf-8"))
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    modules = {
+        module
+        for values in config["open_state"]["tabs"].values()
+        for module in values
+    }
+    handlers = set(re.findall(r'module_name == "([^"]+)"', source))
+    views_start = source.index("def show_readonly_module")
+    views_end = source.index('    if module_name == "Análise de Mercado":', views_start)
+    view_keys = set(re.findall(r'^\s*"([^"]+)": \(', source[views_start:views_end], re.MULTILINE))
+    custom_modules = {"Financeiro", "Análise de Mercado", "Replay", "Simulador"}
+
+    assert modules == handlers.union(view_keys).union(custom_modules)
+
+
+
+def test_streamlit_fiscal_catalog_explains_required_and_recommended_evidence():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert "Dados necessários para triagem:" in source
+    assert "Evidências recomendadas:" in source
+    assert '"instituicao_ou_autocustodia": "instituição ou autocustódia"' in source
+
+
+def test_streamlit_fiscal_review_history_explicitly_shows_unverified_identity_and_registration():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert source.count('"Identidade verificada": "Não" if item.get("reviewer_identity_status") == "DECLARED_NOT_VERIFIED" else "Estado inválido"') == 2
+    assert source.count('"Registro profissional verificado": "Não" if item.get("professional_registration_verified") is False else "Estado inválido"') == 2
+    assert source.count('"Observações": item.get("review_notes", "")') == 2

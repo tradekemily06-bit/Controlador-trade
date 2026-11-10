@@ -10,6 +10,9 @@ from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
+
+
+MAX_PENDING_OFFSET = 1_000_000_000
 from zoneinfo import ZoneInfo
 
 from finance.fiscal_taxonomy import BRAZIL_CATEGORIES
@@ -73,10 +76,27 @@ class FiscalDomesticPendingQueue:
                 CREATE INDEX IF NOT EXISTS fiscal_domestic_pending_reviews_item
                 ON fiscal_domestic_pending_reviews(owner_id, pending_id, created_at DESC)
             """)
+            db.execute("""
+                CREATE TRIGGER IF NOT EXISTS fiscal_domestic_pending_reviews_no_update
+                BEFORE UPDATE ON fiscal_domestic_pending_reviews
+                BEGIN
+                    SELECT RAISE(ABORT, 'fiscal review history is append-only');
+                END
+            """)
+            db.execute("""
+                CREATE TRIGGER IF NOT EXISTS fiscal_domestic_pending_reviews_no_delete
+                BEFORE DELETE ON fiscal_domestic_pending_reviews
+                BEGIN
+                    SELECT RAISE(ABORT, 'fiscal review history is append-only');
+                END
+            """)
 
     @staticmethod
     def _require_owner(owner_id: str) -> str:
-        owner = str(owner_id or "").strip()
+        # Never coerce caller-controlled objects into an authorization key.
+        if not isinstance(owner_id, str):
+            raise ValueError("identidade proprietária obrigatória e inválida")
+        owner = owner_id.strip()
         if not owner or len(owner) > 160:
             raise ValueError("identidade proprietária obrigatória e inválida")
         return owner
@@ -98,21 +118,40 @@ class FiscalDomesticPendingQueue:
 
     @staticmethod
     def _day(value: Any) -> str:
-        raw = str(value or "").strip()
+        if not isinstance(value, str):
+            raise ValueError("occurred_on deve ser texto no formato YYYY-MM-DD")
+        raw = value.strip()
         try:
             parsed = date.fromisoformat(raw)
         except ValueError as exc:
             raise ValueError("occurred_on deve usar YYYY-MM-DD") from exc
         if parsed.isoformat() != raw:
             raise ValueError("occurred_on deve usar YYYY-MM-DD")
+        today = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
+        if parsed > today:
+            raise ValueError("occurred_on não pode estar no futuro")
         return raw
+
+    @staticmethod
+    def _text(payload: dict[str, Any], field: str, maximum: int, *, required: bool = False) -> str:
+        raw = payload.get(field, "")
+        if raw is None and not required:
+            raw = ""
+        if not isinstance(raw, str):
+            raise ValueError(f"{field} deve ser texto")
+        value = raw.strip()
+        if required and not value:
+            raise ValueError(f"{field} é obrigatório e deve ter até {maximum} caracteres")
+        if len(value) > maximum:
+            raise ValueError(f"{field} deve ter até {maximum} caracteres")
+        return value
 
     def add(self, owner_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         owner_id = self._require_owner(owner_id)
         if not isinstance(payload, dict):
             raise ValueError("identidade proprietária e payload são obrigatórios")
-        reference = str(payload.get("reference") or "").strip()
-        instrument = str(payload.get("instrument") or "").strip()
+        reference = self._text(payload, "reference", 160, required=True)
+        instrument = self._text(payload, "instrument", 80, required=True)
         if not reference or len(reference) > 160:
             raise ValueError("reference é obrigatório e deve ter até 160 caracteres")
         if not instrument or len(instrument) > 80:
@@ -120,25 +159,28 @@ class FiscalDomesticPendingQueue:
         raw_result = payload.get("realized_result_brl")
         result = None
         if raw_result is not None:
-            if isinstance(raw_result, bool):
+            if isinstance(raw_result, bool) or not isinstance(raw_result, (int, float)):
                 raise ValueError("realized_result_brl deve ser numérico")
             try:
                 result = float(raw_result)
-            except (TypeError, ValueError) as exc:
+            except (OverflowError, TypeError, ValueError) as exc:
                 raise ValueError("realized_result_brl deve ser numérico") from exc
             if result != result or result in (float("inf"), float("-inf")) or abs(result) > 1e12:
                 raise ValueError("realized_result_brl deve ser finito e estar dentro do limite")
             result = round(result, 2)
+        category_candidate = self._text(payload, "category_candidate", 120)
+        if category_candidate and category_candidate not in BRAZIL_CATEGORIES:
+            raise ValueError("category_candidate não pertence ao catálogo brasileiro permitido")
         item = {
             "pending_id": str(uuid.uuid4()),
             "owner_id": owner_id,
             "reference": reference,
-            "category_candidate": str(payload.get("category_candidate") or "").strip()[:120],
+            "category_candidate": category_candidate,
             "instrument": instrument,
-            "market_scope": str(payload.get("market_scope") or "").strip()[:80],
+            "market_scope": self._text(payload, "market_scope", 80),
             "occurred_on": self._day(payload.get("occurred_on")),
             "realized_result_brl": result,
-            "notes": str(payload.get("notes") or "").strip()[:1000],
+            "notes": self._text(payload, "notes", 1000),
             "status": "PENDING_CLASSIFICATION",
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -156,8 +198,14 @@ class FiscalDomesticPendingQueue:
         owner_id = self._require_owner(owner_id)
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
             raise ValueError("limit deve estar entre 1 e 500")
-        if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
-            raise ValueError("offset deve ser não negativo")
+        if (
+            isinstance(offset, bool)
+            or not isinstance(offset, int)
+            or not 0 <= offset <= MAX_PENDING_OFFSET
+        ):
+            raise ValueError(
+                f"offset deve estar entre 0 e {MAX_PENDING_OFFSET}"
+            )
         with self._connect() as db:
             total = int(db.execute(
                 "SELECT COUNT(*) FROM fiscal_reserve_pending_domestic WHERE owner_id = ?", (owner_id,)
@@ -179,12 +227,17 @@ class FiscalDomesticPendingQueue:
         owner_id = self._require_owner(owner_id)
         if not isinstance(payload, dict):
             raise ValueError("payload deve ser um objeto")
-        pending_id = str(pending_id or "").strip()
+        if not isinstance(pending_id, str):
+            raise ValueError("pending_id inválido")
+        pending_id = pending_id.strip()
         if not pending_id or len(pending_id) > 80:
             raise ValueError("pending_id inválido")
 
         def required(name: str, maximum: int) -> str:
-            value = str(payload.get(name) or "").strip()
+            raw = payload.get(name)
+            if not isinstance(raw, str):
+                raise ValueError(f"{name} deve ser texto")
+            value = raw.strip()
             if not value or len(value) > maximum:
                 raise ValueError(f"{name} é obrigatório e deve ter até {maximum} caracteres")
             return value
@@ -200,7 +253,12 @@ class FiscalDomesticPendingQueue:
         registration = required("professional_registration", 100)
         evidence = required("evidence_reference", 500)
         reviewed_on = self._day(payload.get("reviewed_on"))
-        notes = str(payload.get("review_notes") or "").strip()
+        if date.fromisoformat(reviewed_on) > datetime.now(ZoneInfo("America/Sao_Paulo")).date():
+            raise ValueError("reviewed_on não pode estar no futuro")
+        raw_notes = payload.get("review_notes", "")
+        if not isinstance(raw_notes, str):
+            raise ValueError("review_notes deve ser texto")
+        notes = raw_notes.strip()
         if len(notes) > 2000:
             raise ValueError("review_notes deve ter até 2000 caracteres")
 
@@ -242,7 +300,11 @@ class FiscalDomesticPendingQueue:
 
     def list_reviews(self, owner_id: str, pending_id: str) -> list[dict[str, Any]]:
         owner_id = self._require_owner(owner_id)
-        pending_id = str(pending_id or "").strip()
+        if not isinstance(pending_id, str):
+            raise ValueError("pending_id inválido")
+        pending_id = pending_id.strip()
+        if not pending_id or len(pending_id) > 80:
+            raise ValueError("pending_id inválido")
         with self._connect() as db:
             if not db.execute(
                 "SELECT 1 FROM fiscal_reserve_pending_domestic WHERE owner_id = ? AND pending_id = ?",

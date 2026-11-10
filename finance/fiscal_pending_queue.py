@@ -10,7 +10,10 @@ from pathlib import Path
 from typing import Any, Iterator
 
 
-CURRENCIES = frozenset({"USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "BRL"})
+MAX_PENDING_OFFSET = 1_000_000_000
+
+
+CURRENCY_CODE_LENGTH = 3
 FOREIGN_REVIEW_CANDIDATES = frozenset({
     "FOREIGN_FINANCIAL_INVESTMENT",
     "FOREIGN_ENTITY_CONTROLLED",
@@ -39,6 +42,20 @@ class FiscalPendingQueue:
         with self._connect() as db:
             columns = {row["name"] for row in db.execute("PRAGMA table_info(fiscal_reserve_pending_foreign)")}
             if "owner_id" in columns:
+                db.execute("""
+                    CREATE TRIGGER IF NOT EXISTS fiscal_pending_reviews_no_update
+                    BEFORE UPDATE ON fiscal_pending_reviews
+                    BEGIN
+                        SELECT RAISE(ABORT, 'fiscal review history is append-only');
+                    END
+                """)
+                db.execute("""
+                    CREATE TRIGGER IF NOT EXISTS fiscal_pending_reviews_no_delete
+                    BEFORE DELETE ON fiscal_pending_reviews
+                    BEGIN
+                        SELECT RAISE(ABORT, 'fiscal review history is append-only');
+                    END
+                """)
                 return
             db.execute("""
                 CREATE TABLE IF NOT EXISTS fiscal_reserve_pending_foreign (
@@ -76,10 +93,27 @@ class FiscalPendingQueue:
                 )
             """)
             db.execute("CREATE INDEX IF NOT EXISTS fiscal_pending_reviews_item ON fiscal_pending_reviews(pending_id, created_at DESC)")
+            db.execute("""
+                CREATE TRIGGER IF NOT EXISTS fiscal_pending_reviews_no_update
+                BEFORE UPDATE ON fiscal_pending_reviews
+                BEGIN
+                    SELECT RAISE(ABORT, 'fiscal review history is append-only');
+                END
+            """)
+            db.execute("""
+                CREATE TRIGGER IF NOT EXISTS fiscal_pending_reviews_no_delete
+                BEFORE DELETE ON fiscal_pending_reviews
+                BEGIN
+                    SELECT RAISE(ABORT, 'fiscal review history is append-only');
+                END
+            """)
 
     @staticmethod
     def _require_owner(owner_id: str) -> str:
-        owner = str(owner_id or "").strip()
+        # Never coerce caller-controlled objects into an authorization key.
+        if not isinstance(owner_id, str):
+            raise ValueError("identidade proprietária obrigatória e inválida")
+        owner = owner_id.strip()
         if not owner or len(owner) > 160:
             raise ValueError("identidade proprietária obrigatória e inválida")
         return owner
@@ -103,7 +137,9 @@ class FiscalPendingQueue:
 
     @staticmethod
     def _date(value: Any, field: str) -> str:
-        raw = str(value or "").strip()
+        if not isinstance(value, str):
+            raise ValueError(f"{field} deve ser texto no formato YYYY-MM-DD")
+        raw = value.strip()
         try:
             parsed = date.fromisoformat(raw)
         except ValueError as exc:
@@ -113,20 +149,74 @@ class FiscalPendingQueue:
         return raw
 
     @staticmethod
+    def _reject_future_event_date(value: str, field: str) -> str:
+        """Prevent future-dated events or FX evidence from entering the fiscal queue."""
+        parsed = date.fromisoformat(value)
+        today = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
+        if parsed > today:
+            raise ValueError(f"{field} não pode estar no futuro")
+        return value
+
+    @staticmethod
     def _positive(value: Any, field: str) -> float:
-        if isinstance(value, bool):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ValueError(f"{field} deve ser numérico")
         try:
             number = float(value)
-        except (TypeError, ValueError) as exc:
+        except (OverflowError, TypeError, ValueError) as exc:
             raise ValueError(f"{field} deve ser numérico") from exc
         if number <= 0 or number != number or number in (float("inf"), float("-inf")) or number > 1e12:
             raise ValueError(f"{field} deve ser positivo e finito")
         return round(number, 8)
 
     @staticmethod
+    def _optional_nonnegative(payload: dict[str, Any], field: str) -> float | None:
+        raw = payload.get(field)
+        if raw is None or raw == "":
+            return None
+        if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+            raise ValueError(f"{field} deve ser numérico")
+        try:
+            value = float(raw)
+        except (OverflowError, TypeError, ValueError) as exc:
+            raise ValueError(f"{field} deve ser numérico") from exc
+        if value < 0 or value != value or value in (float("inf"), float("-inf")) or value > 1e12:
+            raise ValueError(f"{field} deve ser não negativo e finito")
+        return round(value, 8)
+
+    @classmethod
+    def _fiscal_details(cls, payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "institution": cls._text(payload, "institution", 160),
+            "custody_location": cls._text(payload, "custody_location", 120) or "NOT_INFORMED",
+            "contract_type": cls._text(payload, "contract_type", 120) or "NOT_INFORMED",
+            "acquisition_cost": cls._optional_nonnegative(payload, "acquisition_cost"),
+            "transaction_fees": cls._optional_nonnegative(payload, "transaction_fees"),
+            "foreign_tax_paid": cls._optional_nonnegative(payload, "foreign_tax_paid"),
+        }
+
+    @staticmethod
+    def _text(payload: dict[str, Any], field: str, maximum: int, *, required: bool = False) -> str:
+        raw = payload.get(field, "")
+        if raw is None and not required:
+            raw = ""
+        if not isinstance(raw, str):
+            raise ValueError(f"{field} deve ser texto")
+        value = raw.strip()
+        if required and not value:
+            raise ValueError(f"{field} é obrigatório e deve ter até {maximum} caracteres")
+        if len(value) > maximum:
+            raise ValueError(f"{field} deve ter até {maximum} caracteres")
+        return value
+
+    @staticmethod
     def _declared_field(payload: dict[str, Any], field: str) -> str:
-        value = str(payload.get(field) or "NOT_INFORMED").strip().upper()
+        raw = payload.get(field, "NOT_INFORMED")
+        if raw is None or raw == "":
+            raw = "NOT_INFORMED"
+        if not isinstance(raw, str):
+            raise ValueError(f"{field} deve ser texto")
+        value = raw.strip().upper()
         if value not in FIELD_OPTIONS[field]:
             raise ValueError(f"{field} possui opção inválida")
         return value
@@ -135,28 +225,32 @@ class FiscalPendingQueue:
         owner_id = self._require_owner(owner_id)
         if not isinstance(payload, dict):
             raise ValueError("payload deve ser um objeto")
-        reference = str(payload.get("reference") or "").strip()
-        instrument = str(payload.get("instrument") or "").strip()
-        jurisdiction = str(payload.get("jurisdiction") or "").strip()
-        currency = str(payload.get("original_currency") or "").strip().upper()
+        reference = self._text(payload, "reference", 160, required=True)
+        instrument = self._text(payload, "instrument", 80, required=True)
+        jurisdiction = self._text(payload, "jurisdiction", 80, required=True)
+        currency = self._text(payload, "original_currency", 3, required=True).upper()
         if not reference or len(reference) > 160:
             raise ValueError("reference é obrigatório e deve ter até 160 caracteres")
         if not instrument or len(instrument) > 80:
             raise ValueError("instrument é obrigatório e deve ter até 80 caracteres")
         if not jurisdiction or len(jurisdiction) > 80:
             raise ValueError("jurisdiction é obrigatório e deve ter até 80 caracteres")
-        if currency not in CURRENCIES:
-            raise ValueError("moeda não suportada")
+        if len(currency) != CURRENCY_CODE_LENGTH or not currency.isascii() or not currency.isalpha():
+            raise ValueError("moeda deve ser um código alfabético de três letras")
         amount = self._positive(payload.get("original_amount"), "original_amount")
-        occurred_on = self._date(payload.get("occurred_on"), "occurred_on")
+        occurred_on = self._reject_future_event_date(
+            self._date(payload.get("occurred_on"), "occurred_on"), "occurred_on"
+        )
         fx_rate = payload.get("fx_rate")
         fx_date = payload.get("fx_date")
-        fx_source = str(payload.get("fx_source") or "").strip()
+        fx_source = self._text(payload, "fx_source", 200)
         if fx_rate is not None:
             fx_rate = self._positive(fx_rate, "fx_rate")
             if not fx_date or not fx_source:
                 raise ValueError("fx_date e fx_source são obrigatórios quando houver fx_rate")
-            fx_date = self._date(fx_date, "fx_date")
+            fx_date = self._reject_future_event_date(
+                self._date(fx_date, "fx_date"), "fx_date"
+            )
             if len(fx_source) > 200:
                 raise ValueError("fx_source deve ter até 200 caracteres")
         elif fx_date or fx_source:
@@ -164,13 +258,18 @@ class FiscalPendingQueue:
         declared = {field: self._declared_field(payload, field) for field in FIELD_OPTIONS}
         if fx_rate is not None and declared["fx_conversion_method"] == "NOT_CONVERTED":
             raise ValueError("fx_conversion_method não pode ser NOT_CONVERTED quando houver cotação")
-        notes = str(payload.get("notes") or "").strip()[:1000]
+        if fx_rate is not None and declared["fx_conversion_method"] == "NOT_INFORMED":
+            raise ValueError("fx_conversion_method deve ser informado quando houver cotação")
+        if fx_rate is None and declared["fx_conversion_method"] not in {"NOT_INFORMED", "NOT_CONVERTED"}:
+            raise ValueError("fx_conversion_method exige fx_rate, fx_date e fx_source")
+        notes = self._text(payload, "notes", 1000)
+        details = self._fiscal_details(payload)
         item = {
             "pending_id": str(uuid.uuid4()), "owner_id": owner_id, "reference": reference,
             "original_amount": amount, "original_currency": currency,
             "instrument": instrument, "jurisdiction": jurisdiction,
             "occurred_on": occurred_on, "fx_rate": fx_rate, "fx_date": fx_date,
-            "fx_source": fx_source or None, **declared, "notes": notes,
+            "fx_source": fx_source or None, **declared, **details, "notes": notes,
             "status": "PENDING_CLASSIFICATION",
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -178,10 +277,12 @@ class FiscalPendingQueue:
             db.execute("INSERT INTO fiscal_reserve_pending_foreign "
                        "(pending_id, owner_id, reference, original_amount, original_currency, instrument, "
                        "jurisdiction, occurred_on, fx_rate, fx_date, fx_source, tax_residency_at_event, income_nature, "
-                       "event_type, fx_conversion_method, notes, status, created_at) "
+                       "event_type, fx_conversion_method, institution, custody_location, contract_type, "
+                       "acquisition_cost, transaction_fees, foreign_tax_paid, notes, status, created_at) "
                        "VALUES (:pending_id, :owner_id, :reference, :original_amount, :original_currency, :instrument, "
                        ":jurisdiction, :occurred_on, :fx_rate, :fx_date, :fx_source, :tax_residency_at_event, "
-                       ":income_nature, :event_type, :fx_conversion_method, :notes, :status, :created_at)", item)
+                       ":income_nature, :event_type, :fx_conversion_method, :institution, :custody_location, "
+                       ":contract_type, :acquisition_cost, :transaction_fees, :foreign_tax_paid, :notes, :status, :created_at)", item)
         return {key: value for key, value in item.items() if key != "owner_id"}
 
     def add_realized_result(self, owner_id: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -189,37 +290,41 @@ class FiscalPendingQueue:
         owner_id = self._require_owner(owner_id)
         if not isinstance(payload, dict):
             raise ValueError("payload deve ser um objeto")
-        reference = str(payload.get("reference") or "").strip()
-        instrument = str(payload.get("instrument") or "").strip()
-        jurisdiction = str(payload.get("jurisdiction") or "").strip()
-        currency = str(payload.get("original_currency") or "").strip().upper()
+        reference = self._text(payload, "reference", 160, required=True)
+        instrument = self._text(payload, "instrument", 80, required=True)
+        jurisdiction = self._text(payload, "jurisdiction", 80, required=True)
+        currency = self._text(payload, "original_currency", 3, required=True).upper()
         if not reference or len(reference) > 160:
             raise ValueError("reference é obrigatório e deve ter até 160 caracteres")
         if not instrument or len(instrument) > 80:
             raise ValueError("instrument é obrigatório e deve ter até 80 caracteres")
         if not jurisdiction or len(jurisdiction) > 80:
             raise ValueError("jurisdiction é obrigatório e deve ter até 80 caracteres")
-        if currency not in CURRENCIES:
-            raise ValueError("moeda não suportada")
+        if len(currency) != CURRENCY_CODE_LENGTH or not currency.isascii() or not currency.isalpha():
+            raise ValueError("moeda deve ser um código alfabético de três letras")
         raw_result = payload.get("original_result")
-        if isinstance(raw_result, bool):
+        if isinstance(raw_result, bool) or not isinstance(raw_result, (int, float)):
             raise ValueError("original_result deve ser numérico")
         try:
             result = float(raw_result)
-        except (TypeError, ValueError) as exc:
+        except (OverflowError, TypeError, ValueError) as exc:
             raise ValueError("original_result deve ser numérico") from exc
         if result != result or result in (float("inf"), float("-inf")) or abs(result) > 1e12:
             raise ValueError("original_result deve ser finito e estar dentro do limite")
         result = round(result, 8)
-        occurred_on = self._date(payload.get("occurred_on"), "occurred_on")
+        occurred_on = self._reject_future_event_date(
+            self._date(payload.get("occurred_on"), "occurred_on"), "occurred_on"
+        )
         fx_rate = payload.get("fx_rate")
         fx_date = payload.get("fx_date")
-        fx_source = str(payload.get("fx_source") or "").strip()
+        fx_source = self._text(payload, "fx_source", 200)
         if fx_rate is not None:
             fx_rate = self._positive(fx_rate, "fx_rate")
             if not fx_date or not fx_source:
                 raise ValueError("fx_date e fx_source são obrigatórios quando houver fx_rate")
-            fx_date = self._date(fx_date, "fx_date")
+            fx_date = self._reject_future_event_date(
+                self._date(fx_date, "fx_date"), "fx_date"
+            )
             if len(fx_source) > 200:
                 raise ValueError("fx_source deve ter até 200 caracteres")
         elif fx_date or fx_source:
@@ -227,12 +332,17 @@ class FiscalPendingQueue:
         declared = {field: self._declared_field(payload, field) for field in FIELD_OPTIONS}
         if fx_rate is not None and declared["fx_conversion_method"] == "NOT_CONVERTED":
             raise ValueError("fx_conversion_method não pode ser NOT_CONVERTED quando houver cotação")
+        if fx_rate is not None and declared["fx_conversion_method"] == "NOT_INFORMED":
+            raise ValueError("fx_conversion_method deve ser informado quando houver cotação")
+        if fx_rate is None and declared["fx_conversion_method"] not in {"NOT_INFORMED", "NOT_CONVERTED"}:
+            raise ValueError("fx_conversion_method exige fx_rate, fx_date e fx_source")
+        details = self._fiscal_details(payload)
         item = {
             "pending_id": str(uuid.uuid4()), "owner_id": owner_id, "reference": reference,
             "original_amount": abs(result), "original_result": result, "record_kind": "REALIZED_RESULT",
             "original_currency": currency, "instrument": instrument, "jurisdiction": jurisdiction,
             "occurred_on": occurred_on, "fx_rate": fx_rate, "fx_date": fx_date,
-            "fx_source": fx_source or None, **declared, "notes": str(payload.get("notes") or "").strip()[:1000],
+            "fx_source": fx_source or None, **declared, **details, "notes": self._text(payload, "notes", 1000),
             "status": "PENDING_CLASSIFICATION", "created_at": datetime.now(timezone.utc).isoformat(),
         }
         with self._connect() as db:
@@ -240,12 +350,15 @@ class FiscalPendingQueue:
                 """INSERT INTO fiscal_reserve_pending_foreign
                 (pending_id, owner_id, reference, original_amount, original_currency, instrument,
                  jurisdiction, occurred_on, fx_rate, fx_date, fx_source, tax_residency_at_event,
-                 income_nature, event_type, fx_conversion_method, notes, status, created_at,
-                 original_result, record_kind)
+                 income_nature, event_type, fx_conversion_method, institution, custody_location,
+                 contract_type, acquisition_cost, transaction_fees, foreign_tax_paid,
+                 notes, status, created_at, original_result, record_kind)
                 VALUES (:pending_id, :owner_id, :reference, :original_amount, :original_currency,
                  :instrument, :jurisdiction, :occurred_on, :fx_rate, :fx_date, :fx_source,
                  :tax_residency_at_event, :income_nature, :event_type, :fx_conversion_method,
-                 :notes, :status, :created_at, :original_result, :record_kind)""",
+                 :institution, :custody_location, :contract_type, :acquisition_cost,
+                 :transaction_fees, :foreign_tax_paid, :notes, :status, :created_at,
+                 :original_result, :record_kind)""",
                 item,
             )
         return {key: value for key, value in item.items() if key != "owner_id"}
@@ -255,12 +368,17 @@ class FiscalPendingQueue:
         owner_id = self._require_owner(owner_id)
         if not isinstance(payload, dict):
             raise ValueError("payload deve ser um objeto")
-        pending_id = str(pending_id or "").strip()
+        if not isinstance(pending_id, str):
+            raise ValueError("pending_id inválido")
+        pending_id = pending_id.strip()
         if not pending_id or len(pending_id) > 80:
             raise ValueError("pending_id inválido")
 
         def required(name: str, maximum: int) -> str:
-            value = str(payload.get(name) or "").strip()
+            raw = payload.get(name)
+            if not isinstance(raw, str):
+                raise ValueError(f"{name} deve ser texto")
+            value = raw.strip()
             if not value or len(value) > maximum:
                 raise ValueError(f"{name} é obrigatório e deve ter até {maximum} caracteres")
             return value
@@ -283,7 +401,12 @@ class FiscalPendingQueue:
         registration = required("professional_registration", 100)
         evidence = required("evidence_reference", 500)
         reviewed_on = self._date(payload.get("reviewed_on"), "reviewed_on")
-        notes = str(payload.get("review_notes") or "").strip()
+        if date.fromisoformat(reviewed_on) > datetime.now(ZoneInfo("America/Sao_Paulo")).date():
+            raise ValueError("reviewed_on não pode estar no futuro")
+        raw_notes = payload.get("review_notes", "")
+        if not isinstance(raw_notes, str):
+            raise ValueError("review_notes deve ser texto")
+        notes = raw_notes.strip()
         if len(notes) > 2000:
             raise ValueError("review_notes deve ter até 2000 caracteres")
 
@@ -325,7 +448,11 @@ class FiscalPendingQueue:
 
     def list_reviews(self, owner_id: str, pending_id: str) -> list[dict[str, Any]]:
         owner_id = self._require_owner(owner_id)
-        pending_id = str(pending_id or "").strip()
+        if not isinstance(pending_id, str):
+            raise ValueError("pending_id inválido")
+        pending_id = pending_id.strip()
+        if not pending_id or len(pending_id) > 80:
+            raise ValueError("pending_id inválido")
         with self._connect() as db:
             if not db.execute(
                 "SELECT 1 FROM fiscal_reserve_pending_foreign WHERE owner_id = ? AND pending_id = ?",
@@ -370,6 +497,29 @@ class FiscalPendingQueue:
                    ORDER BY original_currency""",
                 (owner_id,),
             ).fetchall()
+            evidence = db.execute(
+                """SELECT
+                       COUNT(*) AS total,
+                       SUM(CASE WHEN
+                           TRIM(COALESCE(institution, '')) = ''
+                           AND LOWER(TRIM(COALESCE(custody_location, ''))) NOT LIKE '%autocust%'
+                           AND LOWER(TRIM(COALESCE(custody_location, ''))) NOT LIKE '%self-custod%'
+                           THEN 1 ELSE 0 END) AS missing_institution,
+                       SUM(CASE WHEN TRIM(COALESCE(custody_location, '')) IN ('', 'NOT_INFORMED') THEN 1 ELSE 0 END) AS missing_custody_location,
+                       SUM(CASE WHEN TRIM(COALESCE(contract_type, '')) IN ('', 'NOT_INFORMED', 'NOT_CONFIRMED') THEN 1 ELSE 0 END) AS missing_contract_type,
+                       SUM(CASE WHEN
+                           (
+                               TRIM(COALESCE(institution, '')) = ''
+                               AND LOWER(TRIM(COALESCE(custody_location, ''))) NOT LIKE '%autocust%'
+                               AND LOWER(TRIM(COALESCE(custody_location, ''))) NOT LIKE '%self-custod%'
+                           )
+                           OR TRIM(COALESCE(custody_location, '')) IN ('', 'NOT_INFORMED')
+                           OR TRIM(COALESCE(contract_type, '')) IN ('', 'NOT_INFORMED', 'NOT_CONFIRMED')
+                           THEN 1 ELSE 0 END) AS missing_core_evidence
+                   FROM fiscal_reserve_pending_foreign
+                   WHERE owner_id = ?""",
+                (owner_id,),
+            ).fetchone()
             period_counts = {}
             for period_name, (start_day, end_day) in periods.items():
                 row = db.execute(
@@ -395,6 +545,13 @@ class FiscalPendingQueue:
             "realized_results": counts.get("REALIZED_RESULT", 0),
             "asset_amounts": counts.get("ASSET_AMOUNT", 0),
             "currencies": [str(row["original_currency"]) for row in currencies],
+            "evidence_completeness": {
+                "total": int(evidence["total"] or 0),
+                "missing_institution": int(evidence["missing_institution"] or 0),
+                "missing_custody_location": int(evidence["missing_custody_location"] or 0),
+                "missing_contract_type": int(evidence["missing_contract_type"] or 0),
+                "missing_core_evidence": int(evidence["missing_core_evidence"] or 0),
+            },
             "periods": period_counts,
             "classification_status": "PENDING_CLASSIFICATION",
             "included_in_totals": False,
@@ -405,8 +562,14 @@ class FiscalPendingQueue:
         owner_id = self._require_owner(owner_id)
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
             raise ValueError("limit deve estar entre 1 e 500")
-        if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
-            raise ValueError("offset deve ser não negativo")
+        if (
+            isinstance(offset, bool)
+            or not isinstance(offset, int)
+            or not 0 <= offset <= MAX_PENDING_OFFSET
+        ):
+            raise ValueError(
+                f"offset deve estar entre 0 e {MAX_PENDING_OFFSET}"
+            )
         with self._connect() as db:
             total = int(db.execute("SELECT COUNT(*) FROM fiscal_reserve_pending_foreign WHERE owner_id = ?", (owner_id,)).fetchone()[0])
             rows = db.execute("SELECT * FROM fiscal_reserve_pending_foreign WHERE owner_id = ? "

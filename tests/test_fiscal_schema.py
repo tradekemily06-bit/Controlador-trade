@@ -74,6 +74,163 @@ def test_migration_is_idempotent(tmp_path, monkeypatch):
     db.close()
 
 
+def test_migration_installs_append_only_foreign_review_triggers_immediately(tmp_path, monkeypatch):
+    path = str(tmp_path / "legacy-review-history.sqlite3")
+    _legacy_db(path)
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+
+    migrate_fiscal_schema(path)
+
+    with sqlite3.connect(path) as db:
+        trigger_names = {
+            row[0] for row in db.execute(
+                "SELECT name FROM sqlite_master WHERE type='trigger'"
+            )
+        }
+        assert {
+            "fiscal_pending_reviews_no_update",
+            "fiscal_pending_reviews_no_delete",
+        } <= trigger_names
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            db.execute(
+                "UPDATE fiscal_pending_reviews SET review_notes='tampered' WHERE review_id='r1'"
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            db.execute("DELETE FROM fiscal_pending_reviews WHERE review_id='r1'")
+        assert db.execute(
+            "SELECT review_notes FROM fiscal_pending_reviews WHERE review_id='r1'"
+        ).fetchone() == ("",)
+
+
+def test_owner_scoped_fast_path_keeps_foreign_review_history_append_only(tmp_path, monkeypatch):
+    path = str(tmp_path / "owner-review-history.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    owner = migrate_fiscal_schema(path)
+
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "INSERT INTO fiscal_reserve_pending_foreign "
+            "(pending_id,owner_id,reference,original_amount,original_currency,instrument,"
+            "jurisdiction,occurred_on,notes,status,created_at) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            ("p1", owner, "review-target", 10, "USD", "ETF", "US",
+             "2026-11-03", "", "PENDING_CLASSIFICATION", "now"),
+        )
+        db.execute(
+            "INSERT INTO fiscal_pending_reviews "
+            "(review_id,owner_id,pending_id,candidate_classification,confirmed_jurisdiction,"
+            "reviewer_name,reviewer_role,professional_registration,evidence_reference,"
+            "reviewed_on,review_notes,created_at) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("r1", owner, "p1", "ETF", "US", "Reviewer", "contador",
+             "CRC-X", "DOC-X", "2026-11-03", "", "now"),
+        )
+
+    # The fast path must preserve/reinstall the guards on every migration.
+    migrate_fiscal_schema(path)
+    with sqlite3.connect(path) as db:
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            db.execute(
+                "UPDATE fiscal_pending_reviews SET review_notes='tampered' WHERE review_id='r1'"
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            db.execute("DELETE FROM fiscal_pending_reviews WHERE review_id='r1'")
+
+
+def test_migration_reinstalls_domestic_review_guards_if_missing(tmp_path, monkeypatch):
+    from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
+    from finance.fiscal_identity import configured_fiscal_owner_id
+
+    path = str(tmp_path / "domestic-review-history.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    owner = configured_fiscal_owner_id()
+    queue = FiscalDomesticPendingQueue(path)
+    queue.add(owner, {
+        "reference": "BR-REVIEW-1",
+        "instrument": "ETF",
+        "occurred_on": "2026-11-03",
+    })
+
+    # Simulate a legacy/external writer dropping the guards before startup migration.
+    with sqlite3.connect(path) as db:
+        db.execute("DROP TRIGGER fiscal_domestic_pending_reviews_no_update")
+        db.execute("DROP TRIGGER fiscal_domestic_pending_reviews_no_delete")
+
+    migrate_fiscal_schema(path)
+
+    with sqlite3.connect(path) as db:
+        trigger_names = {
+            row[0] for row in db.execute(
+                "SELECT name FROM sqlite_master WHERE type='trigger'"
+            )
+        }
+        assert {
+            "fiscal_domestic_pending_reviews_no_update",
+            "fiscal_domestic_pending_reviews_no_delete",
+        } <= trigger_names
+
+
+def test_rebuild_path_reinstalls_domestic_review_guards_if_missing(tmp_path, monkeypatch):
+    from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
+    from finance.fiscal_identity import configured_fiscal_owner_id
+
+    path = str(tmp_path / "domestic-review-rebuild.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    owner = configured_fiscal_owner_id()
+    queue = FiscalDomesticPendingQueue(path)
+    item = queue.add(owner, {
+        "reference": "BR-REVIEW-REBUILD-1",
+        "instrument": "ETF",
+        "occurred_on": "2026-11-03",
+    })
+    queue.record_review(owner, item["pending_id"], {
+        "candidate_classification": "BR_DAY_TRADE",
+        "confirmed_jurisdiction": "BR",
+        "reviewer_name": "Reviewer",
+        "reviewer_role": "contador",
+        "professional_registration": "CRC-X",
+        "evidence_reference": "DOC-X",
+        "reviewed_on": "2026-11-03",
+    })
+
+    # Force the legacy/rebuild path while preserving the domestic review tables.
+    with sqlite3.connect(path) as db:
+        db.execute("DROP TRIGGER fiscal_domestic_pending_reviews_no_update")
+        db.execute("DROP TRIGGER fiscal_domestic_pending_reviews_no_delete")
+        db.execute("DROP TABLE fiscal_reserve_settings")
+        db.execute(
+            "CREATE TABLE fiscal_reserve_settings(category TEXT PRIMARY KEY, rate REAL NOT NULL)"
+        )
+        db.execute("INSERT INTO fiscal_reserve_settings VALUES('BR_DAY_TRADE', 20)")
+
+    assert migrate_fiscal_schema(path) == owner
+
+    with sqlite3.connect(path) as db:
+        trigger_names = {
+            row[0] for row in db.execute(
+                "SELECT name FROM sqlite_master WHERE type='trigger'"
+            )
+        }
+        assert {
+            "fiscal_domestic_pending_reviews_no_update",
+            "fiscal_domestic_pending_reviews_no_delete",
+        } <= trigger_names
+        review = db.execute(
+            "SELECT review_id FROM fiscal_domestic_pending_reviews LIMIT 1"
+        ).fetchone()
+        assert review is not None
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            db.execute(
+                "UPDATE fiscal_domestic_pending_reviews SET review_notes='tampered' WHERE review_id=?",
+                (review[0],),
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            db.execute(
+                "DELETE FROM fiscal_domestic_pending_reviews WHERE review_id=?",
+                (review[0],),
+            )
+
+
 def test_migration_without_configured_identity_changes_nothing(tmp_path, monkeypatch):
     path = str(tmp_path / "legacy.sqlite3")
     _legacy_db(path)
@@ -220,3 +377,407 @@ def test_migration_refuses_a_different_owner_for_domestic_pending_queue(tmp_path
     with pytest.raises(RuntimeError, match="proprietário da fila brasileira"):
         migrate_fiscal_schema(path)
     assert queue.list_pending(owner)["total"] == 1
+
+
+def test_partial_rebuild_refuses_to_reassign_existing_owner(tmp_path, monkeypatch):
+    path = str(tmp_path / "partial-owner-mismatch.sqlite3")
+    _legacy_db(path)
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner-a")
+    owner_a = migrate_fiscal_schema(path)
+
+    # Force the rebuild path while leaving other tables with owner-a records.
+    db = sqlite3.connect(path)
+    db.execute("DROP TABLE fiscal_reserve_settings")
+    db.execute(
+        "CREATE TABLE fiscal_reserve_settings(category TEXT PRIMARY KEY, rate REAL NOT NULL)"
+    )
+    db.execute("INSERT INTO fiscal_reserve_settings VALUES('BR_DAY_TRADE', 20)")
+    db.commit()
+    db.close()
+
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner-b")
+    with pytest.raises(RuntimeError, match="proprietário já gravado"):
+        migrate_fiscal_schema(path)
+
+    db = sqlite3.connect(path)
+    assert db.execute(
+        "SELECT DISTINCT owner_id FROM fiscal_reserve_entries"
+    ).fetchall() == [(owner_a,)]
+    assert db.execute(
+        "SELECT COUNT(*) FROM fiscal_reserve_entries"
+    ).fetchone()[0] == 1
+    # The failed migration must leave the legacy settings table untouched.
+    settings_columns = {
+        row[1] for row in db.execute("PRAGMA table_info(fiscal_reserve_settings)")
+    }
+    assert "owner_id" not in settings_columns
+    assert db.execute(
+        "SELECT rate FROM fiscal_reserve_settings WHERE category='BR_DAY_TRADE'"
+    ).fetchone() == (20.0,)
+    db.close()
+
+
+
+def test_owner_scoped_fast_path_rejects_orphaned_foreign_reviews(tmp_path, monkeypatch):
+    path = str(tmp_path / "owner-scoped-orphan.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner-a")
+    owner = migrate_fiscal_schema(path)
+
+    # Simulate corruption introduced by an external writer that did not enable
+    # SQLite foreign-key enforcement on its connection.
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "INSERT INTO fiscal_pending_reviews "
+            "(review_id,owner_id,pending_id,candidate_classification,confirmed_jurisdiction,"
+            "reviewer_name,reviewer_role,professional_registration,evidence_reference,"
+            "reviewed_on,review_notes,created_at) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("orphan-review", owner, "missing-pending", "ETF", "US", "Reviewer",
+             "contador", "CRC-X", "DOC-X", "2026-11-04", "", "now"),
+        )
+
+    with pytest.raises(RuntimeError, match="integridade referencial inválida"):
+        migrate_fiscal_schema(path)
+
+    with sqlite3.connect(path) as db:
+        assert db.execute(
+            "SELECT COUNT(*) FROM fiscal_pending_reviews WHERE review_id='orphan-review'"
+        ).fetchone()[0] == 1
+
+def test_application_migrates_owner_schema_before_fiscal_repositories_are_created():
+    import ast
+    from pathlib import Path
+
+    app_path = Path(__file__).resolve().parents[1] / "app.py"
+    tree = ast.parse(app_path.read_text(encoding="utf-8"))
+    migration_index = None
+    process_lock_acquire_index = None
+    runtime_construction_index = None
+    repository_indexes = []
+
+    for index, statement in enumerate(tree.body):
+        value = None
+        if isinstance(statement, ast.Assign):
+            value = statement.value
+        elif isinstance(statement, ast.Expr):
+            value = statement.value
+        if not isinstance(value, ast.Call):
+            continue
+        if isinstance(value.func, ast.Name):
+            if value.func.id == "migrate_fiscal_schema":
+                migration_index = index
+            elif value.func.id in {"FiscalReserve", "FiscalPendingQueue", "FiscalDomesticPendingQueue"}:
+                repository_indexes.append(index)
+            elif value.func.id == "build_demo_execution_port":
+                runtime_construction_index = index
+        elif (
+            isinstance(value.func, ast.Attribute)
+            and value.func.attr == "acquire"
+            and isinstance(value.func.value, ast.Name)
+            and value.func.value.id == "_RUNTIME_PROCESS_LOCK"
+        ):
+            process_lock_acquire_index = index
+
+    assert process_lock_acquire_index is not None, "app.py must acquire the process lock during startup"
+    assert runtime_construction_index is not None, "app.py must construct the operational runtime"
+    assert migration_index is not None, "app.py must apply the owner-scoped fiscal migration"
+    assert process_lock_acquire_index < runtime_construction_index, (
+        "process exclusivity must be acquired before operational runtime construction"
+    )
+    assert process_lock_acquire_index < migration_index, (
+        "process exclusivity must be acquired before fiscal schema migration"
+    )
+    assert repository_indexes, "app.py must initialize fiscal repositories"
+    assert all(migration_index < index for index in repository_indexes), (
+        "owner-scoped migration must run before any fiscal repository initialization"
+    )
+
+
+
+def test_schema_validator_rejects_partial_unique_index_as_full_owner_constraint():
+    from finance.fiscal_schema import _has_unique_index
+
+    db = sqlite3.connect(":memory:")
+    try:
+        db.execute(
+            "CREATE TABLE fiscal_reserve_pending_foreign "
+            "(owner_id TEXT NOT NULL, reference TEXT, status TEXT NOT NULL)"
+        )
+        db.execute(
+            "CREATE UNIQUE INDEX ux_partial_owner_reference "
+            "ON fiscal_reserve_pending_foreign(owner_id, reference) "
+            "WHERE status = 'PENDING_CLASSIFICATION'"
+        )
+
+        assert _has_unique_index(
+            db, "fiscal_reserve_pending_foreign", ("owner_id", "reference")
+        ) is False
+    finally:
+        db.close()
+
+def test_owner_fast_path_rebuilds_global_reference_uniqueness(tmp_path, monkeypatch):
+    path = str(tmp_path / "wrong-owner-constraints.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner-a")
+    owner = migrate_fiscal_schema(path)
+
+    # Simulate owner-tagged tables with global uniqueness and an incomplete FK.
+    with sqlite3.connect(path) as db:
+        db.execute("PRAGMA foreign_keys=OFF")
+        db.execute("DROP TABLE fiscal_pending_reviews")
+        db.execute("DROP TABLE fiscal_reserve_pending_foreign")
+        db.execute("""CREATE TABLE fiscal_reserve_pending_foreign (
+            pending_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, reference TEXT NOT NULL UNIQUE,
+            original_amount REAL NOT NULL, original_currency TEXT NOT NULL, instrument TEXT NOT NULL,
+            jurisdiction TEXT NOT NULL, occurred_on TEXT NOT NULL, fx_rate REAL, fx_date TEXT,
+            fx_source TEXT, notes TEXT NOT NULL DEFAULT '', status TEXT NOT NULL,
+            original_result REAL, record_kind TEXT NOT NULL DEFAULT 'ASSET_AMOUNT',
+            tax_residency_at_event TEXT NOT NULL DEFAULT 'NOT_INFORMED',
+            income_nature TEXT NOT NULL DEFAULT 'NOT_INFORMED', event_type TEXT NOT NULL DEFAULT 'NOT_INFORMED',
+            fx_conversion_method TEXT NOT NULL DEFAULT 'NOT_INFORMED', created_at TEXT NOT NULL
+        )""")
+        db.execute("""INSERT INTO fiscal_reserve_pending_foreign
+            (pending_id,owner_id,reference,original_amount,original_currency,instrument,jurisdiction,occurred_on,notes,status,created_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+            ("p1", owner, "kept-ref", 25, "USD", "ETF", "US", "2026-11-05", "", "PENDING_CLASSIFICATION", "now"))
+        db.execute("""CREATE TABLE fiscal_pending_reviews (
+            review_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, pending_id TEXT NOT NULL,
+            candidate_classification TEXT NOT NULL, confirmed_jurisdiction TEXT NOT NULL,
+            reviewer_name TEXT NOT NULL, reviewer_role TEXT NOT NULL, professional_registration TEXT NOT NULL,
+            evidence_reference TEXT NOT NULL, reviewed_on TEXT NOT NULL, review_notes TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL, FOREIGN KEY(pending_id) REFERENCES fiscal_reserve_pending_foreign(pending_id)
+        )""")
+
+    assert migrate_fiscal_schema(path) == owner
+    with sqlite3.connect(path) as db:
+        assert db.execute(
+            "SELECT owner_id,reference FROM fiscal_reserve_pending_foreign WHERE pending_id='p1'"
+        ).fetchone() == (owner, "kept-ref")
+        unique_indexes = [
+            row[1] for row in db.execute("PRAGMA index_list(fiscal_reserve_pending_foreign)") if row[2]
+        ]
+        indexed_columns = [
+            tuple(row[2] for row in db.execute(f"PRAGMA index_info('{name}')"))
+            for name in unique_indexes
+        ]
+        assert ("owner_id", "reference") in indexed_columns
+        assert ("owner_id", "pending_id") in indexed_columns
+        foreign_keys = list(db.execute("PRAGMA foreign_key_list(fiscal_pending_reviews)"))
+        assert {(row[3], row[4]) for row in foreign_keys} == {
+            ("owner_id", "owner_id"), ("pending_id", "pending_id")
+        }
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute("""INSERT INTO fiscal_reserve_pending_foreign
+                (pending_id,owner_id,reference,original_amount,original_currency,instrument,jurisdiction,occurred_on,notes,status,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                ("p2", owner, "kept-ref", 10, "USD", "ETF", "US", "2026-11-05", "", "PENDING_CLASSIFICATION", "now"))
+
+
+def test_migration_fails_closed_on_malformed_domestic_queue_constraints(tmp_path, monkeypatch):
+    from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
+
+    path = str(tmp_path / "malformed-domestic.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner-a")
+    queue = FiscalDomesticPendingQueue(path)
+    from finance.fiscal_identity import configured_fiscal_owner_id
+    owner = configured_fiscal_owner_id()
+    queue.add(owner, {
+        "reference": "BR-KEEP-001",
+        "instrument": "ETF",
+        "occurred_on": "2026-11-05",
+    })
+    migrate_fiscal_schema(path)
+
+    # Simulate a historical schema with globally unique references and a
+    # review FK that checks pending_id but does not bind owner_id.
+    with sqlite3.connect(path) as db:
+        db.execute("PRAGMA foreign_keys=OFF")
+        db.execute("DROP TABLE fiscal_domestic_pending_reviews")
+        db.execute("DROP TABLE fiscal_reserve_pending_domestic")
+        db.execute("""CREATE TABLE fiscal_reserve_pending_domestic (
+            pending_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, reference TEXT NOT NULL UNIQUE,
+            category_candidate TEXT NOT NULL DEFAULT '', instrument TEXT NOT NULL,
+            market_scope TEXT NOT NULL DEFAULT '', occurred_on TEXT NOT NULL,
+            realized_result_brl REAL, notes TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL, created_at TEXT NOT NULL
+        )""")
+        db.execute("""INSERT INTO fiscal_reserve_pending_domestic
+            (pending_id,owner_id,reference,instrument,occurred_on,status,created_at)
+            VALUES('br-p1',?,'BR-KEEP-001','ETF','2026-11-05','PENDING_CLASSIFICATION','now')""",
+            (owner,))
+        db.execute("""CREATE TABLE fiscal_domestic_pending_reviews (
+            review_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, pending_id TEXT NOT NULL,
+            candidate_classification TEXT NOT NULL, confirmed_jurisdiction TEXT NOT NULL,
+            reviewer_name TEXT NOT NULL, reviewer_role TEXT NOT NULL, professional_registration TEXT NOT NULL,
+            evidence_reference TEXT NOT NULL, reviewed_on TEXT NOT NULL, review_notes TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(pending_id) REFERENCES fiscal_reserve_pending_domestic(pending_id)
+        )""")
+
+    with pytest.raises(RuntimeError, match="Esquema da fila brasileira pendente inválido"):
+        migrate_fiscal_schema(path)
+
+    with sqlite3.connect(path) as db:
+        row = db.execute(
+            "SELECT owner_id,reference FROM fiscal_reserve_pending_domestic WHERE pending_id='br-p1'"
+        ).fetchone()
+        assert row == (owner, "BR-KEEP-001")
+
+
+def test_migration_fails_closed_when_only_one_domestic_queue_table_exists(tmp_path, monkeypatch):
+    from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
+
+    path = str(tmp_path / "partial-domestic.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "partial-domestic-owner")
+    queue = FiscalDomesticPendingQueue(path)
+    owner = migrate_fiscal_schema(path)
+    queue.add(owner, {
+        "reference": "BR-PARTIAL-KEEP",
+        "instrument": "ETF",
+        "occurred_on": "2026-11-05",
+    })
+
+    # Simulate an interrupted/manual schema change that removed only the
+    # review table while leaving the owner-scoped pending records in place.
+    with sqlite3.connect(path) as db:
+        db.execute("DROP TABLE fiscal_domestic_pending_reviews")
+
+    with pytest.raises(RuntimeError, match="Esquema da fila brasileira pendente incompleto"):
+        migrate_fiscal_schema(path)
+
+    with sqlite3.connect(path) as db:
+        row = db.execute(
+            "SELECT owner_id,reference FROM fiscal_reserve_pending_domestic "
+            "WHERE reference='BR-PARTIAL-KEEP'"
+        ).fetchone()
+        assert row == (owner, "BR-PARTIAL-KEEP")
+
+
+
+def test_owner_fast_path_rebuilds_cascading_review_fk_as_restrict(tmp_path, monkeypatch):
+    path = str(tmp_path / "cascading-review-fk.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner-a")
+    owner = migrate_fiscal_schema(path)
+
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "INSERT INTO fiscal_reserve_pending_foreign "
+            "(pending_id,owner_id,reference,original_amount,original_currency,instrument,"
+            "jurisdiction,occurred_on,notes,status,created_at) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            ("p1", owner, "ref-1", 10, "USD", "ETF", "PENDING_REVIEW",
+             "2026-11-05", "", "PENDING_CLASSIFICATION", "now"),
+        )
+        db.execute("DROP TABLE fiscal_pending_reviews")
+        db.execute("""CREATE TABLE fiscal_pending_reviews (
+            review_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, pending_id TEXT NOT NULL,
+            candidate_classification TEXT NOT NULL, confirmed_jurisdiction TEXT NOT NULL,
+            reviewer_name TEXT NOT NULL, reviewer_role TEXT NOT NULL,
+            professional_registration TEXT NOT NULL, evidence_reference TEXT NOT NULL,
+            reviewed_on TEXT NOT NULL, review_notes TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(owner_id,pending_id)
+                REFERENCES fiscal_reserve_pending_foreign(owner_id,pending_id)
+                ON DELETE CASCADE
+        )""")
+        db.execute(
+            "INSERT INTO fiscal_pending_reviews VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("r1", owner, "p1", "ETF", "PENDING_REVIEW", "Reviewer", "contador",
+             "CRC-X", "DOC-X", "2026-11-05", "", "now"),
+        )
+
+    assert migrate_fiscal_schema(path) == owner
+    with sqlite3.connect(path) as db:
+        foreign_keys = list(db.execute("PRAGMA foreign_key_list(fiscal_pending_reviews)"))
+        assert foreign_keys
+        assert {row[6] for row in foreign_keys} == {"RESTRICT"}
+        assert db.execute(
+            "SELECT COUNT(*) FROM fiscal_pending_reviews WHERE review_id='r1'"
+        ).fetchone()[0] == 1
+        db.execute("PRAGMA foreign_keys=ON")
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                "DELETE FROM fiscal_reserve_pending_foreign WHERE pending_id='p1'"
+            )
+
+
+
+def test_migration_adds_and_preserves_structured_foreign_evidence_fields(tmp_path, monkeypatch):
+    from finance.fiscal_pending_queue import FiscalPendingQueue
+
+    path = str(tmp_path / "structured-evidence-migration.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "structured-owner")
+    owner = migrate_fiscal_schema(path)
+    queue = FiscalPendingQueue(path)
+    pending = queue.add(owner, {
+        "reference": "STRUCTURED-KEEP",
+        "original_amount": 500,
+        "original_currency": "USD",
+        "instrument": "ETF",
+        "jurisdiction": "US",
+        "occurred_on": "2026-11-05",
+        "institution": "Broker US",
+        "custody_location": "Foreign custodian",
+        "contract_type": "ETF spot",
+        "acquisition_cost": 450,
+        "transaction_fees": 3.25,
+        "foreign_tax_paid": 8,
+    })
+
+    # Force the atomic rebuild path; the pending table must retain all evidence.
+    with sqlite3.connect(path) as db:
+        db.execute("DROP TABLE fiscal_reserve_settings")
+        db.execute(
+            "CREATE TABLE fiscal_reserve_settings(category TEXT PRIMARY KEY, rate REAL NOT NULL)"
+        )
+        db.execute("INSERT INTO fiscal_reserve_settings VALUES('BR_DAY_TRADE', 20)")
+    assert migrate_fiscal_schema(path) == owner
+
+    stored = queue.list_pending(owner)["items"][0]
+    assert stored["pending_id"] == pending["pending_id"]
+    assert stored["institution"] == "Broker US"
+    assert stored["custody_location"] == "Foreign custodian"
+    assert stored["contract_type"] == "ETF spot"
+    assert stored["acquisition_cost"] == 450
+    assert stored["transaction_fees"] == 3.25
+    assert stored["foreign_tax_paid"] == 8
+    with sqlite3.connect(path) as db:
+        assert db.execute("PRAGMA foreign_key_check").fetchall() == []
+
+
+
+def test_database_rejects_negative_or_out_of_range_foreign_cost_evidence(tmp_path, monkeypatch):
+    from finance.fiscal_pending_queue import FiscalPendingQueue
+
+    path = str(tmp_path / "cost-checks.sqlite3")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "cost-check-owner")
+    owner = migrate_fiscal_schema(path)
+    queue = FiscalPendingQueue(path)
+    pending = queue.add(owner, {
+        "reference": "COST-CHECK-RECORD",
+        "original_amount": 100,
+        "original_currency": "USD",
+        "instrument": "ETF",
+        "jurisdiction": "US",
+        "occurred_on": "2026-11-06",
+    })
+
+    with sqlite3.connect(path) as db:
+        for field in ("acquisition_cost", "transaction_fees", "foreign_tax_paid"):
+            try:
+                db.execute(
+                    f"UPDATE fiscal_reserve_pending_foreign SET {field}=-1 WHERE pending_id=?",
+                    (pending["pending_id"],),
+                )
+            except sqlite3.IntegrityError:
+                pass
+            else:
+                raise AssertionError(f"database must reject negative {field}")
+            try:
+                db.execute(
+                    f"UPDATE fiscal_reserve_pending_foreign SET {field}=1000000000001 WHERE pending_id=?",
+                    (pending["pending_id"],),
+                )
+            except sqlite3.IntegrityError:
+                pass
+            else:
+                raise AssertionError(f"database must reject out-of-range {field}")

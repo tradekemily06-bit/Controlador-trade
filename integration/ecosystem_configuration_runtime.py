@@ -3,10 +3,13 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Any
 from pathlib import Path
+from threading import RLock
+import uuid
 import tempfile
 
 from core.ecosystem_notifications import EcosystemNotification, EcosystemNotificationCenter, NotificationKind, NotificationSeverity, UpdateKind
-from core.operational_alerts import build_operational_incidents
+from core.operational_alerts import OperationalIncident, build_operational_incidents
+from security_audit import AUDIT
 from analysis.pipeline import StrategyPipeline
 from core.decision_engine import DecisionEngine
 from core.live_orchestrator import TradingOrchestrator
@@ -25,8 +28,9 @@ from core.automation_risk_policy import AutomationRiskPolicy
 from core.p41_controlled_automation import AutomationPolicy
 from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
 from execution.icmarkets_mt5_market_data import ICMarketsMT5DemoMarketDataAdapter
+from execution.mt5_session_lock import serialized_mt5_session
 from core.ecosystem_preferences import ChartTheme, EcosystemPreferencesStore
-from core.ecosystem_state_store import EcosystemStateStore
+from core.ecosystem_state_store import EcosystemStateStore, NotificationHistoryUnavailableError
 from core.models import AnalysisResult, Signal
 from core.p122_broker_market_data import BrokerMarketDataRequest, BrokerMarketDataSnapshot
 from core.candle_analysis_evaluator import evaluate_candle_snapshot
@@ -55,10 +59,14 @@ class ConfiguredEcosystemService(EcosystemService):
             # belongs to the real operational runtime and is only used there.
             state_path = Path(tempfile.mkdtemp(prefix="controlador-ecosystem-state-")) / "ecosystem-state.sqlite"
         self.state_store = EcosystemStateStore(state_path)
+        self.restore_learning_state()
         persisted_preferences = self.state_store.load_preferences()
         self.preferences = EcosystemPreferencesStore.from_dict(persisted_preferences) if persisted_preferences else EcosystemPreferencesStore()
         self.notifications = EcosystemNotificationCenter()
+        self._notification_history_lock = RLock()
         self.notifications.restore(self.state_store.load_notifications())
+        if self.notifications.restore_had_invalid_records:
+            self.state_store.mark_notifications_unavailable("invalid_records")
         self.state_store.save_preferences(self.preferences.preferences)
         self.senior_analysis_gate = SeniorAnalysisGate()
         self.operational_risk_bridge = OperationalRiskBridge(self.risk)
@@ -80,6 +88,25 @@ class ConfiguredEcosystemService(EcosystemService):
             )
         else:
             self.trading_runtime = None
+
+    def restore_notification_history(self, archive_id: str, *, confirmed: bool = False) -> dict[str, Any]:
+        """Restore durable history and atomically replace the validated live center."""
+        with self._notification_history_lock:
+            result = self.state_store.restore_notifications_from_quarantine(
+                archive_id, confirmed=confirmed
+            )
+            restored_items = self.state_store.load_notifications()
+            load_error = self.state_store.notifications_load_error
+            candidate_center = EcosystemNotificationCenter()
+            candidate_center.restore(restored_items)
+            if load_error is not None or candidate_center.restore_had_invalid_records:
+                category = load_error or "invalid_records"
+                self.state_store.mark_notifications_unavailable(category)
+                raise NotificationHistoryUnavailableError(
+                    "histórico restaurado não passou pela validação em memória"
+                )
+            self.notifications = candidate_center
+            return result
 
     def analyze(self, payload: dict[str, Any]):
         """Require senior context and operational risk for actionable analysis."""
@@ -238,10 +265,22 @@ class ConfiguredEcosystemService(EcosystemService):
             proposed_loss,
         )
 
-    def run_mt5_cycle(self, *, symbol: str, timeframe: str = "5m", limit: int = 100, amount: float = 0.01, duration_seconds: int = 60, senior_context=None, confirmed: bool = False, filters_ok: bool = True, entry_conditions: tuple[str, ...] = ()) -> Any:
+    @serialized_mt5_session
+    def run_mt5_cycle(self, *, symbol: str, timeframe: str = "5m", limit: int = 100, amount: float = 0.01, duration_seconds: int = 60, senior_context=None) -> Any:
         """Run one unified DEMO runtime cycle from live MT5 observations."""
-        if not isinstance(confirmed, bool) or not isinstance(filters_ok, bool):
-            raise ValueError("confirmed e filters_ok devem ser booleanos")
+        if not isinstance(symbol, str) or not symbol.strip():
+            raise ValueError("symbol é obrigatório")
+        if not isinstance(timeframe, str) or not timeframe.strip():
+            raise ValueError("timeframe é obrigatório")
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 20 <= limit <= 500:
+            raise ValueError("limit deve estar entre 20 e 500")
+        if not isinstance(amount, (int, float)) or isinstance(amount, bool):
+            raise ValueError("amount deve ser um número válido em lotes")
+        import math
+        if not math.isfinite(float(amount)) or float(amount) <= 0:
+            raise ValueError("amount deve ser finito e maior que zero")
+        if not isinstance(duration_seconds, int) or isinstance(duration_seconds, bool) or not 1 <= duration_seconds <= 86400:
+            raise ValueError("duration_seconds deve estar entre 1 e 86400")
         if self.trading_runtime is None or self.operational_runtime is None:
             raise RuntimeError("runtime operacional não conectado")
         if self.execution_provider != "ic_markets_mt5_demo":
@@ -254,9 +293,15 @@ class ConfiguredEcosystemService(EcosystemService):
         return self.trading_runtime.run(
             request, operational_state=state, market_context=None, senior_context=senior_context,
             amount=amount, duration_seconds=duration_seconds, max_cycles=1,
-            confirmed=confirmed, filters_ok=filters_ok,
-            filters_required=self.preferences.preferences.require_filters,
-            entry_conditions=entry_conditions,
+            # The MT5 market adapter fetches only completed candles (start_pos=1).
+            # These are server-derived facts, never client-supplied assertions.
+            confirmed=True,
+            # AdvancedFilters evaluates the actual candle-derived components.
+            # Execution cycles always require those filters, even if a display/
+            # analysis preference has been disabled by the user.
+            filters_ok=True,
+            filters_required=True,
+            entry_conditions=(),
             checkpoint_store=self.operational_runtime.checkpoint_store,
             session_id=f"mt5-{symbol}-{timeframe}",
             automation_policy=AutomationPolicy(enabled=True, minimum_interval_seconds=0),
@@ -264,6 +309,72 @@ class ConfiguredEcosystemService(EcosystemService):
             automation_risk_budget_factory=self._build_mt5_automation_risk_budget,
             automation_pretrade_risk_factory=self._build_mt5_pretrade_risk,
         )
+    def schedule_mt5_timed_exit(self, cycle: Any, *, duration_seconds: int) -> dict[str, Any]:
+        """Persist a best-effort DEMO exit only for an accepted, account-bound position."""
+        from execution.execution_ledger import ExecutionLedgerStatus
+        from execution.execution_lifecycle import ExecutionLifecycleState
+
+        if not isinstance(duration_seconds, int) or isinstance(duration_seconds, bool) or not 1 <= duration_seconds <= 86400:
+            raise ValueError("duration_seconds deve estar entre 1 e 86400")
+        if self.operational_runtime is None:
+            raise RuntimeError("runtime operacional não conectado")
+        execution = getattr(cycle, "execution", None)
+        plan = getattr(cycle, "plan", None)
+        if execution is None or execution.accepted is not True or plan is None:
+            return {"state": "NOT_APPLICABLE", "scheduled": False, "message": "nenhuma execução DEMO aceita neste ciclo"}
+        request_id = getattr(plan, "request_id", None)
+        if not isinstance(request_id, str) or not request_id.strip():
+            return {"state": "BLOCKED", "scheduled": False, "message": "request_id ausente; saída temporizada bloqueada"}
+        ledger = self.operational_runtime.execution_ledger
+        identity = ledger.record_for(request_id)
+        lifecycle = self.operational_runtime.execution_lifecycle.get(request_id)
+        if (
+            identity is None
+            or identity.status not in (ExecutionLedgerStatus.ACCEPTED, ExecutionLedgerStatus.RECONCILED_EXECUTED)
+            or lifecycle is None
+            or lifecycle.state is not ExecutionLifecycleState.ACCEPTED
+            or not identity.cycle_id
+            or not identity.external_id
+        ):
+            return {"state": "BLOCKED", "scheduled": False, "message": "identidade persistida da execução DEMO incompleta"}
+        fingerprint = identity.account_fingerprint
+        if (
+            not isinstance(fingerprint, str)
+            or len(fingerprint) != 32
+            or any(char not in "0123456789abcdef" for char in fingerprint)
+        ):
+            return {"state": "BLOCKED", "scheduled": False, "message": "identidade da conta de abertura ausente; saída temporizada bloqueada"}
+        store = getattr(self.operational_runtime, "timed_exits", None)
+        if store is None:
+            return {"state": "BLOCKED", "scheduled": False, "message": "armazenamento persistente de saída temporizada indisponível"}
+        try:
+            record = store.schedule(
+                request_id=request_id,
+                cycle_id=identity.cycle_id,
+                external_id=identity.external_id,
+                account_fingerprint=fingerprint,
+                delay_seconds=duration_seconds,
+            )
+        except Exception as exc:
+            # The opening order may already be accepted. Do not disguise that
+            # fact as a successful timed exit if local persistence failed.
+            return {
+                "state": "BLOCKED",
+                "scheduled": False,
+                "message": f"persistência da saída temporizada falhou ({type(exc).__name__}); fechamento manual explícito necessário",
+            }
+        return {
+            "state": record.state,
+            "scheduled": True,
+            "request_id": record.request_id,
+            "cycle_id": record.cycle_id,
+            "external_id": record.external_id,
+            "due_at": record.due_at.isoformat(),
+            "best_effort": True,
+            "message": "saída DEMO persistida; horário é alvo best-effort, não garantia de execução exata",
+        }
+
+    @serialized_mt5_session
     def analyze_mt5_market(
         self,
         *,
@@ -346,6 +457,7 @@ class ConfiguredEcosystemService(EcosystemService):
         self._record_analysis(orchestration.analysis)
         return orchestration
 
+    @serialized_mt5_session
     def replay_mt5_history(self, *, symbol: str, timeframe: str = "5m", limit: int = 100) -> dict[str, Any]:
         """Replay closed historical MT5 DEMO candles chronologically, without side effects."""
         if self.execution_provider != "ic_markets_mt5_demo":
@@ -502,6 +614,7 @@ class ConfiguredEcosystemService(EcosystemService):
             "simulation_kind": "HISTORICAL_SIGNAL_THRESHOLD_ONLY",
         }
 
+    @serialized_mt5_session
     def run_mt5_historical_backtest(
         self,
         *,
@@ -621,6 +734,7 @@ class ConfiguredEcosystemService(EcosystemService):
             "simulation_kind": result.simulation_kind,
         }
 
+    @serialized_mt5_session
     def get_mt5_assets(self, *, include_invisible: bool = False) -> tuple[dict[str, Any], ...]:
         """Return the broker-observed MT5 universe with session and 24/7 evidence."""
         if self.execution_provider != "ic_markets_mt5_demo":
@@ -629,8 +743,8 @@ class ConfiguredEcosystemService(EcosystemService):
             import MetaTrader5 as mt5
         except ImportError as exc:
             raise RuntimeError("MetaTrader5 não está instalado") from exc
-        if not mt5.initialize():
-            raise RuntimeError(f"MetaTrader5 indisponível: {mt5.last_error()}")
+        if not self.mt5_market_adapter.initialize_terminal(mt5):
+            raise RuntimeError("terminal MT5 configurado indisponível ou divergente")
         try:
             statuses = discover_mt5_instruments(mt5, include_invisible=include_invisible)
             assessments = {item.symbol: item for item in prioritize_mt5_assets(mt5, statuses)}
@@ -661,10 +775,284 @@ class ConfiguredEcosystemService(EcosystemService):
             execution_lifecycle=self.operational_runtime.execution_lifecycle,
         )
 
-    def close_mt5_position(self, *, external_id: str) -> Any:
-        """Close only the identified DEMO position through the existing MT5 safety boundary."""
-        return self.mt5_operational_adapter.close_position(external_id)
+    @staticmethod
+    def _mt5_close_identity(*, operational_runtime, cycle_id: str, external_id: str):
+        from core.trading_runtime import TradingRuntime
+        from execution.execution_ledger import ExecutionLedgerStatus
+        from execution.execution_lifecycle import ExecutionLifecycleState
 
+        request_id, identity, execution_record = TradingRuntime.validate_external_cycle_identity(
+            cycle_id=cycle_id,
+            external_id=external_id,
+            ledger=operational_runtime.execution_ledger,
+            execution_lifecycle=operational_runtime.execution_lifecycle,
+        )
+        if identity.external_id != external_id.strip():
+            raise ValueError("fechamento DEMO exige external_id já vinculado ao ciclo no ledger.")
+        if identity.status not in (
+            ExecutionLedgerStatus.ACCEPTED,
+            ExecutionLedgerStatus.RECONCILED_EXECUTED,
+        ):
+            raise ValueError("somente posição DEMO com abertura confirmada pode ser fechada.")
+        if execution_record.state is not ExecutionLifecycleState.ACCEPTED:
+            raise ValueError("ciclo de abertura não está confirmado como ACCEPTED.")
+        fingerprint = identity.account_fingerprint
+        if (
+            not isinstance(fingerprint, str)
+            or len(fingerprint) != 32
+            or any(char not in "0123456789abcdef" for char in fingerprint)
+        ):
+            raise ValueError("fechamento DEMO bloqueado: impressão digital da conta de abertura ausente ou inválida.")
+        return request_id, fingerprint
+
+    def list_mt5_position_recovery(self) -> list[dict[str, Any]]:
+        """List accepted DEMO cycles needing operator recovery; never claims live OPEN state."""
+        from execution.execution_ledger import ExecutionLedgerStatus
+        from execution.execution_lifecycle import ExecutionLifecycleState
+        from execution.position_close_store import PositionCloseState
+
+        if self.operational_runtime is None:
+            raise RuntimeError("runtime operacional não conectado")
+        ledger = self.operational_runtime.execution_ledger
+        lifecycle = self.operational_runtime.execution_lifecycle
+        close_store = getattr(self.operational_runtime, "position_closes", None)
+        if close_store is None:
+            raise RuntimeError("armazenamento persistente de fechamento DEMO não configurado")
+
+        results: list[dict[str, Any]] = []
+        for request_id, identity in ledger.entries():
+            if identity.status not in (
+                ExecutionLedgerStatus.ACCEPTED,
+                ExecutionLedgerStatus.RECONCILED_EXECUTED,
+            ):
+                continue
+            if not identity.cycle_id or not identity.external_id:
+                continue
+            opening = lifecycle.get(request_id)
+            if opening is None or opening.state is not ExecutionLifecycleState.ACCEPTED:
+                continue
+            fingerprint = identity.account_fingerprint
+            if (
+                not isinstance(fingerprint, str)
+                or len(fingerprint) != 32
+                or any(char not in "0123456789abcdef" for char in fingerprint)
+            ):
+                recovery_state = "BLOCKED_ACCOUNT_IDENTITY"
+            else:
+                close_record = close_store.get(request_id)
+                if close_record is not None and close_record.state is PositionCloseState.CLOSED:
+                    continue
+                if close_record is not None and close_record.state is PositionCloseState.OPEN:
+                    recovery_state = "BROKER_CONFIRMED_OPEN"
+                else:
+                    # This endpoint does not query MT5. OPEN must never be inferred
+                    # merely because a cycle was accepted or a close was attempted.
+                    recovery_state = "RECONCILIATION_REQUIRED"
+            results.append({
+                "cycle_id": identity.cycle_id,
+                "external_id": identity.external_id,
+                "recovery_state": recovery_state,
+                "broker_query_performed": False,
+                "order_sent": False,
+            })
+        return results
+
+    def list_mt5_timed_exits(self) -> list[dict[str, Any]]:
+        """Expose scheduled DEMO exit status without account secrets or broker actions."""
+        if self.operational_runtime is None:
+            raise RuntimeError("runtime operacional não conectado")
+        store = getattr(self.operational_runtime, "timed_exits", None)
+        if store is None:
+            raise RuntimeError("armazenamento de saída temporizada indisponível")
+        return [{
+            "request_id": record.request_id,
+            "cycle_id": record.cycle_id,
+            "external_id": record.external_id,
+            "due_at": record.due_at.isoformat(),
+            "next_attempt_at": record.next_attempt_at.isoformat(),
+            "state": record.state,
+            "attempts": record.attempts,
+            "message": record.message,
+            "best_effort": True,
+        } for record in store.records()]
+
+    @serialized_mt5_session
+    def close_mt5_position(self, *, cycle_id: str, external_id: str) -> Any:
+        """Persist and close only the cycle's DEMO position on its original account."""
+        from execution.ports import ExecutionResult
+        from execution.position_close_store import PositionCloseState
+
+        if self.operational_runtime is None or self.trading_runtime is None:
+            raise RuntimeError("runtime operacional não conectado")
+        store = getattr(self.operational_runtime, "position_closes", None)
+        if store is None:
+            raise RuntimeError("armazenamento persistente de fechamento DEMO não configurado")
+
+        with self.operational_runtime.kill_switch.execution_lock():
+            request_id, fingerprint = self._mt5_close_identity(
+                operational_runtime=self.operational_runtime,
+                cycle_id=cycle_id,
+                external_id=external_id,
+            )
+            # Never dispatch a close from a stale UI observation. Query the
+            # exact ticket/account immediately before the broker side effect.
+            from execution.ports import PositionCloseObservation, PositionCloseObservationStatus
+            observation = self.mt5_operational_adapter.reconcile_position_close(
+                external_id.strip(),
+                expected_account_fingerprint=fingerprint,
+            )
+            if (
+                not isinstance(observation, PositionCloseObservation)
+                or not isinstance(observation.status, PositionCloseObservationStatus)
+                or not isinstance(observation.message, str)
+            ):
+                raise RuntimeError("adaptador retornou observação de posição DEMO inválida antes do fechamento")
+            state_mapping = {
+                PositionCloseObservationStatus.CLOSED: PositionCloseState.CLOSED,
+                PositionCloseObservationStatus.OPEN: PositionCloseState.OPEN,
+                PositionCloseObservationStatus.UNKNOWN: PositionCloseState.UNKNOWN,
+            }
+            current = store.get(request_id)
+            if current is None:
+                current = store.observe_initial(
+                    request_id,
+                    external_id.strip(),
+                    state_mapping[observation.status],
+                    message=observation.message,
+                )
+            elif current.state is not PositionCloseState.CLOSED:
+                current = store.reconcile(
+                    request_id,
+                    state_mapping[observation.status],
+                    message=observation.message,
+                )
+            if current.state is not PositionCloseState.OPEN:
+                raise ValueError(
+                    "fechamento DEMO bloqueado: a consulta MT5 mais recente não confirmou a posição OPEN"
+                )
+            store.begin(request_id, external_id.strip())
+            try:
+                close = self.mt5_operational_adapter.close_position(
+                    external_id.strip(),
+                    expected_account_fingerprint=fingerprint,
+                )
+            except Exception as exc:
+                store.finish(
+                    request_id,
+                    PositionCloseState.UNKNOWN,
+                    message=f"resultado do fechamento DEMO incerto após erro do adaptador: {type(exc).__name__}",
+                )
+                raise
+            if not isinstance(close, ExecutionResult):
+                store.finish(
+                    request_id,
+                    PositionCloseState.UNKNOWN,
+                    message="adaptador retornou resultado de fechamento inválido",
+                )
+                raise RuntimeError("adaptador MT5 retornou resultado de fechamento inválido")
+            store.finish(
+                request_id,
+                PositionCloseState.CLOSED if close.accepted else PositionCloseState.UNKNOWN,
+                message=close.message,
+                close_external_id=close.external_id if close.accepted else None,
+            )
+            return close
+
+    @serialized_mt5_session
+    def reconcile_mt5_position_close(self, *, cycle_id: str, external_id: str) -> dict[str, Any]:
+        """Reconcile a DEMO close from broker evidence without sending another order."""
+        from execution.ports import PositionCloseObservation, PositionCloseObservationStatus
+        from execution.position_close_store import PositionCloseState
+
+        if self.operational_runtime is None or self.trading_runtime is None:
+            raise RuntimeError("runtime operacional não conectado")
+        store = getattr(self.operational_runtime, "position_closes", None)
+        if store is None:
+            raise RuntimeError("armazenamento persistente de fechamento DEMO não configurado")
+
+        with self.operational_runtime.kill_switch.execution_lock():
+            request_id, fingerprint = self._mt5_close_identity(
+                operational_runtime=self.operational_runtime,
+                cycle_id=cycle_id,
+                external_id=external_id,
+            )
+            record = store.get(request_id)
+            if record is not None and record.external_id != external_id.strip():
+                raise ValueError("tentativa de fechamento DEMO não encontrada para este ciclo/ticket")
+            if record is None:
+                # Initial inventory reconciliation is read-only; do not create
+                # a fake close REQUESTED record before the operator asks to close.
+                observation = self.mt5_operational_adapter.reconcile_position_close(
+                    external_id.strip(),
+                    expected_account_fingerprint=fingerprint,
+                )
+                if (
+                    not isinstance(observation, PositionCloseObservation)
+                    or not isinstance(observation.status, PositionCloseObservationStatus)
+                    or not isinstance(observation.message, str)
+                ):
+                    raise RuntimeError("adaptador retornou observação de posição DEMO inválida")
+                initial_mapping = {
+                    PositionCloseObservationStatus.CLOSED: PositionCloseState.CLOSED,
+                    PositionCloseObservationStatus.OPEN: PositionCloseState.OPEN,
+                    PositionCloseObservationStatus.UNKNOWN: PositionCloseState.UNKNOWN,
+                }
+                resolved = store.observe_initial(
+                    request_id,
+                    external_id.strip(),
+                    initial_mapping[observation.status],
+                    message=observation.message,
+                )
+                return {
+                    "request_id": resolved.request_id,
+                    "external_id": resolved.external_id,
+                    "state": resolved.state.value,
+                    "message": resolved.message,
+                    "read_only": True,
+                    "order_sent": False,
+                }
+            if record.state is PositionCloseState.CLOSED:
+                return {
+                    "request_id": request_id,
+                    "external_id": external_id.strip(),
+                    "state": record.state.value,
+                    "message": record.message,
+                    "read_only": True,
+                    "order_sent": False,
+                }
+            if record.state not in (PositionCloseState.REQUESTED, PositionCloseState.UNKNOWN, PositionCloseState.OPEN):
+                raise ValueError("estado de fechamento DEMO não pode ser reconciliado")
+
+            observation = self.mt5_operational_adapter.reconcile_position_close(
+                external_id.strip(),
+                expected_account_fingerprint=fingerprint,
+            )
+            if (
+                not isinstance(observation, PositionCloseObservation)
+                or not isinstance(observation.status, PositionCloseObservationStatus)
+                or not isinstance(observation.message, str)
+            ):
+                raise RuntimeError("adaptador retornou observação de fechamento DEMO inválida")
+            mapping = {
+                PositionCloseObservationStatus.CLOSED: PositionCloseState.CLOSED,
+                PositionCloseObservationStatus.OPEN: PositionCloseState.OPEN,
+                PositionCloseObservationStatus.UNKNOWN: PositionCloseState.UNKNOWN,
+            }
+            resolved = store.reconcile(
+                request_id,
+                mapping[observation.status],
+                message=observation.message,
+            )
+            return {
+                "request_id": resolved.request_id,
+                "external_id": resolved.external_id,
+                "state": resolved.state.value,
+                "message": resolved.message,
+                "read_only": True,
+                "order_sent": False,
+            }
+
+    @serialized_mt5_session
     def reconcile_mt5_cycle(self, *, cycle_id: str, external_id: str) -> Any:
         """Reconcile one DEMO external order and close only its factual lifecycle."""
         if self.trading_runtime is None:
@@ -734,9 +1122,7 @@ class ConfiguredEcosystemService(EcosystemService):
         return tuple(item for item in events if self._notification_visible(item))
 
     def _operational_notifications(self) -> list[dict[str, Any]]:
-        """Expose incidents only when a real operational runtime is attached."""
-        if self.operational_runtime is None:
-            return []
+        """Expose current operational and audit incidents without granting authority."""
         kind_by_source = {
             "execution": NotificationKind.EXECUTION,
             "recovery": NotificationKind.RECOVERY,
@@ -744,13 +1130,46 @@ class ConfiguredEcosystemService(EcosystemService):
             "market_data": NotificationKind.MARKET,
             "runtime_health": NotificationKind.SYSTEM_UPDATE,
             "kill_switch": NotificationKind.RISK,
+            "security_audit": NotificationKind.SECURITY,
+            "notifications": NotificationKind.SECURITY,
         }
         severity_by_incident = {
             "CRITICAL": NotificationSeverity.CRITICAL,
             "WARNING": NotificationSeverity.IMPORTANT,
         }
+        incidents = (
+            build_operational_incidents(self.operational_observability())
+            if self.operational_runtime is not None
+            else []
+        )
+        # A failed audit database is a security incident even when the trading
+        # runtime is disconnected. An intentionally unconfigured optional DB
+        # is not a failure and must not create a false critical notification.
+        if not AUDIT.persistence_available and AUDIT.persistence_error is not None:
+            incidents.append(
+                OperationalIncident(
+                    code="SECURITY_AUDIT_PERSISTENCE_FAILED",
+                    severity="CRITICAL",
+                    status=str(AUDIT.persistence_error).upper(),
+                    source="security_audit",
+                    message="persistência da trilha de auditoria indisponível; verifique o armazenamento local",
+                )
+            )
+        notification_store_error = self.state_store.notifications_load_error
+        if notification_store_error is None and self.notifications.restore_had_invalid_records:
+            notification_store_error = "invalid_records"
+        if notification_store_error is not None:
+            incidents.append(
+                OperationalIncident(
+                    code="NOTIFICATION_STORE_CORRUPT",
+                    severity="CRITICAL",
+                    status=str(notification_store_error).upper(),
+                    source="notifications",
+                    message="O histórico persistido de notificações está corrompido; registros inválidos não foram restaurados.",
+                )
+            )
         items: list[dict[str, Any]] = []
-        for incident in build_operational_incidents(self.operational_observability()):
+        for incident in incidents:
             severity = severity_by_incident.get(incident.severity.upper(), NotificationSeverity.IMPORTANT)
             items.append(
                 {
@@ -758,6 +1177,7 @@ class ConfiguredEcosystemService(EcosystemService):
                     "kind": kind_by_source.get(incident.source, NotificationKind.SYSTEM_UPDATE).value,
                     "severity": severity.value,
                     "title": incident.code,
+                    "status": incident.status,
                     "message": incident.message,
                     "requires_attention": severity is NotificationSeverity.CRITICAL,
                     "blocking": severity is NotificationSeverity.CRITICAL,
@@ -784,16 +1204,22 @@ class ConfiguredEcosystemService(EcosystemService):
         return persisted + self._operational_notifications()
 
     def publish_ecosystem_update(self, title: str, message: str, *, update_kind: UpdateKind = UpdateKind.ECOSYSTEM) -> dict[str, Any]:
-        notification_id = f"update-{len(self.notifications.all()) + 1}"
-        item = self.notifications.publish_update(notification_id, title, message, important=True, update_kind=update_kind)
-        self.state_store.save_notifications([asdict(notification) | {"kind": notification.kind.value, "severity": notification.severity.value} for notification in self.notifications.all()])
-        return asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}
+        with self._notification_history_lock:
+            notification_id = f"update-{uuid.uuid4().hex}"
+            candidate = EcosystemNotification(notification_id, NotificationKind.SYSTEM_UPDATE, NotificationSeverity.IMPORTANT, title, message, requires_attention=True)
+            snapshot = [asdict(notification) | {"kind": notification.kind.value, "severity": notification.severity.value} for notification in (*self.notifications.all(), candidate)]
+            self.state_store.save_notifications(snapshot)
+            item = self.notifications.publish(candidate)
+            return asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}
 
     def publish_material_event(self, kind: str, title: str, message: str, *, critical: bool = False, blocking: bool = False) -> dict[str, Any]:
         """Route a material runtime event into the notification center."""
-        notification_kind = NotificationKind(str(kind).upper())
-        severity = NotificationSeverity.CRITICAL if critical else NotificationSeverity.IMPORTANT
-        notification_id = f"event-{len(self.notifications.all()) + 1}"
-        item = self.notifications.publish(EcosystemNotification(notification_id, notification_kind, severity, title, message, requires_attention=critical or blocking, blocking=blocking))
-        self.state_store.save_notifications([asdict(notification) | {"kind": notification.kind.value, "severity": notification.severity.value} for notification in self.notifications.all()])
-        return asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}
+        with self._notification_history_lock:
+            notification_kind = NotificationKind(str(kind).upper())
+            severity = NotificationSeverity.CRITICAL if critical else NotificationSeverity.IMPORTANT
+            notification_id = f"event-{uuid.uuid4().hex}"
+            candidate = EcosystemNotification(notification_id, notification_kind, severity, title, message, requires_attention=critical or blocking, blocking=blocking)
+            snapshot = [asdict(notification) | {"kind": notification.kind.value, "severity": notification.severity.value} for notification in (*self.notifications.all(), candidate)]
+            self.state_store.save_notifications(snapshot)
+            item = self.notifications.publish(candidate)
+            return asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}

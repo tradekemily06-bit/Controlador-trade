@@ -43,10 +43,12 @@ def test_market_assets_endpoint_exposes_session_and_247_evidence(monkeypatch):
             "source": "IC Markets MT5 DEMO",
         },
     )
-    monkeypatch.setattr(app.SERVICE, "get_mt5_assets", lambda **_: assets)
+    calls = []
+    monkeypatch.setattr(app.SERVICE, "get_mt5_assets", lambda **kwargs: calls.append(kwargs) or assets)
 
     status, payload = _call("/api/market/assets")
 
+    assert calls == [{"include_invisible": True}]
     assert status.startswith("200")
     assert payload["source"] == "IC Markets MT5 DEMO"
     assert payload["count"] == 1

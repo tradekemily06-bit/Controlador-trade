@@ -15,6 +15,84 @@ TABLES = (
 )
 
 
+def _install_append_only_review_triggers(db: sqlite3.Connection) -> None:
+    """Install immutable review-history guards as part of the schema transaction."""
+    trigger_specs = (
+        ("fiscal_pending_reviews", "fiscal_pending_reviews_no_update", "UPDATE"),
+        ("fiscal_pending_reviews", "fiscal_pending_reviews_no_delete", "DELETE"),
+        ("fiscal_domestic_pending_reviews", "fiscal_domestic_pending_reviews_no_update", "UPDATE"),
+        ("fiscal_domestic_pending_reviews", "fiscal_domestic_pending_reviews_no_delete", "DELETE"),
+    )
+    for table, trigger, operation in trigger_specs:
+        exists = db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (table,),
+        ).fetchone()
+        if not exists:
+            continue
+        db.execute(
+            f"CREATE TRIGGER IF NOT EXISTS {trigger} "
+            f"BEFORE {operation} ON {table} "
+            "BEGIN SELECT RAISE(ABORT, 'fiscal review history is append-only'); END"
+        )
+
+
+def _has_unique_index(db: sqlite3.Connection, table: str, columns: tuple[str, ...]) -> bool:
+    """Return whether an exact ordered UNIQUE index/primary key exists."""
+    for index in db.execute(f'PRAGMA index_list("{table}")').fetchall():
+        # A partial UNIQUE index protects only rows matching its WHERE clause;
+        # it cannot enforce owner-scoped uniqueness for the complete table.
+        if not index["unique"] or index["partial"]:
+            continue
+        indexed_columns = tuple(row["name"] for row in db.execute(f'PRAGMA index_info("{index["name"]}")').fetchall())
+        if indexed_columns == columns:
+            return True
+    return False
+
+
+def _has_composite_review_foreign_key(db: sqlite3.Connection) -> bool:
+    grouped: dict[int, list[sqlite3.Row]] = {}
+    for row in db.execute('PRAGMA foreign_key_list("fiscal_pending_reviews")').fetchall():
+        grouped.setdefault(int(row["id"]), []).append(row)
+    for rows in grouped.values():
+        ordered = sorted(rows, key=lambda row: int(row["seq"]))
+        if (len(ordered) == 2 and ordered[0]["table"] == "fiscal_reserve_pending_foreign"
+            and [(row["from"], row["to"]) for row in ordered] == [("owner_id", "owner_id"), ("pending_id", "pending_id")]
+            and all(str(row["on_delete"]).upper() == "RESTRICT" for row in ordered)):
+            return True
+    return False
+
+
+def _has_composite_foreign_key(db: sqlite3.Connection, child: str, parent: str, pairs: tuple[tuple[str, str], ...]) -> bool:
+    grouped: dict[int, list[sqlite3.Row]] = {}
+    for row in db.execute(f'PRAGMA foreign_key_list("{child}")').fetchall():
+        grouped.setdefault(int(row["id"]), []).append(row)
+    for rows in grouped.values():
+        ordered = sorted(rows, key=lambda row: int(row["seq"]))
+        if len(ordered) == len(pairs) and ordered[0]["table"] == parent:
+            if (tuple((row["from"], row["to"]) for row in ordered) == pairs
+                and all(str(row["on_delete"]).upper() == "RESTRICT" for row in ordered)):
+                return True
+    return False
+
+
+def _domestic_schema_constraints_valid(db: sqlite3.Connection) -> bool:
+    return (
+        _has_unique_index(db, "fiscal_reserve_pending_domestic", ("owner_id", "reference"))
+        and _has_unique_index(db, "fiscal_reserve_pending_domestic", ("owner_id", "pending_id"))
+        and _has_composite_foreign_key(db, "fiscal_domestic_pending_reviews", "fiscal_reserve_pending_domestic", (("owner_id", "owner_id"), ("pending_id", "pending_id")))
+    )
+
+def _owner_schema_constraints_valid(db: sqlite3.Connection) -> bool:
+    return (
+        _has_unique_index(db, "fiscal_reserve_settings", ("owner_id", "category"))
+        and _has_unique_index(db, "fiscal_reserve_entries", ("owner_id", "category", "reference"))
+        and _has_unique_index(db, "fiscal_reserve_pending_foreign", ("owner_id", "pending_id"))
+        and _has_unique_index(db, "fiscal_reserve_pending_foreign", ("owner_id", "reference"))
+        and _has_composite_review_foreign_key(db)
+    )
+
+
 def migrate_fiscal_schema(database_path: str) -> str:
     """Migrate all four fiscal tables in one transaction; abort if owner is unset.
 
@@ -37,10 +115,41 @@ def migrate_fiscal_schema(database_path: str) -> str:
                 "SELECT name FROM sqlite_master WHERE type='table'"
             ).fetchall()
         }
+        # A partial rebuild must never silently reassign rows that already
+        # carry an owner. Legacy rows without owner_id can be adopted only when
+        # no persisted owner identity exists in the fiscal tables.
+        for table in TABLES:
+            if table not in existing:
+                continue
+            columns = {row["name"] for row in db.execute(f'PRAGMA table_info("{table}")')}
+            if "owner_id" not in columns:
+                continue
+            null_owners = int(db.execute(
+                f'SELECT COUNT(*) FROM "{table}" WHERE owner_id IS NULL'
+            ).fetchone()[0])
+            if null_owners:
+                raise RuntimeError(
+                    f"A tabela fiscal {table} contém registros sem proprietário; "
+                    "migração automática bloqueada para evitar atribuição indevida."
+                )
+            table_owners = {
+                row[0] for row in db.execute(
+                    f'SELECT DISTINCT owner_id FROM "{table}"'
+                ).fetchall()
+            }
+            if table_owners and table_owners != {owner_id}:
+                raise RuntimeError(
+                    f"A identidade fiscal configurada não corresponde ao proprietário já gravado em {table}; "
+                    "migração automática entre proprietários foi bloqueada."
+                )
         if "fiscal_reserve_pending_domestic" in existing:
             domestic_columns = {row["name"] for row in db.execute("PRAGMA table_info(fiscal_reserve_pending_domestic)")}
             if "owner_id" not in domestic_columns:
                 raise RuntimeError("A fila brasileira pendente não possui identidade proprietária; acesso bloqueado.")
+            if db.execute(
+                "SELECT 1 FROM fiscal_reserve_pending_domestic WHERE owner_id IS NULL LIMIT 1"
+            ).fetchone():
+                raise RuntimeError("A fila brasileira pendente contém registros sem proprietário; acesso bloqueado.")
             domestic_owners = {row[0] for row in db.execute(
                 "SELECT DISTINCT owner_id FROM fiscal_reserve_pending_domestic WHERE owner_id IS NOT NULL"
             ).fetchall()}
@@ -50,17 +159,37 @@ def migrate_fiscal_schema(database_path: str) -> str:
             review_columns = {row["name"] for row in db.execute("PRAGMA table_info(fiscal_domestic_pending_reviews)")}
             if "owner_id" not in review_columns:
                 raise RuntimeError("A revisão brasileira pendente não possui identidade proprietária; acesso bloqueado.")
+            if db.execute(
+                "SELECT 1 FROM fiscal_domestic_pending_reviews WHERE owner_id IS NULL LIMIT 1"
+            ).fetchone():
+                raise RuntimeError("A revisão brasileira pendente contém registros sem proprietário; acesso bloqueado.")
             review_owners = {row[0] for row in db.execute(
                 "SELECT DISTINCT owner_id FROM fiscal_domestic_pending_reviews WHERE owner_id IS NOT NULL"
             ).fetchall()}
             if review_owners and review_owners != {owner_id}:
                 raise RuntimeError("A identidade fiscal configurada não corresponde às revisões brasileiras; migração automática bloqueada.")
+        domestic_table_names = {
+            "fiscal_reserve_pending_domestic", "fiscal_domestic_pending_reviews"
+        }
+        domestic_tables_present = domestic_table_names.issubset(existing)
+        if domestic_table_names.intersection(existing) and not domestic_tables_present:
+            raise RuntimeError(
+                "Esquema da fila brasileira pendente incompleto: tabela relacionada ausente; "
+                "acesso bloqueado para preservar os dados."
+            )
+        if domestic_tables_present and not _domestic_schema_constraints_valid(db):
+            raise RuntimeError(
+                "Esquema da fila brasileira pendente inválido: restrições de proprietário ou "
+                "chave estrangeira composta ausentes; acesso bloqueado para preservar os dados."
+            )
         if all(table in existing for table in TABLES):
             owner_columns = {
                 table: {row["name"] for row in db.execute(f'PRAGMA table_info("{table}")')}
                 for table in TABLES
             }
             if all("owner_id" in columns for columns in owner_columns.values()):
+                # owner_id columns alone do not guarantee owner-scoped uniqueness or review linkage.
+                constraints_valid = _owner_schema_constraints_valid(db)
                 pending_columns = owner_columns["fiscal_reserve_pending_foreign"]
                 if "original_result" not in pending_columns:
                     db.execute("ALTER TABLE fiscal_reserve_pending_foreign ADD COLUMN original_result REAL")
@@ -69,6 +198,18 @@ def migrate_fiscal_schema(database_path: str) -> str:
                 for column in ("tax_residency_at_event", "income_nature", "event_type", "fx_conversion_method"):
                     if column not in pending_columns:
                         db.execute(f"ALTER TABLE fiscal_reserve_pending_foreign ADD COLUMN {column} TEXT NOT NULL DEFAULT 'NOT_INFORMED'")
+                for column, declaration in (
+                    ("institution", "TEXT NOT NULL DEFAULT ''"),
+                    ("custody_location", "TEXT NOT NULL DEFAULT 'NOT_INFORMED'"),
+                    ("contract_type", "TEXT NOT NULL DEFAULT 'NOT_INFORMED'"),
+                    ("acquisition_cost", "REAL CHECK(acquisition_cost IS NULL OR (acquisition_cost >= 0 AND acquisition_cost <= 1000000000000.0))"),
+                    ("transaction_fees", "REAL CHECK(transaction_fees IS NULL OR (transaction_fees >= 0 AND transaction_fees <= 1000000000000.0))"),
+                    ("foreign_tax_paid", "REAL CHECK(foreign_tax_paid IS NULL OR (foreign_tax_paid >= 0 AND foreign_tax_paid <= 1000000000000.0))"),
+                ):
+                    if column not in pending_columns:
+                        db.execute(
+                            f"ALTER TABLE fiscal_reserve_pending_foreign ADD COLUMN {column} {declaration}"
+                        )
                 stored_owners = set()
                 scoped_tables = list(TABLES)
                 if "fiscal_reserve_pending_domestic" in existing:
@@ -99,8 +240,16 @@ def migrate_fiscal_schema(database_path: str) -> str:
                        VALUES (?, 'BR_DAY_TRADE', 20.0)""",
                     (owner_id,),
                 )
-                db.commit()
-                return owner_id
+                violations = db.execute("PRAGMA foreign_key_check").fetchall()
+                if violations:
+                    raise RuntimeError(
+                        "Migração fiscal interrompida: integridade referencial inválida no esquema existente"
+                    )
+                if constraints_valid:
+                    _install_append_only_review_triggers(db)
+                    db.commit()
+                    return owner_id
+                # Rebuild atomically when owner-scoped constraints are incomplete.
 
         # Capture the old layouts before replacing anything. A missing table is
         # treated as an empty table, which supports clean first-time installs.
@@ -162,6 +311,12 @@ def migrate_fiscal_schema(database_path: str) -> str:
                 income_nature TEXT NOT NULL DEFAULT 'NOT_INFORMED',
                 event_type TEXT NOT NULL DEFAULT 'NOT_INFORMED',
                 fx_conversion_method TEXT NOT NULL DEFAULT 'NOT_INFORMED',
+                institution TEXT NOT NULL DEFAULT '',
+                custody_location TEXT NOT NULL DEFAULT 'NOT_INFORMED',
+                contract_type TEXT NOT NULL DEFAULT 'NOT_INFORMED',
+                acquisition_cost REAL CHECK(acquisition_cost IS NULL OR (acquisition_cost >= 0 AND acquisition_cost <= 1000000000000.0)),
+                transaction_fees REAL CHECK(transaction_fees IS NULL OR (transaction_fees >= 0 AND transaction_fees <= 1000000000000.0)),
+                foreign_tax_paid REAL CHECK(foreign_tax_paid IS NULL OR (foreign_tax_paid >= 0 AND foreign_tax_paid <= 1000000000000.0)),
                 created_at TEXT NOT NULL,
                 UNIQUE(owner_id, pending_id),
                 UNIQUE(owner_id, reference)
@@ -213,13 +368,21 @@ def migrate_fiscal_schema(database_path: str) -> str:
                 INSERT INTO fiscal_reserve_pending_foreign_new
                 (pending_id,owner_id,reference,original_amount,original_currency,instrument,
                  jurisdiction,occurred_on,fx_rate,fx_date,fx_source,notes,status,
-                 original_result,record_kind,tax_residency_at_event,income_nature,event_type,fx_conversion_method,created_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                 original_result,record_kind,tax_residency_at_event,income_nature,event_type,fx_conversion_method,
+                 institution,custody_location,contract_type,acquisition_cost,transaction_fees,foreign_tax_paid,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (row["pending_id"], owner_id, row["reference"], row["original_amount"],
                   row["original_currency"], row["instrument"], row["jurisdiction"],
                   row["occurred_on"], row["fx_rate"], row["fx_date"], row["fx_source"],
                   row["notes"], row["status"], original_result, record_kind, declared["tax_residency_at_event"],
-                  declared["income_nature"], declared["event_type"], declared["fx_conversion_method"], row["created_at"]))
+                  declared["income_nature"], declared["event_type"], declared["fx_conversion_method"],
+                  row["institution"] if "institution" in pending_columns else "",
+                  row["custody_location"] if "custody_location" in pending_columns else "NOT_INFORMED",
+                  row["contract_type"] if "contract_type" in pending_columns else "NOT_INFORMED",
+                  row["acquisition_cost"] if "acquisition_cost" in pending_columns else None,
+                  row["transaction_fees"] if "transaction_fees" in pending_columns else None,
+                  row["foreign_tax_paid"] if "foreign_tax_paid" in pending_columns else None,
+                  row["created_at"]))
         for row in reviews:
             db.execute("""
                 INSERT INTO fiscal_pending_reviews_new
@@ -252,6 +415,7 @@ def migrate_fiscal_schema(database_path: str) -> str:
         violations = db.execute("PRAGMA foreign_key_check").fetchall()
         if violations:
             raise RuntimeError("Migração fiscal interrompida: integridade referencial inválida")
+        _install_append_only_review_triggers(db)
         db.commit()
         return owner_id
     except Exception:

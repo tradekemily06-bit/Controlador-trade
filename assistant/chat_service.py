@@ -2,7 +2,10 @@ from __future__ import annotations
 import json, os
 from assistant.read_only_context import collect_read_only_context
 
-class AssistantUnavailableError(RuntimeError): pass
+class AssistantUnavailableError(RuntimeError):
+    def __init__(self, message, conversation_id=None):
+        super().__init__(message)
+        self.conversation_id = conversation_id
 
 # Bound model input independently from the output-token cap.
 MAX_CONTEXT_CHARS = 24000
@@ -40,6 +43,7 @@ SYSTEM_PROMPT=(
     "Não classifique automaticamente uma operação só pelo nome do ativo, moeda, corretora ou país; categorias NOT_AUTOMATED devem permanecer pendentes e fora dos totais. "
     "Somente BR_DAY_TRADE tem lançamento habilitado no fluxo atual, e mesmo esse fluxo é parcial; não o apresente como apuração fiscal completa. "
     "Lançamentos BR_DAY_TRADE manuais são estimativas baseadas na declaração do usuário; não constituem validação independente do mercado nem obrigação tributária apurada. "
+    "O percentual exibido em BR_DAY_TRADE é uma taxa de planejamento configurada pelo usuário, não uma alíquota oficial verificada pelo sistema; nunca a apresente como imposto legal confirmado. "
     "Para operações comuns em bolsa, FII/FIAGRO, renda fixa, criptoativos, futuros/opções e investimentos no exterior, explique que a categoria existe para organização, mas o cálculo automático ainda não está disponível. "
     "Não determine obrigação tributária nem ofereça aconselhamento jurídico ou fiscal individual. "
     "Nunca infira jurisdição, classificação do ativo, base de cálculo, alíquota, vencimento ou prazo quando os dados não estiverem explicitamente validados. "
@@ -47,6 +51,7 @@ SYSTEM_PROMPT=(
     "Nunca apresente nem recomende percentual genérico para resultados estrangeiros; se a classificação estiver pendente, informe que a taxa não está disponível e que o item não integra os totais. "
     "Quando a situação individual exigir interpretação tributária, recomende validação com contador qualificado na jurisdição aplicável, sem antecipar uma conclusão. "
     "Pendências estrangeiras são apenas contagens por tipo, moeda e período; não as trate como lucro tributável, patrimônio ou reserva calculada. "
+    "Se houver resumo agregado de evidências ausentes nas pendências estrangeiras, informe somente as quantidades de campos faltantes; nunca revele instituição, custódia, referência, observação ou valor individual. "
     "Pendências brasileiras também são apenas contagens por período, ficam em fila separada do exterior e não integram os totais nem geram reserva até classificação válida. "
     "Revisões documentais brasileiras ou estrangeiras são evidências declaradas; o sistema não verifica identidade ou registro profissional, não muda o status pendente e não autoriza cálculo fiscal. "
     "Se perguntarem sobre pendências, informe que permanecem fora dos totais até classificação e revisão; não invente valores individuais. "
@@ -75,13 +80,22 @@ class EcosystemAssistant:
         try:
             self._client()
         except AssistantUnavailableError as exc:
+            credentials_configured = bool(os.getenv("OPENAI_API_KEY", "").strip())
             return {
                 "available": False,
-                "credentials_configured": False,
+                "credentials_configured": credentials_configured,
                 "client_initialized": False,
                 "connection_tested": False,
-                "status": "NOT_CONFIGURED",
-                "message": str(exc),
+                "status": (
+                    "CLIENT_INITIALIZATION_FAILED"
+                    if credentials_configured
+                    else "NOT_CONFIGURED"
+                ),
+                "message": (
+                    "Credenciais presentes, mas o cliente do provedor não pôde ser inicializado."
+                    if credentials_configured
+                    else str(exc)
+                ),
                 "read_only": True,
                 "may_execute_orders": False,
                 "may_enable_real": False,
@@ -114,16 +128,62 @@ class EcosystemAssistant:
             "may_enable_real": False,
             "may_move_money": False,
         }
+    def test_connection(self):
+        """Test provider reachability with a fixed prompt and no user/fiscal context."""
+        try:
+            response = self._client().chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": "Responda somente: OK"}],
+                temperature=0,
+                max_completion_tokens=5,
+            )
+            answer = response.choices[0].message.content
+            if not isinstance(answer, str) or not answer.strip():
+                raise ValueError("resposta vazia")
+        except Exception as exc:
+            raise AssistantUnavailableError(
+                "Teste de conexão falhou. Confira a configuração do provedor e tente novamente."
+            ) from exc
+        return {
+            "success": True,
+            "connection_tested": True,
+            "status": "CONNECTION_TESTED",
+            "provider": "OpenAI API",
+            "model": self.model,
+            "context_sent": False,
+            "history_sent": False,
+            "conversation_saved": False,
+            "read_only": True,
+            "may_execute_orders": False,
+            "may_enable_real": False,
+            "may_move_money": False,
+        }
+
     def conversations(self,identity): return self.store.list(identity)
     def history(self,identity,cid): return self.store.history(identity,cid)
     def delete_conversation(self,identity,cid): return self.store.delete(identity,cid)
     def ask(self,identity,message,fiscal_owner_id,cid=None):
         if not isinstance(message,str) or not message.strip() or len(message)>4000: raise ValueError("Mensagem deve ter de 1 a 4.000 caracteres.")
         context=collect_read_only_context(self.service,self.fiscal,fiscal_owner_id,self.fiscal_pending_queue,self.fiscal_domestic_pending_queue)
+        # The sanitizer must return JSON-native values. Never stringify an
+        # unexpected object into the external prompt, and fail before saving
+        # the user's message if the context is malformed or non-finite.
+        try:
+            context_payload = json.dumps(
+                context, ensure_ascii=False, allow_nan=False
+            )
+            # Never slice serialized JSON: doing so can create malformed data
+            # and silently send a partial fiscal/operational snapshot. Fail
+            # closed before persisting the user message or calling the provider.
+            if len(context_payload) > MAX_CONTEXT_CHARS:
+                raise ValueError("context exceeds the configured size limit")
+        except (TypeError, ValueError) as exc:
+            raise AssistantUnavailableError(
+                "Contexto do ecossistema indisponível; mensagem não foi enviada."
+            ) from exc
         cid=self.store.append(identity,cid,"user",message)
         history=self.store.history(identity,cid,12)
         messages=[{"role":"system","content":SYSTEM_PROMPT}]
-        context_payload = json.dumps(context, ensure_ascii=False, default=str)[:MAX_CONTEXT_CHARS]
         messages.append({
             "role": "user",
             "content": (
@@ -137,8 +197,12 @@ class EcosystemAssistant:
             response=self._client().chat.completions.create(model=self.model,messages=messages,temperature=0.2,max_completion_tokens=600)
             answer=response.choices[0].message.content
             if not isinstance(answer,str) or not answer.strip(): raise ValueError("resposta vazia")
-        except AssistantUnavailableError: raise
-        except Exception as exc: raise AssistantUnavailableError("Não foi possível obter resposta agora; sua mensagem ficou no histórico.") from exc
+        except AssistantUnavailableError as exc:
+            # Provider setup can fail after the user message has already been
+            # persisted. The active request's ID is authoritative; never let an
+            # exception replace it with an unrelated conversation identifier.
+            raise AssistantUnavailableError(str(exc), conversation_id=cid) from exc
+        except Exception as exc: raise AssistantUnavailableError("Não foi possível obter resposta agora; sua mensagem ficou no histórico.", conversation_id=cid) from exc
         self.store.append(identity,cid,"assistant",answer)
         return {
             "conversation_id": cid,

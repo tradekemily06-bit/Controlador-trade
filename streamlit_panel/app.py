@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import csv
+import hashlib
+import ipaddress
 import io
 import json
 import os
+from datetime import date
+from math import isfinite
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -12,6 +16,7 @@ from typing import Any
 
 import streamlit as st
 
+from trusted_identity import trusted_identity_from_headers
 from presentation import closed_panel_signal
 
 ROOT = Path(__file__).resolve().parent
@@ -21,17 +26,70 @@ IDENTITY_HEADER = os.environ.get("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "").stri
 REMOTE_REQUIRED = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "false").strip().lower() in {"1", "true", "yes"}
 TIMEOUT = 20
 
+
+def _validate_api_base_url(value: str, remote_required: bool) -> None:
+    """Require TLS before forwarding authenticated identity to a remote API."""
+    parsed = urllib.parse.urlsplit(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise RuntimeError("CONTROLADOR_API_BASE_URL deve ser uma URL HTTP(S) válida.")
+    if parsed.username is not None or parsed.password is not None or parsed.query or parsed.fragment:
+        raise RuntimeError("CONTROLADOR_API_BASE_URL não pode conter credenciais, query ou fragmento.")
+    try:
+        parsed.port
+    except ValueError as exc:
+        raise RuntimeError("CONTROLADOR_API_BASE_URL contém uma porta inválida.") from exc
+    hostname = parsed.hostname.rstrip(".").lower()
+    try:
+        loopback = ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        loopback = hostname == "localhost"
+    if remote_required and not loopback and parsed.scheme != "https":
+        raise RuntimeError(
+            "A API remota exige HTTPS quando o encaminhamento da identidade confiável está ativado."
+        )
+
+
+_validate_api_base_url(BASE_URL, REMOTE_REQUIRED)
+
 st.set_page_config(page_title="Controlador-Trader · Streamlit", page_icon="C", layout="wide")
 
 st.markdown("""
 <style>
 :root { color-scheme: dark; }
-.stApp { background: #080B0F; color: #E9EEF3; }
+.stApp { background: #080B0F; color: #E9EEF3; background-image: linear-gradient(rgb(255 255 255 / .025) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / .025) 1px, transparent 1px); background-size: 3rem 3rem; }
 [data-testid="stHeader"] { background: transparent; }
 .block-container { width: 100%; max-width: none; padding: 1rem clamp(.75rem, 2vw, 1.5rem) 6rem; }
-.st-key-panel-toggle { position: fixed; left: 18px; bottom: 14px; z-index: 1000; width: 220px; display: flex; flex-direction: row; align-items: center; gap: 8px; }
-.st-key-panel-toggle .stButton > button { width: 48px; min-width: 48px; height: 48px; min-height: 48px; padding: 0; border-radius: 50%; background: #080B0F; color: #46D6AD; border: 1px solid #46D6AD; box-shadow: 0 0 10px #46D6AD33; font-weight: 800; }
-.st-key-panel-toggle .closed-signal { width: 150px; display: flex; flex-direction: column; align-items: center; gap: 1px; white-space: nowrap; text-align: center; font-size: 10px; line-height: 1.2; text-shadow: 0 1px 4px #080B0F; }\n.st-key-panel-toggle .closed-signal strong { font-size: 10px; font-weight: 800; }
+.st-key-panel-toggle { position: relative; width: min(100%, 360px); max-width: 100%; margin: 2rem 0 1rem; }
+.st-key-panel-toggle .stButton > button { width: 64px; min-width: 64px; height: 64px; min-height: 64px; padding: 0; border-radius: 50%; background: #080B0F; color: #46D6AD; border: 1px solid #46D6AD; box-shadow: 0 0 10px #46D6AD33; font-weight: 800; font-size: 1.25rem; }
+.st-key-panel-toggle .closed-status { color: #7F8B97; font-size: 10px; font-weight: 800; letter-spacing: .06em; padding-left: 0; }
+.st-key-panel-toggle .closed-signal { max-width: 190px; font-size: 13px; line-height: 1.25; font-weight: 900; letter-spacing: .025em; white-space: nowrap; }
+.st-key-panel-toggle .closed-score { color: #E9EEF3; font-size: 11px; line-height: 1.2; font-weight: 700; white-space: nowrap; }
+.st-key-control-hub-shell { width: min(100%, 980px); margin: 1rem auto 2rem; padding: clamp(1rem, 2vw, 1.5rem); background: #10151B; border: 1px solid #25303B; border-radius: 24px; }
+.st-key-control-hub-shell .hub-title { color: #E9EEF3; font-size: 1.35rem; font-weight: 800; padding: .35rem 0 .9rem; }
+.st-key-control-hub-shell .demo-pill-wrap { display: flex; justify-content: flex-end; padding-top: .3rem; }
+.st-key-control-hub-shell .system-state-value { color: #7F8B97; text-align: right; font-size: .78rem; font-weight: 800; }
+.st-key-open-signal-strip { margin: .2rem 0 .8rem; padding: .55rem .8rem; border: 1px solid #25303B; border-radius: 12px; background: #0D1218; }
+.st-key-open-signal-strip .open-signal { font-size: .86rem; font-weight: 900; letter-spacing: .025em; }
+.st-key-open-signal-strip .open-score { color: #E9EEF3; font-size: .8rem; font-weight: 800; text-align: right; }
+.st-key-control-hub-shell .st-key-main_area_navigation [role="radiogroup"] { display: flex; flex-wrap: wrap; gap: .4rem; padding: .35rem 0 .65rem; border-bottom: 1px solid #25303B; }
+.st-key-control-hub-shell .st-key-main_area_navigation [role="radiogroup"] label > div:first-child, .st-key-control-hub-shell .st-key-module_navigation [role="radiogroup"] label > div:first-child { display: none; }
+.st-key-control-hub-shell .st-key-main_area_navigation [role="radiogroup"] label { flex: 1 1 7rem; justify-content: center; text-align: center; border-color: transparent; background: transparent; }
+.st-key-control-hub-shell .st-key-main_area_navigation [role="radiogroup"] label p { font-size: .72rem; font-weight: 800; }
+.st-key-control-hub-shell .st-key-module_navigation [role="radiogroup"] { display: flex; flex-direction: column; gap: .45rem; }
+.st-key-control-hub-shell .st-key-module_navigation [role="radiogroup"] label { width: 100%; display: flex; align-items: center; justify-content: space-between; border: 1px solid transparent; border-radius: 12px; background: #161C24; padding: .85rem 1rem; min-height: 58px; }
+.st-key-control-hub-shell .st-key-module_navigation [role="radiogroup"] label::after { content: "›"; color: #7F8B97; font-size: 1.3rem; margin-left: auto; }
+.st-key-control-hub-shell .st-key-module_navigation [role="radiogroup"] label p { color: #E9EEF3; font-size: .9rem; font-weight: 500; }
+.st-key-control-hub-shell .st-key-module_navigation [role="radiogroup"] label:has(input:checked) { border-color: #25303B; background: #1A222B; }
+.st-key-control-hub-shell [data-testid="stRadio"] label { background: #161C24; border: 1px solid #202A34; border-radius: 12px; padding: .65rem .8rem; min-height: 48px; }
+.st-key-control-hub-shell [data-testid="stRadio"] label p { color: #E9EEF3; font-weight: 600; }
+.st-key-control-hub-shell [data-testid="stRadio"] [role="radiogroup"] label:has(input:checked) { border-color: #46D6AD; background: #1A292B; }
+.st-key-control-hub-shell [data-testid="stMetric"] { min-width: 0; }
+.st-key-control-hub-shell [data-testid="stButton"] > button { min-height: 44px; }
+@media (max-width: 720px) {
+  .st-key-control-hub-shell { padding: .8rem; margin: .4rem auto 1rem; border-radius: 18px; }
+  .st-key-control-hub-shell [data-testid="stRadio"] [role="radiogroup"] { gap: .35rem; }
+  .st-key-control-hub-shell [data-testid="stRadio"] label { padding: .5rem .55rem; }
+}
 *, *::before, *::after { box-sizing: border-box; }
 [data-testid="stAppViewContainer"], [data-testid="stMain"], [data-testid="stMainBlockContainer"] { min-width: 0; }
 [data-testid="stDataFrame"], [data-testid="stTable"], .status-card { max-width: 100%; }
@@ -56,6 +114,16 @@ section[data-testid="stSidebar"] { background:#10151B; border-right:1px solid #2
 """, unsafe_allow_html=True)
 
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Never forward trusted identity headers to an HTTP redirect target."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_API_OPENER = urllib.request.build_opener(_NoRedirectHandler)
+
+
 def api(path: str, method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:
     headers = {"Accept": "application/json"}
     if payload is not None:
@@ -64,25 +132,52 @@ def api(path: str, method: str = "GET", payload: dict[str, Any] | None = None) -
         if not IDENTITY_HEADER:
             raise RuntimeError("A identidade confiável não foi configurada no servidor Streamlit.")
         incoming = st.context.headers
-        identity = incoming.get(IDENTITY_HEADER) or incoming.get(IDENTITY_HEADER.lower())
+        identity = trusted_identity_from_headers(incoming, IDENTITY_HEADER)
         if not identity:
             raise RuntimeError("Acesso remoto bloqueado: identidade autenticada não chegou pelo proxy confiável.")
         headers[IDENTITY_HEADER] = identity
     data = None if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(BASE_URL + path, data=data, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
-            body = response.read().decode("utf-8")
-            return json.loads(body) if body else {}
+        with _API_OPENER.open(request, timeout=TIMEOUT) as response:
+            try:
+                body = response.read().decode("utf-8")
+                result = json.loads(body) if body else {}
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                raise RuntimeError("Resposta inválida do serviço do Ecossistema.") from None
+            if not isinstance(result, dict):
+                raise RuntimeError("Resposta inválida do serviço do Ecossistema.") from None
+            return result
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
         try:
-            message = json.loads(detail).get("error", detail)
-        except Exception:
-            message = detail
-        raise RuntimeError(f"API {exc.code}: {message}") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"Runtime indisponível em {BASE_URL}: {exc.reason}") from exc
+            error_payload = json.loads(detail)
+            failed_conversation_id = error_payload.get("conversation_id")
+            if path == "/api/assistant/chat" and isinstance(failed_conversation_id, str) and failed_conversation_id:
+                st.session_state.assistant_conversation_id = failed_conversation_id
+        except (json.JSONDecodeError, UnicodeDecodeError, AttributeError):
+            pass
+        # Never surface backend exception text, SQL details, paths, or connector
+        # payloads in the browser. Preserve only the HTTP status category.
+        safe_messages = {
+            400: "Solicitação rejeitada. Confira os campos informados.",
+            401: "Autenticação necessária. Entre novamente.",
+            403: "Acesso não autorizado para esta operação.",
+            404: "Recurso solicitado não encontrado.",
+            409: "Conflito de estado. Atualize os dados antes de tentar novamente.",
+            429: "Limite temporário de solicitações atingido. Aguarde e tente novamente.",
+            503: "Serviço temporariamente indisponível. Nenhuma alteração foi confirmada.",
+        }
+        if exc.code == 503 and path == "/api/assistant/chat":
+            message = (
+                "A resposta não foi gerada. A pergunta pode ter sido salva no histórico; "
+                "abra a conversa antes de reenviar para evitar duplicidade."
+            )
+        else:
+            message = safe_messages.get(exc.code, "Falha de comunicação com o serviço.")
+        raise RuntimeError(f"API indisponível (HTTP {exc.code}): {message}") from None
+    except urllib.error.URLError:
+        raise RuntimeError("Runtime indisponível. Verifique a conexão com o serviço.") from None
 
 
 def money(value: Any) -> str:
@@ -155,7 +250,34 @@ def _reset_assistant_conversation() -> None:
     st.session_state.assistant_history = []
 
 
+def _assistant_consent_scope() -> str:
+    """Bind OpenAI consent to the authenticated principal for this Streamlit session."""
+    if REMOTE_REQUIRED:
+        if not IDENTITY_HEADER:
+            return ""
+        identity = trusted_identity_from_headers(st.context.headers, IDENTITY_HEADER)
+    else:
+        # Local consent must be scoped to the same explicit server identity
+        # used by the API/fiscal owner. Never invent a fallback principal.
+        identity = os.environ.get("CONTROLADOR_SINGLE_USER_IDENTITY", "").strip()
+    if not identity:
+        return ""
+    return hashlib.sha256(identity.strip().casefold().encode("utf-8")).hexdigest()
+
+
 def show_assistant() -> None:
+    consent_scope = _assistant_consent_scope()
+    previous_scope = st.session_state.get("assistant_consent_scope")
+    if consent_scope != previous_scope:
+        # A consent granted by one authenticated principal must not survive
+        # an identity switch in the same browser session. Clear all client-side
+        # conversation state too: it may contain messages loaded under the
+        # previous identity even though the server store is owner-scoped.
+        st.session_state["assistant_openai_consent"] = False
+        st.session_state["assistant_connection_tested"] = False
+        _reset_assistant_conversation()
+        st.session_state.pop("saved_assistant_conversation", None)
+        st.session_state["assistant_consent_scope"] = consent_scope
     st.subheader("Assistente do Ecossistema")
     st.caption("Somente leitura · não envia ordens, não movimenta dinheiro e não substitui orientação fiscal profissional.")
     assistant_available = False
@@ -163,11 +285,32 @@ def show_assistant() -> None:
         readiness = api("/api/assistant/status")
         assistant_available = readiness.get("available") is True
         if not assistant_available:
+            st.session_state["assistant_connection_tested"] = False
             st.warning("Assistente indisponível: " + str(readiness.get("message") or "configuração do provedor ausente"))
         else:
-            st.caption(str(readiness.get("message") or "Credenciais configuradas; conexão com a API ainda não testada.") + " · " + str(readiness.get("model") or "modelo configurado"))
+            readiness_message = (
+                "Conexão com a OpenAI testada nesta sessão."
+                if st.session_state.get("assistant_connection_tested") is True
+                else str(readiness.get("message") or "Credenciais configuradas; conexão com a API ainda não testada.")
+            )
+            st.caption(readiness_message + " · " + str(readiness.get("model") or "modelo configurado"))
     except Exception as exc:
-        st.warning(f"Não foi possível verificar a configuração do Assistente. {exc}")
+        st.warning("Não foi possível verificar a configuração do Assistente. Detalhes técnicos não são exibidos no painel.")
+
+    if assistant_available and st.button("Testar conexão com a OpenAI", key="assistant_test_provider_connection"):
+        try:
+            connection_result = api("/api/assistant/test-connection", "POST", {})
+            if connection_result.get("success") is True and connection_result.get("connection_tested") is True:
+                st.session_state["assistant_connection_tested"] = True
+                st.success("Conexão com a OpenAI testada com sucesso. Nenhuma pergunta, conversa ou dado fiscal foi enviado neste teste.")
+            else:
+                st.session_state["assistant_connection_tested"] = False
+                st.error("O teste não confirmou a conexão. Nenhum contexto fiscal foi enviado.")
+        except Exception:
+            st.session_state["assistant_connection_tested"] = False
+            st.error("Não foi possível testar a conexão. Nenhum contexto fiscal foi enviado; confira a configuração do provedor e tente novamente.")
+    if assistant_available and st.session_state.get("assistant_connection_tested") is True:
+        st.caption("O teste verifica somente o provedor. Cada envio de pergunta continua exigindo consentimento explícito para o contexto descrito abaixo.")
 
     st.caption(
         "Privacidade: a pergunta, as mensagens recentes desta conversa e um resumo operacional filtrado são enviados pelo servidor à OpenAI. "
@@ -177,6 +320,7 @@ def show_assistant() -> None:
     consent_to_openai = st.checkbox(
         "Autorizo enviar minha pergunta, as mensagens recentes desta conversa e o resumo operacional filtrado à OpenAI para gerar a resposta.",
         key="assistant_openai_consent",
+        disabled=not bool(consent_scope),
         help="Sem esta autorização, o campo de consulta permanece desabilitado. A chave da API continua somente no servidor.",
     )
     if not consent_to_openai:
@@ -226,7 +370,7 @@ def show_assistant() -> None:
                     _reset_assistant_conversation()
                 st.rerun()
     except Exception as exc:
-        st.warning(f"Não foi possível carregar o histórico de conversas. {exc}")
+        st.warning("Não foi possível carregar o histórico de conversas. Detalhes técnicos não são exibidos no painel.")
 
     if st.button("Nova consulta", key="new_assistant_session"):
         _reset_assistant_conversation()
@@ -241,7 +385,6 @@ def show_assistant() -> None:
         disabled=(not assistant_available) or (not consent_to_openai),
     )
     if prompt:
-        st.session_state.assistant_history.append({"role": "user", "content": prompt})
         try:
             response = api(
                 "/api/assistant/chat",
@@ -253,24 +396,421 @@ def show_assistant() -> None:
                 },
             )
             st.session_state.assistant_conversation_id = response.get("conversation_id")
+            st.session_state.assistant_history.append({"role": "user", "content": prompt})
             answer = response.get("answer", "Sem resposta.")
             st.session_state.assistant_history.append({"role": "assistant", "content": answer})
             st.rerun()
-        except Exception as exc:
-            st.error(str(exc))
+        except RuntimeError as exc:
+            # Do not present an unanswered prompt as if the provider had replied.
+            # A 503 may still have persisted the user message locally; api() keeps
+            # its conversation ID so it remains recoverable from saved history.
+            if st.session_state.get("assistant_conversation_id"):
+                st.warning(
+                    "A consulta não recebeu resposta. Se o runtime informou que "
+                    "a mensagem ficou no histórico, abra essa conversa em "
+                    "“Conversas anteriores” depois de restabelecer o serviço."
+                )
+            st.error("Falha no Assistente: " + str(exc))
+        except Exception:
+            st.error("Não foi possível enviar a consulta ao Assistente. Verifique a conexão e tente novamente. Detalhes técnicos não são exibidos no painel.")
 
+
+
+def _is_finite_number(value: Any) -> bool:
+    """Reject booleans and numbers that cannot be safely checked for finiteness."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return isfinite(value)
+    except (OverflowError, TypeError, ValueError):
+        return False
+
+
+def _safe_fiscal_count(value: Any) -> int:
+    """Render only bounded, genuine integer counts from fiscal API responses."""
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 1_000_000_000:
+        return 0
+    return value
+
+def _valid_pending_queue_summary(summary: Any, result_field: str) -> bool:
+    if not isinstance(summary, dict) or summary.get("available") is not True:
+        return False
+    if summary.get("classification_status") != "PENDING_CLASSIFICATION":
+        return False
+    if summary.get("included_in_totals") is not False or summary.get("reserve_calculated") is not False:
+        return False
+    as_of_raw = summary.get("as_of")
+    if not isinstance(as_of_raw, str) or len(as_of_raw) != 10:
+        return False
+    try:
+        as_of = date.fromisoformat(as_of_raw)
+        if as_of.isoformat() != as_of_raw:
+            return False
+    except ValueError:
+        return False
+    total = summary.get("total")
+    if isinstance(total, bool) or not isinstance(total, int) or not 0 <= total <= 1_000_000_000:
+        return False
+    periods = summary.get("periods")
+    if not isinstance(periods, dict):
+        return False
+    expected_periods = {
+        "day": (as_of, as_of),
+        "week": (date.fromordinal(as_of.toordinal() - as_of.weekday()), as_of),
+        "month": (as_of.replace(day=1), as_of),
+        "year": (as_of.replace(month=1, day=1), as_of),
+    }
+    for name, (expected_start, expected_end) in expected_periods.items():
+        row = periods.get(name)
+        if not isinstance(row, dict):
+            return False
+        dates = []
+        for field in ("start", "end"):
+            raw_date = row.get(field)
+            if not isinstance(raw_date, str) or len(raw_date) != 10:
+                return False
+            try:
+                parsed = date.fromisoformat(raw_date)
+                if parsed.isoformat() != raw_date:
+                    return False
+                dates.append(parsed)
+            except ValueError:
+                return False
+        if dates != [expected_start, expected_end]:
+            return False
+        for field in ("total", result_field):
+            value = row.get(field)
+            if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 1_000_000_000:
+                return False
+    return True
+
+
+def _recovered_pending_offset(total: Any, requested_offset: Any, page_size: int = 50) -> int:
+    """Move stale page positions to the last page that can still contain records."""
+    if isinstance(total, bool) or not isinstance(total, int) or total < 0:
+        return 0
+    if isinstance(requested_offset, bool) or not isinstance(requested_offset, int) or requested_offset < 0:
+        return 0
+    if isinstance(page_size, bool) or not isinstance(page_size, int) or page_size < 1:
+        return 0
+    if total == 0:
+        return 0
+    if requested_offset >= total:
+        return ((total - 1) // page_size) * page_size
+    return requested_offset
+
+
+def _valid_pending_page(data: Any, expected_offset: int) -> bool:
+    """Validate pending-page shape before rendering rows or pagination controls."""
+    if not isinstance(data, dict):
+        return False
+    total, limit, offset, items = (
+        data.get("total"), data.get("limit"), data.get("offset"), data.get("items")
+    )
+    if isinstance(total, bool) or not isinstance(total, int) or not 0 <= total <= 1_000_000_000:
+        return False
+    if (isinstance(limit, bool) or not isinstance(limit, int) or limit != 50
+            or isinstance(offset, bool) or not isinstance(offset, int)
+            or offset < 0 or offset != expected_offset):
+        return False
+    if not isinstance(items, list) or len(items) > limit:
+        return False
+    if offset < total and offset + len(items) > total:
+        return False
+    if offset >= total and items:
+        return False
+    seen_ids = set()
+    for item in items:
+        if not isinstance(item, dict) or item.get("status") != "PENDING_CLASSIFICATION":
+            return False
+        pending_id = item.get("pending_id")
+        if not isinstance(pending_id, str) or not pending_id.strip() or len(pending_id) > 80:
+            return False
+        if pending_id in seen_ids:
+            return False
+        seen_ids.add(pending_id)
+    return True
+
+
+def _valid_review_history(data: Any) -> bool:
+    """Only render a well-formed review history returned for the selected pending item."""
+    if (not isinstance(data, dict)
+            or data.get("status_unchanged") != "PENDING_CLASSIFICATION"
+            or data.get("reserve_calculated") is not False
+            or not isinstance(data.get("reviews"), list)):
+        return False
+    for item in data["reviews"]:
+        if not isinstance(item, dict):
+            return False
+        for field in ("candidate_classification", "confirmed_jurisdiction", "reviewer_name",
+                      "reviewer_role", "professional_registration", "evidence_reference",
+                      "reviewed_on"):
+            value = item.get(field)
+            if not isinstance(value, str) or not value.strip():
+                return False
+        if item.get("reviewer_identity_status") != "DECLARED_NOT_VERIFIED":
+            return False
+        if item.get("professional_registration_verified") is not False:
+            return False
+    return True
+
+
+
+def _valid_fiscal_history_page(summary: Any, expected_offset: int, page_size: int = 50) -> bool:
+    """Reject malformed fiscal ledger rows and pagination metadata before display."""
+    if not isinstance(summary, dict):
+        return False
+    history = summary.get("history")
+    page = summary.get("history_page")
+    if not isinstance(history, list) or not isinstance(page, dict):
+        return False
+    total, limit, offset = page.get("total"), page.get("limit"), page.get("offset")
+    returned, has_more = page.get("returned"), page.get("has_more")
+    if (isinstance(total, bool) or not isinstance(total, int) or not 0 <= total <= 1_000_000_000
+            or isinstance(limit, bool) or not isinstance(limit, int) or limit != page_size
+            or isinstance(offset, bool) or not isinstance(offset, int) or offset != expected_offset
+            or isinstance(returned, bool) or not isinstance(returned, int) or returned != len(history)
+            or not isinstance(has_more, bool) or has_more is not (offset + returned < total)
+            or len(history) > page_size or (offset >= total and history)):
+        return False
+    seen_ids = set()
+    for item in history:
+        if not isinstance(item, dict) or "owner_id" in item:
+            return False
+        entry_id = item.get("entry_id")
+        category = item.get("category")
+        reference = item.get("reference")
+        occurred_on = item.get("occurred_on")
+        if not isinstance(entry_id, str) or not entry_id.strip() or entry_id in seen_ids:
+            return False
+        if not isinstance(category, str) or not category.strip():
+            return False
+        if not isinstance(reference, str) or not reference.strip() or len(reference) > 160:
+            return False
+        if not isinstance(occurred_on, str) or len(occurred_on) != 10:
+            return False
+        try:
+            if date.fromisoformat(occurred_on).isoformat() != occurred_on:
+                return False
+        except ValueError:
+            return False
+        notes = item.get("notes")
+        if notes is not None and not isinstance(notes, str):
+            return False
+        seen_ids.add(entry_id)
+    return True
+
+
+def _valid_fiscal_summary(summary: Any) -> bool:
+    """Enable fiscal writes only when every required aggregate is structurally valid."""
+    if not isinstance(summary, dict):
+        return False
+    categories = summary.get("categories")
+    periods = summary.get("periods")
+    semantics = summary.get("reserve_semantics")
+    if not isinstance(categories, dict) or not isinstance(periods, dict) or not isinstance(semantics, dict):
+        return False
+    brazil = categories.get("BR_DAY_TRADE")
+    foreign = categories.get("FOREIGN_FINANCIAL_ASSET")
+    if not isinstance(brazil, dict) or not isinstance(foreign, dict):
+        return False
+    foreign_entries = foreign.get("entries")
+    if isinstance(foreign_entries, bool) or not isinstance(foreign_entries, int) or not 0 <= foreign_entries <= 1_000_000_000:
+        return False
+    if foreign.get("classification_status") != "PENDING_CLASSIFICATION":
+        return False
+    if foreign.get("rate_available") is not False:
+        return False
+    for field in ("realized_result_brl", "reserve_amount_brl"):
+        value = foreign.get(field)
+        if not _is_finite_number(value) or value != 0:
+            return False
+    brazil_entries = brazil.get("entries")
+    if isinstance(brazil_entries, bool) or not isinstance(brazil_entries, int) or not 0 <= brazil_entries <= 1_000_000_000:
+        return False
+    rate = brazil.get("rate")
+    if not _is_finite_number(rate) or not 0 <= rate <= 100:
+        return False
+    for field in ("realized_result_brl", "reserve_amount_brl"):
+        value = brazil.get(field)
+        if not _is_finite_number(value) or not -1_000_000_000_000 <= value <= 1_000_000_000_000:
+            return False
+    if brazil.get("reserve_amount_brl") < 0:
+        return False
+    total = summary.get("total_reserved_brl")
+    if not _is_finite_number(total) or not 0 <= total <= 1_000_000_000_000:
+        return False
+    if total != brazil.get("reserve_amount_brl"):
+        return False
+    as_of_raw = summary.get("as_of")
+    if not isinstance(as_of_raw, str) or len(as_of_raw) != 10:
+        return False
+    try:
+        as_of = date.fromisoformat(as_of_raw)
+        if as_of.isoformat() != as_of_raw:
+            return False
+    except ValueError:
+        return False
+    expected_periods = {
+        "day": (as_of, as_of),
+        "week": (date.fromordinal(as_of.toordinal() - as_of.weekday()), as_of),
+        "month": (as_of.replace(day=1), as_of),
+        "year": (as_of.replace(month=1, day=1), as_of),
+    }
+    foreign_pending = summary.get("foreign_pending")
+    if foreign_pending is not None:
+        if not isinstance(foreign_pending, dict):
+            return False
+        if foreign_pending.get("available") is True:
+            if foreign_pending.get("classification_status") != "PENDING_CLASSIFICATION":
+                return False
+            if foreign_pending.get("included_in_totals") is not False or foreign_pending.get("reserve_calculated") is not False:
+                return False
+            for field in ("total", "realized_results", "asset_amounts"):
+                count = foreign_pending.get(field)
+                if isinstance(count, bool) or not isinstance(count, int) or not 0 <= count <= 1_000_000_000:
+                    return False
+            pending_as_of_raw = foreign_pending.get("as_of")
+            if not isinstance(pending_as_of_raw, str) or len(pending_as_of_raw) != 10:
+                return False
+            try:
+                pending_as_of = date.fromisoformat(pending_as_of_raw)
+                if pending_as_of.isoformat() != pending_as_of_raw:
+                    return False
+            except ValueError:
+                return False
+            if foreign_pending["total"] != (
+                foreign_pending["realized_results"] + foreign_pending["asset_amounts"]
+            ):
+                return False
+            evidence_completeness = foreign_pending.get("evidence_completeness")
+            if evidence_completeness is not None:
+                if not isinstance(evidence_completeness, dict):
+                    return False
+                for field in (
+                    "total",
+                    "missing_institution",
+                    "missing_custody_location",
+                    "missing_contract_type",
+                    "missing_core_evidence",
+                ):
+                    count = evidence_completeness.get(field)
+                    if isinstance(count, bool) or not isinstance(count, int) or not 0 <= count <= 1_000_000_000:
+                        return False
+                if evidence_completeness["total"] != foreign_pending["total"]:
+                    return False
+                if any(
+                    evidence_completeness[field] > evidence_completeness["total"]
+                    for field in (
+                        "missing_institution",
+                        "missing_custody_location",
+                        "missing_contract_type",
+                        "missing_core_evidence",
+                    )
+                ):
+                    return False
+            pending_periods = foreign_pending.get("periods")
+            if not isinstance(pending_periods, dict):
+                return False
+            pending_bounds = {
+                "day": (pending_as_of, pending_as_of),
+                "week": (
+                    date.fromordinal(pending_as_of.toordinal() - pending_as_of.weekday()),
+                    pending_as_of,
+                ),
+                "month": (pending_as_of.replace(day=1), pending_as_of),
+                "year": (pending_as_of.replace(month=1, day=1), pending_as_of),
+            }
+            for period, (expected_start, expected_end) in pending_bounds.items():
+                row = pending_periods.get(period)
+                if not isinstance(row, dict):
+                    return False
+                dates = []
+                for field in ("start", "end"):
+                    raw_date = row.get(field)
+                    if not isinstance(raw_date, str) or len(raw_date) != 10:
+                        return False
+                    try:
+                        parsed = date.fromisoformat(raw_date)
+                        if parsed.isoformat() != raw_date:
+                            return False
+                        dates.append(parsed)
+                    except ValueError:
+                        return False
+                if dates != [expected_start, expected_end]:
+                    return False
+                for field in ("total", "realized_results", "asset_amounts"):
+                    count = row.get(field)
+                    if isinstance(count, bool) or not isinstance(count, int) or not 0 <= count <= 1_000_000_000:
+                        return False
+                if row["total"] != row["realized_results"] + row["asset_amounts"]:
+                    return False
+        elif foreign_pending.get("available") is not False:
+            return False
+        elif foreign_pending.get("included_in_totals") is not False or foreign_pending.get("reserve_calculated") is not False:
+            return False
+    if semantics.get("kind") != "PLANNING_ESTIMATE_ONLY":
+        return False
+    for flag in ("tax_liability_confirmed", "monthly_tax_assessment", "monthly_loss_offsets_calculated", "irrf_credits_calculated"):
+        if semantics.get(flag) is not False:
+            return False
+    for period, (expected_start, expected_end) in expected_periods.items():
+        row = periods.get(period)
+        if not isinstance(row, dict):
+            return False
+        entries = row.get("entries")
+        if isinstance(entries, bool) or not isinstance(entries, int) or not 0 <= entries <= 1_000_000_000:
+            return False
+        realized_result = row.get("realized_result_brl")
+        if not _is_finite_number(realized_result) or not -1_000_000_000_000 <= realized_result <= 1_000_000_000_000:
+            return False
+        reserve_amount = row.get("reserve_amount_brl")
+        if not _is_finite_number(reserve_amount) or not 0 <= reserve_amount <= 1_000_000_000_000:
+            return False
+        dates = []
+        for field in ("start", "end"):
+            value = row.get(field)
+            if not isinstance(value, str) or len(value) != 10:
+                return False
+            try:
+                from datetime import date
+                parsed_date = date.fromisoformat(value)
+                if parsed_date.isoformat() != value:
+                    return False
+                dates.append(parsed_date)
+            except ValueError:
+                return False
+        if dates != [expected_start, expected_end]:
+            return False
+    return True
 
 
 def show_fiscal() -> None:
     if "fiscal_history_offset" not in st.session_state:
         st.session_state.fiscal_history_offset = 0
+    summary_available = False
     try:
         summary = api("/api/fiscal-reserve?limit=50&offset=" + str(int(st.session_state.fiscal_history_offset)))
+        summary_available = (
+            _valid_fiscal_summary(summary)
+            and _valid_fiscal_history_page(summary, int(st.session_state.fiscal_history_offset))
+        )
+        if summary_available:
+            page = summary["history_page"]
+            recovered_offset = _recovered_pending_offset(page["total"], int(st.session_state.fiscal_history_offset))
+            if recovered_offset != st.session_state.fiscal_history_offset:
+                st.session_state.fiscal_history_offset = recovered_offset
+                st.rerun()
+        if not summary_available:
+            st.error("Resumo fiscal incompleto ou inválido. Os lançamentos e alterações de percentual ficam bloqueados até a leitura ser validada.")
     except Exception as exc:
         summary = {}
-        st.error(str(exc))
+        st.error("Resumo fiscal indisponível. Os lançamentos e alterações de percentual ficam bloqueados. Verifique a disponibilidade do serviço e os registros técnicos locais.")
     st.subheader("Reserva Fiscal")
     st.caption("Planejamento e separação estimada. Operações MT5 cuja elegibilidade fiscal não foi verificada ficam em fila brasileira separada, sem cálculo e fora dos totais. Registros estrangeiros não classificados também ficam fora dos totais; nenhuma alíquota genérica é aplicada.")
+    if not summary_available:
+        st.info("Os dados fiscais não foram validados nesta consulta. Totais, histórico e formulários permanecem ocultos até a leitura ser recuperada.")
+        return
     with st.expander("Categorias fiscais e estado da automação", expanded=False):
         try:
             catalog = summary.get("classification_catalog", {})
@@ -282,6 +822,32 @@ def show_fiscal() -> None:
                     enabled = bool(details.get("booking_enabled", False))
                     state_label = "Lançamento parcial habilitado" if enabled else "Pendente · sem cálculo automático"
                     st.write(f"- **{details.get('label', category)}** — {state_label}")
+                    evidence_labels = {
+                        "residencia_fiscal": "residência fiscal na data",
+                        "natureza_do_rendimento": "natureza do rendimento",
+                        "evento": "tipo de evento",
+                        "moeda": "moeda original",
+                        "fx_method": "método cambial documentado",
+                        "instituicao_ou_autocustodia": "instituição ou autocustódia",
+                        "local_custodia": "local de custódia",
+                        "tipo_de_contrato": "tipo de contrato",
+                        "custodia": "custódia",
+                        "local_da_operacao": "local da operação",
+                        "controle": "estrutura de controle",
+                        "entidade": "identificação da entidade",
+                        "lucro": "lucros e documentação",
+                    }
+                    required_evidence = details.get("requires", [])
+                    if isinstance(required_evidence, list) and required_evidence:
+                        st.caption("Dados necessários para triagem: " + ", ".join(
+                            evidence_labels.get(str(field), str(field).replace("_", " "))
+                            for field in required_evidence
+                        ))
+                    recommended_evidence = details.get("recommended_evidence", [])
+                    if isinstance(recommended_evidence, list) and recommended_evidence:
+                        st.caption("Evidências recomendadas: " + ", ".join(
+                            str(field).replace("_", " ") for field in recommended_evidence
+                        ))
                     for limitation in details.get("limitations", []):
                         st.caption(limitation)
         except Exception:
@@ -328,10 +894,18 @@ def show_fiscal() -> None:
             pending_cols = st.columns(4)
             for col, period, label in zip(pending_cols, ("day", "week", "month", "year"), ("Dia", "Semana", "Mês", "Ano")):
                 pending_period = pending_periods.get(period, {})
-                col.metric(f"Exterior pendente · {label}", int(pending_period.get("total", 0)))
+                col.metric(f"Exterior pendente · {label}", _safe_fiscal_count(pending_period.get("total", 0)))
                 col.caption(
-                    f"{int(pending_period.get('realized_results', 0))} resultado(s) · "
-                    f"{int(pending_period.get('asset_amounts', 0))} ativo(s) · sem cálculo"
+                    f"{_safe_fiscal_count(pending_period.get('realized_results', 0))} resultado(s) · "
+                    f"{_safe_fiscal_count(pending_period.get('asset_amounts', 0))} ativo(s) · sem cálculo"
+                )
+            evidence_gaps = foreign_pending.get("evidence_completeness", {})
+            if isinstance(evidence_gaps, dict) and evidence_gaps:
+                st.caption(
+                    "Triagem do exterior: "
+                    f"{_safe_fiscal_count(evidence_gaps.get('missing_core_evidence', 0))} de "
+                    f"{_safe_fiscal_count(evidence_gaps.get('total', 0))} registro(s) ainda sem instituição, "
+                    "custódia ou tipo de contrato completo. Isso não altera classificação nem calcula imposto."
                 )
         fiscal_history = summary.get("history", [])
         st.markdown("#### Histórico da Reserva Fiscal")
@@ -380,21 +954,21 @@ def show_fiscal() -> None:
             col.metric(label, money(item.get("reserve_amount_brl")))
             col.caption("Resultado: " + money(item.get("realized_result_brl")))
     except Exception as exc:
-        st.error(str(exc))
+        st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
         summary = {}
 
     with st.expander("Percentual de planejamento · Brasil day trade"):
         current_rate = summary.get("categories", {}).get("BR_DAY_TRADE", {}).get("rate", 0) if summary else 0
         with st.form("fiscal_rate_form"):
             rate = st.number_input("Percentual para novos lançamentos", min_value=0.0, max_value=100.0, value=float(current_rate or 0), step=0.5)
-            rate_submit = st.form_submit_button("Salvar percentual")
+            rate_submit = st.form_submit_button("Salvar percentual", disabled=not summary_available)
         if rate_submit:
             try:
                 api("/api/fiscal-reserve/rates", "POST", {"rates": {"BR_DAY_TRADE": rate}})
                 st.success("Percentual atualizado para novos registros. O histórico preserva o percentual usado em cada lançamento.")
                 st.rerun()
             except Exception as exc:
-                st.error(str(exc))
+                st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
 
     with st.expander("Registrar estimativa · Brasil day trade"):
         st.caption("Use somente se você puder confirmar os critérios abaixo. É uma estimativa de planejamento baseada na sua declaração; não valida o enquadramento nem confirma imposto devido. Se houver dúvida, registre na fila brasileira pendente.")
@@ -405,9 +979,13 @@ def show_fiscal() -> None:
             market_label = st.text_input("Mercado / ambiente de negociação", max_chars=120, placeholder="Ex.: B3")
             result = st.number_input("Resultado realizado (R$)", min_value=-1000000000000.0, max_value=1000000000000.0, step=10.0, format="%.2f", help="Lucro positivo / prejuízo negativo. Compensações mensais e créditos de IRRF não são calculados.")
             reference = st.text_input("Referência / comprovante", max_chars=160)
-            notes = st.text_area("Observações / evidências", max_chars=600)
+            notes = st.text_area(
+                "Observações / evidências",
+                max_chars=160,
+                help="Limite de 160 caracteres para manter o formulário alinhado à validação da API.",
+            )
             confirmed = st.checkbox("Confirmo que foi o mesmo ativo, pela mesma instituição, no mesmo dia e em mercado brasileiro elegível.")
-            submitted = st.form_submit_button("Registrar estimativa de planejamento")
+            submitted = st.form_submit_button("Registrar estimativa de planejamento", disabled=not summary_available)
         if submitted and not confirmed:
             st.error("Confirme os critérios de day trade ou registre a operação na fila brasileira pendente.")
         elif submitted and (not instrument.strip() or not institution.strip() or not market_label.strip() or not reference.strip()):
@@ -426,7 +1004,7 @@ def show_fiscal() -> None:
                 st.success("Estimativa de planejamento registrada. Ela não representa imposto apurado ou devido.")
                 st.rerun()
             except Exception as exc:
-                st.error(str(exc))
+                st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
 
     st.markdown("#### Brasil · pendente de classificação")
     st.caption("Esta fila é separada do exterior. Guarda evidências brasileiras sem aplicar alíquota ou incluir valores na reserva.")
@@ -449,19 +1027,31 @@ def show_fiscal() -> None:
             st.success("Pendência brasileira guardada separadamente. Nenhum cálculo foi realizado.")
             st.rerun()
         except Exception as exc:
-            st.error(str(exc))
+            st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
     try:
         if "domestic_pending_offset" not in st.session_state:
             st.session_state.domestic_pending_offset = 0
-        domestic_offset = int(st.session_state.domestic_pending_offset)
+        domestic_offset = st.session_state.domestic_pending_offset
+        if isinstance(domestic_offset, bool) or not isinstance(domestic_offset, int) or domestic_offset < 0:
+            domestic_offset = 0
+            st.session_state.domestic_pending_offset = 0
         domestic_data = api(f"/api/fiscal-reserve/domestic-pending?limit=50&offset={domestic_offset}")
-        domestic_items = domestic_data.get("items", [])
+        if not _valid_pending_page(domestic_data, domestic_offset):
+            raise ValueError("Resposta de paginação brasileira inválida; registros ocultados.")
+        recovered_domestic_offset = _recovered_pending_offset(domestic_data["total"], domestic_offset)
+        if recovered_domestic_offset != domestic_offset:
+            st.session_state.domestic_pending_offset = recovered_domestic_offset
+            st.rerun()
+        domestic_items = domestic_data["items"]
         domestic_summary = api("/api/fiscal-reserve/domestic-pending/summary")
-        domestic_cols = st.columns(4)
-        for col, period, label in zip(domestic_cols, ("day", "week", "month", "year"), ("Dia", "Semana", "Mês", "Ano")):
-            period_data = domestic_summary.get("periods", {}).get(period, {})
-            col.metric(f"Brasil pendente · {label}", int(period_data.get("total", 0)))
-            col.caption(f"{int(period_data.get('results', 0))} resultado(s) · sem cálculo")
+        if _valid_pending_queue_summary(domestic_summary, "results"):
+            domestic_cols = st.columns(4)
+            for col, period, label in zip(domestic_cols, ("day", "week", "month", "year"), ("Dia", "Semana", "Mês", "Ano")):
+                period_data = domestic_summary.get("periods", {}).get(period, {})
+                col.metric(f"Brasil pendente · {label}", _safe_fiscal_count(period_data.get("total", 0)))
+                col.caption(f"{_safe_fiscal_count(period_data.get('results', 0))} resultado(s) · sem cálculo")
+        else:
+            st.warning("Resumo de pendências brasileiras inválido ou indisponível; contagens ocultadas. Os registros continuam fora dos totais.")
         if domestic_items:
             st.dataframe([{"Data": item.get("occurred_on"), "Ativo": item.get("instrument"), "Categoria candidata": item.get("category_candidate") or "Não informada", "Mercado declarado · não verificado": item.get("market_scope"), "Resultado (R$)": item.get("realized_result_brl") if item.get("realized_result_brl") is not None else "—", "Status": "PENDENTE DE CLASSIFICAÇÃO"} for item in domestic_items], use_container_width=True, hide_index=True)
             domestic_page_cols = st.columns(2)
@@ -470,16 +1060,18 @@ def show_fiscal() -> None:
                     st.session_state.domestic_pending_offset = max(0, domestic_offset - 50)
                     st.rerun()
             with domestic_page_cols[1]:
-                if st.button("Próximas pendências brasileiras →", key="domestic_pending_next", disabled=domestic_offset + len(domestic_items) >= int(domestic_data.get("total", 0))):
+                if st.button("Próximas pendências brasileiras →", key="domestic_pending_next", disabled=domestic_offset + len(domestic_items) >= domestic_data["total"]):
                     st.session_state.domestic_pending_offset = domestic_offset + 50
                     st.rerun()
-            st.caption(f"Exibindo {domestic_offset + 1}–{domestic_offset + len(domestic_items)} de {int(domestic_data.get('total', 0))} pendências brasileiras.")
+            st.caption(f"Exibindo {domestic_offset + 1}–{domestic_offset + len(domestic_items)} de {domestic_data['total']} pendências brasileiras.")
             st.markdown("##### Revisão documental · Brasil")
             st.caption("A revisão registra evidências declaradas. O sistema não verifica identidade ou registro profissional, não muda a classificação e não calcula reserva.")
             review_options = {
                 item["pending_id"]: f"{item.get('occurred_on')} · {item.get('instrument')} · {item.get('reference')}"
                 for item in domestic_items if item.get("pending_id")
             }
+            if "domestic_review_pending_id" in st.session_state and st.session_state.domestic_review_pending_id not in review_options:
+                del st.session_state.domestic_review_pending_id
             if review_options:
                 selected_pending_id = st.selectbox(
                     "Pendência para revisão",
@@ -519,28 +1111,32 @@ def show_fiscal() -> None:
                         st.success("Evidência guardada. A operação continua pendente, sem cálculo ou inclusão nos totais.")
                         st.rerun()
                     except Exception as exc:
-                        st.error(str(exc))
+                        st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
                 try:
                     review_data = api(
                         "/api/fiscal-reserve/domestic-pending/" + urllib.parse.quote(selected_pending_id) + "/reviews"
                     )
-                    if review_data.get("reviews"):
+                    if not _valid_review_history(review_data):
+                        raise ValueError("Histórico de revisão brasileiro inválido; conteúdo ocultado.")
+                    if review_data["reviews"]:
                         st.dataframe([{
                             "Revisor declarado": item.get("reviewer_name"),
                             "Atuação": item.get("reviewer_role"),
                             "Registro informado": item.get("professional_registration"),
                             "Evidência": item.get("evidence_reference"),
+                            "Observações": item.get("review_notes", ""),
                             "Data": item.get("reviewed_on"),
-                            "Identidade": item.get("reviewer_identity_status"),
+                            "Identidade verificada": "Não" if item.get("reviewer_identity_status") == "DECLARED_NOT_VERIFIED" else "Estado inválido",
+                            "Registro profissional verificado": "Não" if item.get("professional_registration_verified") is False else "Estado inválido",
                         } for item in review_data["reviews"]], use_container_width=True, hide_index=True)
                     else:
                         st.caption("Nenhuma evidência de revisão registrada para esta pendência.")
                 except Exception as exc:
-                    st.warning(f"Histórico de revisão indisponível. {exc}")
+                    st.warning("Histórico de revisão indisponível. Nenhuma alteração foi confirmada.")
         else:
             st.caption("Nenhuma pendência brasileira cadastrada.")
     except Exception as exc:
-        st.warning(f"Fila brasileira indisponível; nenhum registro foi incluído nos totais. {exc}")
+        st.warning("Fila brasileira indisponível; nenhum registro foi incluído nos totais. Verifique os registros técnicos locais.")
 
     st.markdown("#### Exterior · pendente de classificação")
     st.caption("O registro abaixo guarda evidências; não calcula imposto nem entra na reserva.")
@@ -551,25 +1147,35 @@ def show_fiscal() -> None:
     with st.form("foreign_pending_form"):
         col1, col2 = st.columns(2)
         reference = col1.text_input("Referência / comprovante", max_chars=160)
-        amount = col2.number_input("Valor original", min_value=0.00000001, step=1.0, format="%.8f")
+        amount = col2.number_input("Valor original", min_value=0.00000001, max_value=1_000_000_000_000.0, step=1.0, format="%.8f")
         col3, col4 = st.columns(2)
-        currency = col3.selectbox("Moeda", ["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "BRL"])
-        instrument = col4.text_input("Instrumento", placeholder="ETF, ação, Forex, CFD, cripto")
+        currency = col3.text_input("Código da moeda (3 letras)", value="USD", max_chars=3).strip().upper()
+        instrument = col4.text_input("Instrumento", placeholder="ETF, ação, Forex, CFD, cripto", max_chars=80)
         col5, col6 = st.columns(2)
-        jurisdiction = col5.text_input("Jurisdição", placeholder="EUA, Brasil, outro")
+        jurisdiction = col5.text_input("Jurisdição", placeholder="EUA, Brasil, outro", max_chars=80)
         occurred_on = col6.date_input("Data da operação", key="foreign_date")
         tax_residency = st.selectbox("Residência fiscal declarada na data", list(residency_options), format_func=lambda value: residency_options[value], key="foreign_tax_residency")
         income_nature = st.selectbox("Natureza do rendimento / valor", list(income_options), format_func=lambda value: income_options[value], key="foreign_income_nature")
         event_type = st.selectbox("Tipo de evento", list(event_options), format_func=lambda value: event_options[value], key="foreign_event_type")
-        fx_rate = st.number_input("Cotação cambial (opcional)", min_value=0.0, step=0.0001, format="%.8f")
+        fx_rate = st.number_input("Cotação cambial (opcional)", min_value=0.0, max_value=1_000_000_000_000.0, step=0.0001, format="%.8f")
         fx_date = st.date_input("Data da cotação", key="foreign_fx_date")
         fx_source = st.text_input("Fonte da cotação (opcional)", max_chars=200)
         fx_conversion_method = st.selectbox("Método de conversão cambial", list(fx_method_options), format_func=lambda value: fx_method_options[value], key="foreign_fx_method")
+        institution = st.text_input("Corretora / instituição", max_chars=160, key="foreign_institution")
+        custody_location = st.text_input("Local de custódia (país, instituição ou autocustódia)", max_chars=120, key="foreign_custody")
+        contract_type = st.text_input("Tipo / especificação do contrato", max_chars=120, key="foreign_contract")
+        col_cost1, col_cost2, col_cost3 = st.columns(3)
+        has_acquisition_cost = col_cost1.checkbox("Informar custo de aquisição", key="foreign_has_acquisition_cost")
+        acquisition_cost = col_cost1.number_input("Custo na moeda original", min_value=0.0, max_value=1_000_000_000_000.0, format="%.8f", key="foreign_acquisition_cost") if has_acquisition_cost else None
+        has_transaction_fees = col_cost2.checkbox("Informar taxas/custos", key="foreign_has_transaction_fees")
+        transaction_fees = col_cost2.number_input("Taxas na moeda original", min_value=0.0, max_value=1_000_000_000_000.0, format="%.8f", key="foreign_transaction_fees") if has_transaction_fees else None
+        has_foreign_tax_paid = col_cost3.checkbox("Informar imposto pago fora", key="foreign_has_tax_paid")
+        foreign_tax_paid = col_cost3.number_input("Imposto na moeda original", min_value=0.0, max_value=1_000_000_000_000.0, format="%.8f", key="foreign_tax_paid") if has_foreign_tax_paid else None
         notes = st.text_area("Observações", max_chars=1000, key="foreign_notes")
         submitted = st.form_submit_button("Guardar como pendente")
     if submitted:
         try:
-            pending_payload = {"reference": reference, "original_amount": amount, "original_currency": currency, "instrument": instrument, "jurisdiction": jurisdiction, "occurred_on": occurred_on.isoformat(), "tax_residency_at_event": tax_residency, "income_nature": income_nature, "event_type": event_type, "fx_conversion_method": fx_conversion_method, "notes": notes}
+            pending_payload = {"reference": reference, "original_amount": amount, "original_currency": currency, "instrument": instrument, "jurisdiction": jurisdiction, "occurred_on": occurred_on.isoformat(), "tax_residency_at_event": tax_residency, "income_nature": income_nature, "event_type": event_type, "fx_conversion_method": fx_conversion_method, "institution": institution, "custody_location": custody_location, "contract_type": contract_type, "acquisition_cost": acquisition_cost, "transaction_fees": transaction_fees, "foreign_tax_paid": foreign_tax_paid, "notes": notes}
             if fx_rate or fx_source:
                 if not fx_rate or not fx_source:
                     raise ValueError("Para guardar a cotação, informe valor e fonte.")
@@ -580,29 +1186,39 @@ def show_fiscal() -> None:
             st.success("Registro guardado como pendente. Nenhum cálculo foi feito.")
             st.rerun()
         except Exception as exc:
-            st.error(str(exc))
+            st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
 
     st.markdown("#### Resultado realizado no exterior")
     st.caption("Informe lucro positivo ou prejuízo negativo. O valor original fica pendente e não entra na reserva.")
     with st.form("foreign_signed_result"):
         ref_signed = st.text_input("Referência do extrato", max_chars=160)
         amount_signed = st.number_input("Resultado original (+ lucro / - prejuízo)", min_value=-1000000000000.0, max_value=1000000000000.0, value=0.0, format="%.8f")
-        currency_signed = st.selectbox("Moeda original", ["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "BRL"])
-        instrument_signed = st.text_input("Instrumento")
-        jurisdiction_signed = st.text_input("Jurisdição")
+        currency_signed = st.text_input("Código da moeda original (3 letras)", value="USD", max_chars=3).strip().upper()
+        instrument_signed = st.text_input("Instrumento", max_chars=80)
+        jurisdiction_signed = st.text_input("Jurisdição", max_chars=80)
         date_signed = st.date_input("Data do resultado", key="signed_foreign_date")
         residency_signed = st.selectbox("Residência fiscal declarada na data", list(residency_options), format_func=lambda value: residency_options[value], key="signed_tax_residency")
         income_signed = st.selectbox("Natureza do resultado", list(income_options), format_func=lambda value: income_options[value], key="signed_income_nature")
         event_signed = st.selectbox("Tipo de evento", list(event_options), format_func=lambda value: event_options[value], key="signed_event_type")
-        fx_signed = st.number_input("Cotação documentada (opcional)", min_value=0.0, format="%.8f")
+        fx_signed = st.number_input("Cotação documentada (opcional)", min_value=0.0, max_value=1_000_000_000_000.0, format="%.8f")
         fx_date_signed = st.date_input("Data da cotação", key="signed_foreign_fx_date")
-        fx_source_signed = st.text_input("Fonte da cotação")
+        fx_source_signed = st.text_input("Fonte da cotação", max_chars=200)
         fx_method_signed = st.selectbox("Método de conversão cambial", list(fx_method_options), format_func=lambda value: fx_method_options[value], key="signed_fx_method")
-        notes_signed = st.text_area("Observações")
+        institution_signed = st.text_input("Corretora / instituição", max_chars=160, key="signed_institution")
+        custody_signed = st.text_input("Local de custódia", max_chars=120, key="signed_custody")
+        contract_signed = st.text_input("Tipo / especificação do contrato", max_chars=120, key="signed_contract")
+        signed_cost1, signed_cost2, signed_cost3 = st.columns(3)
+        has_signed_acquisition_cost = signed_cost1.checkbox("Informar custo de aquisição", key="signed_has_acquisition_cost")
+        acquisition_cost_signed = signed_cost1.number_input("Custo na moeda original", min_value=0.0, max_value=1_000_000_000_000.0, format="%.8f", key="signed_acquisition_cost") if has_signed_acquisition_cost else None
+        has_signed_fees = signed_cost2.checkbox("Informar taxas/custos", key="signed_has_transaction_fees")
+        fees_signed = signed_cost2.number_input("Taxas na moeda original", min_value=0.0, max_value=1_000_000_000_000.0, format="%.8f", key="signed_transaction_fees") if has_signed_fees else None
+        has_signed_foreign_tax = signed_cost3.checkbox("Informar imposto pago fora", key="signed_has_tax_paid")
+        tax_paid_signed = signed_cost3.number_input("Imposto na moeda original", min_value=0.0, max_value=1_000_000_000_000.0, format="%.8f", key="signed_foreign_tax_paid") if has_signed_foreign_tax else None
+        notes_signed = st.text_area("Observações", max_chars=1000)
         submit_signed = st.form_submit_button("Guardar como pendente")
     if submit_signed:
         try:
-            signed_payload = {"reference": ref_signed, "original_result": amount_signed, "original_currency": currency_signed, "instrument": instrument_signed, "jurisdiction": jurisdiction_signed, "occurred_on": date_signed.isoformat(), "tax_residency_at_event": residency_signed, "income_nature": income_signed, "event_type": event_signed, "fx_conversion_method": fx_method_signed, "notes": notes_signed}
+            signed_payload = {"reference": ref_signed, "original_result": amount_signed, "original_currency": currency_signed, "instrument": instrument_signed, "jurisdiction": jurisdiction_signed, "occurred_on": date_signed.isoformat(), "tax_residency_at_event": residency_signed, "income_nature": income_signed, "event_type": event_signed, "fx_conversion_method": fx_method_signed, "institution": institution_signed, "custody_location": custody_signed, "contract_type": contract_signed, "acquisition_cost": acquisition_cost_signed, "transaction_fees": fees_signed, "foreign_tax_paid": tax_paid_signed, "notes": notes_signed}
             if fx_signed or fx_source_signed:
                 if not fx_signed or not fx_source_signed:
                     raise ValueError("Informe cotação e fonte juntas.")
@@ -613,7 +1229,7 @@ def show_fiscal() -> None:
             st.success("Resultado guardado com o sinal original; continua fora dos totais.")
             st.rerun()
         except Exception as exc:
-            st.error(str(exc))
+            st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
 
 
     st.caption("Resultados estrangeiros com sinal original serão mantidos em pendência, fora dos totais até revisão.")
@@ -623,9 +1239,18 @@ def show_fiscal() -> None:
     try:
         if "foreign_pending_offset" not in st.session_state:
             st.session_state.foreign_pending_offset = 0
-        foreign_offset = int(st.session_state.foreign_pending_offset)
+        foreign_offset = st.session_state.foreign_pending_offset
+        if isinstance(foreign_offset, bool) or not isinstance(foreign_offset, int) or foreign_offset < 0:
+            foreign_offset = 0
+            st.session_state.foreign_pending_offset = 0
         foreign_pending_data = api(f"/api/fiscal-reserve/pending?limit=50&offset={foreign_offset}")
-        foreign_items = foreign_pending_data.get("items", [])
+        if not _valid_pending_page(foreign_pending_data, foreign_offset):
+            raise ValueError("Resposta de paginação estrangeira inválida; registros ocultados.")
+        recovered_foreign_offset = _recovered_pending_offset(foreign_pending_data["total"], foreign_offset)
+        if recovered_foreign_offset != foreign_offset:
+            st.session_state.foreign_pending_offset = recovered_foreign_offset
+            st.rerun()
+        foreign_items = foreign_pending_data["items"]
         if foreign_items:
             st.dataframe([{
                 "Data": item.get("occurred_on"),
@@ -640,6 +1265,12 @@ def show_fiscal() -> None:
                 "Data da cotação": item.get("fx_date"),
                 "Fonte da cotação": item.get("fx_source"),
                 "Método declarado": item.get("fx_conversion_method"),
+                "Instituição": item.get("institution"),
+                "Custódia declarada": item.get("custody_location"),
+                "Contrato": item.get("contract_type"),
+                "Custo de aquisição (moeda original)": item.get("acquisition_cost"),
+                "Taxas (moeda original)": item.get("transaction_fees"),
+                "Imposto pago fora (moeda original)": item.get("foreign_tax_paid"),
                 "Status": "PENDENTE DE CLASSIFICAÇÃO",
             } for item in foreign_items], use_container_width=True, hide_index=True)
             foreign_page_cols = st.columns(2)
@@ -648,14 +1279,16 @@ def show_fiscal() -> None:
                     st.session_state.foreign_pending_offset = max(0, foreign_offset - 50)
                     st.rerun()
             with foreign_page_cols[1]:
-                if st.button("Próximas pendências do exterior →", key="foreign_pending_next", disabled=foreign_offset + len(foreign_items) >= int(foreign_pending_data.get("total", 0))):
+                if st.button("Próximas pendências do exterior →", key="foreign_pending_next", disabled=foreign_offset + len(foreign_items) >= foreign_pending_data["total"]):
                     st.session_state.foreign_pending_offset = foreign_offset + 50
                     st.rerun()
-            st.caption(f"Exibindo {foreign_offset + 1}–{foreign_offset + len(foreign_items)} de {int(foreign_pending_data.get('total', 0))} pendências do exterior.")
+            st.caption(f"Exibindo {foreign_offset + 1}–{foreign_offset + len(foreign_items)} de {foreign_pending_data['total']} pendências do exterior.")
             foreign_review_options = {
                 item["pending_id"]: f"{item.get('occurred_on')} · {item.get('instrument')} · {item.get('reference')}"
                 for item in foreign_items if item.get("pending_id")
             }
+            if "foreign_review_pending_id" in st.session_state and st.session_state.foreign_review_pending_id not in foreign_review_options:
+                del st.session_state.foreign_review_pending_id
             if foreign_review_options:
                 selected_foreign_pending_id = st.selectbox(
                     "Pendência estrangeira para revisão",
@@ -707,12 +1340,14 @@ def show_fiscal() -> None:
                         st.success("Evidência guardada. A operação continua pendente, sem cálculo ou inclusão nos totais.")
                         st.rerun()
                     except Exception as exc:
-                        st.error(str(exc))
+                        st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
                 try:
                     foreign_review_data = api(
                         "/api/fiscal-reserve/pending/" + urllib.parse.quote(selected_foreign_pending_id) + "/reviews"
                     )
-                    if foreign_review_data.get("reviews"):
+                    if not _valid_review_history(foreign_review_data):
+                        raise ValueError("Histórico de revisão estrangeiro inválido; conteúdo ocultado.")
+                    if foreign_review_data["reviews"]:
                         st.dataframe([{
                             "Classificação candidata": item.get("candidate_classification"),
                             "Jurisdição": item.get("confirmed_jurisdiction"),
@@ -720,17 +1355,19 @@ def show_fiscal() -> None:
                             "Atuação": item.get("reviewer_role"),
                             "Registro informado": item.get("professional_registration"),
                             "Evidência": item.get("evidence_reference"),
+                            "Observações": item.get("review_notes", ""),
                             "Data": item.get("reviewed_on"),
-                            "Identidade": "NÃO VERIFICADA",
+                            "Identidade verificada": "Não" if item.get("reviewer_identity_status") == "DECLARED_NOT_VERIFIED" else "Estado inválido",
+                            "Registro profissional verificado": "Não" if item.get("professional_registration_verified") is False else "Estado inválido",
                         } for item in foreign_review_data["reviews"]], use_container_width=True, hide_index=True)
                     else:
                         st.caption("Nenhuma evidência de revisão registrada para esta pendência.")
                 except Exception as exc:
-                    st.warning(f"Histórico de revisão estrangeira indisponível. {exc}")
+                    st.warning("Histórico de revisão estrangeira indisponível. Nenhuma alteração foi confirmada.")
         else:
             st.caption("Nenhuma pendência estrangeira cadastrada.")
     except Exception as exc:
-        st.warning(f"Fila estrangeira indisponível; nenhum registro foi incluído nos totais. {exc}")
+        st.warning("Fila estrangeira indisponível; nenhum registro foi incluído nos totais. Verifique os registros técnicos locais.")
 
     with st.expander("Prévia de negócios encerrados · MT5 DEMO"):
         lookback = st.number_input("Período de consulta (dias)", min_value=1, max_value=365, value=30, step=1)
@@ -740,7 +1377,7 @@ def show_fiscal() -> None:
                 st.session_state.fiscal_mt5_preview = preview
                 st.session_state.fiscal_mt5_confirmed_tickets = set()
             except Exception as exc:
-                st.error(str(exc))
+                st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
 
         preview = st.session_state.get("fiscal_mt5_preview")
         if preview:
@@ -772,7 +1409,7 @@ def show_fiscal() -> None:
                                     st.session_state.fiscal_mt5_confirmed_tickets = set(st.session_state.get("fiscal_mt5_confirmed_tickets", set())) | {ticket}
                                     st.rerun()
                                 except Exception as exc:
-                                    st.error(str(exc))
+                                    st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
                 else:
                     st.warning("A conta não está em BRL. As posições conciliadas podem ser guardadas somente como pendências, com moeda e resultado original; nenhum imposto ou conversão será calculado.")
                     for candidate in candidates:
@@ -793,7 +1430,7 @@ def show_fiscal() -> None:
                                     st.success(f"Posição {ticket} guardada como pendência. Resultado original preservado; sem cálculo fiscal.")
                                     st.rerun()
                                 except Exception as exc:
-                                    st.error(str(exc))
+                                    st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
             else:
                 st.caption("Nenhuma posição elegível encontrada. Se houver posições retidas, consulte o motivo antes de qualquer lançamento.")
 
@@ -817,6 +1454,12 @@ def show_market_analysis() -> None:
             asset_rows = [{
                 "Ativo": item.get("symbol") or "—",
                 "Classe": item.get("asset_class") or "—",
+                "Moeda base": item.get("currency_base") or "—",
+                "Moeda de resultado": item.get("currency_profit") or "—",
+                "Moeda de margem": item.get("currency_margin") or "—",
+                "Tamanho do contrato": item.get("contract_size") if item.get("contract_size") is not None else "—",
+                "Dígitos": item.get("digits") if item.get("digits") is not None else "—",
+                "Tick size": item.get("trade_tick_size") if item.get("trade_tick_size") is not None else "—",
                 "Visível": "SIM" if item.get("visible") is True else "NÃO",
                 "Negociável": "SIM" if item.get("tradeable") is True else "NÃO",
                 "Cotação": "DISPONÍVEL" if item.get("quote_available") is True else "INDISPONÍVEL",
@@ -943,7 +1586,7 @@ def show_simulator() -> None:
     if not submitted:
         st.caption("Preencha stop, alvo, quantidade e custos conforme a especificação do instrumento e da corretora. Valores zero significam custo zero assumido, não custo verificado.")
         return
-    if not symbol.strip() or stop_distance <= 0 or take_profit_distance <= 0 or quantity_units <= 0 or contract_multiplier <= 0 or spread_price_units <= 0:
+    if not symbol.strip() or stop_distance <= 0 or take_profit_distance <= 0 or quantity_units <= 0 or contract_multiplier <= 0 or spread_price_units < 0:
         st.error("Informe ativo, stop-loss, take-profit, quantidade e spread maiores que zero. Não vou presumir esses parâmetros.")
         return
     try:
@@ -990,7 +1633,7 @@ def show_simulator() -> None:
 
 
 def show_readonly_module(module_name: str) -> None:
-    """Render existing runtime capabilities as clear, read-only Streamlit screens."""
+    """Render mapped runtime views and guarded controls for the selected module."""
     views = {
         "Operação": ("Estado operacional", "/api/health"),
         "Motor de Decisão": ("Motor de Decisão · última análise", "/api/runtime/analysis/latest"),
@@ -1035,48 +1678,111 @@ def show_readonly_module(module_name: str) -> None:
             prefs = data.get("preferences", {}) if isinstance(data, dict) else {}
             candle = prefs.get("candle", {}) if isinstance(prefs.get("candle"), dict) else {}
             notifications = prefs.get("notifications", {}) if isinstance(prefs.get("notifications"), dict) else {}
-            st.caption("Preferências sincronizadas do Ecossistema. Esta tela é somente leitura; alterações de configuração não são feitas aqui.")
+            st.caption("Preferências de apresentação e conveniência. Salvar aqui não autoriza ordens, autonomia, alteração de risco ou execução REAL.")
             cols = st.columns(4)
             cols[0].metric("Ativo padrão", str(prefs.get("default_symbol", "—")))
             cols[1].metric("Período padrão", str(prefs.get("default_timeframe", "—")))
             cols[2].metric("Tema", str(prefs.get("chart_theme", "—")))
-            cols[3].metric("Modo selecionado", str(prefs.get("selected_mode", "DEMO")).upper())
-            st.markdown("#### Gráfico e candles")
-            st.write({
-                "Estilo": candle.get("style", "—"),
-                "Cores": candle.get("color_mode", "—"),
-                "Exigir candle fechado": bool(prefs.get("require_closed_candle", True)),
-                "Exigir filtros": bool(prefs.get("require_filters", True)),
-                "Mostrar detalhes técnicos": bool(prefs.get("show_technical_details_by_default", False)),
-                "Alavancagem (preferência)": bool(prefs.get("leverage_enabled", False)),
-            })
-            st.markdown("#### Preferências de notificações")
-            notification_labels = {
-                "important_enabled": "Alertas importantes",
-                "critical_enabled": "Alertas críticos",
-                "system_updates_enabled": "Atualizações do sistema",
-                "security_enabled": "Segurança",
-                "market_enabled": "Mercado",
-                "risk_enabled": "Risco",
-                "connection_enabled": "Conexões",
-                "execution_enabled": "Execução",
-                "learning_enabled": "Aprendizado",
-                "recovery_enabled": "Recuperação",
-                "info_enabled": "Informativos",
-            }
-            st.dataframe(
-                [{"Categoria": label, "Ativo": bool(notifications.get(key, False))}
-                 for key, label in notification_labels.items()],
-                use_container_width=True,
-                hide_index=True,
-            )
+            cols[3].metric("Modo selecionado", "DEMO · REAL bloqueado")
+
+            with st.expander("Preferências gerais e de análise", expanded=True):
+                with st.form("safe_general_preferences_form"):
+                    default_symbol = st.text_input("Ativo padrão", value=str(prefs.get("default_symbol", "EURUSD")), max_chars=32)
+                    timeframe_options = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"]
+                    current_timeframe = str(prefs.get("default_timeframe", "5m"))
+                    default_timeframe = st.selectbox("Período padrão", timeframe_options, index=timeframe_options.index(current_timeframe) if current_timeframe in timeframe_options else 1)
+                    theme_options = ["DARK", "LIGHT", "SYSTEM"]
+                    current_theme = str(prefs.get("chart_theme", "DARK")).upper()
+                    chart_theme = st.selectbox("Tema do gráfico", theme_options, index=theme_options.index(current_theme) if current_theme in theme_options else 0)
+                    st.info("Proteções obrigatórias: candle fechado e filtros de confirmação permanecem ativos e não podem ser desligados por esta tela.")
+                    show_technical_details = st.checkbox("Mostrar detalhes técnicos por padrão", value=prefs.get("show_technical_details_by_default") is True)
+                    general_submit = st.form_submit_button("Salvar preferências gerais")
+                if general_submit:
+                    if not default_symbol.strip():
+                        st.error("Informe um ativo padrão.")
+                    else:
+                        try:
+                            api("/api/preferences", "POST", {
+                                "default_symbol": default_symbol.strip().upper(),
+                                "default_timeframe": default_timeframe,
+                                "chart_theme": chart_theme,
+                                "show_technical_details_by_default": show_technical_details,
+                            })
+                            st.success("Preferências gerais salvas.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Não foi possível salvar as preferências gerais: {exc}")
+
+            with st.expander("Aparência dos candles"):
+                with st.form("safe_candle_preferences_form"):
+                    style_options = ["CANDLESTICK", "HOLLOW", "OHLC", "LINE"]
+                    current_style = str(candle.get("style", "CANDLESTICK")).upper()
+                    candle_style = st.selectbox("Estilo", style_options, index=style_options.index(current_style) if current_style in style_options else 0)
+                    color_options = ["DEFAULT", "CUSTOM", "MONOCHROME"]
+                    current_color_mode = str(candle.get("color_mode", "DEFAULT")).upper()
+                    candle_color_mode = st.selectbox("Modo de cores", color_options, index=color_options.index(current_color_mode) if current_color_mode in color_options else 0)
+                    bullish_color = st.text_input("Cor de alta (HEX)", value=str(candle.get("bullish_color", "#58d68d")), max_chars=7)
+                    bearish_color = st.text_input("Cor de baixa (HEX)", value=str(candle.get("bearish_color", "#ff7676")), max_chars=7)
+                    wick_color = st.text_input("Cor do pavio (HEX)", value=str(candle.get("wick_color", "#aab5c8")), max_chars=7)
+                    border_enabled = st.checkbox("Exibir bordas", value=candle.get("border_enabled") is not False)
+                    show_wicks = st.checkbox("Exibir pavios", value=candle.get("show_wicks") is not False)
+                    show_bodies = st.checkbox("Exibir corpos", value=candle.get("show_bodies") is not False)
+                    candle_submit = st.form_submit_button("Salvar aparência dos candles")
+                if candle_submit:
+                    colors = (bullish_color, bearish_color, wick_color)
+                    if any(len(color) not in (4, 7) or not color.startswith("#") for color in colors):
+                        st.error("Use cores HEX válidas, como #58d68d.")
+                    else:
+                        try:
+                            api("/api/preferences/candles", "POST", {
+                                "style": candle_style,
+                                "color_mode": candle_color_mode,
+                                "bullish_color": bullish_color,
+                                "bearish_color": bearish_color,
+                                "wick_color": wick_color,
+                                "border_enabled": border_enabled,
+                                "show_wicks": show_wicks,
+                                "show_bodies": show_bodies,
+                            })
+                            st.success("Aparência dos candles salva.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Não foi possível salvar a aparência dos candles: {exc}")
+
+            with st.expander("Preferências de notificações"):
+                notification_labels = {
+                    "important_enabled": "Alertas importantes",
+                    "system_updates_enabled": "Atualizações do sistema",
+                    "security_enabled": "Segurança",
+                    "market_enabled": "Mercado",
+                    "risk_enabled": "Risco",
+                    "connection_enabled": "Conexões",
+                    "execution_enabled": "Execução",
+                    "learning_enabled": "Aprendizado",
+                    "recovery_enabled": "Recuperação",
+                    "info_enabled": "Informativos",
+                }
+                with st.form("safe_notification_preferences_form"):
+                    notification_values = {
+                        key: st.checkbox(label, value=notifications.get(key) is True, key="notification_pref_" + key)
+                        for key, label in notification_labels.items()
+                    }
+                    st.checkbox("Alertas críticos (sempre ativos)", value=True, disabled=True)
+                    notification_submit = st.form_submit_button("Salvar notificações")
+                if notification_submit:
+                    try:
+                        api("/api/preferences/notifications", "POST", notification_values)
+                        st.success("Preferências de notificações salvas. Alertas críticos continuam ativos.")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"Não foi possível salvar as notificações: {exc}")
+
             st.markdown("#### Limites de autorização")
             safety_cols = st.columns(3)
-            safety_cols[0].metric("Operação autônoma", "DESABILITADA" if prefs.get("autonomous_operation_enabled") is not True else "REVISAR")
+            safety_cols[0].metric("Operação autônoma", "DESABILITADA")
             safety_cols[1].metric("Execução REAL", "DESABILITADA")
             safety_cols[2].metric("Execução permitida", "NÃO")
-            st.caption("O modo selecionado e a preferência de alavancagem não autorizam operações, não alteram margem e não liberam REAL.")
-            st.caption("Somente leitura · execução permitida: NÃO · REAL: DESABILITADO")
+            st.caption("Estas configurações não alteram limites de risco, não ativam autonomia, não enviam ordens e não liberam REAL.")
             return
 
         if module_name == "Escola / Tutorial / Onboarding":
@@ -1180,7 +1886,8 @@ def show_readonly_module(module_name: str) -> None:
             return
 
         if module_name == "Operação":
-            st.markdown("#### Estado operacional · leitura em tempo real")
+            st.markdown("#### Estado operacional · última consulta")
+            st.caption("Os indicadores abaixo são consultados ao abrir esta tela ou ao clicar em Atualizar; não representam transmissão contínua.")
             if st.button("Atualizar painel de operação", key="refresh_operation_overview"):
                 for cache_key in ("operation_health", "operation_connections", "operation_risk", "latest_operation_analysis"):
                     st.session_state.pop(cache_key, None)
@@ -1278,14 +1985,6 @@ def show_readonly_module(module_name: str) -> None:
                 error = st.session_state.get(cache_key + "_error", "")
                 if error:
                     st.caption(f"Consulta {cache_key.replace('operation_', '').replace('_', ' ')}: {error}")
-        if module_name in {"Memória", "Replay"}:
-            records = data.get("records", []) if isinstance(data, dict) else []
-            if records:
-                st.dataframe(records, use_container_width=True, hide_index=True)
-            else:
-                st.caption("Ainda não há decisões registradas na memória.")
-            return
-
         if module_name == "Notificações":
             try:
                 all_payload = api("/api/notifications/all")
@@ -1321,6 +2020,24 @@ def show_readonly_module(module_name: str) -> None:
                         "Bloqueante": bool(item.get("blocking", False)),
                     })
                 st.dataframe(display_rows, use_container_width=True, hide_index=True)
+                notification_csv = io.StringIO(newline="")
+                notification_writer = csv.DictWriter(
+                    notification_csv,
+                    fieldnames=list(display_rows[0].keys()) if display_rows else [
+                        "Horário", "Gravidade", "Categoria", "Título", "Mensagem",
+                        "Atenção necessária", "Bloqueante",
+                    ],
+                    delimiter=";",
+                )
+                notification_writer.writeheader()
+                notification_writer.writerows(display_rows)
+                st.download_button(
+                    "Exportar notificações filtradas · CSV",
+                    data="\ufeff" + notification_csv.getvalue(),
+                    file_name="controlador-trading-notificacoes.csv",
+                    mime="text/csv; charset=utf-8",
+                    key="notification_history_csv_download",
+                )
                 st.caption(f"Exibindo {len(display_rows)} de {len(all_items)} notificação(ões) retornada(s) pelo runtime.")
             else:
                 st.info("Não foi possível obter o histórico completo; abaixo estão os alertas ativos disponíveis.")
@@ -1359,23 +2076,25 @@ def show_readonly_module(module_name: str) -> None:
             st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
             return
 
-        if module_name == "Simulador":
-            limits = data.get("configured_limits", {})
-            cols = st.columns(3)
-            cols[0].metric("Limite de perda diária", str(limits.get("daily_loss_limit", "—")))
-            cols[1].metric("Máximo de operações", str(limits.get("max_operations", "—")))
-            cols[2].metric("Perdas consecutivas", str(limits.get("max_consecutive_losses", "—")))
-            st.write("Gate de risco: " + ("LIBERADO" if data.get("allowed") else "BLOQUEADO"))
-            st.caption(str(data.get("reason") or "O motor não forneceu uma justificativa."))
-            st.caption("Os limites são informativos nesta tela; nenhum controle de execução é acionado.")
-            return
-
         if module_name == "Auditoria":
             events = data.get("events", [])
-            cols = st.columns(3)
+            persistence = str(data.get("persistence") or "UNKNOWN").upper()
+            cols = st.columns(4)
             cols[0].metric("Eventos retidos", data.get("count", len(events)))
             cols[1].metric("Eventos exibidos", data.get("returned", len(events)))
             cols[2].metric("Limite de retenção", data.get("retention_limit", "—"))
+            cols[3].metric("Persistência", {
+                "DURABLE": "PERSISTENTE",
+                "NOT_CONFIGURED": "NÃO CONFIGURADA",
+                "WRITE_FAILED": "FALHA DE GRAVAÇÃO",
+                "READ_FAILED": "FALHA DE LEITURA",
+                "SCHEMA_INVALID": "ESQUEMA INVÁLIDO",
+                "UNAVAILABLE": "INDISPONÍVEL",
+            }.get(persistence, "NÃO CONFIRMADA"))
+            if persistence not in {"DURABLE", "NOT_CONFIGURED"}:
+                st.error("A trilha de auditoria não confirmou persistência no SQLite. O histórico em memória pode não sobreviver a uma reinicialização.")
+            elif persistence == "NOT_CONFIGURED":
+                st.warning("Persistência SQLite não configurada. O histórico pode existir somente em memória.")
             if events:
                 st.dataframe(events, use_container_width=True, hide_index=True)
             else:
@@ -1394,6 +2113,88 @@ def show_readonly_module(module_name: str) -> None:
             st.metric("Execução REAL", str(data.get("real", "DESABILITADO")))
             st.caption("Esta tela informa o estado reportado pelo runtime. Ela não confirma que o terminal MT5 esteja aberto neste computador nem que o EA esteja instalado.")
             st.caption("Modo permitido: DEMO/SIMULAÇÃO · Execução automática: NÃO")
+            st.markdown("#### Saídas temporizadas DEMO")
+            try:
+                timed_payload = api("/api/runtime/timed-exits")
+                timed_items = timed_payload.get("timed_exits", [])
+                if not isinstance(timed_items, list):
+                    timed_items = []
+                if not timed_items:
+                    st.caption("Nenhuma saída temporizada registrada.")
+                for timed_item in timed_items:
+                    if not isinstance(timed_item, dict):
+                        continue
+                    timed_state = str(timed_item.get("state") or "UNKNOWN").upper()
+                    st.write(f"**Ticket {timed_item.get('external_id', '—')} · {timed_state}**")
+                    st.caption(f"Prazo alvo: {timed_item.get('due_at', '—')} · próxima tentativa: {timed_item.get('next_attempt_at', '—')} · tentativas: {timed_item.get('attempts', 0)}")
+                    if timed_item.get("message"):
+                        st.caption(str(timed_item["message"]))
+                st.caption("Horários best-effort: indisponibilidade do MT5, rede ou runtime pode atrasar o fechamento.")
+            except Exception as exc:
+                st.warning(f"Status de saídas temporizadas indisponível: {exc}")
+            st.markdown("#### Recuperação de posições DEMO")
+            st.caption("A lista é recuperada do ledger persistente. A consulta ao MT5 é somente leitura; o fechamento exige confirmação explícita e só fica disponível depois que o MT5 confirmar que a posição continua aberta.")
+            try:
+                recovery_payload = api("/api/runtime/positions/recovery")
+                recovery_items = recovery_payload.get("positions", [])
+                if not isinstance(recovery_items, list):
+                    recovery_items = []
+                st.metric("Ciclos pendentes de recuperação", len(recovery_items))
+                if not recovery_items:
+                    st.success("Nenhum ciclo DEMO pendente de recuperação foi encontrado no ledger.")
+                for index, item in enumerate(recovery_items):
+                    if not isinstance(item, dict):
+                        continue
+                    cycle_id = item.get("cycle_id")
+                    external_id = item.get("external_id")
+                    state = str(item.get("recovery_state") or "UNKNOWN").upper()
+                    if not isinstance(cycle_id, str) or not cycle_id.strip() or not isinstance(external_id, str) or not external_id.strip():
+                        st.error("Registro de recuperação incompleto. Nenhuma ação foi habilitada.")
+                        continue
+                    with st.expander(f"Ticket {external_id} · {state}", expanded=(index == 0)):
+                        detail_cols = st.columns(2)
+                        detail_cols[0].write("**Ciclo**")
+                        detail_cols[0].code(cycle_id)
+                        detail_cols[1].write("**Ticket MT5**")
+                        detail_cols[1].code(external_id)
+                        st.caption("A listagem não consulta o broker e não afirma que a posição esteja aberta.")
+                        if state == "BLOCKED_ACCOUNT_IDENTITY":
+                            st.error("Fechamento bloqueado: a identidade da conta original não pode ser comprovada.")
+                        elif state == "BROKER_CONFIRMED_OPEN":
+                            st.success("MT5 confirmou anteriormente que esta posição continua aberta.")
+                        elif state == "RECONCILIATION_REQUIRED":
+                            if st.button("Consultar posição no MT5 · somente leitura", key=f"reconcile_demo_position_{cycle_id}"):
+                                try:
+                                    observed = api("/api/runtime/close/reconcile", "POST", {"cycle_id": cycle_id, "external_id": external_id}).get("close_reconciliation", {})
+                                    observed_state = str(observed.get("state") or "UNKNOWN").upper()
+                                    if observed_state == "CLOSED":
+                                        st.success("MT5 confirmou: posição encerrada.")
+                                    elif observed_state == "OPEN":
+                                        st.success("MT5 confirmou: posição ainda aberta. O fechamento explícito ficará disponível após atualizar a lista.")
+                                    else:
+                                        st.warning("MT5 não conseguiu confirmar o estado. Nenhum novo fechamento foi enviado.")
+                                    st.rerun()
+                                except Exception as exc:
+                                    st.error(f"Reconciliação não concluída: {exc}")
+                        elif state != "BROKER_CONFIRMED_OPEN":
+                            st.warning(f"Estado de recuperação: {state}. Ação de fechamento indisponível.")
+                        if state == "BROKER_CONFIRMED_OPEN":
+                            with st.form(f"close_demo_position_form_{cycle_id}"):
+                                confirmed = st.checkbox("Confirmo que desejo solicitar o fechamento desta posição DEMO específica.", key=f"confirm_close_demo_{cycle_id}")
+                                submitted = st.form_submit_button("Fechar esta posição DEMO", disabled=not confirmed)
+                            if submitted:
+                                try:
+                                    closed = api("/api/runtime/close", "POST", {"cycle_id": cycle_id, "external_id": external_id})
+                                    if closed.get("closed") is True and closed.get("close_state") == "CLOSED":
+                                        st.success("Fechamento confirmado pelo runtime.")
+                                    else:
+                                        st.warning("Fechamento inconclusivo. A posição permanece no inventário para reconciliação.")
+                                    st.rerun()
+                                except Exception as exc:
+                                    st.error(f"Fechamento não confirmado: {exc}")
+            except Exception as exc:
+                st.warning(f"Inventário de recuperação indisponível: {exc}")
+            st.caption("Nenhuma posição é fechada automaticamente. REAL permanece DESABILITADO.")
             return
 
         if module_name == "Conexões":
@@ -1427,6 +2228,101 @@ def show_readonly_module(module_name: str) -> None:
             recovery = obs.get("recovery", {})
             reconciliation = obs.get("reconciliation", {})
             runtime_health = obs.get("runtime_health", {})
+            st.markdown("#### Reconciliação de fechamentos de posição")
+            st.caption(
+                "Consulta somente leitura ao MT5. Esta ação não fecha posições, não cancela ordens "
+                "e não envia novas ordens."
+            )
+            try:
+                real_status = api("/api/runtime/real/status")
+                close_items = real_status.get("position_close_recovery_items", [])
+                if not isinstance(close_items, list):
+                    close_items = []
+                if real_status.get("position_close_recovery_required") is True and not close_items:
+                    st.error(
+                        "Há fechamento pendente, mas o histórico detalhado não está disponível. "
+                        "A proteção permanece bloqueando novas entradas REAL."
+                    )
+                elif close_items:
+                    st.warning(
+                        f"{len(close_items)} fechamento(s) aguardam evidência da corretora. "
+                        "Não considere o resultado resolvido até a consulta retornar."
+                    )
+                    labels = {
+                        str(item.get("request_id")): (
+                            f"{item.get('request_id')} · {item.get('state')} · tentativa {item.get('attempt')}"
+                        )
+                        for item in close_items
+                        if isinstance(item, dict)
+                        and isinstance(item.get("request_id"), str)
+                        and isinstance(item.get("external_id"), str)
+                    }
+                    valid_items = {
+                        str(item["request_id"]): item
+                        for item in close_items
+                        if isinstance(item, dict)
+                        and isinstance(item.get("request_id"), str)
+                        and item.get("request_id", "").strip()
+                        and isinstance(item.get("external_id"), str)
+                        and item.get("external_id", "").strip()
+                    }
+                    if valid_items:
+                        with st.form("position_close_reconciliation_form"):
+                            selected_request = st.selectbox(
+                                "Fechamento pendente",
+                                options=list(valid_items),
+                                format_func=lambda value: labels.get(value, value),
+                            )
+                            selected_item = valid_items[selected_request]
+                            st.caption(
+                                "Ticket de abertura: "
+                                + str(selected_item.get("external_id"))
+                                + " · Última informação: "
+                                + str(selected_item.get("message") or "sem mensagem")
+                            )
+                            confirm_read = st.checkbox(
+                                "Confirmo consultar o histórico e as posições da conta MT5 vinculada, "
+                                "sem enviar ordens."
+                            )
+                            reconcile_submit = st.form_submit_button(
+                                "CONSULTAR E RECONCILIAR",
+                                type="primary",
+                            )
+                        if reconcile_submit:
+                            if not confirm_read:
+                                st.error("Marque a confirmação para autorizar a consulta somente leitura.")
+                            else:
+                                try:
+                                    reconciliation_result = api(
+                                        "/api/runtime/real/close/reconcile",
+                                        "POST",
+                                        {
+                                            "request_id": selected_request,
+                                            "external_id": selected_item["external_id"],
+                                        },
+                                    ).get("close_reconciliation", {})
+                                    state_label = str(reconciliation_result.get("state", "UNKNOWN"))
+                                    if state_label == "CLOSED":
+                                        st.success("MT5 confirmou o fechamento pelo histórico de saída.")
+                                    elif state_label == "OPEN":
+                                        st.warning(
+                                            "MT5 confirmou que a posição continua aberta. "
+                                            "Nenhuma ordem foi enviada; um novo fechamento exigiria ação separada."
+                                        )
+                                    else:
+                                        st.error(
+                                            "A situação continua inconclusiva. A proteção permanece ativa."
+                                        )
+                                    st.caption(str(reconciliation_result.get("message") or "Sem detalhe adicional."))
+                                    st.rerun()
+                                except Exception as exc:
+                                    st.error(f"Não foi possível reconciliar o fechamento: {exc}")
+                    else:
+                        st.error("Os dados do fechamento pendente não passaram pela validação da interface.")
+                else:
+                    st.success("Nenhum fechamento pendente ou desconhecido foi reportado pelo runtime.")
+            except Exception as exc:
+                st.warning(f"Reconciliação de fechamentos indisponível: {exc}")
             state = str(kill.get("state", "NOT_CONFIRMED")).upper()
             st.metric("Estado do Kill Switch", {
                 "ACTIVE": "ATIVO",
@@ -1451,7 +2347,31 @@ def show_readonly_module(module_name: str) -> None:
                     st.write("Solicitações desconhecidas:", unknown)
             if recovery.get("message"):
                 st.write(str(recovery["message"]))
-            st.caption("Tela somente de consulta. Não altera o Kill Switch nem retoma operações.")
+            if state != "ACTIVE":
+                st.warning("Ativar o Kill Switch bloqueia novas execuções. Não cancela ordens já encaminhadas nem substitui a reconciliação.")
+                with st.form("activate_kill_switch_form"):
+                    emergency_reason = st.text_input("Motivo obrigatório da parada", max_chars=240)
+                    emergency_confirm = st.checkbox("Confirmo ativar a parada de emergência e bloquear novas execuções.")
+                    emergency_submit = st.form_submit_button("ATIVAR KILL SWITCH", type="primary")
+                if emergency_submit:
+                    if not emergency_reason.strip() or not emergency_confirm:
+                        st.error("Informe o motivo e marque a confirmação explícita.")
+                    else:
+                        try:
+                            result = api(
+                                "/api/runtime/kill-switch/activate",
+                                "POST",
+                                {"reason": emergency_reason.strip(), "confirmed": True},
+                            )
+                            st.success("Kill Switch ativado e estado persistido pelo runtime.")
+                            if result.get("pending_request_ids") or result.get("unknown_request_ids"):
+                                st.warning("Há solicitações que exigem reconciliação. A ativação não as cancela.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Não foi possível confirmar a ativação: {exc}")
+            else:
+                st.success("Kill Switch ativo. A desativação não está disponível nesta interface.")
+            st.caption("A ativação bloqueia novas execuções. Ordens já encaminhadas exigem reconciliação manual; não há cancelamento automático.")
             st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
             return
 
@@ -1481,66 +2401,112 @@ def show_readonly_module(module_name: str) -> None:
             st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
             return
 
-        if module_name in {"Operação"}:
-            obs = data.get("operational_observability", {})
-            health = str(data.get("health") or "NÃO CONFIRMADA").upper()
-            st.metric("Saúde do Ecossistema", health)
-            st.metric("Execução REAL", "BLOQUEADA" if data.get("real") == "DESABILITADO" else "NÃO CONFIRMADA")
-            st.metric("Modo", str(data.get("mode") or "NÃO CONFIRMADO"))
-            if obs:
-                kill = obs.get("kill_switch", {})
-                recovery = obs.get("recovery", {})
-                market = obs.get("market_data", {})
-                cols = st.columns(3)
-                cols[0].metric("Kill Switch", "ATIVO" if kill.get("enabled") else str(kill.get("state", "NÃO CONFIRMADO")))
-                cols[1].metric("Recuperação", str(recovery.get("state", "NÃO CONFIRMADA")))
-                cols[2].metric("Dados de mercado", str(market.get("health", "NÃO CONFIRMADOS")))
-                if recovery.get("message"):
-                    st.caption(str(recovery["message"]))
-            alerts = data.get("alerts", [])
-            if alerts:
-                st.markdown("#### Alertas que exigem atenção")
-                for alert in alerts:
-                    message = f"{alert.get('component', 'Sistema')} — {alert.get('message', 'Verificar')}"
-                    if str(alert.get("severity", "")).upper() == "CRITICAL":
-                        st.error(message)
-                    else:
-                        st.warning(message)
-            else:
-                st.caption("Nenhum alerta foi retornado pelo runtime.")
-            return
-
-        if module_name in {"MT5 DEMO / Simulação", "Conexões", "Multi-Broker"}:
-            labels = {
-                "decision_core": "Motor de decisão",
-                "execution_gateway": "Gateway de execução",
-                "ic_markets_mt5_demo": "IC Markets MT5 DEMO",
-                "cTrader": "cTrader",
-                "saas": "Serviços do Ecossistema",
-                "real": "Execução REAL",
-            }
-            for key, label in labels.items():
-                if key in data:
-                    value = str(data[key])
-                    if key == "real":
-                        value = "DESABILITADO" if value in {"DESABILITADO", "DISABLED"} else "NÃO CONFIRMADO"
-                    st.write(f"**{label}:** {value}")
-            st.caption("Conexões futuras não são apresentadas como disponíveis. REAL permanece desabilitado.")
-            return
-
         if module_name == "Laboratório":
             resources = data.get("resources", [])
             sources = data.get("learning_sources", [])
             cols = st.columns(2)
             cols[0].metric("Materiais cadastrados", len(resources))
             cols[1].metric("Fontes em avaliação", len(sources))
-            st.caption("Espaço para consultar materiais de estudo e verificar a procedência das fontes.")
+            st.caption("Cadastre materiais de estudo. Links externos entram em triagem; o conteúdo não é considerado validado automaticamente.")
             for label, items in (("Materiais do laboratório", resources), ("Procedência e validação das fontes", sources)):
                 if items:
                     with st.expander(f"{label} ({len(items)})", expanded=True):
                         st.dataframe(items, use_container_width=True, hide_index=True)
                 else:
                     st.info(f"Nenhum item disponível em: {label.lower()}.")
+            if sources:
+                st.subheader("Revisão manual de procedência")
+                st.warning(
+                    "Esta etapa registra sua declaração de revisão. O sistema não baixa, "
+                    "analisa nem verifica automaticamente o conteúdo externo; isto não é "
+                    "uma varredura antivírus nem uma auditoria independente."
+                )
+                for source_index, source in enumerate(sources):
+                    if not isinstance(source, dict):
+                        continue
+                    source_id = str(source.get("source_id") or "").strip()
+                    source_status = str(source.get("status") or "").upper()
+                    if not source_id:
+                        continue
+                    with st.expander(
+                        f"{source.get('source_type', 'FONTE')} · {source_id} · {source_status}",
+                        expanded=source_status == "QUARANTINED",
+                    ):
+                        st.write(f"**Referência:** {source.get('uri') or 'não informada'}")
+                        if source_status == "QUARANTINED":
+                            with st.form(f"learning_source_review_{source_index}"):
+                                content_reviewed = st.checkbox(
+                                    "Li e conferi o conteúdo desta fonte.",
+                                    key=f"learning_content_reviewed_{source_index}",
+                                )
+                                security_reviewed = st.checkbox(
+                                    "Conferi a origem e os riscos antes de abrir/usar o material.",
+                                    key=f"learning_security_reviewed_{source_index}",
+                                )
+                                review_submit = st.form_submit_button("Registrar revisão da fonte")
+                            if review_submit:
+                                if not content_reviewed or not security_reviewed:
+                                    st.error("Marque as duas confirmações somente depois de realizar a revisão.")
+                                else:
+                                    try:
+                                        api("/api/learning/sources/validate", "POST", {
+                                            "source_id": source_id,
+                                            "content_verified": True,
+                                            "security_checked": True,
+                                        })
+                                        st.success("Revisão manual registrada. O conhecimento ainda não foi admitido.")
+                                        st.rerun()
+                                    except Exception as exc:
+                                        st.error(f"Não foi possível registrar a revisão: {exc}")
+                        elif source_status == "VALIDATED" and not source.get("knowledge_validated", False):
+                            st.caption("A fonte passou pela revisão manual. A admissão do conhecimento é uma etapa separada.")
+                            with st.form(f"learning_source_admit_{source_index}"):
+                                knowledge_reviewed = st.checkbox(
+                                    "Revisei a informação e considero o conhecimento adequado para estudo.",
+                                    key=f"learning_knowledge_reviewed_{source_index}",
+                                )
+                                admit_submit = st.form_submit_button("Admitir conhecimento para estudo")
+                            if admit_submit:
+                                if not knowledge_reviewed:
+                                    st.error("Confirme a revisão do conhecimento antes de admitir.")
+                                else:
+                                    try:
+                                        api("/api/learning/sources/admit", "POST", {
+                                            "source_id": source_id,
+                                            "knowledge_validated": True,
+                                        })
+                                        st.success("Conhecimento admitido para uso educacional.")
+                                        st.rerun()
+                                    except Exception as exc:
+                                        st.error(f"Não foi possível admitir o conhecimento: {exc}")
+                        elif source.get("knowledge_validated", False):
+                            st.success("Conhecimento validado para uso educacional. Isso não autoriza operações.")
+            with st.expander("Adicionar material de estudo"):
+                with st.form("learning_resource_create_form"):
+                    resource_id = st.text_input("Identificador do material", max_chars=80)
+                    resource_title = st.text_input("Título", max_chars=200)
+                    content_type = st.selectbox("Tipo de material", ["VIDEO", "ARTICLE", "DOCUMENT", "IMAGE", "NOTE", "OTHER"])
+                    source_url = st.text_input("Link da fonte (opcional)", max_chars=1000)
+                    source_name = st.text_input("Nome da fonte (opcional)", max_chars=160)
+                    tags_text = st.text_input("Etiquetas separadas por vírgula", max_chars=300)
+                    resource_submit = st.form_submit_button("Adicionar material")
+                if resource_submit:
+                    if not resource_id.strip() or not resource_title.strip():
+                        st.error("Informe o identificador e o título do material.")
+                    else:
+                        try:
+                            api("/api/learning/resources", "POST", {
+                                "resource_id": resource_id.strip(),
+                                "title": resource_title.strip(),
+                                "content_type": content_type,
+                                "source_url": source_url.strip() or None,
+                                "source_name": source_name.strip() or None,
+                                "tags": [tag.strip() for tag in tags_text.split(",") if tag.strip()],
+                            })
+                            st.success("Material cadastrado. A fonte externa permanece em triagem até validação.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Não foi possível cadastrar o material: {exc}")
             st.caption("Fontes externas exigem validação antes de seu conhecimento ser considerado validado.")
             st.caption("Execução permitida: NÃO.")
             return
@@ -1551,43 +2517,114 @@ def show_readonly_module(module_name: str) -> None:
             cols = st.columns(2)
             cols[0].metric("Atividades", len(activities))
             cols[1].metric("Tentativas registradas", len(attempts))
-            st.caption("Acompanhe atividades de aprendizagem e tentativas registradas, sem transformar progresso em autorização operacional.")
+            st.caption("Crie exercícios e registre suas respostas. O resultado é educacional e não altera sinais nem parâmetros de execução.")
             for label, items in (("Atividades de aprendizagem", activities), ("Histórico de tentativas", attempts)):
                 if items:
                     with st.expander(f"{label} ({len(items)})", expanded=True):
                         st.dataframe(items, use_container_width=True, hide_index=True)
                 else:
                     st.info(f"Nenhum item disponível em: {label.lower()}.")
+            with st.expander("Criar atividade de estudo"):
+                with st.form("learning_activity_create_form"):
+                    activity_id = st.text_input("Identificador da atividade", max_chars=80)
+                    activity_prompt = st.text_area("Enunciado / exercício", max_chars=3000)
+                    expected_concepts = st.text_input("Conceitos esperados (separados por vírgula)", max_chars=300)
+                    difficulty = st.selectbox("Dificuldade", ["INICIANTE", "BÁSICA", "INTERMEDIÁRIA", "AVANÇADA"])
+                    activity_submit = st.form_submit_button("Criar atividade")
+                if activity_submit:
+                    if not activity_id.strip() or not activity_prompt.strip():
+                        st.error("Informe o identificador e o enunciado da atividade.")
+                    else:
+                        try:
+                            api("/api/learning/activities", "POST", {
+                                "activity_id": activity_id.strip(),
+                                "prompt": activity_prompt.strip(),
+                                "expected_concepts": [item.strip() for item in expected_concepts.split(",") if item.strip()],
+                                "difficulty": difficulty,
+                            })
+                            st.success("Atividade criada.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Não foi possível criar a atividade: {exc}")
+            activity_options = {
+                str(item.get("activity_id")): str(item.get("prompt") or item.get("activity_id"))
+                for item in activities if isinstance(item, dict) and item.get("activity_id")
+            }
+            with st.expander("Registrar tentativa"):
+                with st.form("learning_attempt_create_form"):
+                    selected_activity = st.selectbox(
+                        "Atividade",
+                        options=list(activity_options),
+                        format_func=lambda value: activity_options[value],
+                        disabled=not activity_options,
+                    )
+                    answer = st.text_area("Sua resposta", max_chars=3000, disabled=not activity_options)
+                    correctness = st.selectbox("Autoavaliação", ["Não informada", "Correta", "Incorreta"], disabled=not activity_options)
+                    feedback = st.text_area("Observações / feedback", max_chars=1500, disabled=not activity_options)
+                    attempt_submit = st.form_submit_button("Guardar tentativa", disabled=not activity_options)
+                if attempt_submit and selected_activity:
+                    try:
+                        api("/api/learning/attempts", "POST", {
+                            "activity_id": selected_activity,
+                            "answer": answer,
+                            "correct": True if correctness == "Correta" else False if correctness == "Incorreta" else None,
+                            "feedback": feedback,
+                        })
+                        st.success("Tentativa registrada.")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"Não foi possível registrar a tentativa: {exc}")
             st.caption("Aprendizado não autoriza operações: execução permitida = NÃO.")
             return
 
         if module_name == "Descobertas":
             observations = data.get("observations", [])
             sources = data.get("learning_sources", [])
+            resources = data.get("resources", [])
             cols = st.columns(2)
             cols[0].metric("Observações registradas", len(observations))
             cols[1].metric("Fontes relacionadas", len(sources))
-            st.caption("Consulte observações registradas e a situação das fontes relacionadas. Uma observação não é uma regra de trading validada.")
+            st.caption("Registre observações vinculadas a materiais de estudo. Elas permanecem não validadas e não se tornam regras de trading.")
             for label, items in (("Observações", observations), ("Fontes relacionadas", sources)):
                 if items:
                     with st.expander(f"{label} ({len(items)})", expanded=True):
                         st.dataframe(items, use_container_width=True, hide_index=True)
                 else:
                     st.info(f"Nenhum item disponível em: {label.lower()}.")
+            resource_options = {
+                str(item.get("resource_id")): str(item.get("title") or item.get("resource_id"))
+                for item in resources if isinstance(item, dict) and item.get("resource_id")
+            }
+            with st.expander("Registrar descoberta / observação"):
+                with st.form("learning_observation_create_form"):
+                    selected_resource = st.selectbox(
+                        "Material relacionado",
+                        options=list(resource_options),
+                        format_func=lambda value: resource_options[value],
+                        disabled=not resource_options,
+                    )
+                    observation_statement = st.text_area("Observação", max_chars=3000, disabled=not resource_options)
+                    observation_concepts = st.text_input("Conceitos (separados por vírgula)", max_chars=300, disabled=not resource_options)
+                    observation_evidence = st.text_input("Evidência / trecho de referência (opcional)", max_chars=1000, disabled=not resource_options)
+                    observation_submit = st.form_submit_button("Guardar observação", disabled=not resource_options)
+                if observation_submit and selected_resource:
+                    if not observation_statement.strip():
+                        st.error("Escreva a observação antes de salvar.")
+                    else:
+                        try:
+                            api("/api/learning/observations", "POST", {
+                                "resource_id": selected_resource,
+                                "statement": observation_statement.strip(),
+                                "concepts": [item.strip() for item in observation_concepts.split(",") if item.strip()],
+                                "evidence": observation_evidence.strip() or None,
+                                "validated": False,
+                            })
+                            st.success("Observação guardada como não validada.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Não foi possível guardar a observação: {exc}")
             st.caption("Descobertas não alteram sinais, filtros ou parâmetros de execução.")
             st.caption("Execução permitida: NÃO.")
-            return
-
-        if module_name == "Escola / Tutorial / Onboarding":
-            guide = data.get("guide", {})
-            st.markdown(f"#### {guide.get('title', 'Guia de primeiro uso')}")
-            for index, step in enumerate(guide.get("steps", []), start=1):
-                st.markdown(f"**{index}. {step.get('title', 'Etapa')}**")
-                st.write(step.get("purpose", ""))
-                st.caption(f"Local: {step.get('location', '—')} · {step.get('action_hint', '')}")
-            if guide.get("completion_message"):
-                st.success(str(guide["completion_message"]))
-            st.caption("Concluir o guia não autoriza execução.")
             return
 
         if module_name == "Estatísticas":
@@ -1689,7 +2726,7 @@ def show_readonly_module(module_name: str) -> None:
                 report_writer.writerows(report_rows)
                 st.download_button(
                     "Exportar relatório operacional · CSV",
-                    data="\\ufeff" + report_buffer.getvalue(),
+                    data="\ufeff" + report_buffer.getvalue(),
                     file_name="controlador-trading-relatorio-operacional.csv",
                     mime="text/csv; charset=utf-8",
                     key="operational_report_csv_download",
@@ -1700,104 +2737,132 @@ def show_readonly_module(module_name: str) -> None:
             st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
             return
 
-        if module_name in {"Motor de Decisão", "Estatísticas", "Relatórios"}:
-            scalar_values = [(key, value) for key, value in data.items() if isinstance(value, (str, int, float, bool)) or value is None]
-            if scalar_values:
-                cols = st.columns(min(4, len(scalar_values)))
-                for index, (key, value) in enumerate(scalar_values[:12]):
-                    label = key.replace("_", " ").capitalize()
-                    cols[index % len(cols)].metric(label, "—" if value is None else str(value))
-            periods = data.get("periods")
-            if isinstance(periods, dict) and periods:
-                with st.expander("Resultados por período"):
-                    for period, summary in periods.items():
-                        st.markdown(f"**{str(period).capitalize()}**")
-                        if isinstance(summary, dict):
-                            st.write(" · ".join(f"{key.replace('_', ' ')}: {value}" for key, value in summary.items() if isinstance(value, (str, int, float))))
-            st.caption("Os números refletem apenas os registros disponíveis na memória do runtime.")
-            return
-
-    except Exception as exc:
-        st.warning(f"Não foi possível carregar este módulo do runtime: {exc}")
+    except Exception:
+        # Runtime exceptions can contain filesystem paths, SQL details, or
+        # connector payloads. Keep those diagnostics out of the user-facing panel.
+        st.warning("Não foi possível carregar este módulo do runtime. Verifique a disponibilidade do serviço e os registros técnicos locais.")
 
 
-# The Figma reference defines four visual areas. The Assistant is an additional
-# functional module requested by the user and lives inside the Streamlit panel,
-# without changing the reference JSON or creating a fifth navigation area.
-AREAS = {name: list(modules) for name, modules in CONFIG["open_state"]["tabs"].items()}
-AREAS["MAIS / ADMIN"].append("Reserva Fiscal")
-AREAS["MAIS / ADMIN"].append("Assistente do Ecossistema")
-if "panel_open" not in st.session_state:
-    st.session_state.panel_open = True
-if not st.session_state.panel_open:
-    with st.container(key="panel-toggle"):
-        if st.button("C", key="open_control_hub"):
-            st.session_state.panel_open = True
-            st.rerun()
-        closed_signal, closed_score, closed_color = closed_panel_signal(
-            st.session_state.get("market_analysis_result")
+@st.fragment(run_every="15s")
+def render_latest_signal(closed: bool = False) -> None:
+    """Refresh the shared signal strip periodically without rerunning the full panel."""
+    try:
+        latest_payload = api("/api/runtime/analysis/latest")
+        latest_analysis = (
+            latest_payload.get("analysis")
+            if isinstance(latest_payload, dict) and latest_payload.get("available") is True
+            else None
         )
+    except Exception:
+        latest_analysis = None
+    signal_label, score_label, signal_color = closed_panel_signal(latest_analysis)
+    if closed:
+        try:
+            health = str(api("/api/health").get("health") or "UNKNOWN").upper()
+        except Exception:
+            health = "UNKNOWN"
+        status_label = {
+            "OK": "SISTEMA ONLINE",
+            "WARNING": "INDISPONÍVEL",
+            "CRITICAL": "INDISPONÍVEL",
+        }.get(health, "INDISPONÍVEL")
         st.markdown(
-            f'<div class="closed-signal" style="color:{closed_color}">'
-            f'<strong>{closed_signal}</strong><span>{closed_score}</span></div>',
+            f'<div class="closed-signal" style="color:{signal_color}">{signal_label}</div>'
+            f'<div class="closed-score">{score_label}</div>'
+            f'<div class="closed-status">{status_label}</div>',
             unsafe_allow_html=True,
         )
+        return
+    signal_col, score_col = st.columns([3, 2], vertical_alignment="center")
+    with signal_col:
+        st.markdown(
+            f'<div class="open-signal" style="color:{signal_color}">{signal_label}</div>',
+            unsafe_allow_html=True,
+        )
+    with score_col:
+        st.markdown(f'<div class="open-score">{score_label}</div>', unsafe_allow_html=True)
+
+
+# Four approved navigation areas from the extracted reference JSON.
+# Streamlit is the product; the JSON supplies the visual and navigation specification.
+AREAS = {name: list(modules) for name, modules in CONFIG["open_state"]["tabs"].items()}
+if "panel_open" not in st.session_state:
+    st.session_state.panel_open = True
+
+if not st.session_state.panel_open:
+    with st.container(key="panel-toggle"):
+        toggle_col, signal_col = st.columns([1, 3], vertical_alignment="center")
+        with toggle_col:
+            if st.button("C", key="open_control_hub", help="Abrir Controlador-Trader"):
+                st.session_state.panel_open = True
+                st.rerun()
+        with signal_col:
+            render_latest_signal(closed=True)
     st.stop()
 
-st.markdown('<div class="status-card"><span style="font-size:1.35rem;font-weight:800">Controlador-Trader</span> <span class="demo-pill" style="float:right">DEMO</span></div>', unsafe_allow_html=True)
-area = st.radio("Áreas principais", list(AREAS), horizontal=True, label_visibility="collapsed")
-st.divider()
-module = st.radio("Módulos", AREAS[area], horizontal=False, label_visibility="collapsed")
+with st.container(key="control-hub-shell"):
+    header_left, header_right = st.columns([4, 1])
+    with header_left:
+        st.markdown('<div class="hub-title">Controlador-Trader</div>', unsafe_allow_html=True)
+    with header_right:
+        st.markdown('<div class="demo-pill-wrap"><span class="demo-pill">DEMO</span></div>', unsafe_allow_html=True)
 
-if module == "Assistente do Ecossistema":
-    show_assistant()
-elif module in {"Financeiro", "Reserva Fiscal"}:
-    show_fiscal()
-else:
-    show_readonly_module(module)
+    # The same periodically refreshed signal and score appear in both panel states.
+    with st.container(key="open-signal-strip"):
+        render_latest_signal(closed=False)
 
-st.divider()
-st.subheader("Estado do Ecossistema")
-try:
-    runtime_status = api("/api/health")
-    components = runtime_status.get("components", {})
-    health_state = str(runtime_status.get("health") or "UNKNOWN").upper()
-    mt5_state = str(components.get("mt5_demo") or runtime_status.get("mt5_demo") or "UNKNOWN").upper()
-    mode_state = str(runtime_status.get("mode") or "UNKNOWN").upper()
-    real_state = str(runtime_status.get("real") or "DESABILITADO").upper()
-    health_label = {"OK": "SISTEMA ONLINE", "WARNING": "ATENÇÃO", "CRITICAL": "INDISPONÍVEL"}.get(health_state, "ESTADO NÃO CONFIRMADO")
-    status_cols = st.columns(4)
-    status_cols[0].metric("Saúde do sistema", health_label)
-    status_cols[1].metric("Modo", mode_state)
-    status_cols[2].metric("MT5 DEMO", mt5_state)
-    status_cols[3].metric("REAL", real_state)
-    if runtime_status.get("execution_allowed") is not False or real_state not in {"DESABILITADO", "DISABLED"}:
-        st.error("Estado de segurança inesperado. Operações bloqueadas na interface; verifique o runtime antes de continuar.")
-    if runtime_status.get("alerts"):
-        with st.expander("Alertas do sistema", expanded=health_state == "CRITICAL"):
-            for alert in runtime_status["alerts"]:
-                st.write(f"- **{alert.get('severity', 'INFO')} · {alert.get('component', 'Sistema')}** — {alert.get('message', 'Verificar componente')}")
-except Exception:
-    st.warning("Runtime indisponível. Estado do MT5 e do sistema não confirmado.")
-left, right = st.columns([2, 1])
-with left:
-    st.caption("Execução REAL permanece bloqueada. Confirme o estado DEMO no runtime antes de operar.")
-with right:
-    if "leverage_enabled" not in st.session_state:
-        try:
-            saved_preferences = api("/api/preferences").get("preferences", {})
-            st.session_state.leverage_enabled = saved_preferences.get("leverage_enabled") is True
-        except Exception:
-            st.session_state.leverage_enabled = False
-    st.checkbox(
-        "Alavancagem",
-        key="leverage_enabled",
-        on_change=save_leverage_preference,
-        help="Salva somente a preferência. Não ativa ordens, não altera margem e não concede autorização de execução.",
-    )
-    if st.session_state.get("leverage_preference_error"):
-        st.warning("Preferência de alavancagem não sincronizada com o runtime.")
-with st.container(key="panel-toggle"):
-    if st.button("C", key="close_control_hub"):
+    area = st.radio("Áreas principais", list(AREAS), horizontal=True, key="main_area_navigation", label_visibility="collapsed")
+    st.divider()
+    module = st.radio("Módulos", AREAS[area], horizontal=False, key="module_navigation", label_visibility="collapsed")
+
+    if module == "Financeiro":
+        financial = st.radio("Financeiro", ["Reserva Fiscal", "Assistente do Ecossistema"], horizontal=True, key="financeiro_section", label_visibility="collapsed")
+        if financial == "Reserva Fiscal":
+            show_fiscal()
+        else:
+            show_assistant()
+    else:
+        show_readonly_module(module)
+
+    st.divider()
+    st.markdown("**Estado do sistema**")
+    try:
+        runtime_status = api("/api/health")
+        components = runtime_status.get("components", {})
+        health_state = str(runtime_status.get("health") or "UNKNOWN").upper()
+        mt5_state = str(components.get("mt5_demo") or runtime_status.get("mt5_demo") or "UNKNOWN").upper()
+        mode_state = str(runtime_status.get("mode") or "UNKNOWN").upper()
+        real_state = str(runtime_status.get("real") or "DESABILITADO").upper()
+        health_label = {"OK": "SISTEMA ONLINE", "WARNING": "INDISPONÍVEL", "CRITICAL": "INDISPONÍVEL"}.get(health_state, "INDISPONÍVEL")
+        state_left, state_right = st.columns([3, 1])
+        with state_left:
+            st.caption("Estado do sistema")
+        with state_right:
+            st.markdown(f'<div class="system-state-value">{health_label}</div>', unsafe_allow_html=True)
+        if runtime_status.get("execution_allowed") is not False or real_state not in {"DESABILITADO", "DISABLED"}:
+            st.error("Estado de segurança inesperado. Operações bloqueadas na interface; verifique o runtime antes de continuar.")
+        if runtime_status.get("alerts"):
+            with st.expander("Alertas do sistema", expanded=health_state == "CRITICAL"):
+                for alert in runtime_status["alerts"]:
+                    st.write(f"- **{alert.get('severity', 'INFO')} · {alert.get('component', 'Sistema')}** — {alert.get('message', 'Verificar componente')}")
+    except Exception:
+        st.warning("Runtime indisponível. Estado do MT5 e do sistema não confirmado.")
+
+    leverage_left, leverage_right = st.columns([3, 1])
+    with leverage_left:
+        st.button("REAL — DESABILITADO", key="real_mode_disabled", disabled=True, use_container_width=True)
+        st.caption("Execução REAL permanece bloqueada.")
+    with leverage_right:
+        if "leverage_enabled" not in st.session_state:
+            try:
+                saved_preferences = api("/api/preferences").get("preferences", {})
+                st.session_state.leverage_enabled = saved_preferences.get("leverage_enabled") is True
+            except Exception:
+                st.session_state.leverage_enabled = False
+        st.checkbox("Alavancagem", key="leverage_enabled", on_change=save_leverage_preference, help="Salva somente a preferência. Não ativa ordens, não altera margem e não concede autorização de execução.")
+        if st.session_state.get("leverage_preference_error"):
+            st.warning("Preferência de alavancagem não sincronizada com o runtime.")
+
+    if st.button("Fechar painel", key="close_control_hub"):
         st.session_state.panel_open = False
         st.rerun()

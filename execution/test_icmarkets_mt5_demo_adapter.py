@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from core.models import Signal
-from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, ICMarketsMT5RealAdapter
+from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, ICMarketsMT5RealAdapter, MT5AdapterError
 from execution.ports import ExecutionMode, ExecutionRequest
 
 
@@ -27,9 +27,14 @@ class FakeMT5:
         self.send_result = send_result
         self.calls = []
 
-    def initialize(self):
-        self.calls.append("initialize")
+    def initialize(self, path=None):
+        self.calls.append(("initialize", path))
+        self.active_path = path
         return True
+
+    def terminal_info(self):
+        from pathlib import Path
+        return SimpleNamespace(path=str(Path(self.active_path).parent) if self.active_path else "")
 
     def shutdown(self):
         self.calls.append("shutdown")
@@ -377,3 +382,315 @@ def test_daily_loss_budget_sums_losing_positions_without_offsetting_winners():
 
     assert state.realized_pnl == 1.0
     assert state.realized_loss_today == 7.0
+
+    
+def test_configured_terminal_path_is_pinned_before_demo_order():
+    from pathlib import Path
+    from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoConfig
+
+    terminal = str(Path("C:/Program Files/MetaTrader 5/terminal64.exe"))
+    fake = FakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(
+        ICMarketsMT5DemoConfig(terminal_path=terminal),
+        mt5_module=fake,
+    )
+
+    result = adapter.execute(request())
+
+    assert result.success is True
+    assert ("initialize", terminal) in fake.calls
+
+
+def test_configured_terminal_path_mismatch_blocks_demo_order():
+    from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoConfig
+
+    class WrongTerminal(FakeMT5):
+        def terminal_info(self):
+            return SimpleNamespace(path="C:/Other/Terminal")
+
+    terminal = "C:/Program Files/MetaTrader 5/terminal64.exe"
+    fake = WrongTerminal()
+    adapter = ICMarketsMT5DemoAdapter(
+        ICMarketsMT5DemoConfig(terminal_path=terminal),
+        mt5_module=fake,
+    )
+
+    result = adapter.execute(request())
+
+    assert result.success is False
+    assert not any(isinstance(call, tuple) and call[0] == "order_send" for call in fake.calls)
+    assert "shutdown" in fake.calls
+
+def test_closed_deal_ticket_lookup_revalidates_final_close_and_private_account_fingerprint():
+    mt5 = FakeMT5()
+    mt5.account_info = lambda: SimpleNamespace(
+        trade_mode=mt5.ACCOUNT_TRADE_MODE_DEMO,
+        currency="BRL",
+        login=12345678,
+        server="ICMarketsSC-Demo",
+    )
+    mt5.positions_get = lambda: ()
+    opening = SimpleNamespace(
+        entry=mt5.DEAL_ENTRY_IN, ticket=788, position_id=456,
+        symbol="WIN$N", volume=1.0, profit=0.0,
+        commission=-1.0, swap=0.0, fee=0.0, time=1793318300,
+    )
+    closing = SimpleNamespace(
+        entry=mt5.DEAL_ENTRY_OUT, ticket=789, position_id=456,
+        symbol="WIN$N", volume=1.0, profit=10.0,
+        commission=0.0, swap=-0.5, fee=-0.1, time=1793318400,
+    )
+
+    def history_deals_get(*args, **kwargs):
+        if kwargs.get("position") == 456:
+            return (opening, closing)
+        return (closing,)
+
+    mt5.history_deals_get = history_deals_get
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
+
+    candidate = adapter.read_closed_deal_candidate("789")
+
+    assert candidate["ticket"] == "789"
+    assert candidate["position_id"] == "456"
+    assert candidate["account_currency"] == "BRL"
+    assert len(candidate["account_fingerprint"]) == 32
+    assert "12345678" not in repr(candidate)
+    assert "ICMarketsSC-Demo" not in repr(candidate)
+    assert candidate["profit"] == 10.0
+    assert candidate["commission"] == -1.0
+    assert candidate["swap"] == -0.5
+    assert candidate["fee"] == -0.1
+    assert candidate["net_result_account_currency"] == 8.4
+    assert candidate["deal_count"] == 2
+    assert candidate["closing_deal_count"] == 1
+
+    for invalid_ticket in ("788", "999999"):
+        try:
+            adapter.read_closed_deal_candidate(invalid_ticket)
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError(f"ticket {invalid_ticket} should not identify the final closing deal")
+
+def test_closed_deal_preview_aggregates_multiple_partial_closes_for_one_position():
+    mt5 = FakeMT5()
+    mt5.account_info = lambda: SimpleNamespace(
+        trade_mode=mt5.ACCOUNT_TRADE_MODE_DEMO, currency="BRL",
+        login=12345678, server="ICMarketsSC-Demo",
+    )
+    mt5.positions_get = lambda: ()
+    opening = SimpleNamespace(
+        entry=mt5.DEAL_ENTRY_IN, ticket=10, position_id=900,
+        symbol="WIN$", volume=1.0, profit=0.0,
+        commission=-0.4, swap=0.0, fee=0.0, time=1793318300,
+    )
+    partial_one = SimpleNamespace(
+        entry=mt5.DEAL_ENTRY_OUT, ticket=11, position_id=900,
+        symbol="WIN$", volume=0.4, profit=8.0,
+        commission=-0.2, swap=0.0, fee=-0.1, time=1793318350,
+    )
+    partial_two = SimpleNamespace(
+        entry=mt5.DEAL_ENTRY_OUT, ticket=12, position_id=900,
+        symbol="WIN$", volume=0.6, profit=-2.0,
+        commission=-0.3, swap=-0.1, fee=-0.2, time=1793318400,
+    )
+
+    def history_deals_get(*args, **kwargs):
+        if kwargs.get("position") == 900:
+            return (opening, partial_one, partial_two)
+        return (partial_one, partial_two)
+
+    mt5.history_deals_get = history_deals_get
+    preview = ICMarketsMT5DemoAdapter(mt5_module=mt5).read_closed_deal_candidates()
+    assert preview["count"] == 1
+    candidate = preview["candidates"][0]
+    assert candidate["ticket"] == "12"
+    assert candidate["volume"] == 1.0
+    assert candidate["profit"] == 6.0
+    assert candidate["commission"] == -0.9
+    assert candidate["swap"] == -0.1
+    assert candidate["fee"] == -0.3
+    assert candidate["net_result_account_currency"] == 4.7
+    assert candidate["deal_count"] == 3
+    assert candidate["closing_deal_count"] == 2
+
+
+def test_closed_deal_preview_withholds_position_when_opened_and_closed_volume_do_not_match():
+    mt5 = FakeMT5()
+    mt5.account_info = lambda: SimpleNamespace(
+        trade_mode=mt5.ACCOUNT_TRADE_MODE_DEMO, currency="BRL"
+    )
+    mt5.positions_get = lambda: ()
+    opening = SimpleNamespace(
+        entry=mt5.DEAL_ENTRY_IN, ticket=20, position_id=901,
+        symbol="WIN$", volume=1.0, profit=0.0,
+        commission=0.0, swap=0.0, fee=0.0, time=1793318300,
+    )
+    closing = SimpleNamespace(
+        entry=mt5.DEAL_ENTRY_OUT, ticket=21, position_id=901,
+        symbol="WIN$", volume=0.7, profit=5.0,
+        commission=0.0, swap=0.0, fee=0.0, time=1793318400,
+    )
+
+    def history_deals_get(*args, **kwargs):
+        if kwargs.get("position") == 901:
+            return (opening, closing)
+        return (closing,)
+
+    mt5.history_deals_get = history_deals_get
+    preview = ICMarketsMT5DemoAdapter(mt5_module=mt5).read_closed_deal_candidates()
+    assert preview["count"] == 0
+    assert preview["candidates"] == []
+    assert preview["withheld_incomplete_positions"] == 1
+
+
+def test_closed_deal_preview_withholds_position_still_reported_open_by_mt5():
+    mt5 = FakeMT5()
+    mt5.account_info = lambda: SimpleNamespace(
+        trade_mode=mt5.ACCOUNT_TRADE_MODE_DEMO, currency="BRL"
+    )
+    mt5.positions_get = lambda: (
+        SimpleNamespace(identifier=902, ticket=777),
+    )
+    opening = SimpleNamespace(
+        entry=mt5.DEAL_ENTRY_IN, ticket=30, position_id=902,
+        symbol="WIN$", volume=1.0, profit=0.0,
+        commission=0.0, swap=0.0, fee=0.0, time=1793318300,
+    )
+    closing = SimpleNamespace(
+        entry=mt5.DEAL_ENTRY_OUT, ticket=31, position_id=902,
+        symbol="WIN$", volume=1.0, profit=5.0,
+        commission=0.0, swap=0.0, fee=0.0, time=1793318400,
+    )
+
+    def history_deals_get(*args, **kwargs):
+        if kwargs.get("position") == 902:
+            return (opening, closing)
+        return (closing,)
+
+    mt5.history_deals_get = history_deals_get
+    preview = ICMarketsMT5DemoAdapter(mt5_module=mt5).read_closed_deal_candidates()
+    assert preview["count"] == 0
+    assert preview["candidates"] == []
+    assert preview["withheld_incomplete_positions"] == 1
+
+def test_closed_deal_preview_withholds_malformed_ticket_and_timestamp_metadata():
+    def run_case(closing_overrides):
+        mt5 = FakeMT5()
+        mt5.account_info = lambda: SimpleNamespace(
+            trade_mode=mt5.ACCOUNT_TRADE_MODE_DEMO, currency="BRL"
+        )
+        mt5.positions_get = lambda: ()
+        opening = SimpleNamespace(
+            entry=mt5.DEAL_ENTRY_IN, ticket=40, position_id=903,
+            symbol="WIN$", volume=1.0, profit=0.0,
+            commission=0.0, swap=0.0, fee=0.0, time=1793318300,
+        )
+        closing_values = {
+            "entry": mt5.DEAL_ENTRY_OUT, "ticket": 41, "position_id": 903,
+            "symbol": "WIN$", "volume": 1.0, "profit": 5.0,
+            "commission": 0.0, "swap": 0.0, "fee": 0.0,
+            "time": 1793318400, "time_msc": 1793318400000,
+        }
+        closing_values.update(closing_overrides)
+        closing = SimpleNamespace(**closing_values)
+
+        def history_deals_get(*args, **kwargs):
+            if kwargs.get("position") == 903:
+                return (opening, closing)
+            return (closing,)
+
+        mt5.history_deals_get = history_deals_get
+        return ICMarketsMT5DemoAdapter(mt5_module=mt5).read_closed_deal_candidates()
+
+    for malformed in (
+        {"ticket": None},
+        {"time_msc": "not-a-number"},
+        {"time": 10**30},
+    ):
+        preview = run_case(malformed)
+        assert preview["count"] == 0
+        assert preview["candidates"] == []
+        assert preview["withheld_incomplete_positions"] == 1
+
+def test_mt5_account_fingerprint_requires_complete_positive_numeric_identity():
+    fingerprint = ICMarketsMT5DemoAdapter._account_fingerprint
+    valid = SimpleNamespace(login=12345678, server=" ICMarketsSC-Demo ")
+    equivalent = SimpleNamespace(login="12345678", server="icmarketssc-demo")
+    assert fingerprint(valid) is not None
+    assert len(fingerprint(valid)) == 32
+    assert fingerprint(valid) == fingerprint(equivalent)
+
+    invalid_accounts = (
+        SimpleNamespace(login=None, server="ICMarketsSC-Demo"),
+        SimpleNamespace(login=0, server="ICMarketsSC-Demo"),
+        SimpleNamespace(login=-1, server="ICMarketsSC-Demo"),
+        SimpleNamespace(login="not-a-login", server="ICMarketsSC-Demo"),
+        SimpleNamespace(login="１２３４", server="ICMarketsSC-Demo"),
+        SimpleNamespace(login=12345678, server=""),
+        SimpleNamespace(login=12345678, server="S" * 256),
+    )
+    for account in invalid_accounts:
+        assert fingerprint(account) is None
+
+
+def test_mt5_account_fingerprint_separates_login_and_server_pairs():
+    fingerprint = ICMarketsMT5DemoAdapter._account_fingerprint
+    first = fingerprint(SimpleNamespace(login=12345678, server="ICMarketsSC-Demo"))
+    other_login = fingerprint(SimpleNamespace(login=87654321, server="ICMarketsSC-Demo"))
+    other_server = fingerprint(SimpleNamespace(login=12345678, server="ICMarketsSC-Live"))
+    assert first != other_login
+    assert first != other_server
+    assert other_login != other_server
+
+def test_closed_deal_scan_fails_closed_if_mt5_account_changes_during_history_read():
+    mt5 = FakeMT5()
+    accounts = iter((
+        SimpleNamespace(
+            trade_mode=mt5.ACCOUNT_TRADE_MODE_DEMO,
+            currency="BRL", login=12345678, server="ICMarketsSC-Demo",
+        ),
+        SimpleNamespace(
+            trade_mode=mt5.ACCOUNT_TRADE_MODE_DEMO,
+            currency="BRL", login=87654321, server="ICMarketsSC-Demo",
+        ),
+    ))
+    mt5.account_info = lambda: next(accounts)
+    mt5.positions_get = lambda: ()
+    opening = SimpleNamespace(
+        entry=mt5.DEAL_ENTRY_IN, ticket=788, position_id=456,
+        symbol="WIN$", volume=1.0, profit=0.0,
+        commission=0.0, swap=0.0, fee=0.0, time=1793318300,
+    )
+    closing = SimpleNamespace(
+        entry=mt5.DEAL_ENTRY_OUT, ticket=789, position_id=456,
+        symbol="WIN$", volume=1.0, profit=10.0,
+        commission=0.0, swap=0.0, fee=0.0, time=1793318400,
+    )
+
+    def history_deals_get(*args, **kwargs):
+        if kwargs.get("position") == 456:
+            return (opening, closing)
+        return (closing,)
+
+    mt5.history_deals_get = history_deals_get
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
+
+    try:
+        adapter.read_closed_deal_candidate("789")
+    except MT5AdapterError as exc:
+        assert "mudou" in str(exc) or "reconfirmada" in str(exc)
+    else:
+        raise AssertionError("account switch during history scan must block fiscal candidate")
+
+
+def test_mt5_adapter_exposes_shared_reentrant_session_lock():
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=FakeMT5())
+    lock = adapter.session_lock
+
+    # The API can hold this same lock across the MT5 read and fiscal DB write.
+    with lock:
+        with adapter.session_lock:
+            assert adapter.session_lock is lock
+
