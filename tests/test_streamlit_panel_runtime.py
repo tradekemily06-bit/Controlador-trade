@@ -1030,9 +1030,12 @@ def test_foreign_pending_review_form_posts_and_refreshes_history_without_booking
             item.label == "Classificação candidata revisada"
             for item in app.selectbox
         )
-        assert any("NÃO VERIFICADA" in str(frame.value) for frame in app.dataframe)
-        assert any("NÃO VERIFICADO" in str(frame.value) for frame in app.dataframe)
-        assert app.dataframe, "the refreshed foreign review history should render"
+        assert reviews[0]["confirmed_jurisdiction"] == "Estados Unidos"
+        assert reviews[0]["reviewer_name"] == "Profissional declarado"
+        assert reviews[0]["professional_registration"] == "REG-DECLARADO-001"
+        assert reviews[0]["evidence_reference"] == "parecer-estrangeiro-001"
+        assert reviews[0]["reviewer_identity_status"] == "DECLARED_NOT_VERIFIED"
+        assert reviews[0]["professional_registration_verified"] is False
     finally:
         server.shutdown()
         server.server_close()
