@@ -91,3 +91,22 @@ def test_native_mt5_environment_and_statistics_are_not_misrepresented_as_other_m
     assert 'if(module=="Memória") return "MEMORIA";' in routing
     assert "Replay: indisponivel nesta interface" in lab
     assert "Replay: disponivel no laboratorio" not in lab
+
+
+def test_native_mt5_operational_actions_are_not_reused_by_non_operational_modules():
+    source = EA.read_text(encoding="utf-8")
+    render = source.split("void RenderView()", 1)[1].split("void RefreshHealth()", 1)[0]
+    events = source.split("void OnChartEvent", 1)[1]
+
+    assert 'if(active_view=="COCKPIT") RunCycle();' in events
+    assert 'if(active_view=="COCKPIT") CloseCycle();' in events
+    assert 'if(active_view=="CONFIG") SaveConfig();' in events
+    assert 'if(active_view=="CONFIG") { leverage_enabled=!leverage_enabled; SaveConfig(); }' in events
+    for view in ("ANALISE", "MEMORIA", "LAB", "ENSINO", "NOTIF"):
+        section_start = render.find(f'active_view=="{view}"')
+        assert section_start >= 0
+        next_view = render.find('}else if(active_view==', section_start + 1)
+        section = render[section_start: next_view if next_view >= 0 else len(render)]
+        assert 'SetButton(Obj("CYCLE")' not in section
+        assert 'SetButton(Obj("CLOSE")' not in section
+        assert 'SetButton(Obj("SAVE")' not in section
