@@ -860,9 +860,6 @@ void RenderView(){
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
-      if(ObjectFind(0,Obj("CYCLE"))>=0) ObjectDelete(0,Obj("CYCLE"));
-      if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
-      if(ObjectFind(0,Obj("CLOSE"))>=0) ObjectDelete(0,Obj("CLOSE"));
       SetLabel(Obj("CYCLEID"),"Ciclo DEMO: "+(last_cycle_id==""?"aguardando":"atualizado"),20,465,8,C'145,160,180');
       SetLabel(Obj("EXTID"),"Execucao: "+(last_external_id==""?"sem atividade":"registrada"),20,483,8,C'145,160,180');
       SetLabel(Obj("PRICE"),"Preco atual: —",20,501,9,C'190,200,215');
@@ -886,7 +883,7 @@ void RenderView(){
       SetLabel(Obj("INFO4"),"Estatisticas atualizadas",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
    }else if(active_view=="LAB"){
-      SetLabel(Obj("SUB"),"LAB • simulacao, replay e validacao isolados da operacao REAL",20,47,9,C'150,165,185');
+      SetLabel(Obj("SUB"),"LAB • laboratorio e validacao isolados da operacao REAL",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"VALIDAR AMBIENTE",20,284,172,30);
       RefreshHealth();
       RefreshSecondary();
