@@ -185,6 +185,8 @@ Os artefatos de estado portáveis são:
 
 `deployment/backup_runtime.ps1` cria um pacote verificado desses artefatos. Os bancos com sufixo `.sqlite`, `.sqlite3` ou `.db` são copiados pela API de backup do SQLite (incluindo páginas WAL já confirmadas), e o manifesto registra SHA-256 e tamanho. A verificação também executa `PRAGMA integrity_check` nos bancos incluídos antes de permitir a restauração. Segredos, tokens, senhas e configuração específica da máquina ficam fora do pacote.
 
+A restauração usa `deployment/restore_runtime.ps1`. Se uma substituição falhar no meio do processo, o utilitário tenta reverter os arquivos já restaurados; se a própria reversão falhar, preserva a cópia anterior em arquivo oculto no runtime e informa o caminho para recuperação manual.
+
 **Proteção do arquivo:** o ZIP contém dados financeiros e conversas locais e não é criptografado pelo utilitário. Armazene-o somente em volume protegido por criptografia de disco e permissões restritas, não o envie por canais públicos e defina retenção e cópias externas protegidas. Antes de restaurar, pare os serviços do runtime/Streamlit/MT5 e confirme que o destino está correto; a restauração não deve concorrer com processos que mantenham bancos abertos. A rotina recusa sobrescrever arquivos existentes por padrão.
 
 Assim, a troca de Windows/VPS preserva o estado do ecossistema sem transportar a identidade da máquina. O novo host deve fornecer novamente sua configuração local, MT5, Cloudflare/Access e segredos pelo mecanismo de implantação apropriado.
