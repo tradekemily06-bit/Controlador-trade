@@ -451,9 +451,10 @@ def test_reserve_rejects_coerced_category_reference_date_and_notes(tmp_path):
         ("notes", {"text": "evidência"}),
     ):
         try:
-            reserve.record_realized_result(
-                OWNER, {**base, field: value, "reference": "STRICT-" + field.upper()}
-            )
+            payload = {**base, field: value}
+            if field != "reference":
+                payload["reference"] = "STRICT-" + field.upper()
+            reserve.record_realized_result(OWNER, payload)
         except ValueError:
             pass
         else:
