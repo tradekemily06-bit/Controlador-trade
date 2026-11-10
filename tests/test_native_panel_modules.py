@@ -64,7 +64,7 @@ def test_native_mt5_module_navigation_recreates_base_controls_without_background
     assert 'SelectArea("CENTRAL")' in events
     assert 'else if(active_view=="RESERVA") RefreshFiscal();' not in timer
     assert 'else if(active_view=="ASSISTENTE") RefreshAssistantStatus();' not in timer
-    assert 'if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="UNAVAILABLE" || active_view=="MEMORIA" || active_view=="RISK" || active_view=="STATS" || active_view=="CONNECTIONS" || active_view=="REPORTS" || active_view=="AUDIT" || active_view=="FINANCE") return;' in health
+    assert 'if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="UNAVAILABLE" || active_view=="MEMORIA" || active_view=="RISK" || active_view=="STATS" || active_view=="CONNECTIONS" || active_view=="ENVIRONMENT" || active_view=="SECURITY" || active_view=="REPORTS" || active_view=="AUDIT" || active_view=="FINANCE") return;' in health
     assert '"REC_REFRESH"' in clear_fields and '"REC_CLOSE"' in clear_fields
 
 
