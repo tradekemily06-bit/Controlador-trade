@@ -396,6 +396,7 @@ def test_mql5_sync_requires_explicit_confirmation_and_supports_whatif():
     assert "$backupLog = \"$log.$stamp.bak\"" in text
     assert "Copy-WithRetry -Source $log -Destination $backupLog" in text
     assert "Restore-File -Backup $backupLog -Target $log" in text
+    assert text.count("Restore-File -Backup $backupLog -Target $log") >= 7
     assert "Remove-Item -LiteralPath $backupLog -Force -ErrorAction SilentlyContinue" in text
     assert text.index("$PSCmdlet.ShouldProcess") < text.index("New-Item -ItemType Directory -Force -Path $destinationDir")
     assert text.index("$PSCmdlet.ShouldProcess") < text.index("Copy-WithRetry -Source $source -Destination $destination")
