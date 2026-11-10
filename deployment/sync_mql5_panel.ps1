@@ -267,10 +267,14 @@ $backupSource = "$destination.$stamp.bak"
 $backupBinary = [System.IO.Path]::ChangeExtension($destination, '.ex5') + ".$stamp.bak"
 $backupProvenance = "$provenance.$stamp.bak"
 $backupLog = "$log.$stamp.bak"
-if (Test-Path -LiteralPath $destination) { Copy-WithRetry -Source $destination -Destination $backupSource }
-if (Test-Path -LiteralPath $binary) { Copy-WithRetry -Source $binary -Destination $backupBinary }
-if (Test-Path -LiteralPath $provenance) { Copy-WithRetry -Source $provenance -Destination $backupProvenance }
-if (Test-Path -LiteralPath $log) { Copy-WithRetry -Source $log -Destination $backupLog }
+try {
+    if (Test-Path -LiteralPath $destination) { Copy-WithRetry -Source $destination -Destination $backupSource }
+    if (Test-Path -LiteralPath $binary) { Copy-WithRetry -Source $binary -Destination $backupBinary }
+    if (Test-Path -LiteralPath $provenance) { Copy-WithRetry -Source $provenance -Destination $backupProvenance }
+    if (Test-Path -LiteralPath $log) { Copy-WithRetry -Source $log -Destination $backupLog }
+} catch {
+    throw "Falha ao criar os backups dos artefatos; o destino do EA ainda não foi modificado. Backups parciais foram preservados para inspeção. $($_.Exception.Message)"
+}
 
 try {
     Copy-WithRetry -Source $source -Destination $destination
