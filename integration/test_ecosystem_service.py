@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
+from analysis.decision_store import DecisionStore
 from integration.ecosystem_service import EcosystemService
 import pytest
 
@@ -17,7 +18,7 @@ def _candles(count=5):
 
 
 def test_analyze_is_recorded_and_execution_stays_blocked():
-    service = EcosystemService()
+    service = EcosystemService(decision_store=DecisionStore(database_path=""))
     record = service.analyze({"score": 85, "confirmed": True, "filters_ok": True, "symbol": "EURUSD", "timeframe": "5m"})
 
     assert record.signal == "COMPRA"
@@ -65,7 +66,7 @@ def test_service_keeps_incomplete_senior_context_in_reassessment():
 
 
 def test_replay_and_statistics_share_the_same_memory():
-    service = EcosystemService()
+    service = EcosystemService(decision_store=DecisionStore(database_path=""))
     results = service.replay([
         {"score": 90, "confirmed": True, "filters_ok": True},
         {"score": 50, "confirmed": False, "filters_ok": True},
