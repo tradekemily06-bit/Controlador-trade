@@ -519,6 +519,9 @@ def test_foreign_realized_result_preserves_structured_declarations(tmp_path):
         "income_nature": "CAPITAL_GAIN",
         "event_type": "DISPOSAL",
         "fx_conversion_method": "BROKER_STATEMENT",
+        "fx_rate": 5.8,
+        "fx_date": "2026-11-04",
+        "fx_source": "Extrato da corretora",
     })
     assert result["original_result"] == -10.5
     assert result["tax_residency_at_event"] == "DUAL_OR_UNCERTAIN"
