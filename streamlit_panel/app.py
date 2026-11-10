@@ -3081,8 +3081,6 @@ AREAS["FINANCEIRO"] = ["Financeiro"]
 AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]
 AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]
 AREAS["CENTRAL"] = [module for module in _REFERENCE_TABS["MAIS / ADMIN"] if module != "Financeiro"]
-if "Kill Switch" not in AREAS["CENTRAL"]:
-    AREAS["CENTRAL"].append("Kill Switch")
 if "panel_open" not in st.session_state:
     st.session_state.panel_open = True
 
