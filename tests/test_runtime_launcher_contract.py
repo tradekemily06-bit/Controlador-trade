@@ -403,3 +403,21 @@ def test_windows_ci_parses_runtime_backup_and_restore_scripts():
     workflow = _read(".github/workflows/ci.yml")
     assert "'backup_runtime.ps1'" in workflow
     assert "'restore_runtime.ps1'" in workflow
+
+
+
+def test_backup_and_restore_pass_paths_as_environment_data_not_python_source():
+    backup = _read("deployment/backup_runtime.ps1")
+    restore = _read("deployment/restore_runtime.ps1")
+    assert "$env:CONTROLADOR_BACKUP_RUNTIME_DIR = $RuntimeDir" in backup
+    assert "$env:CONTROLADOR_BACKUP_OUTPUT_FILE = $backup" in backup
+    assert 'os.environ["CONTROLADOR_BACKUP_RUNTIME_DIR"]' in backup
+    assert 'os.environ["CONTROLADOR_BACKUP_OUTPUT_FILE"]' in backup
+    assert "r'$RuntimeDir'" not in backup
+    assert "r'$backup'" not in backup
+    assert "$env:CONTROLADOR_RESTORE_BACKUP_FILE = $BackupFile" in restore
+    assert "$env:CONTROLADOR_RESTORE_RUNTIME_DIR = $RuntimeDir" in restore
+    assert 'os.environ["CONTROLADOR_RESTORE_BACKUP_FILE"]' in restore
+    assert 'os.environ["CONTROLADOR_RESTORE_RUNTIME_DIR"]' in restore
+    assert "r'$BackupFile'" not in restore
+    assert "r'$RuntimeDir'" not in restore
