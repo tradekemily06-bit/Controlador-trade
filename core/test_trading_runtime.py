@@ -351,6 +351,60 @@ def test_runtime_reuses_senior_cycle_id_for_automation_handoff():
     assert result.cycles[0].automation_lifecycle is not None
     assert result.cycles[0].automation_lifecycle.state is AutomationLifecycleState.DISPATCHED
 
+def test_disabled_automation_policy_never_dispatches_executable_demo_plan():
+    from core.execution_intent import ExecutionIntent
+    from core.models import Signal
+    from core.p46_automation_lifecycle import AutomationLifecycleState
+    from execution.ports import ExecutionMode
+
+    class ExecutableOrchestrator(FakeOrchestrator):
+        def evaluate(self, request, **kwargs):
+            self.calls += 1
+            return SimpleNamespace(
+                executable=True,
+                senior_context=SimpleNamespace(cycle_id="cycle-analysis-only"),
+                timestamp=datetime.now(timezone.utc),
+            )
+
+    class IntentCoordinator(FakeCoordinator):
+        def build_intent(self, plan, *, orchestration):
+            return ExecutionIntent(
+                request_id=plan.request_id,
+                symbol="TEST",
+                signal=Signal.COMPRA,
+                amount=0.01,
+                duration_seconds=60,
+                mode=ExecutionMode.DEMO,
+                created_at=datetime.now(timezone.utc),
+                cycle_id=orchestration.senior_context.cycle_id,
+            )
+
+    coordinator = IntentCoordinator()
+    result = TradingRuntime(
+        orchestrator=ExecutableOrchestrator(executable=True),
+        coordinator=coordinator,
+    ).run(
+        request(),
+        operational_state=None,
+        amount=0.01,
+        duration_seconds=60,
+        automation_policy=AutomationPolicy(enabled=False, minimum_interval_seconds=0),
+        automation_readiness=DemoReadinessReport(True, ()),
+        automation_risk_budget=RiskBudgetAssessment(
+            BudgetDecision.APPROVED, 0.0, 1, "approved",
+        ),
+    )
+
+    assert len(result.cycles) == 1
+    assert result.stopped is True
+    assert result.stop_reason == "automation disabled"
+    assert result.cycles[0].automation_lifecycle.state is AutomationLifecycleState.BLOCKED
+    assert result.cycles[0].execution is None
+    assert coordinator.build_calls
+    assert coordinator.execute_calls == []
+    assert result.executed_cycles == 0
+
+
 def test_runtime_integrates_controlled_automation_gates_without_second_executor():
     from core.p46_automation_lifecycle import AutomationLifecycleState
 
