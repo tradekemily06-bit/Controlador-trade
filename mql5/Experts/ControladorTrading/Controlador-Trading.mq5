@@ -333,6 +333,7 @@ void RenderNavigation(){
    }
 }
 void SelectArea(string area){
+   kill_switch_confirm_armed=false;
    active_area=area;
    active_module=AreaModuleName(active_area,0);
    active_view=ViewForModule(active_area,active_module);
@@ -341,6 +342,7 @@ void SelectArea(string area){
 }
 void SelectModule(int index){
    if(index<0 || index>=AreaModuleCount(active_area)) return;
+   kill_switch_confirm_armed=false;
    active_module=AreaModuleName(active_area,index);
    active_view=ViewForModule(active_area,active_module);
    Panel();
@@ -899,6 +901,8 @@ void ActivateKillSwitch(){
       return;
    }
    string body="{\"reason\":\""+JsonEscape(reason)+"\",\"confirmed\":true}";
+   kill_switch_confirm_armed=false;
+   SetButton(Obj("KILL_CONFIRM"),"CONFIRMAR BLOQUEIO",20,320,172,30);
    string response; int code=0;
    if(!Http("POST","/api/runtime/kill-switch/activate",body,response,code)){
       SetLabel(Obj("INFO1"),"Ativacao nao confirmada pelo runtime.",20,361,8,C'255,118,118');
@@ -1242,7 +1246,7 @@ void RenderView(){
       ClearCockpitFields();
       SetLabel(Obj("SUB"),"KILL SWITCH • bloqueio protegido de novas execucoes",20,47,9,C'150,165,185');
       SetLabel(Obj("INFO1"),"Consultando estado do Kill Switch...",20,361,9,C'255,209,102');
-      SetEdit(Obj("KILL_REASON"),"",20,284,340,25);
+      SetChatEdit(Obj("KILL_REASON"),"",20,284,340,25);
       SetButton(Obj("KILL_CONFIRM"),"CONFIRMAR BLOQUEIO",20,320,172,30);
       SetButton(Obj("KILL_ACTIVATE"),"ATIVAR KILL SWITCH",202,320,177,30);
       RefreshKillSwitchStatus();
