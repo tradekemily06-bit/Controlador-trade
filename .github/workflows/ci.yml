@@ -157,6 +157,58 @@ jobs:
             Write-Host "PowerShell syntax OK: $relative"
           }
 
+      - name: Execute MT5 sync -WhatIf without a live terminal or EA writes
+        shell: powershell
+        run: |
+          $root = Join-Path $env:TEMP ("controlador-mt5-whatif-" + [guid]::NewGuid().ToString('N'))
+          $terminalDir = Join-Path $root 'terminal'
+          $dataPath = Join-Path $root 'data'
+          $emptyAppData = Join-Path $root 'empty-appdata'
+          New-Item -ItemType Directory -Force -Path $terminalDir, (Join-Path $dataPath 'MQL5'), $emptyAppData | Out-Null
+          $terminal = Join-Path $terminalDir 'terminal64.exe'
+          $metaEditor = Join-Path $terminalDir 'metaeditor64.exe'
+          Set-Content -LiteralPath $terminal -Value 'fake terminal for WhatIf test'
+          Set-Content -LiteralPath $metaEditor -Value 'fake MetaEditor for WhatIf test'
+          $terminalHash = (Get-FileHash -LiteralPath $terminal -Algorithm SHA256).Hash
+          $metaEditorHash = (Get-FileHash -LiteralPath $metaEditor -Algorithm SHA256).Hash
+          $scriptPath = Join-Path $env:GITHUB_WORKSPACE 'deployment\sync_mql5_panel.ps1'
+          $destinationDir = Join-Path $dataPath 'MQL5\Experts\ControladorTrading'
+
+          # Positive dry-run: explicit paths, no terminal process, and no EA destination.
+          & $scriptPath -WhatIf -ProjectRoot $env:GITHUB_WORKSPACE -Mt5TerminalPath $terminal -Mt5DataPath $dataPath -MetaEditorPath $metaEditor
+          if (Test-Path -LiteralPath $destinationDir) {
+            throw 'WhatIf criou a pasta de destino do EA.'
+          }
+          if ((Get-FileHash -LiteralPath $terminal -Algorithm SHA256).Hash -ne $terminalHash) {
+            throw 'WhatIf alterou o executável de teste do terminal.'
+          }
+          if ((Get-FileHash -LiteralPath $metaEditor -Algorithm SHA256).Hash -ne $metaEditorHash) {
+            throw 'WhatIf alterou o executável de teste do MetaEditor.'
+          }
+
+          # Negative dry-run: unresolved data path must fail before process inspection or Python bridge.
+          $previousAppData = $env:APPDATA
+          try {
+            $env:APPDATA = $emptyAppData
+            $caughtExpectedGuard = $false
+            try {
+              & $scriptPath -WhatIf -ProjectRoot $env:GITHUB_WORKSPACE -Mt5TerminalPath $terminal -MetaEditorPath $metaEditor
+            } catch {
+              if ($_.Exception.Message -like '*Simulação -WhatIf não inicializa nem consulta o terminal MT5*') {
+                $caughtExpectedGuard = $true
+              } else {
+                throw
+              }
+            }
+            if (-not $caughtExpectedGuard) {
+              throw 'WhatIf deveria recusar a resolução implícita da pasta de dados.'
+            }
+          } finally {
+            $env:APPDATA = $previousAppData
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+          }
+          Write-Host 'MT5 sync WhatIf runtime checks passed without a live terminal or EA writes.'
+
   test:
     needs: CI
     runs-on: ubuntu-latest

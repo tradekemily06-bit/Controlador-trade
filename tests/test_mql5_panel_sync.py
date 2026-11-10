@@ -416,6 +416,12 @@ def test_mql5_sync_whatif_never_initializes_python_terminal_bridge_without_resol
     guard = resolver.index("if ($WhatIfPreference)")
     bridge = resolver.index("$paths = Get-Mt5Paths -TerminalPath $TerminalPath")
     assert guard < bridge
-    assert "Simulação -WhatIf não inicializa o terminal MT5" in resolver
+    assert "Simulação -WhatIf não inicializa nem consulta o terminal MT5" in resolver
     assert "Informe -Mt5DataPath ou CONTROLADOR_MT5_DATA_PATH" in resolver
     assert "Get-Mt5Paths -TerminalPath $TerminalPath" in resolver[bridge:]
+
+    terminal_resolver = text.split("function Resolve-Mt5TerminalPath", 1)[1].split("$Mt5TerminalPath =", 1)[0]
+    terminal_whatif = terminal_resolver.index("if ($WhatIfPreference)")
+    terminal_process_query = terminal_resolver.index("Get-CimInstance Win32_Process")
+    assert terminal_whatif < terminal_process_query
+    assert "a simulação não consulta processos do MT5" in terminal_resolver

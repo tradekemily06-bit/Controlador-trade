@@ -58,6 +58,19 @@ function Assert-RestoreComplete {
 }
 
 function Resolve-Mt5TerminalPath([string]$RequestedPath) {
+    # A dry run must not inspect or require a live terminal process.
+    # It still requires an explicit, existing executable path for an unambiguous preview.
+    if ($WhatIfPreference) {
+        if ([string]::IsNullOrWhiteSpace($RequestedPath)) {
+            throw 'Para -WhatIf informe -Mt5TerminalPath; a simulação não consulta processos do MT5.'
+        }
+        $whatIfTerminal = [System.IO.Path]::GetFullPath($RequestedPath)
+        if (-not (Test-Path -LiteralPath $whatIfTerminal -PathType Leaf)) {
+            throw "Executável MT5 informado para -WhatIf não encontrado: $whatIfTerminal"
+        }
+        return $whatIfTerminal
+    }
+
     # The Python MT5 bridge selects a terminal by executable path, not by PID/data folder.
     # If two running terminals share that executable path, fail closed rather than
     # copying/compiling the panel into an arbitrary instance's data directory.
@@ -178,6 +191,10 @@ function Resolve-Mt5DataPath([string]$RequestedPath, [string]$TerminalPath) {
         throw "Mais de uma pasta de dados MT5 contém o painel; configure CONTROLADOR_MT5_DATA_PATH explicitamente: $($candidates -join '; ')"
     }
 
+    if ($WhatIfPreference) {
+        throw 'Simulação -WhatIf não inicializa nem consulta o terminal MT5. Informe -Mt5DataPath ou CONTROLADOR_MT5_DATA_PATH, ou mantenha uma única pasta de dados existente que contenha o EA.'
+    }
+
     # A fresh install may not yet have an EA file to identify its data directory.
     # In that case the Python bridge fallback is allowed only when one process
     # matches the configured terminal executable.
@@ -194,10 +211,6 @@ function Resolve-Mt5DataPath([string]$RequestedPath, [string]$TerminalPath) {
     if ($matchingProcesses.Count -gt 1) {
         throw 'Várias instâncias do MT5 estão ativas e nenhuma pasta de dados contém o painel; configure CONTROLADOR_MT5_DATA_PATH para evitar um destino ambíguo.'
     }
-    if ($WhatIfPreference) {
-        throw 'Simulação -WhatIf não inicializa o terminal MT5. Informe -Mt5DataPath ou CONTROLADOR_MT5_DATA_PATH, ou mantenha uma única pasta de dados existente que contenha o EA.'
-    }
-
     $paths = Get-Mt5Paths -TerminalPath $TerminalPath
     if (-not $paths -or [string]::IsNullOrWhiteSpace($paths.data_path)) {
         throw 'Não foi possível resolver a pasta de dados MT5 com segurança.'
