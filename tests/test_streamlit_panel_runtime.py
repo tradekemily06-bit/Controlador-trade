@@ -660,8 +660,13 @@ def test_fiscal_result_requires_confirmation_and_complete_fields_before_posting(
         assert payload["same_day"] is True
         assert payload["confirmed"] is True
         assert payload["reference"] == "comprovante-teste-001"
-        assert any("Estimativa de planejamento registrada" in item.value for item in app.success)
-        assert saved and any(path.startswith("/api/fiscal-reserve?") for method, path, *rest in calls if method == "GET")
+        assert saved
+        post_index = next(index for index, item in enumerate(calls) if item[0] == "POST")
+        assert any(
+            index > post_index and item[0] == "GET" and item[1].startswith("/api/fiscal-reserve?")
+            for index, item in enumerate(calls)
+        )
+        assert app.dataframe, "the refreshed fiscal history should render the saved result"
     finally:
         server.shutdown()
         server.server_close()
