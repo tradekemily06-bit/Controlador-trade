@@ -1394,7 +1394,7 @@ def show_fiscal() -> None:
             if candidates:
                 st.dataframe([{"Abertura UTC": item.get("opened_at_utc"), "Encerramento UTC": item.get("occurred_at_utc"), "Ativo": item.get("symbol"), "Ticket final": item.get("ticket"), "Negócios somados": item.get("deal_count"), "Saídas": item.get("closing_deal_count"), "Resultado líquido da posição": item.get("net_result_account_currency"), "Moeda": item.get("account_currency")} for item in candidates], use_container_width=True, hide_index=True)
                 if account_currency == "BRL":
-                    st.warning("A confirmação abaixo registra somente posições que você classificar expressamente como Brasil · day trade. O resultado agrega os negócios da posição e concilia os volumes; confira o extrato da corretora antes de confirmar.")
+                    st.warning("A confirmação abaixo guarda a posição na fila brasileira de revisão fiscal, ainda como pendente. Ela não entra na reserva nem nos totais. A classificação de mercado é declarada por você e não verificada independentemente; confira o extrato da corretora antes de confirmar.")
                     for candidate in candidates:
                         ticket = str(candidate.get("ticket", "")).strip()
                         if not ticket:
@@ -1403,14 +1403,14 @@ def show_fiscal() -> None:
                             st.write(f"**{candidate.get('symbol', 'Ativo')} · ticket {ticket}**")
                             st.caption(f"Encerramento UTC: {candidate.get('occurred_at_utc', '—')} · Resultado líquido da posição: {candidate.get('net_result_account_currency', '—')} {account_currency} · Negócios somados: {candidate.get('deal_count', '—')}")
                             classified = st.checkbox("Confirmo que a operação ocorreu em mercado brasileiro elegível e atende ao conceito fiscal de day trade: mesmo ativo, mesma instituição e mesmo dia.", key="mt5_class_" + ticket)
-                            confirmed = st.form_submit_button("Confirmar e registrar esta posição")
+                            confirmed = st.form_submit_button("Confirmar e guardar como pendência")
                         if confirmed:
                             if not classified:
-                                st.error("Marque a confirmação de classificação antes de registrar.")
+                                st.error("Marque a confirmação da classificação declarada antes de guardar a pendência.")
                             else:
                                 try:
                                     result = api("/api/fiscal-reserve/mt5-confirm", "POST", {"ticket": ticket, "category": "BR_DAY_TRADE", "market_scope": "BR_ELIGIBLE_MARKET", "confirmed": True})
-                                    st.success(f"Ticket {ticket} registrado. A referência impede duplicidade.")
+                                    st.success(f"Ticket {ticket} guardado na fila brasileira de revisão fiscal. Continua pendente, sem cálculo e fora dos totais. A referência impede duplicidade.")
                                     st.session_state.fiscal_mt5_confirmed_tickets = set(st.session_state.get("fiscal_mt5_confirmed_tickets", set())) | {ticket}
                                     st.rerun()
                                 except Exception as exc:
