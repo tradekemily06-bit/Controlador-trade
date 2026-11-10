@@ -17,8 +17,8 @@ def test_fiscal_reserve_and_ecosystem_assistant_have_dedicated_streamlit_areas()
     assert 'elif module == "Assistente do Ecossistema":' in source
     assert "show_fiscal()" in source
     assert "show_assistant()" in source
-    assert 'AREAS["FINANCEIRO"] = ["Financeiro"]
-    assert 'AREAS["CENTRAL"] = [module for module in _REFERENCE_TABS["MAIS / ADMIN"] if module != "Financeiro"]' in source' in source
+    assert 'AREAS["FINANCEIRO"] = ["Financeiro"]' in source
+    assert 'AREAS["CENTRAL"] = [module for module in _REFERENCE_TABS["MAIS / ADMIN"] if module != "Financeiro"]' in source
     assert "show_finance_overview()" in source
     assert "Visão geral financeira do Ecossistema." in source
     assert 'api("/api/fiscal-reserve/domestic-pending/summary")' in source
