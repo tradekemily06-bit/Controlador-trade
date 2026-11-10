@@ -97,6 +97,11 @@ def _set_text(app, label, value):
     next(item for item in app.text_input if item.label == label).set_value(value)
 
 
+def _set_key(app, key, value, collection="text_input"):
+    widgets = getattr(app, collection)
+    next(item for item in widgets if item.key == key).set_value(value)
+
+
 def test_domestic_pending_form_posts_separate_unclassified_evidence(monkeypatch):
     app, calls, server, worker = _panel_with_http(monkeypatch)
     try:
@@ -122,10 +127,10 @@ def test_domestic_pending_form_posts_separate_unclassified_evidence(monkeypatch)
 def test_foreign_pending_form_preserves_original_currency_and_optional_fx_evidence(monkeypatch):
     app, calls, server, worker = _panel_with_http(monkeypatch)
     try:
-        _set_text(app, "Referência / comprovante", "FOREIGN-PENDING-001")
+        _set_key(app, "foreign_pending_reference", "FOREIGN-PENDING-001")
         next(item for item in app.number_input if item.label == "Valor original").set_value(250.75)
-        _set_text(app, "Instrumento", "ETF")
-        _set_text(app, "Jurisdição", "EUA")
+        _set_key(app, "foreign_pending_instrument", "ETF")
+        _set_key(app, "foreign_pending_jurisdiction", "EUA")
         _set_text(app, "Corretora / instituição", "Broker Demo")
         _set_text(app, "Local de custódia (país, instituição ou autocustódia)", "EUA")
         _set_text(app, "Tipo / especificação do contrato", "ETF à vista")
@@ -153,9 +158,9 @@ def test_foreign_pending_form_preserves_original_currency_and_optional_fx_eviden
 def test_foreign_signed_result_keeps_negative_sign_and_is_not_booked_as_domestic_result(monkeypatch):
     app, calls, server, worker = _panel_with_http(monkeypatch)
     try:
-        _set_text(app, "Referência do extrato", "FOREIGN-LOSS-001")
+        _set_key(app, "foreign_signed_reference", "FOREIGN-LOSS-001")
         next(item for item in app.number_input if item.label == "Resultado original (+ lucro / - prejuízo)").set_value(-42.375)
-        _set_text(app, "Instrumento", "Ação")
+        _set_key(app, "foreign_signed_instrument", "Ação")
         _set_text(app, "Jurisdição", "EUA")
         _set_text(app, "Corretora / instituição", "Broker Demo")
         _set_text(app, "Local de custódia", "EUA")
