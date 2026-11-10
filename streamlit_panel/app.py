@@ -1644,7 +1644,7 @@ def show_readonly_module(module_name: str) -> None:
         "Motor de Decisão": ("Motor de Decisão · última análise", "/api/runtime/analysis/latest"),
         "Gestão de Risco": ("Gestão de Risco", "/api/risk"),
         "Notificações": ("Central de Notificações", "/api/notifications"),
-        "Conexão MT5 DEMO": ("Conexões e ambiente", "/api/connections"),
+        "Ambiente MT5 DEMO": ("Conexões e ambiente", "/api/connections"),
         "Kill Switch": ("Proteção operacional", "/api/health"),
         "Memória": ("Memória de decisões", "/api/memory?limit=50"),
         "Estatísticas": ("Estatísticas operacionais", "/api/statistics"),
@@ -2173,7 +2173,7 @@ def show_readonly_module(module_name: str) -> None:
             st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
             return
 
-        if module_name == "Conexão MT5 DEMO":
+        if module_name == "Ambiente MT5 DEMO":
             st.markdown("#### Ambiente de operação conectado")
             st.metric("IC Markets · MT5 DEMO", str(data.get("ic_markets_mt5_demo", "NÃO CONFIRMADO")))
             cols = st.columns(2)
@@ -2858,7 +2858,7 @@ def render_latest_signal(closed: bool = False) -> None:
 # not the historical Simulador module already housed under ESTUDO.
 AREAS = {
     name: [
-        "Conexão MT5 DEMO" if module == "MT5 DEMO / Simulação" else module
+        "Ambiente MT5 DEMO" if module == "MT5 DEMO / Simulação" else module
         for module in modules
         if module != "Financeiro"
     ]
