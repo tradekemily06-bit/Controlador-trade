@@ -13,6 +13,8 @@ string last_cycle_id="";
 string last_external_id="";
 bool cycle_identity_store_valid=true;
 string active_view="COCKPIT";
+string assistant_conversation_id="";
+bool assistant_consent_armed=false;
 string selected_mode="DEMO";
 bool leverage_enabled=false;
 bool runtime_ok=false;
@@ -145,6 +147,10 @@ void SetEdit(string name,string text,int x,int y,int w,int h){
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
 }
+void SetChatEdit(string name,string text,int x,int y,int w,int h){
+   SetEdit(name,text,x,y,w,h);
+   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,true);
+}
 void SetCompactLabel(string name,string text,int x,int y,int size,color clr,bool clickable=false){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
@@ -227,13 +233,15 @@ void Panel(){
 
    SetLabel(Obj("TITLE"),"Controlador Trading",20,27,13,clrWhite);
    SetLabel(Obj("SUB"),"ECOSSISTEMA • MT5 • DEMO / SIMULACAO",20,47,9,C'150,165,185');
-   SetButton(Obj("V1"),"⌂",18,67,54,25);
-   SetButton(Obj("V2"),"A",74,67,54,25);
-   SetButton(Obj("V3"),"M",130,67,54,25);
-   SetButton(Obj("V4"),"L",186,67,48,25);
-   SetButton(Obj("V5"),"E",236,67,54,25);
-   SetButton(Obj("V6"),"🔔",292,67,54,25);
-   SetButton(Obj("V7"),"⚙",348,67,54,25);
+   SetButton(Obj("V1"),"C",18,67,42,25);
+   SetButton(Obj("V2"),"A",64,67,42,25);
+   SetButton(Obj("V3"),"M",110,67,42,25);
+   SetButton(Obj("V4"),"L",156,67,42,25);
+   SetButton(Obj("V5"),"E",202,67,42,25);
+   SetButton(Obj("V6"),"N",248,67,42,25);
+   SetButton(Obj("V7"),"G",294,67,42,25);
+   SetButton(Obj("V8"),"RF",340,67,42,25);
+   SetButton(Obj("V9"),"AE",386,67,42,25);
 
    SetLabel(Obj("RUNTIME"),"Sistema: verificando...",20,104,10,C'255,209,102');
    SetLabel(Obj("MODE"),"Modo: DEMO / SIMULACAO",20,124,10,C'88,214,141');
@@ -587,7 +595,139 @@ void RefreshLearning(){
       SetLabel(Obj("INFO1"),"Ensino indisponivel",20,361,9,C'255,118,118');
    }
 }
+string AssistantConversationFileName(){
+   return P+"assistant-"+IntegerToString(ChartID())+".txt";
+}
+void LoadAssistantConversation(){
+   if(!FileIsExist(AssistantConversationFileName())) return;
+   int handle=FileOpen(AssistantConversationFileName(),FILE_READ|FILE_TXT|FILE_ANSI);
+   if(handle==INVALID_HANDLE) return;
+   assistant_conversation_id=FileReadString(handle);
+   FileClose(handle);
+}
+void PersistAssistantConversation(){
+   if(assistant_conversation_id=="") return;
+   int handle=FileOpen(AssistantConversationFileName(),FILE_WRITE|FILE_TXT|FILE_ANSI);
+   if(handle==INVALID_HANDLE) return;
+   FileWriteString(handle,assistant_conversation_id);
+   FileClose(handle);
+}
+void RefreshFiscal(){
+   string r; int code=0;
+   if(!Http("GET","/api/fiscal-reserve/local?limit=20","",r,code)){
+      SetLabel(Obj("INFO1"),"Reserva Fiscal: runtime local indisponivel",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Nenhum dado fiscal foi alterado.",20,381,9,C'205,215,230');
+      return;
+   }
+   string total=JsonValue(r,"total_reserved_brl");
+   string foreign_total=JsonObjectValue(r,"foreign_pending","total");
+   string domestic_total=JsonObjectValue(r,"domestic_pending","total");
+   SetLabel(Obj("INFO1"),"Reserva estimada Brasil: R$ "+(total==""?"—":DoubleToString(StringToDouble(total),2)),20,361,9,C'88,214,141');
+   SetLabel(Obj("INFO2"),"Pendencias Brasil: "+(domestic_total==""?"indisponivel":domestic_total)+" • fora dos totais",20,381,9,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Pendencias exterior: "+(foreign_total==""?"indisponivel":foreign_total)+" • sem calculo",20,401,9,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Brasil/exterior permanecem em filas separadas.",20,421,9,C'205,215,230');
+   SetLabel(Obj("INFO5"),"Estimativa de planejamento; nao e imposto apurado.",20,441,9,C'255,209,102');
+   SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • Reserva Fiscal somente leitura",20,520,8,C'255,155,155');
+}
+void RefreshAssistantStatus(){
+   string r; int code=0;
+   if(!Http("GET","/api/assistant/local/status","",r,code)){
+      SetLabel(Obj("INFO1"),"Assistente do Ecossistema indisponivel.",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Verifique o runtime e a configuracao do provedor.",20,381,9,C'205,215,230');
+      return;
+   }
+   string available=JsonValue(r,"available");
+   SetLabel(Obj("INFO1"),available=="true"?"Assistente: provedor configurado.":"Assistente: provedor indisponivel.",20,361,9,available=="true"?C'88,214,141':C'255,118,118');
+   SetLabel(Obj("INFO2"),"Chat somente leitura; consentimento exigido a cada envio.",20,381,9,C'205,215,230');
+}
+void ClearCockpitFields(){
+   string names[]={"SYM","TF","SYML","TFL","MARKET","SIGNAL","SCORE","REASON","MODE","RECOVERY_TITLE","RECOVERY_ITEM","REC_REFRESH","REC_PREV","REC_NEXT","REC_RECONCILE","REC_CLOSE","RECOVERY_STATUS"};
+   for(int i=0;i<ArraySize(names);i++)
+      if(ObjectFind(0,Obj(names[i]))>=0) ObjectDelete(0,Obj(names[i]));
+}
+void ClearAssistantControls(){
+   string names[]={"ASSISTANT_PROMPT","ASSISTANT_INPUT","ASSISTANT_CONSENT","ASSISTANT_SEND"};
+   for(int i=0;i<ArraySize(names);i++)
+      if(ObjectFind(0,Obj(names[i]))>=0) ObjectDelete(0,Obj(names[i]));
+}
+void RenderFiscal(){
+   ClearCockpitFields();
+   SetLabel(Obj("SUB"),"RESERVA FISCAL • resumo conectado ao runtime",20,47,9,C'150,165,185');
+   SetButton(Obj("ANALYZE"),"ATUALIZAR RESERVA",20,294,172,30);
+   if(ObjectFind(0,Obj("CYCLE"))>=0) ObjectDelete(0,Obj("CYCLE"));
+   if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
+   if(ObjectFind(0,Obj("CLOSE"))>=0) ObjectDelete(0,Obj("CLOSE"));
+   if(ObjectFind(0,Obj("CYCLEID"))>=0) ObjectDelete(0,Obj("CYCLEID"));
+   if(ObjectFind(0,Obj("EXTID"))>=0) ObjectDelete(0,Obj("EXTID"));
+   if(ObjectFind(0,Obj("PRICE"))>=0) ObjectDelete(0,Obj("PRICE"));
+   SetLabel(Obj("INFO1"),"Consultando Reserva Fiscal...",20,361,9,C'205,215,230');
+   SetLabel(Obj("INFO2"),"Brasil e exterior permanecem separados.",20,381,9,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Pendencias nao entram nos totais.",20,401,9,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Valores de planejamento nao confirmam imposto.",20,421,9,C'205,215,230');
+   SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
+   RefreshFiscal();
+}
+void RenderAssistant(){
+   ClearCockpitFields();
+   SetLabel(Obj("SUB"),"ASSISTENTE DO ECOSSISTEMA • leitura e orientacao",20,47,9,C'150,165,185');
+   if(ObjectFind(0,Obj("ANALYZE"))>=0) ObjectDelete(0,Obj("ANALYZE"));
+   if(ObjectFind(0,Obj("CYCLE"))>=0) ObjectDelete(0,Obj("CYCLE"));
+   if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
+   if(ObjectFind(0,Obj("CLOSE"))>=0) ObjectDelete(0,Obj("CLOSE"));
+   if(ObjectFind(0,Obj("CYCLEID"))>=0) ObjectDelete(0,Obj("CYCLEID"));
+   if(ObjectFind(0,Obj("EXTID"))>=0) ObjectDelete(0,Obj("EXTID"));
+   if(ObjectFind(0,Obj("PRICE"))>=0) ObjectDelete(0,Obj("PRICE"));
+   SetLabel(Obj("ASSISTANT_PROMPT"),"Pergunta (ate 1000 caracteres)",20,250,8,C'150,165,185');
+   SetChatEdit(Obj("ASSISTANT_INPUT"),"",20,266,390,34);
+   SetButton(Obj("ASSISTANT_CONSENT"),assistant_consent_armed?"CONSENTIMENTO OPENAI: SIM":"CONSENTIMENTO OPENAI: NAO",20,307,220,28);
+   SetButton(Obj("ASSISTANT_SEND"),"ENVIAR",248,307,162,28);
+   SetLabel(Obj("INFO1"),"A pergunta e o contexto filtrado serao enviados a OpenAI.",20,361,8,C'205,215,230');
+   SetLabel(Obj("INFO2"),"O assistente nao executa ordens nem movimenta dinheiro.",20,381,8,C'205,215,230');
+   SetLabel(Obj("INFO3"),"REAL: BLOQUEADO",20,401,8,C'255,155,155');
+   SetLabel(Obj("INFO4"),"Resposta aparecera apos o envio.",20,421,8,C'205,215,230');
+   SetLabel(Obj("INFO5"),"Historico completo permanece no servidor.",20,441,8,C'145,160,180');
+   RefreshAssistantStatus();
+}
+void SendAssistantMessage(){
+   if(!assistant_consent_armed){
+      SetLabel(Obj("INFO1"),"Ative o consentimento explicito antes de enviar.",20,361,8,C'255,209,102');
+      return;
+   }
+   if(ObjectFind(0,Obj("ASSISTANT_INPUT"))<0) return;
+   string message=ObjectGetString(0,Obj("ASSISTANT_INPUT"),OBJPROP_TEXT);
+   StringTrimLeft(message);
+   StringTrimRight(message);
+   if(message=="" || StringLen(message)>1000){
+      SetLabel(Obj("INFO1"),"Informe uma pergunta de 1 a 1000 caracteres.",20,361,8,C'255,209,102');
+      return;
+   }
+   string conversation_json=assistant_conversation_id==""?"null":"\""+JsonEscape(assistant_conversation_id)+"\"";
+   string body="{\"message\":\""+JsonEscape(message)+"\",\"conversation_id\":"+conversation_json+",\"consent_to_openai\":true}";
+   assistant_consent_armed=false;
+   SetButton(Obj("ASSISTANT_CONSENT"),"CONSENTIMENTO OPENAI: NAO",20,307,220,28);
+   string response; int code=0;
+   if(!Http("POST","/api/assistant/local/chat",body,response,code)){
+      string failed_id=JsonValue(response,"conversation_id");
+      if(failed_id!=""){ assistant_conversation_id=failed_id; PersistAssistantConversation(); }
+      SetLabel(Obj("INFO1"),"Resposta indisponivel. Consulte o historico antes de reenviar.",20,361,8,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Status HTTP: "+IntegerToString(code)+" • detalhes protegidos.",20,381,8,C'205,215,230');
+      return;
+   }
+   assistant_conversation_id=JsonValue(response,"conversation_id");
+   PersistAssistantConversation();
+   string answer=JsonValue(response,"answer");
+   if(answer=="") answer="Resposta vazia ou formato inesperado.";
+   SetLabel(Obj("INFO1"),"Resposta: "+StringSubstr(answer,0,66),20,361,8,C'205,215,230');
+   SetLabel(Obj("INFO2"),StringSubstr(answer,66,66),20,381,8,C'205,215,230');
+   SetLabel(Obj("INFO3"),StringSubstr(answer,132,66),20,401,8,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Conversa persistida no servidor do Ecossistema.",20,421,8,C'88,214,141');
+   SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • sem execucao ou movimentacao.",20,441,8,C'255,155,155');
+   ObjectSetString(0,Obj("ASSISTANT_INPUT"),OBJPROP_TEXT,"");
+}
 void RenderView(){
+   ClearAssistantControls();
+   if(active_view=="RESERVA") { RenderFiscal(); return; }
+   if(active_view=="ASSISTENTE") { RenderAssistant(); return; }
    if(active_view=="COCKPIT"){
       SetLabel(Obj("SUB"),"COCKPIT • motor, decisao, risco, execucao",20,47,9,C'150,165,185');
       SetLabel(Obj("INFO1"),"Análise do ecossistema",20,361,9,C'205,215,230');
@@ -692,6 +832,7 @@ void RefreshHealth(){
    SetLabel(Obj("RUNTIME"),"Sistema: online",20,104,10,C'88,214,141');
    SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),20,124,10,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • autorizacao separada",20,441,9,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
+   if(active_view=="RESERVA" || active_view=="ASSISTENTE") return;
    SetLabel(Obj("INFO1"),"Analise do ecossistema: "+(engine==""?"online":engine),20,361,9,C'205,215,230');
 }
 void RefreshMarketAssets(){
@@ -908,6 +1049,7 @@ void CloseCycle(){
 int OnInit(){
    active_view="COCKPIT";
    LoadCycleIdentity();
+   LoadAssistantConversation();
    LoadPanelVisibility();
    if(panel_visible){
       Panel();
@@ -953,13 +1095,17 @@ void OnTimer(){
 void OnChartEvent(const int id,const long &lparam,const double &dparam,const string &sparam){
    if(id!=CHARTEVENT_OBJECT_CLICK) return;
    if(sparam==Obj("PANEL_TOGGLE") || sparam==Obj("PANEL_TOGGLE_BG")) { TogglePanel(); return; }
-   if(sparam==Obj("V1")) { active_view="COCKPIT"; RenderView(); }
-   else if(sparam==Obj("V2")) { active_view="ANALISE"; RenderView(); }
-   else if(sparam==Obj("V3")) { active_view="MEMORIA"; RenderView(); }
-   else if(sparam==Obj("V4")) { active_view="LAB"; RenderView(); }
-   else if(sparam==Obj("V5")) { active_view="ENSINO"; RenderView(); }
-   else if(sparam==Obj("V6")) { active_view="NOTIF"; RenderView(); }
-   else if(sparam==Obj("V7")) { active_view="CONFIG"; RenderView(); }
+   if(sparam==Obj("V1")) { active_view="COCKPIT"; Panel(); RenderView(); }
+   else if(sparam==Obj("V2")) { active_view="ANALISE"; Panel(); RenderView(); }
+   else if(sparam==Obj("V3")) { active_view="MEMORIA"; Panel(); RenderView(); }
+   else if(sparam==Obj("V4")) { active_view="LAB"; Panel(); RenderView(); }
+   else if(sparam==Obj("V5")) { active_view="ENSINO"; Panel(); RenderView(); }
+   else if(sparam==Obj("V6")) { active_view="NOTIF"; Panel(); RenderView(); }
+   else if(sparam==Obj("V7")) { active_view="CONFIG"; Panel(); RenderView(); }
+   else if(sparam==Obj("V8")) { active_view="RESERVA"; Panel(); RenderView(); }
+   else if(sparam==Obj("V9")) { active_view="ASSISTENTE"; Panel(); RenderView(); }
+   else if(sparam==Obj("ASSISTANT_CONSENT")) { assistant_consent_armed=!assistant_consent_armed; SetButton(Obj("ASSISTANT_CONSENT"),assistant_consent_armed?"CONSENTIMENTO OPENAI: SIM":"CONSENTIMENTO OPENAI: NAO",20,307,220,28); }
+   else if(sparam==Obj("ASSISTANT_SEND")) SendAssistantMessage();
    else if(sparam==Obj("ANALYZE")) {
       if(active_view=="ANALISE") Analyze();
       else if(active_view=="CONFIG") RefreshPreferences();
@@ -967,6 +1113,8 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
       else if(active_view=="LAB") { RefreshHealth(); RefreshSecondary(); }
       else if(active_view=="ENSINO") RefreshLearning();
       else if(active_view=="NOTIF") RefreshNotifications();
+      else if(active_view=="RESERVA") RefreshFiscal();
+      else if(active_view=="ASSISTENTE") RefreshAssistantStatus();
       else Analyze();
    }
    else if(sparam==Obj("CYCLE")) RunCycle();

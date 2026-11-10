@@ -459,7 +459,10 @@ class ICMarketsMT5DemoAdapter:
                     opened_volume = sum(float(getattr(deal, "volume", 0.0) or 0.0) for deal in opening)
                     closed_volume = sum(float(getattr(deal, "volume", 0.0) or 0.0) for deal in closing)
                     components = {
-                        key: sum(float(getattr(deal, key, 0.0) or 0.0) for deal in position_deals)
+                        key: round(
+                            sum(float(getattr(deal, key, 0.0) or 0.0) for deal in position_deals),
+                            8,
+                        )
                         for key in ("profit", "commission", "swap", "fee")
                     }
                 except (TypeError, ValueError, OverflowError):
@@ -921,12 +924,12 @@ class ICMarketsMT5DemoAdapter:
 
 class ICMarketsMT5RealAdapter(ICMarketsMT5DemoAdapter):
     requires_account_fingerprint = True
-    """IC Markets MT5 REAL boundary used only behind the REAL gateway.
+    """Reserved MT5 REAL boundary; execution is hard-blocked in this baseline.
 
-    The inherited MT5 mechanics are deliberately reused so DEMO and REAL do
-    not diverge in order construction, position identity, or reconciliation.
-    This adapter accepts only REAL requests and only a MT5 account explicitly
-    classified as REAL. It never handles broker credentials.
+    Account classification and inherited MT5 mechanics are not sufficient to
+    authorize REAL trading. A separate operational release and explicit owner
+    authorization are required before this adapter may ever call order_send.
+    This implementation deliberately refuses every request.
     """
 
     @staticmethod
@@ -935,20 +938,11 @@ class ICMarketsMT5RealAdapter(ICMarketsMT5DemoAdapter):
         return real_mode is not None and getattr(account, "trade_mode", None) == real_mode
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
-        if request.mode is not ExecutionMode.REAL:
-            return ExecutionResult(False, "IC Markets MT5 REAL adapter aceita somente REAL.")
-        # Reuse the proven MT5 execution mechanics while keeping the request
-        # boundary explicit. The inherited implementation performs the same
-        # account, symbol, volume, quote, order_check and order_send checks;
-        # the subclass account predicate above makes those checks REAL-only.
-        from dataclasses import replace
-        demo_shaped_request = replace(request, mode=ExecutionMode.DEMO)
-        result = super().execute(demo_shaped_request)
-        if result.accepted:
-            return ExecutionResult(
-                True,
-                "ordem REAL enviada e confirmada pelo MT5.",
-                result.external_id,
-                result.account_fingerprint,
-            )
-        return result
+        # REAL remains deliberately unavailable in this product baseline.
+        # Do not delegate to the inherited adapter: even a correctly identified
+        # REAL account must not reach order_check/order_send before the separate
+        # operational validation and explicit owner authorization are approved.
+        return ExecutionResult(
+            False,
+            "Execução REAL permanece desabilitada até validação operacional e autorização explícita.",
+        )

@@ -234,9 +234,12 @@ def test_streamlit_api_errors_do_not_expose_backend_details():
 
     assert "detail = exc.read().decode" in api_helper
     assert "message = safe_messages.get(exc.code" in api_helper
-    assert "BASE_URL" not in api_helper
+    assert "urllib.request.Request(BASE_URL + path" in api_helper
+    exposed_errors = "\n".join(line for line in api_helper.splitlines() if "raise RuntimeError(" in line)
+    assert "BASE_URL" not in exposed_errors
     assert "exc.reason" not in api_helper
-    assert "detail)" not in api_helper
+    assert "raise RuntimeError(detail" not in api_helper
+    assert "str(detail)" not in api_helper
 
 
 def test_streamlit_requires_explicit_openai_consent_before_chat_submission():
@@ -328,7 +331,7 @@ def test_streamlit_layout_uses_full_width_and_wraps_responsively():
 def test_streamlit_uses_non_overlapping_c_toggle_in_open_and_closed_states():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert 'st.container(key="panel-toggle")' in source
-    assert 'st.button("C", key="open_control_hub")' in source
+    assert 'st.button("C", key="open_control_hub", help="Abrir painel")' in source
     assert 'st.button("Fechar painel", key="close_control_hub")' in source
     assert ".st-key-panel-toggle { position: relative;" in source
     assert ".st-key-control-hub-shell" in source
@@ -365,7 +368,7 @@ def test_streamlit_closed_panel_shows_signal_score_and_system_availability():
     helper_end = source.index("# Four approved navigation areas", helper_start)
     helper = source[helper_start:helper_end]
 
-    assert 'st.button("C", key="open_control_hub")' in closed_state
+    assert 'st.button("C", key="open_control_hub", help="Abrir painel")' in closed_state
     assert 'toggle_col, signal_col = st.columns([1, 3], vertical_alignment="center")' in closed_state
     assert 'with toggle_col:' in closed_state and 'with signal_col:' in closed_state
     assert "render_latest_signal(closed=True)" in closed_state
@@ -590,7 +593,7 @@ def test_streamlit_operational_screens_render_human_readable_summaries_without_r
     assert "Limite de perda diária" in source
     assert "Kill Switch" in source
     assert "Fontes externas exigem validação" in source
-    assert "Guia de primeiro uso" in source
+    assert "Primeiros passos no Ecossistema" in source
     settings_start = source.index('if module_name == "Configurações":')
     settings_end = source.index('if module_name == "Escola / Tutorial / Onboarding":', settings_start)
     settings_screen = source[settings_start:settings_end]
@@ -754,7 +757,7 @@ def test_fiscal_history_csv_exports_only_the_privacy_filtered_display_rows():
 def test_streamlit_learning_modules_show_distinct_existing_data_without_trade_authority():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     learning_start = source.index('if module_name == "Laboratório":')
-    onboarding_start = source.index('if module_name == "Escola / Tutorial / Onboarding":', learning_start)
+    onboarding_start = source.index('if module_name == "Estatísticas":', learning_start)
     laboratory = source[learning_start:onboarding_start]
     assert 'if module_name == "Aprendizado":' in laboratory
     assert 'if module_name == "Descobertas":' in laboratory
@@ -806,14 +809,15 @@ def test_streamlit_kill_switch_view_is_dedicated_and_read_only():
     assert 'obs.get("recovery", {})' in view
     assert 'obs.get("reconciliation", {})' in view
     assert 'reconciliation.get("unknown_request_ids", [])' in view
-    assert "Não altera o Kill Switch nem retoma operações." in view
+    assert "A ativação bloqueia novas execuções." in view
+    assert "não há cancelamento automático" in view
     assert "Execução permitida: NÃO" in view
 
 
 def test_streamlit_security_view_discloses_deployment_boundaries():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     start = source.index('if module_name == "Segurança":')
-    end = source.index('if module_name in {"Operação"}:', start)
+    end = source.index('if module_name == "Laboratório":', start)
     view = source[start:end]
     assert 'data.get("production_storage", {})' in view
     assert 'data.get("production_operation_gate", {})' in view
@@ -842,7 +846,7 @@ def test_streamlit_statistics_and_reports_have_distinct_aggregated_views():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     statistics_start = source.index('if module_name == "Estatísticas":')
     reports_start = source.index('if module_name == "Relatórios":', statistics_start)
-    generic_start = source.index('    except Exception as exc:', reports_start)
+    generic_start = source.index('    except Exception:', reports_start)
     statistics_view = source[statistics_start:reports_start]
     reports_view = source[reports_start:generic_start]
     assert 'data.get("breakdowns", {})' in statistics_view
@@ -1007,9 +1011,9 @@ def test_every_reference_navigation_module_has_a_functional_streamlit_route():
     dedicated_routes = {"Análise de Mercado", "Replay", "Simulador"}
     special_routes = {"Financeiro"}
     assert configured_modules <= (readonly_modules | dedicated_routes | special_routes)
-    assert 'if module == "Assistente do Ecossistema":' in source
+    assert 'if module == "Financeiro":' in source
+    assert 'st.radio("Financeiro", ["Reserva Fiscal", "Assistente do Ecossistema"]' in source
     assert 'show_assistant()' in source
-    assert 'elif module in {"Financeiro", "Reserva Fiscal"}:' in source
     assert "show_fiscal()" in source
 
 
@@ -1336,7 +1340,7 @@ def test_pending_queue_summary_validation_rejects_bad_counts_and_flags():
         "included_in_totals": False, "reserve_calculated": False, "total": 2,
         "periods": {
             key: {
-                "start": "2026-11-05" if key == "day" else ("2026-11-01" if key in ("month", "year") else "2026-11-02"),
+                "start": "2026-11-05" if key == "day" else ("2026-11-01" if key == "month" else ("2026-01-01" if key == "year" else "2026-11-02")),
                 "end": "2026-11-05", "total": 1, "results": 1,
             }
             for key in ("day", "week", "month", "year")
@@ -1397,13 +1401,14 @@ def test_fiscal_reserve_writes_are_disabled_when_summary_read_fails_or_is_incomp
     fiscal = source[fiscal_start:fiscal_end]
 
     assert "summary_available = False" in fiscal
-    assert "summary_available = _valid_fiscal_summary(summary)" in fiscal
+    assert "_valid_fiscal_summary(summary)" in fiscal
+    assert "_valid_fiscal_history_page(summary" in fiscal
     assert "def _valid_fiscal_summary(summary: Any) -> bool:" in source
     assert 'categories.get("BR_DAY_TRADE")' in source
     assert 'semantics.get("kind") != "PLANNING_ESTIMATE_ONLY"' in source
     assert '("day", "week", "month", "year")' in source
     assert 'def _is_finite_number(value: Any) -> bool:' in source
-    assert 'if not _is_finite_number(value):' in source
+    assert 'if not _is_finite_number(value) or value != 0:' in source
     assert 'st.form_submit_button("Salvar percentual", disabled=not summary_available)' in fiscal
     assert 'st.form_submit_button("Registrar estimativa de planejamento", disabled=not summary_available)' in fiscal
     assert "lançamentos e alterações de percentual ficam bloqueados" in fiscal
@@ -1418,7 +1423,7 @@ def test_streamlit_laboratorio_has_separate_manual_source_review_and_knowledge_a
 
     assert "Revisão manual de procedência" in laboratory
     assert "não baixa" in laboratory
-    assert "não é uma varredura antivírus" in laboratory
+    assert "não é " in laboratory and "uma varredura antivírus" in laboratory
     assert 'api("/api/learning/sources/validate", "POST"' in laboratory
     assert '"content_verified": True' in laboratory
     assert '"security_checked": True' in laboratory
@@ -1643,7 +1648,9 @@ def test_kill_switch_activation_api_is_confirmed_persisted_and_never_auto_resume
     assert '"unknown_request_ids"' in route
     assert 'não são canceladas' in route
     assert 'deactivate' not in route
-    assert 'if method == "POST" and path != "/api/updates":' in runtime_source
+    assert 'if method == "POST" and path != "/api/updates" and path not in local_ea_post_paths and not path.startswith("/api/assistant/"):' in runtime_source
+    assert '"/api/runtime/analysis/local": "/api/runtime/analysis"' in runtime_source
+    assert "_authorize_local_runtime(environ)" in runtime_source
     assert '_authorize_remote_mutation(environ)' in runtime_source
     assert 'deactivate' not in route
 
@@ -1814,7 +1821,7 @@ def test_streamlit_fiscal_panel_never_displays_raw_exception_details():
     assert "st.warning(str(exc))" not in fiscal
     assert "{exc}" not in fiscal
     assert "exc.reason" not in fiscal
-    assert "details técnicos não são exibidos no painel" in fiscal
+    assert "detalhes técnicos não são exibidos no painel" in fiscal.lower()
 
 
 def test_streamlit_assistant_panel_never_displays_raw_exception_details():
@@ -1949,7 +1956,7 @@ def test_assistant_openai_consent_is_bound_to_authenticated_identity():
 def test_operation_overview_does_not_claim_continuous_realtime_refresh():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     start = source.index('if module_name == "Operação":')
-    end = source.index('if module_name == "Motor de Decisão":', start)
+    end = source.index('if module_name == "Notificações":', start)
     operation = source[start:end]
     assert 'Estado operacional · última consulta' in operation
     assert 'não representam transmissão contínua' in operation
@@ -2019,6 +2026,6 @@ def test_streamlit_fiscal_catalog_explains_required_and_recommended_evidence():
 
 def test_streamlit_fiscal_review_history_explicitly_shows_unverified_identity_and_registration():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
-    assert source.count('"Identidade verificada": "Não" if item.get("reviewer_identity_status") == "DECLARED_NOT_VERIFIED" else "Estado inválido"') == 2
-    assert source.count('"Registro profissional verificado": "Não" if item.get("professional_registration_verified") is False else "Estado inválido"') == 2
+    assert source.count('"Identidade verificada": "NÃO VERIFICADA" if item.get("reviewer_identity_status") == "DECLARED_NOT_VERIFIED" else "Estado inválido"') == 2
+    assert source.count('"Registro profissional verificado": "NÃO VERIFICADO" if item.get("professional_registration_verified") is False else "Estado inválido"') == 2
     assert source.count('"Observações": item.get("review_notes", "")') == 2

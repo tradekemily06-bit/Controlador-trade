@@ -20,7 +20,7 @@ def test_security_audit_rejects_non_absolute_path_values():
 
 
 def test_security_audit_record_keeps_only_bounded_safe_event_fields():
-    audit = SecurityAudit(max_events=2)
+    audit = SecurityAudit(max_events=2, database_path="")
     audit.record(
         request_id="request-1",
         method="POST",

@@ -320,7 +320,12 @@ def test_fiscal_confirmation_rereads_complete_position_for_requested_final_ticke
         DEAL_ENTRY_INOUT = 3
 
         def account_info(self):
-            return SimpleNamespace(trade_mode=self.ACCOUNT_TRADE_MODE_DEMO, currency="BRL")
+            return SimpleNamespace(
+                trade_mode=self.ACCOUNT_TRADE_MODE_DEMO,
+                currency="BRL",
+                login=12345678,
+                server="ICMarketsSC-Demo",
+            )
 
         def history_deals_get(self, *args, **kwargs):
             timestamp = int(datetime(2026, 10, 30, 12, tzinfo=timezone.utc).timestamp())
@@ -352,7 +357,12 @@ def test_fiscal_confirmation_rejects_unknown_or_non_final_ticket():
         DEAL_ENTRY_OUT_BY = 2
 
         def account_info(self):
-            return SimpleNamespace(trade_mode=self.ACCOUNT_TRADE_MODE_DEMO, currency="BRL")
+            return SimpleNamespace(
+                trade_mode=self.ACCOUNT_TRADE_MODE_DEMO,
+                currency="BRL",
+                login=12345678,
+                server="ICMarketsSC-Demo",
+            )
 
         def history_deals_get(self, *args, **kwargs):
             timestamp = int(datetime(2026, 10, 30, 12, tzinfo=timezone.utc).timestamp())

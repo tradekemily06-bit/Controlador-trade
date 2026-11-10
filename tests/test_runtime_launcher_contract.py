@@ -348,8 +348,9 @@ def test_streamlit_restart_budget_pauses_and_resumes_without_ending_supervisor()
     assert "$retryAt = $restartTimes[0].AddHours(1)" in text
     assert "while ((Get-Date) -lt $retryAt)" in text
     assert "Start-Sleep -Seconds ([Math]::Min(60, $remainingSeconds))" in text
-    assert "continue" in text.split("if ($restartTimes.Count -ge $MaxRestartsPerHour)", 1)[1].split("Write-PanelStatus 'STARTING'", 1)[0]
-    assert "break" not in text.split("if ($restartTimes.Count -ge $MaxRestartsPerHour)", 1)[1].split("Write-PanelStatus 'STARTING'", 1)[0]
+    cooldown = text.split("if ($restartTimes.Count -ge $MaxRestartsPerHour)", 1)[1].split("Write-PanelStatus 'STARTING'", 1)[0]
+    assert "if ($remainingSeconds -le 0) { break }" in cooldown
+    assert "continue" in cooldown
     assert "while ($true)" in text
 
 

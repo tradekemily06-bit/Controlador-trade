@@ -352,7 +352,7 @@ def application(environ, start_response):
                 request_id,
                 environ,
             )
-    if method == "POST" and path != "/api/updates" and path not in local_ea_post_paths:
+    if method == "POST" and path != "/api/updates" and path not in local_ea_post_paths and not path.startswith("/api/assistant/"):
         raw_length = environ.get("CONTENT_LENGTH")
         try:
             declared_length = int(raw_length) if raw_length not in (None, "") else 0
@@ -464,6 +464,58 @@ def application(environ, start_response):
                 request_id,
                 environ,
             )
+        if path in {"/api/assistant/local/status", "/api/assistant/local/chat"}:
+            authorized, reason = _authorize_local_runtime(environ)
+            if not authorized:
+                return _json_response(
+                    start_response, _remote_identity_http_status(reason),
+                    {"error": "Acesso local do terminal não autorizado."}, request_id, environ
+                )
+            try:
+                local_owner_id = configured_fiscal_owner_id()
+            except FiscalOwnerIdentityError:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "Identidade proprietária indisponível para o Assistente do Ecossistema."},
+                    request_id, environ
+                )
+            if path == "/api/assistant/local/status" and method == "GET":
+                return _json_response(
+                    start_response, HTTPStatus.OK, ASSISTANT.readiness(), request_id, environ
+                )
+            if path == "/api/assistant/local/chat" and method == "POST":
+                chat_data = _read_json(environ)
+                if chat_data.get("consent_to_openai") is not True:
+                    return _json_response(
+                        start_response, HTTPStatus.BAD_REQUEST,
+                        {"error": "Consentimento explícito para envio do contexto à OpenAI é obrigatório."},
+                        request_id, environ
+                    )
+                try:
+                    migrate_fiscal_schema(str(FISCAL_RESERVE_DB))
+                except (FiscalOwnerIdentityError, RuntimeError):
+                    return _json_response(
+                        start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                        {"error": "Reserva Fiscal indisponível até validar a identidade proprietária e a migração."},
+                        request_id, environ
+                    )
+                try:
+                    result = ASSISTANT.ask(
+                        local_owner_id, chat_data.get("message"), local_owner_id,
+                        chat_data.get("conversation_id")
+                    )
+                except AssistantUnavailableError as exc:
+                    return _json_response(
+                        start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                        {"error": "Assistente temporariamente indisponível; consulte o histórico antes de reenviar.",
+                         "conversation_id": exc.conversation_id},
+                        request_id, environ
+                    )
+                return _json_response(start_response, HTTPStatus.OK, result, request_id, environ)
+            return _json_response(
+                start_response, HTTPStatus.METHOD_NOT_ALLOWED,
+                {"error": "Método não permitido."}, request_id, environ
+            )
         if path.startswith("/api/assistant/"):
             authorized, auth_reason = _authorize_remote_mutation(environ)
             if not authorized:
@@ -540,6 +592,60 @@ def application(environ, start_response):
                 return _json_response(start_response, HTTPStatus.OK, {"messages": messages}, request_id, environ)
             if path == "/api/assistant/chat" and method == "POST":
                 return _json_response(start_response, HTTPStatus.OK, ASSISTANT.ask(identity, assistant_chat_data.get("message"), fiscal_owner_id, assistant_chat_data.get("conversation_id")), request_id, environ)
+        if path == "/api/fiscal-reserve/local" and method == "GET":
+            authorized, reason = _authorize_local_runtime(environ)
+            if not authorized:
+                return _json_response(
+                    start_response, _remote_identity_http_status(reason),
+                    {"error": "Acesso local do terminal não autorizado."}, request_id, environ
+                )
+            try:
+                local_fiscal_owner_id = migrate_fiscal_schema(str(FISCAL_RESERVE_DB))
+            except (FiscalOwnerIdentityError, RuntimeError):
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "Reserva Fiscal indisponível até validar a identidade proprietária e a migração."},
+                    request_id, environ
+                )
+            query = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
+            try:
+                history_limit = int(query.get("limit", ["20"])[-1] or "20")
+                history_offset = int(query.get("offset", ["0"])[-1] or "0")
+            except (TypeError, ValueError) as exc:
+                raise ValueError("limit e offset devem ser inteiros") from exc
+            if not 1 <= history_limit <= 100 or not 0 <= history_offset <= MAX_FISCAL_HISTORY_OFFSET:
+                raise ValueError("paginação fiscal local inválida")
+            fiscal_summary = FISCAL_RESERVE.summary(
+                local_fiscal_owner_id, history_limit=history_limit, history_offset=history_offset
+            )
+            fiscal_summary["classification_catalog"] = fiscal_classification_catalog()
+            try:
+                fiscal_summary["foreign_pending"] = FISCAL_PENDING_QUEUE.summary(local_fiscal_owner_id)
+            except (sqlite3.Error, RuntimeError, ValueError):
+                fiscal_summary["foreign_pending"] = {
+                    "available": False, "classification_status": "PENDING_CLASSIFICATION",
+                    "included_in_totals": False, "reserve_calculated": False,
+                }
+            try:
+                fiscal_summary["domestic_pending"] = FISCAL_DOMESTIC_PENDING_QUEUE.summary(local_fiscal_owner_id)
+            except (sqlite3.Error, RuntimeError, ValueError):
+                fiscal_summary["domestic_pending"] = {
+                    "available": False, "classification_status": "PENDING_CLASSIFICATION",
+                    "included_in_totals": False, "reserve_calculated": False,
+                }
+            foreign = fiscal_summary.get("categories", {}).get("FOREIGN_FINANCIAL_ASSET")
+            if isinstance(foreign, dict):
+                foreign.pop("rate", None)
+                foreign["realized_result_brl"] = 0.0
+                foreign["reserve_amount_brl"] = 0.0
+                foreign["classification_status"] = "PENDING_CLASSIFICATION"
+                foreign["rate_available"] = False
+            for entry in fiscal_summary.get("history", []):
+                if isinstance(entry, dict) and entry.get("category") == "FOREIGN_FINANCIAL_ASSET":
+                    entry.pop("reserve_rate", None)
+                    entry.pop("reserve_amount_brl", None)
+                    entry["classification_status"] = "PENDING_CLASSIFICATION"
+            return _json_response(start_response, HTTPStatus.OK, fiscal_summary, request_id, environ)
         if path.startswith("/api/fiscal-reserve"):
             authorized, reason = _authorize_remote_mutation(environ)
             if not authorized:
@@ -579,8 +685,13 @@ def application(environ, start_response):
             if not pending_id or "/" in pending_id:
                 raise ValueError("pending_id inválido")
             if method == "GET":
+                try:
+                    reviews = FISCAL_DOMESTIC_PENDING_QUEUE.list_reviews(fiscal_owner_id, pending_id)
+                except ValueError:
+                    # Missing and foreign-owned identifiers have the same public read result.
+                    reviews = []
                 return _json_response(start_response, HTTPStatus.OK,
-                                      {"reviews": FISCAL_DOMESTIC_PENDING_QUEUE.list_reviews(fiscal_owner_id, pending_id),
+                                      {"reviews": reviews,
                                        "status_unchanged": "PENDING_CLASSIFICATION",
                                        "reserve_calculated": False},
                                       request_id, environ)
@@ -627,8 +738,13 @@ def application(environ, start_response):
             if not pending_id or "/" in pending_id:
                 raise ValueError("pending_id inválido")
             if method == "GET":
+                try:
+                    reviews = FISCAL_PENDING_QUEUE.list_reviews(fiscal_owner_id, pending_id)
+                except ValueError:
+                    # Missing and foreign-owned identifiers have the same public read result.
+                    reviews = []
                 return _json_response(start_response, HTTPStatus.OK,
-                                      {"reviews": FISCAL_PENDING_QUEUE.list_reviews(fiscal_owner_id, pending_id),
+                                      {"reviews": reviews,
                                        "status_unchanged": "PENDING_CLASSIFICATION",
                                        "reserve_calculated": False},
                                       request_id, environ)
@@ -1271,6 +1387,9 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {"runtime_reconciliation": payload}, request_id, environ)
         if path == "/api/runtime/cycle" and method == "POST":
             data = _read_json(environ)
+            for flag in ("confirmed", "filters_ok"):
+                if flag in data and not isinstance(data[flag], bool):
+                    raise ValueError(f"{flag} deve ser booleano JSON")
             # Validate raw JSON types before coercion: bool is an int in Python,
             # and float(True)/int(True) would otherwise silently become sizing data.
             symbol = data.get("symbol", "")

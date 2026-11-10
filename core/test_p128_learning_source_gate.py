@@ -1,4 +1,4 @@
-from core.p128_learning_source_gate import LearningSourceGate, LearningSourceStatus, LearningSourceType
+from core.p128_learning_source_gate import LearningSource, LearningSourceGate, LearningSourceStatus, LearningSourceType
 
 
 def test_external_source_starts_quarantined_and_never_operation_eligible():
@@ -57,10 +57,13 @@ def test_knowledge_admission_rejects_missing_manual_review_evidence():
     import pytest
 
     gate = LearningSourceGate()
-    source = gate.intake(
+    source = LearningSource(
         source_id="unreviewed-knowledge",
         source_type=LearningSourceType.LINK,
         uri="https://example.com/unreviewed",
+        status=LearningSourceStatus.VALIDATED,
+        content_verified=False,
+        security_checked=False,
     )
-    with pytest.raises(ValueError, match="review evidence"):
+    with pytest.raises(ValueError, match="source review evidence"):
         gate.admit_knowledge(source, knowledge_validated=True)

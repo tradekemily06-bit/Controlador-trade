@@ -103,7 +103,7 @@ def test_corrupt_notification_history_is_not_overwritten_by_routine_save(tmp_pat
         )
 
     assert db.load_notifications() == []
-    with pytest.raises(RuntimeError, match="explicit recovery"):
+    with pytest.raises(RuntimeError, match="recuperação explícita"):
         db.save_notifications([{"notification_id": "new-event"}])
 
     with db._connect() as connection:
@@ -160,8 +160,17 @@ def test_notification_history_uses_only_dedicated_writer(tmp_path):
     with pytest.raises(ValueError, match="save_notifications"):
         store.save("notifications", [{"notification_id": "n1"}])
 
-    store.save_notifications([{"notification_id": "n1"}])
-    assert store.load_notifications() == [{"notification_id": "n1"}]
+    valid_notification = {
+        "notification_id": "n1",
+        "kind": "SECURITY",
+        "severity": "INFO",
+        "title": "Teste",
+        "message": "Notificação válida.",
+        "requires_attention": False,
+        "blocking": False,
+    }
+    store.save_notifications([valid_notification])
+    assert store.load_notifications() == [valid_notification]
 
 
 def test_notification_quarantine_requires_explicit_confirmation(tmp_path):

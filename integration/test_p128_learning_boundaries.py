@@ -59,8 +59,24 @@ def test_source_validation_and_knowledge_admission_still_never_make_operation_el
 
 
 def test_professor_activity_requires_validated_knowledge_and_is_not_trade_authority():
+    from core.p128_learning_source_gate import (
+        LearningSource,
+        LearningSourceStatus,
+        LearningSourceType,
+    )
+
     service = EcosystemService()
-    with pytest.raises(ValueError, match="validated knowledge"):
+    service.learning_sources["k-2"] = LearningSource(
+        source_id="k-2",
+        source_type=LearningSourceType.LINK,
+        uri="https://example.com/validated",
+        status=LearningSourceStatus.VALIDATED,
+        content_verified=True,
+        security_checked=True,
+        knowledge_validated=True,
+        operation_eligible=False,
+    )
+    with pytest.raises(ValueError, match="server-reviewed and server-admitted knowledge"):
         service.generate_professor_activity({
             "activity_id": "quiz-1",
             "knowledge_id": "k-1",

@@ -16,6 +16,11 @@ class AppSecurityTests(unittest.TestCase):
         from finance.fiscal_reserve import FiscalReserve
         from finance.fiscal_pending_queue import FiscalPendingQueue
         self.app_module = app
+        from security_guard import RATE_LIMIT_REQUESTS
+        # Each test starts with a clean in-memory rate-limit window and default
+        # limit; the dedicated rate-limit test exercises its own reduced limit.
+        app.SECURITY.limit = RATE_LIMIT_REQUESTS
+        app.SECURITY._buckets.clear()
         self.temp_dir = tempfile.TemporaryDirectory()
         self.old_fiscal_db = app.FISCAL_RESERVE_DB
         self.old_reserve = app.FISCAL_RESERVE
@@ -292,8 +297,8 @@ class AppSecurityTests(unittest.TestCase):
                 ("/api/assistant/conversations", "DELETE", None),
             ]
             expected = [
-                "403 Forbidden", "403 Forbidden", "403 Forbidden", "403 Forbidden", "401 Unauthorized",
-                "401 Unauthorized", "401 Unauthorized", "401 Unauthorized",
+                "401 Unauthorized", "401 Unauthorized", "401 Unauthorized", "401 Unauthorized",
+                "401 Unauthorized", "401 Unauthorized", "401 Unauthorized", "401 Unauthorized",
                 "401 Unauthorized",
             ]
             for (path, method, payload), expected_status in zip(routes, expected):

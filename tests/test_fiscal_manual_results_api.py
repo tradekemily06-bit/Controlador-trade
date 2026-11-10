@@ -61,8 +61,15 @@ def valid_payload():
 def test_manual_day_trade_entry_requires_explicit_user_declaration_and_is_only_a_planning_estimate(tmp_path, monkeypatch):
     database, reserve = _configure(tmp_path, monkeypatch)
 
+    oversized = valid_payload()
+    oversized["notes"] = "E" * 600
+    oversized_status, _oversized_body = _request(oversized)
+    assert oversized_status.startswith("400")
+    owner_id = migrate_fiscal_schema(str(database))
+    assert reserve.summary(owner_id)["total_reserved_brl"] == 0.0
+
     payload = valid_payload()
-    payload["notes"] = "E" * 600
+    payload["notes"] = "E" * 160
     status, body = _request(payload)
 
     assert status.startswith("200")

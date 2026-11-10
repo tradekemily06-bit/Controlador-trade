@@ -451,48 +451,42 @@ def test_application_migrates_owner_schema_before_fiscal_repositories_are_create
 
     app_path = Path(__file__).resolve().parents[1] / "app.py"
     tree = ast.parse(app_path.read_text(encoding="utf-8"))
-    migration_index = None
-    process_lock_acquire_index = None
-    runtime_construction_index = None
-    repository_indexes = []
+    migration_lines = []
+    process_lock_acquire_lines = []
+    runtime_construction_lines = []
+    repository_lines = []
 
-    for index, statement in enumerate(tree.body):
-        value = None
-        if isinstance(statement, ast.Assign):
-            value = statement.value
-        elif isinstance(statement, ast.Expr):
-            value = statement.value
-        if not isinstance(value, ast.Call):
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
             continue
-        if isinstance(value.func, ast.Name):
-            if value.func.id == "migrate_fiscal_schema":
-                migration_index = index
-            elif value.func.id in {"FiscalReserve", "FiscalPendingQueue", "FiscalDomesticPendingQueue"}:
-                repository_indexes.append(index)
-            elif value.func.id == "build_demo_execution_port":
-                runtime_construction_index = index
+        if isinstance(node.func, ast.Name):
+            if node.func.id == "migrate_fiscal_schema":
+                migration_lines.append(node.lineno)
+            elif node.func.id in {"FiscalReserve", "FiscalPendingQueue", "FiscalDomesticPendingQueue"}:
+                repository_lines.append(node.lineno)
+            elif node.func.id == "build_demo_execution_port":
+                runtime_construction_lines.append(node.lineno)
         elif (
-            isinstance(value.func, ast.Attribute)
-            and value.func.attr == "acquire"
-            and isinstance(value.func.value, ast.Name)
-            and value.func.value.id == "_RUNTIME_PROCESS_LOCK"
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "acquire"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "_RUNTIME_PROCESS_LOCK"
         ):
-            process_lock_acquire_index = index
+            process_lock_acquire_lines.append(node.lineno)
 
-    assert process_lock_acquire_index is not None, "app.py must acquire the process lock during startup"
-    assert runtime_construction_index is not None, "app.py must construct the operational runtime"
-    assert migration_index is not None, "app.py must apply the owner-scoped fiscal migration"
-    assert process_lock_acquire_index < runtime_construction_index, (
+    assert process_lock_acquire_lines, "app.py must acquire the process lock during startup"
+    assert runtime_construction_lines, "app.py must construct the operational runtime"
+    assert migration_lines, "app.py must apply the owner-scoped fiscal migration"
+    assert min(process_lock_acquire_lines) < min(runtime_construction_lines), (
         "process exclusivity must be acquired before operational runtime construction"
     )
-    assert process_lock_acquire_index < migration_index, (
+    assert min(process_lock_acquire_lines) < min(migration_lines), (
         "process exclusivity must be acquired before fiscal schema migration"
     )
-    assert repository_indexes, "app.py must initialize fiscal repositories"
-    assert all(migration_index < index for index in repository_indexes), (
-        "owner-scoped migration must run before any fiscal repository initialization"
+    assert repository_lines, "app.py must initialize fiscal repositories"
+    assert min(migration_lines) < min(repository_lines), (
+        "owner-scoped migration must run before fiscal repository initialization"
     )
-
 
 
 def test_schema_validator_rejects_partial_unique_index_as_full_owner_constraint():

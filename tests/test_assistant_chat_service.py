@@ -10,8 +10,9 @@ class FakeStore:
         self._history = list(history or [])
 
     def append(self, identity, conversation_id, role, content):
+        conversation_id = conversation_id or "conversation-test"
         self.messages.append((identity, conversation_id, role, content))
-        return conversation_id or "conversation-test"
+        return conversation_id
 
     def history(self, identity, conversation_id, limit):
         return self._history[-limit:] + [
@@ -188,7 +189,7 @@ def test_ask_provider_error_is_sanitized_and_user_message_remains_in_history(mon
         raise AssertionError("provider errors must be returned as a sanitized failure")
 
     assert store.messages == [
-        ("single:owner", None, "user", "Minha pergunta")
+        ("single:owner", "conversation-test", "user", "Minha pergunta")
     ]
 
 

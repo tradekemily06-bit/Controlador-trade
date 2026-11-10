@@ -8,6 +8,8 @@ from data.models import Candle
 
 
 def call_app(path, method="GET", payload=None):
+    import app as app_module
+    app_module.SECURITY._buckets.clear()
     body = json.dumps(payload).encode() if payload is not None else b""
     captured = {}
 
@@ -205,7 +207,8 @@ def test_runtime_close_reconciliation_rejects_coerced_identity_types():
         {"cycle_id": None, "external_id": "ticket-1"},
     )
     assert status.startswith("400")
-    assert "cycle_id" in data["error"]
+    assert data["error"] == "Entrada inválida"
+    assert "cycle_id" not in data["error"]
 
 def test_runtime_reconcile_forwards_cycle_lineage(monkeypatch):
     import app
@@ -395,10 +398,10 @@ def test_mt5_position_recovery_api_is_authenticated_and_read_only(monkeypatch):
         "broker_query_performed": False,
         "order_sent": False,
     }]
-    monkeypatch.setattr(app, "_authorize_remote_mutation", lambda environ: (True, "trusted"))
+    monkeypatch.setattr(app, "_authorize_local_runtime", lambda environ: (True, "trusted"))
     monkeypatch.setattr(app.SERVICE, "list_mt5_position_recovery", lambda: expected)
 
-    status, data = call_app("/api/runtime/positions/recovery")
+    status, data = call_app("/api/runtime/positions/recovery/local")
 
     assert status.startswith("200")
     assert data["positions"] == expected

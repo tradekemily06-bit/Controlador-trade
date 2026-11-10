@@ -120,7 +120,7 @@ def test_chat_api_rejects_missing_trusted_identity_before_assistant_call(tmp_pat
     )
 
     assert status.startswith("401")
-    assert payload["error"] == "trusted identity is required"
+    assert payload["error"] == "Identidade autenticada necessária."
 
 
 def test_all_assistant_routes_reject_malformed_identity_before_store_access(tmp_path, monkeypatch):
@@ -249,7 +249,7 @@ def test_every_assistant_endpoint_requires_trusted_identity_before_access(tmp_pa
             identity="",
         )
         assert status.startswith("401")
-        assert response["error"] == "trusted identity is required"
+        assert response["error"] == "Identidade autenticada necessária."
 
 def test_assistant_history_routes_do_not_migrate_or_access_fiscal_schema(tmp_path, monkeypatch):
     calls = []
@@ -477,4 +477,4 @@ def test_assistant_connection_test_rejects_missing_identity_before_provider(monk
     )
 
     assert status.startswith("401")
-    assert payload["error"] == "trusted identity is required"
+    assert payload["error"] == "Identidade autenticada necessária."

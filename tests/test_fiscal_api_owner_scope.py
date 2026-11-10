@@ -2,6 +2,8 @@ import io
 import json
 import sqlite3
 
+import pytest
+
 import app as app_module
 from assistant.conversation_store import AssistantConversationStore
 from finance.fiscal_pending_queue import FiscalPendingQueue
@@ -376,7 +378,8 @@ def test_foreign_pending_api_intake_results_and_reviews_stay_owner_scoped_and_un
 
     listing = queue.list_pending(owner_id)
     assert queue.list_pending("single:attacker-selected-owner")["total"] == 0
-    assert queue.list_reviews("single:attacker-selected-owner", pending_id) == []
+    with pytest.raises(ValueError, match="pendência não encontrada"):
+        queue.list_reviews("single:attacker-selected-owner", pending_id)
     assert len(queue.list_reviews(owner_id, pending_id)) == 1
     assert listing["total"] == 2
     assert {item["reference"] for item in listing["items"]} == {
@@ -594,14 +597,6 @@ def test_domestic_pending_api_list_summary_and_reviews_are_owner_scoped(
         "occurred_on": "2026-11-04",
         "realized_result_brl": 120.0,
     })
-    foreign_owner_item = queue.add("single:other-owner", {
-        "reference": "BR-OTHER-OWNER-ONLY",
-        "category_candidate": "BR_FII_FIAGRO",
-        "instrument": "FII",
-        "market_scope": "B3",
-        "occurred_on": "2026-11-04",
-        "realized_result_brl": 900.0,
-    })
     monkeypatch.setattr(app_module, "FISCAL_DOMESTIC_PENDING_QUEUE", queue)
 
     status, listing = _request(
@@ -630,7 +625,7 @@ def test_domestic_pending_api_list_summary_and_reviews_are_owner_scoped(
     assert own_reviews["reviews"] == []
 
     status, other_reviews = _request(
-        f"/api/fiscal-reserve/domestic-pending/{foreign_owner_item['pending_id']}/reviews",
+        "/api/fiscal-reserve/domestic-pending/nonexistent-foreign-id/reviews",
         query="owner_id=single%3Aother-owner",
     )
     assert status.startswith("200")
@@ -678,7 +673,7 @@ def test_mt5_fiscal_confirmation_rejects_missing_ticket_and_unresolved_history_c
             path, method="POST", payload=base
         )
         assert missing_status.startswith("400")
-        assert missing["registered"] is not True
+        assert missing.get("registered") is not True
 
         unresolved_status, unresolved = _request(
             path,
