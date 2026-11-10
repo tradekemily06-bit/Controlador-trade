@@ -93,7 +93,7 @@ def test_streamlit_financeiro_has_its_own_main_area(monkeypatch):
 def test_kill_switch_panel_requires_reason_and_explicit_confirmation(monkeypatch):
     app = _open_panel(monkeypatch)
     area = next(item for item in app.radio if item.label == "Áreas principais")
-    area.set_value("CENTRAL").run(timeout=30)
+    area.set_value("COCKPIT").run(timeout=30)
     module = next(item for item in app.radio if item.label == "Módulos")
     assert "Kill Switch" in list(module.options)
     module.set_value("Kill Switch").run(timeout=30)
