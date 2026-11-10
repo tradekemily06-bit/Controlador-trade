@@ -184,7 +184,7 @@ def test_local_ea_post_routes_reach_their_own_loopback_authorization_before_remo
     assert '"/api/runtime/close/local/reconcile"' in gate
     assert '"/api/runtime/close/local"' in gate
     assert 'path not in local_ea_post_paths' in gate
-    assert 'if method == "POST" and path != "/api/updates" and path not in local_ea_post_paths:' in gate
+    assert 'if method == "POST" and path != "/api/updates" and path not in local_ea_post_paths and not path.startswith("/api/assistant/"):' in gate
 
     for route_path in (
         "/api/runtime/close/local/reconcile",
