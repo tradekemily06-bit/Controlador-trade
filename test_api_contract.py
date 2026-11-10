@@ -486,8 +486,8 @@ def test_runtime_cycle_exposes_quality_and_gates_display_signal(monkeypatch):
         payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
     )
 
-    assert call_args["confirmed"] is False
-    assert call_args["filters_ok"] is True
+    assert "confirmed" not in call_args
+    assert "filters_ok" not in call_args
     runtime = payload["runtime"]
     assert status == "200 OK"
     assert runtime["signal"] == "AGUARDAR"
