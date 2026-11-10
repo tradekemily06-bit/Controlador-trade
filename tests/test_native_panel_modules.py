@@ -10,10 +10,11 @@ def test_native_mt5_panel_exposes_reserva_fiscal_and_assistant_navigation():
     panel = source.split("void Panel()", 1)[1].split("void DeletePanel", 1)[0]
     events = source.split("void OnChartEvent", 1)[1]
 
-    assert 'SetButton(Obj("V8"),"RF"' in panel
-    assert 'SetButton(Obj("V9"),"AE"' in panel
-    assert 'active_view="RESERVA"' in events
-    assert 'active_view="ASSISTENTE"' in events
+    assert 'string area_labels[6]={"COCKPIT","ANÁLISE","ESTUDO","FISCAL","ASSIST.","CENTRAL"};' in source
+    assert 'SetButton(area_button,area_labels[i]' in source
+    assert 'SelectArea("RESERVA FISCAL")' in events
+    assert 'SelectArea("ASSISTENTE DO ECOSSISTEMA")' in events
+    assert 'SelectArea("CENTRAL")' in events
     assert "void RenderFiscal()" in source
     assert "void RenderAssistant()" in source
     assert "void RefreshFiscal()" in source
@@ -58,9 +59,10 @@ def test_native_mt5_module_navigation_recreates_base_controls_without_background
     health = source.split("void RefreshHealth()", 1)[1].split("void RefreshSecondary()", 1)[0]
     clear_fields = source.split("void ClearCockpitFields()", 1)[1].split("void ClearAssistantControls()", 1)[0]
 
-    assert 'active_view="RESERVA"; Panel(); RenderView();' in events
-    assert 'active_view="ASSISTENTE"; Panel(); RenderView();' in events
+    assert 'SelectArea("RESERVA FISCAL")' in events
+    assert 'SelectArea("ASSISTENTE DO ECOSSISTEMA")' in events
+    assert 'SelectArea("CENTRAL")' in events
     assert 'else if(active_view=="RESERVA") RefreshFiscal();' not in timer
     assert 'else if(active_view=="ASSISTENTE") RefreshAssistantStatus();' not in timer
-    assert 'if(active_view=="RESERVA" || active_view=="ASSISTENTE") return;' in health
+    assert 'if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="UNAVAILABLE") return;' in health
     assert '"REC_REFRESH"' in clear_fields and '"REC_CLOSE"' in clear_fields
