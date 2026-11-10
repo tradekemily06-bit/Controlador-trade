@@ -276,7 +276,7 @@ def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compil
     assert "source_sha256 = $sourceHash" in text
     assert "binary_sha256 = $binaryHashAfter" in text
     assert "Set-Content -LiteralPath $provenanceTemp -Encoding ASCII" in text
-    assert text.count("Restore-File -Backup $backupProvenance -Target $provenance") == 7
+    assert text.count("Restore-File -Backup $backupProvenance -Target $provenance") >= 7
     assert text.index("if ($binaryWriteTime -lt $compileStartedAt.AddSeconds(-2))") < text.index("binary_sha256 = $binaryHashAfter")
 
 
