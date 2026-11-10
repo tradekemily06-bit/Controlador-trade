@@ -634,6 +634,7 @@ def test_fiscal_result_requires_confirmation_and_complete_fields_before_posting(
         assert not [item for item in calls if item[0] == "POST"]
         assert any("Preencha ativo, instituição, mercado e referência" in item.value for item in app.error)
 
+        next(item for item in app.number_input if item.label == "Resultado realizado (R$)").set_value(125.0)
         for label, value in (
             ("Ativo / instrumento negociado", "WIN"),
             ("Instituição intermediária", "Corretora Demo"),
@@ -649,7 +650,7 @@ def test_fiscal_result_requires_confirmation_and_complete_fields_before_posting(
         assert len(posts) == 1
         payload = posts[0][2]
         assert payload["category"] == "BR_DAY_TRADE"
-        assert payload["realized_result_brl"] == 0.0
+        assert payload["realized_result_brl"] == 125.0
         assert payload["instrument"] == "WIN"
         assert payload["institution"] == "Corretora Demo"
         assert payload["market_label"] == "B3"
