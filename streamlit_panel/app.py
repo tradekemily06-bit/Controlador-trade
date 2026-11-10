@@ -266,6 +266,10 @@ def _assistant_consent_scope() -> str:
 
 
 def show_assistant() -> None:
+    # Consent is single-use: clear it before rebuilding the widgets after every
+    # submitted question, so the next question requires a fresh user action.
+    if st.session_state.pop("assistant_clear_consent_before_render", False):
+        st.session_state["assistant_openai_consent"] = False
     consent_scope = _assistant_consent_scope()
     previous_scope = st.session_state.get("assistant_consent_scope")
     if consent_scope != previous_scope:
@@ -277,6 +281,8 @@ def show_assistant() -> None:
         st.session_state["assistant_connection_tested"] = False
         _reset_assistant_conversation()
         st.session_state.pop("saved_assistant_conversation", None)
+        st.session_state.pop("assistant_submission_warning", None)
+        st.session_state.pop("assistant_submission_error", None)
         st.session_state["assistant_consent_scope"] = consent_scope
     st.subheader("Assistente do Ecossistema")
     st.caption("Somente leitura · não envia ordens, não movimenta dinheiro e não substitui orientação fiscal profissional.")
@@ -380,11 +386,21 @@ def show_assistant() -> None:
         with st.chat_message(message["role"]):
             st.write(message["content"])
 
+    submission_warning = st.session_state.pop("assistant_submission_warning", None)
+    submission_error = st.session_state.pop("assistant_submission_error", None)
+    if submission_warning:
+        st.warning(submission_warning)
+    if submission_error:
+        st.error(submission_error)
+
     prompt = st.chat_input(
         "Pergunte sobre o Ecossistema, risco ou Reserva Fiscal",
         disabled=(not assistant_available) or (not consent_to_openai),
     )
     if prompt:
+        # The permission authorizes this submission only, including failed
+        # attempts whose delivery status may need recovery from conversation history.
+        st.session_state["assistant_clear_consent_before_render"] = True
         try:
             response = api(
                 "/api/assistant/chat",
@@ -405,14 +421,19 @@ def show_assistant() -> None:
             # A 503 may still have persisted the user message locally; api() keeps
             # its conversation ID so it remains recoverable from saved history.
             if st.session_state.get("assistant_conversation_id"):
-                st.warning(
+                st.session_state["assistant_submission_warning"] = (
                     "A consulta não recebeu resposta. Se o runtime informou que "
                     "a mensagem ficou no histórico, abra essa conversa em "
                     "“Conversas anteriores” depois de restabelecer o serviço."
                 )
-            st.error("Falha no Assistente: " + str(exc))
+            st.session_state["assistant_submission_error"] = "Falha no Assistente: " + str(exc)
+            st.rerun()
         except Exception:
-            st.error("Não foi possível enviar a consulta ao Assistente. Verifique a conexão e tente novamente. Detalhes técnicos não são exibidos no painel.")
+            st.session_state["assistant_submission_error"] = (
+                "Não foi possível enviar a consulta ao Assistente. "
+                "Verifique a conexão e tente novamente. Detalhes técnicos não são exibidos no painel."
+            )
+            st.rerun()
 
 
 
