@@ -64,6 +64,8 @@ CONTROLADOR_UPDATE_TOKEN continua sendo segredo de ambiente quando o endpoint in
 7. O Controlador exige a identidade confiável para mutações remotas.
 8. O mesmo hostname é usado no celular e notebook.
 
+A inicialização do runtime **não sincroniza, substitui nem compila o EA MQL5 instalado**. Atualizações do EA são manutenção separada: exigem execução explícita de `deployment/sync_mql5_panel.ps1`, revisão do artefato e validação em DEMO. O instalador de tarefas agendadas não instala nem chama esse utilitário.
+
 ## Supervisão e recuperação contínua
 
 Os launchers de MT5, Controlador e Streamlit atuam como supervisores do processo, além do início automático do host. O supervisor do Streamlit também mantém o processo vivo: ao atingir o orçamento móvel de reinícios por hora, permanece em `RECOVERING`, aguarda a tentativa mais antiga sair da janela de uma hora e retoma automaticamente. Esse orçamento limita a frequência de tentativas, não encerra o painel nem define prazo de uso. O runtime não tem prazo de expiração nem encerra o supervisor ao atingir o orçamento de reinícios. Se um processo cair, o supervisor registra o evento, aplica um atraso de recuperação e tenta reiniciar dentro de um orçamento móvel de reinícios por hora (o Controlador usa 6/h por padrão). Ao atingir o orçamento, permanece ativo em estado `RECOVERING`, aguarda até que a tentativa mais antiga saia da janela móvel de uma hora e então retoma as tentativas automaticamente. Esse limite regula a frequência de reinícios, não o tempo total de disponibilidade, e evita loops agressivos em falhas persistentes. Falhas que não provem estado DEMO seguro e ausência de posições/ordens continuam bloqueadas e podem exigir intervenção humana.
