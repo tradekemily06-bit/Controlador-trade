@@ -2897,7 +2897,7 @@ with st.container(key="control-hub-shell"):
 
     area = st.radio("Áreas principais", list(AREAS), horizontal=True, key="main_area_navigation", label_visibility="collapsed")
     st.divider()
-    if area in {"RESERVA FISCAL", "ASSISTENTE"}:
+    if area in {"RESERVA FISCAL", "ASSISTENTE DO ECOSSISTEMA"}:
         module = AREAS[area][0]
     else:
         # The previous Financeiro selector may remain in Streamlit session state
