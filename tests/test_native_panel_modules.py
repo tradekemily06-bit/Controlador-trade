@@ -119,6 +119,23 @@ def test_native_mt5_decision_engine_is_a_read_only_latest_analysis_view():
     assert "nao cria ordem" in decision
 
 
+
+def test_native_replay_calls_the_historical_runtime_without_enabling_execution():
+    source = EA.read_text(encoding="utf-8")
+    routing = source.split("string ViewForModule(", 1)[1].split("void RenderNavigation()", 1)[0]
+    runner = source.split("void RunHistoricalReplay()", 1)[1].split("void RenderView()", 1)[0]
+    events = source.split("void OnChartEvent", 1)[1]
+
+    assert 'if(module=="Replay") return "REPLAY";' in routing
+    assert 'Http("POST","/api/replay/mt5",body,response,code)' in runner
+    assert '"limit"+q+":100"' in runner
+    assert 'JsonValue(response,"candles_replayed")' in runner
+    assert 'JsonValue(response,"orders_sent")' in runner
+    assert 'sparam==Obj("REPLAY_RUN") && active_view=="REPLAY"' in events
+    assert 'if(active_view=="REPLAY" || active_view=="SIMULATOR"' in source
+    assert "REAL bloqueado" in runner or "Execucao: NAO" in runner
+
+
 def test_native_mt5_environment_and_statistics_are_not_misrepresented_as_other_modules():
     source = EA.read_text(encoding="utf-8")
     routing = source.split("string ViewForModule(", 1)[1].split("void RenderNavigation()", 1)[0]
