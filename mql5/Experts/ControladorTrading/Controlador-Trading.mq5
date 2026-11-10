@@ -303,7 +303,7 @@ void RenderNavigation(){
    string area_labels[6]={"COCKPIT","ANÁLISE","ESTUDO","FISCAL","ASSIST.","CENTRAL"};
    for(int i=0;i<6;i++){
       string area_button=Obj("A"+IntegerToString(i+1));
-      SetButton(area_button,area_labels[i],18+i*67,67,64,25);
+      SetButton(area_button,area_labels[i],18+i*54,67,52,25);
       bool selected=(i==0 && active_area=="COCKPIT") || (i==1 && active_area=="ANÁLISE") || (i==2 && active_area=="ESTUDO") || (i==3 && active_area=="RESERVA FISCAL") || (i==4 && active_area=="ASSISTENTE DO ECOSSISTEMA") || (i==5 && active_area=="CENTRAL");
       ObjectSetInteger(0,area_button,OBJPROP_BGCOLOR,selected?C'24,86,72':C'35,43,58');
    }
@@ -311,7 +311,7 @@ void RenderNavigation(){
       string name=AreaModuleName(active_area,i);
       string button=Obj("M"+IntegerToString(i+1));
       if(i<AreaModuleCount(active_area) && name!="")
-         SetButton(button,AreaModuleLabel(name),18+i*67,98,64,25);
+         SetButton(button,AreaModuleLabel(name),18+i*54,98,52,25);
       if(i<AreaModuleCount(active_area) && name!="") ObjectSetInteger(0,button,OBJPROP_BGCOLOR,(name==active_module)?C'24,86,72':C'35,43,58');
       else if(ObjectFind(0,button)>=0) ObjectDelete(0,button);
    }
