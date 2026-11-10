@@ -1865,6 +1865,7 @@ def show_readonly_module(module_name: str) -> None:
         "Escola / Tutorial / Onboarding": ("Primeiros passos", "/api/onboarding"),
         "Configurações": ("Preferências do Ecossistema", "/api/preferences"),
         "Conexões": ("Conexões disponíveis", "/api/connections"),
+        "Segurança": ("Postura de segurança do runtime", "/api/health"),
         "Auditoria": ("Auditoria operacional", "/api/security/audit"),
     }
     if module_name == "Kill Switch":
@@ -1890,6 +1891,25 @@ def show_readonly_module(module_name: str) -> None:
 
     try:
         data = api(endpoint)
+        if module_name == "Segurança":
+            storage = data.get("production_storage", {}) if isinstance(data, dict) else {}
+            gate = data.get("production_operation_gate", {}) if isinstance(data, dict) else {}
+            storage_state = storage.get("state") if isinstance(storage, dict) else None
+            gate_state = gate.get("storage_state") if isinstance(gate, dict) else None
+            identity_provider = data.get("trusted_identity_provider") if isinstance(data, dict) else None
+            tenant_isolation = data.get("tenant_isolation") if isinstance(data, dict) else None
+            real_state = data.get("real") if isinstance(data, dict) else None
+            cols = st.columns(2)
+            cols[0].metric("Armazenamento", str(storage_state or "NÃO CONFIRMADO"))
+            cols[1].metric("Gate operacional", str(gate_state or "NÃO CONFIRMADO"))
+            cols = st.columns(2)
+            cols[0].metric("Provedor de identidade", str(identity_provider or "NÃO CONFIRMADO"))
+            cols[1].metric("Isolamento de tenant", str(tenant_isolation or "NÃO CONFIRMADO"))
+            st.caption("Execução REAL: " + str(real_state or "NÃO CONFIRMADO"))
+            st.caption("Esta tela exibe indicadores declarados pelo runtime; não substitui auditoria de configuração, teste de isolamento ou revisão de infraestrutura.")
+            st.caption("Somente leitura · nenhuma permissão de execução é concedida.")
+            return
+
         if module_name == "Configurações":
             prefs = data.get("preferences", {}) if isinstance(data, dict) else {}
             candle = prefs.get("candle", {}) if isinstance(prefs.get("candle"), dict) else {}
