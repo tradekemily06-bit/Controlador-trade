@@ -595,10 +595,69 @@ class ICMarketsMT5DemoAdapter:
                 if orders:
                     order = tuple(orders)[-1]
                     state = getattr(order, "state", None)
-                    canceled = {getattr(mt5, "ORDER_STATE_CANCELED", object()), getattr(mt5, "ORDER_STATE_REJECTED", object()), getattr(mt5, "ORDER_STATE_EXPIRED", object())}
+                    filled = getattr(mt5, "ORDER_STATE_FILLED", object())
+                    partial = getattr(mt5, "ORDER_STATE_PARTIAL", object())
+                    if state == filled:
+                        return ExternalOrderObservation(
+                            external_id,
+                            ExternalOrderStatus.EXECUTED,
+                            "ordem externa preenchida no histórico MT5",
+                        )
+                    if state == partial:
+                        return ExternalOrderObservation(
+                            external_id,
+                            ExternalOrderStatus.UNKNOWN,
+                            "ordem externa parcialmente preenchida; reconciliação binária bloqueada",
+                        )
+
+                    canceled = {
+                        getattr(mt5, "ORDER_STATE_CANCELED", object()),
+                        getattr(mt5, "ORDER_STATE_REJECTED", object()),
+                        getattr(mt5, "ORDER_STATE_EXPIRED", object()),
+                    }
                     if state in canceled:
-                        return ExternalOrderObservation(external_id, ExternalOrderStatus.NOT_EXECUTED, f"ordem externa não executada; state={state}")
-                    return ExternalOrderObservation(external_id, ExternalOrderStatus.PENDING, f"ordem externa encontrada; state={state}")
+                        initial = getattr(order, "volume_initial", None)
+                        remaining = getattr(order, "volume_current", None)
+                        if (
+                            isinstance(initial, (int, float))
+                            and not isinstance(initial, bool)
+                            and isinstance(remaining, (int, float))
+                            and not isinstance(remaining, bool)
+                            and math.isfinite(float(initial))
+                            and math.isfinite(float(remaining))
+                            and initial > 0
+                            and remaining >= 0
+                            and math.isclose(float(initial), float(remaining), rel_tol=0.0, abs_tol=1e-9)
+                        ):
+                            return ExternalOrderObservation(
+                                external_id,
+                                ExternalOrderStatus.NOT_EXECUTED,
+                                f"ordem externa cancelada sem volume executado; state={state}",
+                            )
+                        return ExternalOrderObservation(
+                            external_id,
+                            ExternalOrderStatus.UNKNOWN,
+                            "ordem externa cancelada/rejeitada com volume executado ou metadados insuficientes",
+                        )
+
+                    pending_states = {
+                        getattr(mt5, "ORDER_STATE_STARTED", object()),
+                        getattr(mt5, "ORDER_STATE_PLACED", object()),
+                        getattr(mt5, "ORDER_STATE_REQUEST_ADD", object()),
+                        getattr(mt5, "ORDER_STATE_REQUEST_MODIFY", object()),
+                        getattr(mt5, "ORDER_STATE_REQUEST_CANCEL", object()),
+                    }
+                    if state in pending_states:
+                        return ExternalOrderObservation(
+                            external_id,
+                            ExternalOrderStatus.PENDING,
+                            f"ordem externa ainda em andamento; state={state}",
+                        )
+                    return ExternalOrderObservation(
+                        external_id,
+                        ExternalOrderStatus.UNKNOWN,
+                        f"estado externo MT5 não reconhecido; state={state}",
+                    )
             return ExternalOrderObservation(external_id, ExternalOrderStatus.UNKNOWN, "ticket externo não encontrado no histórico MT5")
         finally:
             mt5.shutdown()
