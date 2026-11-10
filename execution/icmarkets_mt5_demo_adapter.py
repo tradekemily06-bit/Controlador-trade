@@ -924,12 +924,12 @@ class ICMarketsMT5DemoAdapter:
 
 class ICMarketsMT5RealAdapter(ICMarketsMT5DemoAdapter):
     requires_account_fingerprint = True
-    """IC Markets MT5 REAL boundary used only behind the REAL gateway.
+    """Reserved MT5 REAL boundary; execution is hard-blocked in this baseline.
 
-    The inherited MT5 mechanics are deliberately reused so DEMO and REAL do
-    not diverge in order construction, position identity, or reconciliation.
-    This adapter accepts only REAL requests and only a MT5 account explicitly
-    classified as REAL. It never handles broker credentials.
+    Account classification and inherited MT5 mechanics are not sufficient to
+    authorize REAL trading. A separate operational release and explicit owner
+    authorization are required before this adapter may ever call order_send.
+    This implementation deliberately refuses every request.
     """
 
     @staticmethod
