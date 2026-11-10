@@ -23,6 +23,23 @@ def test_defaults_are_separate_and_configurable(tmp_path):
     assert reserve.settings(OWNER)["BR_DAY_TRADE"] == 18.0
 
 
+def test_rate_origin_distinguishes_default_user_configured_and_legacy_unknown(tmp_path, monkeypatch):
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "rate-origin-owner")
+    fresh_path = tmp_path / "fresh-rate-origin.sqlite3"
+    fresh_owner = migrate_fiscal_schema(str(fresh_path))
+    fresh = FiscalReserve(str(fresh_path))
+    assert fresh.summary(fresh_owner)["categories"]["BR_DAY_TRADE"]["rate_source"] == "DEFAULT"
+
+    fresh.update_rate(fresh_owner, "BR_DAY_TRADE", 20)
+    configured = fresh.summary(fresh_owner)["categories"]["BR_DAY_TRADE"]
+    assert configured["rate"] == 20.0
+    assert configured["rate_source"] == "USER_CONFIGURED"
+
+    legacy = make_reserve(tmp_path / "legacy-rate-origin.sqlite3")
+    legacy_summary = legacy.summary(OWNER)
+    assert legacy_summary["categories"]["BR_DAY_TRADE"]["rate_source"] == "LEGACY_UNKNOWN"
+
+
 def test_brazil_result_is_reserved_and_generic_foreign_result_is_blocked(tmp_path):
     reserve = make_reserve(tmp_path / "fiscal.sqlite3")
     brazil = reserve.record_realized_result(OWNER, {
