@@ -94,3 +94,93 @@ def test_every_literal_streamlit_api_call_has_a_backend_route():
     assert len(routes) >= 40, "API route inventory unexpectedly shrank; review panel changes"
     missing = sorted(route for route in routes if not _registered_backend_route(route))
     assert not missing, f"Streamlit calls have no backend route: {missing}"
+
+
+def _literal_panel_api_method_calls():
+    import ast
+
+    tree = ast.parse(PANEL_SOURCE)
+    calls = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name) or node.func.id != "api":
+            continue
+        if not node.args or not isinstance(node.args[0], ast.Constant) or not isinstance(node.args[0].value, str):
+            continue
+        route = node.args[0].value.split("?", 1)[0]
+        method = "GET"
+        if len(node.args) > 1 and isinstance(node.args[1], ast.Constant) and isinstance(node.args[1].value, str):
+            method = node.args[1].value.upper()
+        for keyword in node.keywords:
+            if keyword.arg == "method" and isinstance(keyword.value, ast.Constant) and isinstance(keyword.value.value, str):
+                method = keyword.value.value.upper()
+        calls.add((route, method))
+    return calls
+
+
+def _backend_registers_method(route: str, method: str) -> bool:
+    import ast
+
+    tree = ast.parse(API_SOURCE)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.If):
+            continue
+        conditions = node.test.values if isinstance(node.test, ast.BoolOp) and isinstance(node.test.op, ast.And) else [node.test]
+        path_matches = any(
+            isinstance(condition, ast.Compare)
+            and isinstance(condition.left, ast.Name)
+            and condition.left.id == "path"
+            and len(condition.ops) == 1
+            and isinstance(condition.ops[0], ast.Eq)
+            and len(condition.comparators) == 1
+            and isinstance(condition.comparators[0], ast.Constant)
+            and condition.comparators[0].value == route
+            for condition in conditions
+        )
+        method_matches = any(
+            isinstance(condition, ast.Compare)
+            and isinstance(condition.left, ast.Name)
+            and condition.left.id == "method"
+            and len(condition.ops) == 1
+            and isinstance(condition.ops[0], ast.Eq)
+            and len(condition.comparators) == 1
+            and isinstance(condition.comparators[0], ast.Constant)
+            and condition.comparators[0].value == method
+            for condition in conditions
+        )
+        if path_matches and method_matches:
+            return True
+    return False
+
+
+def test_high_risk_assistant_and_fiscal_panel_actions_use_registered_http_methods():
+    # Route existence alone is insufficient: a GET/POST/DELETE mismatch can
+    # leave a visible button broken or accidentally expose a write operation.
+    expected = {
+        ("/api/assistant/status", "GET"),
+        ("/api/assistant/test-connection", "POST"),
+        ("/api/assistant/conversations", "GET"),
+        ("/api/assistant/conversations", "DELETE"),
+        ("/api/assistant/history", "GET"),
+        ("/api/assistant/chat", "POST"),
+        ("/api/fiscal-reserve", "GET"),
+        ("/api/fiscal-reserve/rates", "POST"),
+        ("/api/fiscal-reserve/results", "POST"),
+        ("/api/fiscal-reserve/domestic-pending", "GET"),
+        ("/api/fiscal-reserve/domestic-pending", "POST"),
+        ("/api/fiscal-reserve/domestic-pending/summary", "GET"),
+        ("/api/fiscal-reserve/pending", "GET"),
+        ("/api/fiscal-reserve/pending", "POST"),
+        ("/api/fiscal-reserve/pending-result", "POST"),
+        ("/api/fiscal-reserve/mt5-preview", "GET"),
+        ("/api/fiscal-reserve/mt5-confirm", "POST"),
+        ("/api/fiscal-reserve/mt5-pending-result", "POST"),
+    }
+    panel_calls = _literal_panel_api_method_calls()
+    missing_from_panel = sorted(expected - panel_calls)
+    assert not missing_from_panel, f"Critical panel actions are missing or use the wrong HTTP method: {missing_from_panel}"
+    missing_from_backend = sorted(
+        (route, method)
+        for route, method in expected
+        if not _backend_registers_method(route, method)
+    )
+    assert not missing_from_backend, f"Backend handlers are missing for critical method contracts: {missing_from_backend}"
