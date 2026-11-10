@@ -14,3 +14,10 @@ def test_fiscal_reserve_is_a_dedicated_streamlit_navigation_module():
     assert 'st.subheader("Reserva Fiscal")' in source
     assert "módulo próprio em MAIS / ADMIN" in readme
 
+
+
+def test_streamlit_labels_default_and_user_configured_planning_rates_separately():
+    source = (PANEL / "app.py").read_text(encoding="utf-8")
+    assert '"DEFAULT": "padrão inicial do sistema"' in source
+    assert '"USER_CONFIGURED": "configurado pelo usuário"' in source
+    assert '"LEGACY_UNKNOWN": "origem anterior não identificada"' in source
