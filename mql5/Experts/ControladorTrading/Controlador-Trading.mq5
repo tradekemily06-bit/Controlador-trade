@@ -39,6 +39,7 @@ RecoveryPosition recovery_items[];
 int recovery_selected=0;
 bool recovery_inventory_valid=false;
 bool recovery_close_armed=false;
+bool kill_switch_confirm_armed=false;
 string recovery_message="Inventario nao consultado.";
 double panel_sx=1.0;
 double panel_sy=1.0;
@@ -291,6 +292,7 @@ string ViewForModule(string area,string module){
    if(area=="COCKPIT"){
       if(module=="Operação") return "COCKPIT";
       if(module=="Motor de Decisão") return "DECISION";
+      if(module=="Kill Switch") return "KILL_SWITCH";
       if(module=="Gestão de Risco") return "RISK";
       if(module=="Ambiente MT5 DEMO / Simulação") return "ENVIRONMENT";
       if(module=="Notificações") return "NOTIF";
@@ -857,6 +859,68 @@ void RefreshStatistics(){
    SetLabel(Obj("INFO4"),"Hoje: "+(daily_total==""?"?":daily_total)+" • Semana: "+(weekly_total==""?"?":weekly_total)+" • Mes: "+(monthly_total==""?"?":monthly_total),20,421,8,C'205,215,230');
    SetLabel(Obj("INFO5"),"Estatisticas historicas; nao sao garantia de resultado.",20,441,8,C'255,209,102');
 }
+void RefreshKillSwitchStatus(){
+   string r; int code=0;
+   if(!Http("GET","/api/health","",r,code)){
+      SetLabel(Obj("INFO1"),"Kill Switch: estado nao confirmado",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Falha de consulta nao significa protecao inativa.",20,381,8,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Nenhuma acao foi executada.",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Ativacao exige motivo e confirmacao.",20,421,8,C'205,215,230');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
+      return;
+   }
+   string observability=JsonValue(r,"operational_observability");
+   string kill=JsonValue(observability,"kill_switch");
+   string enabled=JsonValue(kill,"enabled");
+   string state=JsonValue(kill,"state");
+   string reason=JsonValue(kill,"reason");
+   if(enabled=="true" || state=="ACTIVE"){
+      SetLabel(Obj("INFO1"),"KILL SWITCH ATIVO • novas execucoes bloqueadas",20,361,8,C'88,214,141');
+      SetLabel(Obj("INFO2"),"Motivo: "+StringSubstr(reason==""?"nao informado":reason,0,55),20,381,8,C'205,215,230');
+   }else if(enabled=="false" || state=="CLEAR"){
+      SetLabel(Obj("INFO1"),"Kill Switch confirmado como inativo.",20,361,9,C'255,209,102');
+      SetLabel(Obj("INFO2"),"A ativacao bloqueara novas execucoes.",20,381,8,C'205,215,230');
+   }else{
+      SetLabel(Obj("INFO1"),"Estado do Kill Switch nao confirmado.",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Nao interprete ausencia de estado como inativo.",20,381,8,C'205,215,230');
+   }
+   SetLabel(Obj("INFO3"),"Confirmacao manual obrigatoria antes da ativacao.",20,401,8,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Solicitacoes ja encaminhadas nao sao canceladas.",20,421,8,C'205,215,230');
+   SetLabel(Obj("INFO5"),"Acao irreversivel nesta interface • REAL bloqueado.",20,441,7,C'255,155,155');
+}
+void ActivateKillSwitch(){
+   if(!kill_switch_confirm_armed){
+      SetLabel(Obj("INFO3"),"Confirme a ativacao antes de continuar.",20,401,8,C'255,118,118');
+      return;
+   }
+   string reason=ObjectFind(0,Obj("KILL_REASON"))>=0?ObjectGetString(0,Obj("KILL_REASON"),OBJPROP_TEXT):"";
+   StringTrimLeft(reason); StringTrimRight(reason);
+   if(reason=="" || StringLen(reason)>240){
+      SetLabel(Obj("INFO3"),"Informe um motivo de 1 a 240 caracteres.",20,401,8,C'255,118,118');
+      return;
+   }
+   string body="{\"reason\":\""+JsonEscape(reason)+"\",\"confirmed\":true}";
+   string response; int code=0;
+   if(!Http("POST","/api/runtime/kill-switch/activate",body,response,code)){
+      SetLabel(Obj("INFO1"),"Ativacao nao confirmada pelo runtime.",20,361,8,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Consulte o estado antes de repetir.",20,381,8,C'205,215,230');
+      return;
+   }
+   string activated=JsonValue(response,"activated");
+   string execution=JsonValue(response,"execution_allowed");
+   kill_switch_confirm_armed=false;
+   SetButton(Obj("KILL_CONFIRM"),"CONFIRMAR BLOQUEIO",20,320,172,30);
+   if(activated=="true" && execution=="false"){
+      SetLabel(Obj("INFO1"),"KILL SWITCH ATIVADO • novas execucoes bloqueadas",20,361,8,C'88,214,141');
+      SetLabel(Obj("INFO2"),"Solicitacoes em andamento exigem reconciliacao.",20,381,8,C'255,209,102');
+      SetLabel(Obj("INFO3"),"A interface nao oferece desativacao.",20,401,8,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Verifique pendencias no modulo de recuperacao.",20,421,8,C'205,215,230');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,8,C'255,155,155');
+   }else{
+      SetLabel(Obj("INFO1"),"Runtime nao confirmou o bloqueio.",20,361,9,C'255,118,118');
+      RefreshKillSwitchStatus();
+   }
+}
 void RefreshDecisionView(){
    string r; int code=0;
    if(!Http("GET","/api/runtime/analysis/latest","",r,code)){
@@ -1161,7 +1225,7 @@ void RenderView(){
       if(ObjectFind(0,Obj(action_buttons[i]))>=0) ObjectDelete(0,Obj(action_buttons[i]));
    if(active_view=="UNAVAILABLE"){
       ClearCockpitFields();
-      string stale[]={"ANALYZE","CYCLE","SAVE","CLOSE","CYCLEID","EXTID","PRICE","SAFE","RECOVERY_TITLE","RECOVERY_ITEM","REC_REFRESH","REC_PREV","REC_NEXT","REC_RECONCILE","REC_CLOSE","MODE_TOGGLE","LEVERAGE_TOGGLE"};
+      string stale[]={"ANALYZE","CYCLE","SAVE","CLOSE","CYCLEID","EXTID","PRICE","SAFE","RECOVERY_TITLE","RECOVERY_ITEM","REC_REFRESH","REC_PREV","REC_NEXT","REC_RECONCILE","REC_CLOSE","MODE_TOGGLE","LEVERAGE_TOGGLE","KILL_REASON","KILL_CONFIRM","KILL_ACTIVATE"};
       for(int i=0;i<ArraySize(stale);i++) if(ObjectFind(0,Obj(stale[i]))>=0) ObjectDelete(0,Obj(stale[i]));
       SetLabel(Obj("SUB"),active_area+" • "+active_module,20,47,9,C'150,165,185');
       SetLabel(Obj("INFO1"),"Modulo visivel; integracao operacional em desenvolvimento.",20,361,8,C'255,209,102');
@@ -1173,7 +1237,15 @@ void RenderView(){
    }
    if(active_view=="RESERVA") { RenderFiscal(); return; }
    if(active_view=="ASSISTENTE") { RenderAssistant(); return; }
-   if(active_view=="DECISION"){
+   if(active_view=="KILL_SWITCH"){
+      ClearCockpitFields();
+      SetLabel(Obj("SUB"),"KILL SWITCH • bloqueio protegido de novas execucoes",20,47,9,C'150,165,185');
+      SetLabel(Obj("INFO1"),"Consultando estado do Kill Switch...",20,361,9,C'255,209,102');
+      SetEdit(Obj("KILL_REASON"),"",20,284,340,25);
+      SetButton(Obj("KILL_CONFIRM"),"CONFIRMAR BLOQUEIO",20,320,172,30);
+      SetButton(Obj("KILL_ACTIVATE"),"ATIVAR KILL SWITCH",202,320,177,30);
+      RefreshKillSwitchStatus();
+   }else if(active_view=="DECISION"){
       ClearCockpitFields();
       SetLabel(Obj("SUB"),"MOTOR DE DECISAO • ultima leitura, somente leitura",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR MOTOR",20,284,172,30);
@@ -1303,7 +1375,7 @@ void RefreshHealth(){
    SetLabel(Obj("RUNTIME"),"Sistema: online",20,104,10,C'88,214,141');
    SetLabel(Obj("MODE"),"Modo: "+(mode==""?"nao informado":mode)+" • MT5: "+(mt5==""?"nao confirmado":mt5),20,124,10,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • autorizacao separada",20,441,9,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
-   if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="DECISION" || active_view=="UNAVAILABLE" || active_view=="MEMORIA" || active_view=="RISK" || active_view=="STATS" || active_view=="CONNECTIONS" || active_view=="ENVIRONMENT" || active_view=="SECURITY" || active_view=="REPORTS" || active_view=="AUDIT" || active_view=="FINANCE") return;
+   if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="DECISION" || active_view=="KILL_SWITCH" || active_view=="UNAVAILABLE" || active_view=="MEMORIA" || active_view=="RISK" || active_view=="STATS" || active_view=="CONNECTIONS" || active_view=="ENVIRONMENT" || active_view=="SECURITY" || active_view=="REPORTS" || active_view=="AUDIT" || active_view=="FINANCE") return;
    SetLabel(Obj("INFO1"),"Analise do ecossistema: "+(engine==""?"online":engine),20,361,9,C'205,215,230');
 }
 void RefreshMarketAssets(){
@@ -1582,12 +1654,15 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("M6")) { SelectModule(5); return; }
    else if(sparam==Obj("ASSISTANT_CONSENT")) { assistant_consent_armed=!assistant_consent_armed; SetButton(Obj("ASSISTANT_CONSENT"),assistant_consent_armed?"CONSENTIMENTO OPENAI: SIM":"CONSENTIMENTO OPENAI: NAO",20,307,220,28); }
    else if(sparam==Obj("ASSISTANT_SEND")) SendAssistantMessage();
+   else if(sparam==Obj("KILL_CONFIRM") && active_view=="KILL_SWITCH") { kill_switch_confirm_armed=!kill_switch_confirm_armed; SetButton(Obj("KILL_CONFIRM"),kill_switch_confirm_armed?"CONFIRMACAO ARMADA":"CONFIRMAR BLOQUEIO",20,320,172,30); }
+   else if(sparam==Obj("KILL_ACTIVATE") && active_view=="KILL_SWITCH") ActivateKillSwitch();
    else if(sparam==Obj("MEMORY_PREV")) { if(active_view=="MEMORIA" && memory_page>0) { memory_page--; RenderMemoryPage(); } }
    else if(sparam==Obj("MEMORY_NEXT")) { if(active_view=="MEMORIA" && (memory_page+1)*5<ArraySize(memory_records)) { memory_page++; RenderMemoryPage(); } }
    else if(sparam==Obj("ASSISTANT_PREV")) { if(active_view=="ASSISTENTE" && assistant_answer_page>0) { assistant_answer_page--; RenderAssistantAnswer(); } }
    else if(sparam==Obj("ASSISTANT_NEXT")) { if(active_view=="ASSISTENTE" && (assistant_answer_page+1)*330<StringLen(assistant_answer)) { assistant_answer_page++; RenderAssistantAnswer(); } }
    else if(sparam==Obj("ANALYZE")) {
       if(active_view=="DECISION") RefreshDecisionView();
+      else if(active_view=="KILL_SWITCH") RefreshKillSwitchStatus();
       else if(active_view=="ANALISE") Analyze();
       else if(active_view=="CONFIG") RefreshPreferences();
       else if(active_view=="MEMORIA") RefreshMemory();
