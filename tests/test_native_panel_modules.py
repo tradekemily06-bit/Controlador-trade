@@ -148,3 +148,35 @@ def test_native_mt5_assistant_does_not_overwrite_persisted_answer_with_status_on
     assert "RenderAssistantAnswer();" in render
     assert render.index("RefreshAssistantStatus();") < render.index("}else{")
     assert render.index("}else{") < render.index("RenderAssistantAnswer();")
+
+def test_native_risk_statistics_and_connections_modules_use_real_read_only_api_contracts():
+    source = EA.read_text(encoding="utf-8")
+    routes = source.split("string ViewForModule", 1)[1].split("void RenderNavigation", 1)[0]
+    render = source.split("void RenderView(){", 1)[1].split("void RefreshHealth()", 1)[0]
+    events = source.split("void OnChartEvent", 1)[1]
+
+    assert 'if(module=="Gestão de Risco") return "RISK";' in routes
+    assert 'if(module=="Estatísticas") return "STATS";' in routes
+    assert 'if(module=="Conexões") return "CONNECTIONS";' in routes
+    assert 'Http("GET","/api/risk","",r,code)' in source
+    assert 'Http("GET","/api/statistics","",r,code)' in source
+    assert 'Http("GET","/api/connections","",r,code)' in source
+    assert 'active_view=="RISK"' in render
+    assert 'active_view=="STATS"' in render
+    assert 'active_view=="CONNECTIONS"' in render
+    assert 'else if(active_view=="RISK") RefreshRiskView();' in events
+    assert 'else if(active_view=="STATS") RefreshStatistics();' in events
+    assert 'else if(active_view=="CONNECTIONS") RefreshConnections();' in events
+    assert "Consulta informativa; nao autoriza execucao." in source
+    assert "REAL: " in source
+
+
+def test_native_statistics_and_connections_do_not_claim_unknown_values_are_zero_or_online():
+    source = EA.read_text(encoding="utf-8")
+    stats = source.split("void RefreshStatistics()", 1)[1].split("void RefreshRiskView()", 1)[0]
+    connections = source.split("void RefreshConnections()", 1)[1].split("void ClearCockpitFields()", 1)[0]
+
+    assert 'total==""?"nao informado":total' in stats
+    assert 'rate==""?"nao informado":rate' in stats
+    assert 'decision==""?"nao informado":decision' in connections
+    assert 'mt5==""?"nao informado":mt5' in connections
