@@ -286,10 +286,9 @@ string ViewForModule(string area,string module){
    if(area=="COCKPIT"){
       if(module=="Operação") return "COCKPIT";
       if(module=="Notificações") return "NOTIF";
-      if(module=="Ambiente MT5 DEMO / Simulação") return "LAB";
    }else if(area=="ANÁLISE"){
       if(module=="Análise de Mercado") return "ANALISE";
-      if(module=="Memória" || module=="Estatísticas") return "MEMORIA";
+      if(module=="Memória") return "MEMORIA";
    }else if(area=="ESTUDO"){
       if(module=="Laboratório") return "LAB";
       if(module=="Aprendizado" || module=="Escola / Tutorial / Onboarding") return "ENSINO";
@@ -896,7 +895,7 @@ void RenderView(){
       RefreshSecondary();
       SetLabel(Obj("INFO1"),"Ambiente: DEMO / SIMULACAO",20,361,9,C'88,214,141');
       SetLabel(Obj("INFO2"),"Risco: avaliacao atual",20,381,9,C'205,215,230');
-      SetLabel(Obj("INFO3"),"Replay: disponivel no laboratorio",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Replay: indisponivel nesta interface",20,401,9,C'255,209,102');
       SetLabel(Obj("INFO4"),"Protecao operacional ativa",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Aprendizado separado da operacao",20,441,9,C'205,215,230');
    }else if(active_view=="ENSINO"){
