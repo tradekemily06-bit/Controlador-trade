@@ -273,7 +273,9 @@ def test_streamlit_foreign_pending_forms_capture_structured_evidence_and_display
 def test_streamlit_fiscal_summary_labels_accumulated_amount_as_planning_estimate():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert 'c.metric("Estimativa acumulada · Brasil"' in source
-    assert "percentual de planejamento configurado" in source
+    assert "percentual de planejamento {rate_source_label}" in source
+    assert '"DEFAULT": "padrão inicial do sistema"' in source
+    assert '"USER_CONFIGURED": "configurado pelo usuário"' in source
     assert "ESTIMATIVA DE PLANEJAMENTO — não é imposto apurado ou devido." in source
     assert 'summary.get("reserve_semantics", {})' in source
 
@@ -668,7 +670,7 @@ def test_mt5_native_panel_is_real_mql5_client_of_shared_runtime():
     assert "void OnChartEvent(" in ea
     assert "void OnTimer()" in ea
     assert '"/api/health"' in ea
-    assert '"/api/runtime/analysis"' in ea
+    assert '"/api/runtime/analysis/local"' in ea
     assert "não é executado dentro do gráfico MT5" in readme
     assert "não é uma imagem estática" in readme
 
