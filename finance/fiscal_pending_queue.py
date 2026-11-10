@@ -260,9 +260,8 @@ class FiscalPendingQueue:
             raise ValueError("fx_conversion_method não pode ser NOT_CONVERTED quando houver cotação")
         if fx_rate is not None and declared["fx_conversion_method"] == "NOT_INFORMED":
             raise ValueError("fx_conversion_method deve ser informado quando houver cotação")
-        # The conversion method may be declared while evidence is still incomplete.
-        # Without a rate/date/source, the record remains pending and no conversion
-        # or domestic reserve calculation is permitted.
+        if fx_rate is None and declared["fx_conversion_method"] not in {"NOT_INFORMED", "NOT_CONVERTED"}:
+            raise ValueError("fx_conversion_method exige fx_rate, fx_date e fx_source")
         notes = self._text(payload, "notes", 1000)
         details = self._fiscal_details(payload)
         item = {
@@ -335,9 +334,8 @@ class FiscalPendingQueue:
             raise ValueError("fx_conversion_method não pode ser NOT_CONVERTED quando houver cotação")
         if fx_rate is not None and declared["fx_conversion_method"] == "NOT_INFORMED":
             raise ValueError("fx_conversion_method deve ser informado quando houver cotação")
-        # The conversion method may be declared while evidence is still incomplete.
-        # Without a rate/date/source, the record remains pending and no conversion
-        # or domestic reserve calculation is permitted.
+        if fx_rate is None and declared["fx_conversion_method"] not in {"NOT_INFORMED", "NOT_CONVERTED"}:
+            raise ValueError("fx_conversion_method exige fx_rate, fx_date e fx_source")
         details = self._fiscal_details(payload)
         item = {
             "pending_id": str(uuid.uuid4()), "owner_id": owner_id, "reference": reference,
