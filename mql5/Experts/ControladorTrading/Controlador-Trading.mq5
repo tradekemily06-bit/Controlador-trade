@@ -935,14 +935,14 @@ void RefreshDecisionView(){
       return;
    }
    string available=JsonValue(r,"available");
-   string analysis=JsonValue(r,"analysis");
-   string signal=JsonValue(analysis,"signal");
-   if(signal=="") signal=JsonValue(analysis,"decision");
-   string score=JsonObjectValue(analysis,"quality","score");
-   string reason=JsonValue(analysis,"reason");
-   string symbol=JsonValue(analysis,"symbol");
-   string timeframe=JsonValue(analysis,"timeframe");
-   if(available!="true" || analysis==""){
+   string signal=JsonObjectValue(r,"analysis","signal");
+   if(signal=="") signal=JsonObjectValue(r,"analysis","decision");
+   string quality=JsonObjectValue(r,"analysis","quality");
+   string score=JsonValue(quality,"score");
+   string reason=JsonObjectValue(r,"analysis","reason");
+   string symbol=JsonObjectValue(r,"analysis","symbol");
+   string timeframe=JsonObjectValue(r,"analysis","timeframe");
+   if(available!="true"){
       SetLabel(Obj("INFO1"),"Motor: nenhuma analise disponivel",20,361,9,C'255,209,102');
       SetLabel(Obj("INFO2"),"Sinal: AGUARDAR",20,381,9,C'255,209,102');
       SetLabel(Obj("INFO3"),"Pontuacao: nao informada",20,401,9,C'205,215,230');
