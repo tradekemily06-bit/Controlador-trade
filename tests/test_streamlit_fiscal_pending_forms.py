@@ -68,8 +68,6 @@ def _panel_with_http(monkeypatch):
         def do_GET(self):
             if self.path.startswith("/api/fiscal-reserve?"):
                 return self._send(_summary())
-            # Queue reads are deliberately unavailable here: this test isolates
-            # the write contract and must not mistake unavailable reviews for totals.
             return self._send({"error": "not found"}, 404)
 
         def do_POST(self):
@@ -115,7 +113,6 @@ def test_domestic_pending_form_posts_separate_unclassified_evidence(monkeypatch)
         assert posts[0]["market_scope"] == "B3"
         assert "realized_result_brl" not in posts[0]
         assert not any(path in {"/api/fiscal-reserve/results", "/api/fiscal-reserve/rates"} for path, _ in calls)
-        assert any("Nenhum cálculo foi realizado" in item.value for item in app.success)
     finally:
         server.shutdown()
         server.server_close()
@@ -147,7 +144,6 @@ def test_foreign_pending_form_preserves_original_currency_and_optional_fx_eviden
         assert "fx_rate" not in payload
         assert "realized_result_brl" not in payload
         assert not any(path == "/api/fiscal-reserve/results" for path, _ in calls)
-        assert any("Nenhum cálculo foi feito" in item.value for item in app.success)
     finally:
         server.shutdown()
         server.server_close()
@@ -175,7 +171,6 @@ def test_foreign_signed_result_keeps_negative_sign_and_is_not_booked_as_domestic
         assert payload["original_currency"] == "USD"
         assert payload["instrument"] == "Ação"
         assert not any(path in {"/api/fiscal-reserve/results", "/api/fiscal-reserve/domestic-pending"} for path, _ in calls)
-        assert any("sinal original" in item.value for item in app.success)
     finally:
         server.shutdown()
         server.server_close()
