@@ -6,13 +6,15 @@
 input string InpRuntimeUrl = "http://127.0.0.1:8000";
 input int    InpRefreshSeconds = 3;
 input int    InpPanelWidth = 360;
-input int    InpPanelHeight = 440;
+input int    InpPanelHeight = 500;
 
 string P="CTP_";
 string last_cycle_id="";
 string last_external_id="";
 bool cycle_identity_store_valid=true;
 string active_view="COCKPIT";
+string active_area="COCKPIT";
+string active_module="Operação";
 string assistant_conversation_id="";
 bool assistant_consent_armed=false;
 string selected_mode="DEMO";
@@ -84,7 +86,7 @@ string Obj(string suffix){ return P+suffix; }
 string PanelVisibilityKey(){ return P+IntegerToString(ChartID())+"_PANEL_VISIBLE"; }
 
 int SX(int x){ return panel_x+(int)MathRound(x*panel_sx); }
-int SY(int y){ return (int)MathRound(18+y*panel_sy); }
+int SY(int y){ if(y>=104) y+=34; return (int)MathRound(18+y*panel_sy); }
 int SW(int w){ return MathMax(1,(int)MathRound(w*panel_sx)); }
 int SH(int h){ return MathMax(1,(int)MathRound(h*panel_sy)); }
 void RefreshPanelLayout(){
@@ -95,7 +97,7 @@ void RefreshPanelLayout(){
    panel_height=MathMin(InpPanelHeight,MathMax(280,(int)MathRound(ch*0.50)));
    panel_x=MathMax(12,cw-panel_width-12);
    panel_sx=(double)panel_width/430.0;
-   panel_sy=(double)panel_height/620.0;
+   panel_sy=(double)panel_height/654.0;
    string bg=Obj("BG");
    if(ObjectFind(0,bg)>=0){
       ObjectSetInteger(0,bg,OBJPROP_XDISTANCE,panel_x);
@@ -215,6 +217,114 @@ void LoadPanelVisibility(){
    }
    RefreshPanelToggle();
 }
+
+int AreaModuleCount(string area){
+   if(area=="COCKPIT" || area=="ESTUDO" || area=="CENTRAL") return 6;
+   if(area=="ANÁLISE") return 4;
+   return 1;
+}
+string AreaModuleName(string area,int index){
+   if(area=="COCKPIT"){
+      if(index==0) return "Operação";
+      if(index==1) return "Motor de Decisão";
+      if(index==2) return "Gestão de Risco";
+      if(index==3) return "Notificações";
+      if(index==4) return "Ambiente MT5 DEMO / Simulação";
+      if(index==5) return "Kill Switch";
+   }else if(area=="ANÁLISE"){
+      if(index==0) return "Análise de Mercado";
+      if(index==1) return "Memória";
+      if(index==2) return "Estatísticas";
+      if(index==3) return "Relatórios";
+   }else if(area=="ESTUDO"){
+      if(index==0) return "Laboratório";
+      if(index==1) return "Replay";
+      if(index==2) return "Simulador";
+      if(index==3) return "Aprendizado";
+      if(index==4) return "Descobertas";
+      if(index==5) return "Escola / Tutorial / Onboarding";
+   }else if(area=="RESERVA FISCAL") return "Reserva Fiscal";
+   else if(area=="ASSISTENTE DO ECOSSISTEMA") return "Assistente do Ecossistema";
+   else if(area=="CENTRAL"){
+      if(index==0) return "Financeiro";
+      if(index==1) return "Configurações";
+      if(index==2) return "Auditoria";
+      if(index==3) return "Segurança";
+      if(index==4) return "Conexões";
+      if(index==5) return "Multi-Broker";
+   }
+   return "";
+}
+string AreaModuleLabel(string module){
+   if(module=="Operação") return "OPER.";
+   if(module=="Motor de Decisão") return "MOTOR";
+   if(module=="Gestão de Risco") return "RISCO";
+   if(module=="Notificações") return "ALERT.";
+   if(module=="Ambiente MT5 DEMO / Simulação") return "MT5 DEMO";
+   if(module=="Kill Switch") return "KILL";
+   if(module=="Análise de Mercado") return "MERCADO";
+   if(module=="Memória") return "MEMÓRIA";
+   if(module=="Estatísticas") return "ESTAT.";
+   if(module=="Relatórios") return "RELAT.";
+   if(module=="Laboratório") return "LAB";
+   if(module=="Replay") return "REPLAY";
+   if(module=="Simulador") return "SIMUL.";
+   if(module=="Aprendizado") return "APREND.";
+   if(module=="Descobertas") return "DESCOB.";
+   if(module=="Escola / Tutorial / Onboarding") return "ESCOLA";
+   if(module=="Reserva Fiscal") return "RESERVA";
+   if(module=="Assistente do Ecossistema") return "ASSIST.";
+   if(module=="Financeiro") return "FINANC.";
+   if(module=="Configurações") return "CONFIG";
+   if(module=="Auditoria") return "AUDIT.";
+   if(module=="Segurança") return "SEGUR.";
+   if(module=="Conexões") return "CONEX.";
+   if(module=="Multi-Broker") return "BROKER";
+   return "—";
+}
+string ViewForModule(string area,string module){
+   if(area=="COCKPIT"){
+      if(module=="Operação") return "COCKPIT";
+      if(module=="Motor de Decisão") return "ANALISE";
+      if(module=="Notificações") return "NOTIF";
+      if(module=="Ambiente MT5 DEMO / Simulação") return "LAB";
+   }else if(area=="ANÁLISE"){
+      if(module=="Análise de Mercado") return "ANALISE";
+      if(module=="Memória" || module=="Estatísticas") return "MEMORIA";
+   }else if(area=="ESTUDO"){
+      if(module=="Laboratório") return "LAB";
+      if(module=="Aprendizado" || module=="Escola / Tutorial / Onboarding") return "ENSINO";
+   }else if(area=="RESERVA FISCAL") return "RESERVA";
+   else if(area=="ASSISTENTE DO ECOSSISTEMA") return "ASSISTENTE";
+   else if(area=="CENTRAL" && module=="Configurações") return "CONFIG";
+   return "UNAVAILABLE";
+}
+void RenderNavigation(){
+   string area_labels[6]={"COCKPIT","ANÁLISE","ESTUDO","FISCAL","ASSIST.","CENTRAL"};
+   for(int i=0;i<6;i++) SetButton(Obj("A"+IntegerToString(i+1)),area_labels[i],18+i*67,67,64,25);
+   for(int i=0;i<6;i++){
+      string name=AreaModuleName(active_area,i);
+      string button=Obj("M"+IntegerToString(i+1));
+      if(i<AreaModuleCount(active_area) && name!="")
+         SetButton(button,AreaModuleLabel(name),18+i*67,98,64,25);
+      else if(ObjectFind(0,button)>=0) ObjectDelete(0,button);
+   }
+}
+void SelectArea(string area){
+   active_area=area;
+   active_module=AreaModuleName(active_area,0);
+   active_view=ViewForModule(active_area,active_module);
+   Panel();
+   RenderView();
+}
+void SelectModule(int index){
+   if(index<0 || index>=AreaModuleCount(active_area)) return;
+   active_module=AreaModuleName(active_area,index);
+   active_view=ViewForModule(active_area,active_module);
+   Panel();
+   RenderView();
+}
+
 void Panel(){
    string bg=Obj("BG");
    if(ObjectFind(0,bg)<0) ObjectCreate(0,bg,OBJ_RECTANGLE_LABEL,0,0,0);
@@ -233,15 +343,7 @@ void Panel(){
 
    SetLabel(Obj("TITLE"),"Controlador Trading",20,27,13,clrWhite);
    SetLabel(Obj("SUB"),"ECOSSISTEMA • MT5 • DEMO / SIMULACAO",20,47,9,C'150,165,185');
-   SetButton(Obj("V1"),"C",18,67,42,25);
-   SetButton(Obj("V2"),"A",64,67,42,25);
-   SetButton(Obj("V3"),"M",110,67,42,25);
-   SetButton(Obj("V4"),"L",156,67,42,25);
-   SetButton(Obj("V5"),"E",202,67,42,25);
-   SetButton(Obj("V6"),"N",248,67,42,25);
-   SetButton(Obj("V7"),"G",294,67,42,25);
-   SetButton(Obj("V8"),"RF",340,67,42,25);
-   SetButton(Obj("V9"),"AE",386,67,42,25);
+   RenderNavigation();
 
    SetLabel(Obj("RUNTIME"),"Sistema: verificando...",20,104,10,C'255,209,102');
    SetLabel(Obj("MODE"),"Modo: DEMO / SIMULACAO",20,124,10,C'88,214,141');
@@ -726,6 +828,18 @@ void SendAssistantMessage(){
 }
 void RenderView(){
    ClearAssistantControls();
+   if(active_view=="UNAVAILABLE"){
+      ClearCockpitFields();
+      string stale[]={"ANALYZE","CYCLE","SAVE","CLOSE","CYCLEID","EXTID","PRICE","SAFE","RECOVERY_TITLE","RECOVERY_ITEM","REC_REFRESH","REC_PREV","REC_NEXT","REC_RECONCILE","REC_CLOSE","MODE_TOGGLE","LEVERAGE_TOGGLE"};
+      for(int i=0;i<ArraySize(stale);i++) if(ObjectFind(0,Obj(stale[i]))>=0) ObjectDelete(0,Obj(stale[i]));
+      SetLabel(Obj("SUB"),active_area+" • "+active_module,20,47,9,C'150,165,185');
+      SetLabel(Obj("INFO1"),"Modulo visivel; integracao operacional em desenvolvimento.",20,361,8,C'255,209,102');
+      SetLabel(Obj("INFO2"),"Nenhuma acao sera simulada ou apresentada como concluida.",20,381,8,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Esta area sera habilitada apos integracao e validacao.",20,401,8,C'205,215,230');
+      SetLabel(Obj("INFO4"),"REAL: BLOQUEADO",20,421,8,C'255,155,155');
+      SetLabel(Obj("INFO5"),"Runtime compartilhado com o painel Streamlit.",20,441,8,C'145,160,180');
+      return;
+   }
    if(active_view=="RESERVA") { RenderFiscal(); return; }
    if(active_view=="ASSISTENTE") { RenderAssistant(); return; }
    if(active_view=="COCKPIT"){
@@ -1048,6 +1162,8 @@ void CloseCycle(){
 }
 int OnInit(){
    active_view="COCKPIT";
+   active_area="COCKPIT";
+   active_module="Operação";
    LoadCycleIdentity();
    LoadAssistantConversation();
    LoadPanelVisibility();
@@ -1095,15 +1211,18 @@ void OnTimer(){
 void OnChartEvent(const int id,const long &lparam,const double &dparam,const string &sparam){
    if(id!=CHARTEVENT_OBJECT_CLICK) return;
    if(sparam==Obj("PANEL_TOGGLE") || sparam==Obj("PANEL_TOGGLE_BG")) { TogglePanel(); return; }
-   if(sparam==Obj("V1")) { active_view="COCKPIT"; Panel(); RenderView(); }
-   else if(sparam==Obj("V2")) { active_view="ANALISE"; Panel(); RenderView(); }
-   else if(sparam==Obj("V3")) { active_view="MEMORIA"; Panel(); RenderView(); }
-   else if(sparam==Obj("V4")) { active_view="LAB"; Panel(); RenderView(); }
-   else if(sparam==Obj("V5")) { active_view="ENSINO"; Panel(); RenderView(); }
-   else if(sparam==Obj("V6")) { active_view="NOTIF"; Panel(); RenderView(); }
-   else if(sparam==Obj("V7")) { active_view="CONFIG"; Panel(); RenderView(); }
-   else if(sparam==Obj("V8")) { active_view="RESERVA"; Panel(); RenderView(); }
-   else if(sparam==Obj("V9")) { active_view="ASSISTENTE"; Panel(); RenderView(); }
+   if(sparam==Obj("A1")) { SelectArea("COCKPIT"); return; }
+   else if(sparam==Obj("A2")) { SelectArea("ANÁLISE"); return; }
+   else if(sparam==Obj("A3")) { SelectArea("ESTUDO"); return; }
+   else if(sparam==Obj("A4")) { SelectArea("RESERVA FISCAL"); return; }
+   else if(sparam==Obj("A5")) { SelectArea("ASSISTENTE DO ECOSSISTEMA"); return; }
+   else if(sparam==Obj("A6")) { SelectArea("CENTRAL"); return; }
+   else if(sparam==Obj("M1")) { SelectModule(0); return; }
+   else if(sparam==Obj("M2")) { SelectModule(1); return; }
+   else if(sparam==Obj("M3")) { SelectModule(2); return; }
+   else if(sparam==Obj("M4")) { SelectModule(3); return; }
+   else if(sparam==Obj("M5")) { SelectModule(4); return; }
+   else if(sparam==Obj("M6")) { SelectModule(5); return; }
    else if(sparam==Obj("ASSISTANT_CONSENT")) { assistant_consent_armed=!assistant_consent_armed; SetButton(Obj("ASSISTANT_CONSENT"),assistant_consent_armed?"CONSENTIMENTO OPENAI: SIM":"CONSENTIMENTO OPENAI: NAO",20,307,220,28); }
    else if(sparam==Obj("ASSISTANT_SEND")) SendAssistantMessage();
    else if(sparam==Obj("ANALYZE")) {
