@@ -7,7 +7,7 @@ Set-Location $ProjectRoot
 $env:CONTROLADOR_RESTORE_BACKUP_FILE = $BackupFile
 $env:CONTROLADOR_RESTORE_RUNTIME_DIR = $RuntimeDir
 try {
-    & $PythonExe -c 'import os; from core.runtime_portability import restore_backup; print(restore_backup(os.environ["CONTROLADOR_RESTORE_BACKUP_FILE"], os.environ["CONTROLADOR_RESTORE_RUNTIME_DIR"]))'
+    & $PythonExe -c "import os; from core.runtime_portability import restore_backup; print(restore_backup(os.environ['CONTROLADOR_RESTORE_BACKUP_FILE'], os.environ['CONTROLADOR_RESTORE_RUNTIME_DIR']))"
     $restoreExitCode = $LASTEXITCODE
 } finally {
     Remove-Item Env:CONTROLADOR_RESTORE_BACKUP_FILE -ErrorAction SilentlyContinue
