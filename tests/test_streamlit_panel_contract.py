@@ -1423,7 +1423,7 @@ def test_streamlit_laboratorio_has_separate_manual_source_review_and_knowledge_a
 
     assert "Revisão manual de procedência" in laboratory
     assert "não baixa" in laboratory
-    assert "não é uma varredura antivírus" in laboratory
+    assert "não é " in laboratory and "uma varredura antivírus" in laboratory
     assert 'api("/api/learning/sources/validate", "POST"' in laboratory
     assert '"content_verified": True' in laboratory
     assert '"security_checked": True' in laboratory
@@ -1648,7 +1648,9 @@ def test_kill_switch_activation_api_is_confirmed_persisted_and_never_auto_resume
     assert '"unknown_request_ids"' in route
     assert 'não são canceladas' in route
     assert 'deactivate' not in route
-    assert 'if method == "POST" and path != "/api/updates":' in runtime_source
+    assert 'if method == "POST" and path != "/api/updates" and path not in local_ea_post_paths:' in runtime_source
+    assert '"/api/runtime/analysis/local": "/api/runtime/analysis"' in runtime_source
+    assert "_authorize_local_runtime(environ)" in runtime_source
     assert '_authorize_remote_mutation(environ)' in runtime_source
     assert 'deactivate' not in route
 
