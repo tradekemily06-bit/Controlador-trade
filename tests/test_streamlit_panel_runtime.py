@@ -512,3 +512,156 @@ def test_fiscal_rate_form_posts_only_configured_brazil_day_trade_rate(monkeypatc
         server.shutdown()
         server.server_close()
         worker.join(timeout=5)
+
+
+
+def test_fiscal_result_requires_confirmation_and_complete_fields_before_posting(monkeypatch):
+    import json
+    import threading
+    from datetime import date
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    calls = []
+    saved = []
+    as_of = date.today().isoformat()
+    week = date.fromordinal(date.today().toordinal() - date.today().weekday()).isoformat()
+    month = date.today().replace(day=1).isoformat()
+    year = date.today().replace(month=1, day=1).isoformat()
+
+    def summary_payload():
+        bounds = {
+            "day": (as_of, as_of), "week": (week, as_of),
+            "month": (month, as_of), "year": (year, as_of),
+        }
+        periods = {}
+        for name, (start, end) in bounds.items():
+            periods[name] = {
+                "start": start, "end": end, "entries": len(saved),
+                "realized_result_brl": 125.0 if saved else 0.0,
+                "reserve_amount_brl": 25.0 if saved else 0.0,
+            }
+        history = [{
+            "entry_id": "entry-test-001", "category": "BR_DAY_TRADE",
+            "reference": saved[0]["reference"], "occurred_on": as_of,
+            "notes": saved[0]["notes"],
+        }] if saved else []
+        return {
+            "as_of": as_of,
+            "categories": {
+                "BR_DAY_TRADE": {
+                    "entries": len(saved), "rate": 20.0,
+                    "realized_result_brl": 125.0 if saved else 0.0,
+                    "reserve_amount_brl": 25.0 if saved else 0.0,
+                    "rate_source": "USER_CONFIGURED",
+                },
+                "FOREIGN_FINANCIAL_ASSET": {
+                    "entries": 0, "classification_status": "PENDING_CLASSIFICATION",
+                    "rate_available": False, "realized_result_brl": 0.0,
+                    "reserve_amount_brl": 0.0,
+                },
+            },
+            "periods": periods,
+            "total_reserved_brl": 25.0 if saved else 0.0,
+            "reserve_semantics": {
+                "kind": "PLANNING_ESTIMATE_ONLY", "tax_liability_confirmed": False,
+                "monthly_tax_assessment": False, "monthly_loss_offsets_calculated": False,
+                "irrf_credits_calculated": False,
+                "description": "Estimativa de planejamento, não imposto devido.",
+            },
+            "foreign_pending": {
+                "available": False, "included_in_totals": False,
+                "reserve_calculated": False,
+            },
+            "history": history,
+            "history_page": {
+                "total": len(history), "limit": 50, "offset": 0,
+                "returned": len(history), "has_more": False,
+            },
+            "monthly_planning": None,
+        }
+
+    class Handler(BaseHTTPRequestHandler):
+        def _send(self, payload, status=200):
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            calls.append(("GET", self.path))
+            if self.path.startswith("/api/fiscal-reserve?"):
+                return self._send(summary_payload())
+            return self._send({})
+
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", "0"))
+            payload = json.loads(self.rfile.read(length) or b"{}")
+            calls.append(("POST", self.path, payload))
+            if self.path == "/api/fiscal-reserve/results":
+                saved.append(payload)
+                return self._send({"created": True, "entry_id": "entry-test-001"})
+            return self._send({"error": "not found"}, 404)
+
+        def log_message(self, format, *args):
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    try:
+        monkeypatch.setenv("CONTROLADOR_API_BASE_URL", f"http://127.0.0.1:{server.server_port}")
+        monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "false")
+        monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "test-owner")
+        monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "false")
+
+        app = AppTest.from_file(str(PANEL_APP)).run(timeout=30)
+        area = next(item for item in app.radio if item.label == "Áreas principais")
+        area.set_value("RESERVA FISCAL").run(timeout=30)
+        assert not app.exception
+
+        submit_key = "fiscal_result_form-Registrar estimativa de planejamento"
+        app.button(key=submit_key).click().run(timeout=30)
+        assert not app.exception
+        assert not [item for item in calls if item[0] == "POST"]
+        assert any("Confirme os critérios de day trade" in item.value for item in app.error)
+
+        next(item for item in app.checkbox if "Confirmo que foi o mesmo ativo" in item.label).check()
+        app.run(timeout=30)
+        app.button(key=submit_key).click().run(timeout=30)
+        assert not app.exception
+        assert not [item for item in calls if item[0] == "POST"]
+        assert any("Preencha ativo, instituição, mercado e referência" in item.value for item in app.error)
+
+        for label, value in (
+            ("Ativo / instrumento negociado", "WIN"),
+            ("Instituição intermediária", "Corretora Demo"),
+            ("Mercado / ambiente de negociação", "B3"),
+            ("Referência / comprovante", "comprovante-teste-001"),
+        ):
+            next(item for item in app.text_input if item.label == label).set_value(value)
+        app.run(timeout=30)
+        app.button(key=submit_key).click().run(timeout=30)
+
+        assert not app.exception
+        posts = [item for item in calls if item[0] == "POST"]
+        assert len(posts) == 1
+        payload = posts[0][2]
+        assert payload["category"] == "BR_DAY_TRADE"
+        assert payload["realized_result_brl"] == 0.0
+        assert payload["instrument"] == "WIN"
+        assert payload["institution"] == "Corretora Demo"
+        assert payload["market_label"] == "B3"
+        assert payload["market_scope"] == "BR_ELIGIBLE_MARKET"
+        assert payload["same_asset"] is True
+        assert payload["same_institution"] is True
+        assert payload["same_day"] is True
+        assert payload["confirmed"] is True
+        assert payload["reference"] == "comprovante-teste-001"
+        assert any("Estimativa de planejamento registrada" in item.value for item in app.success)
+        assert saved and any(path.startswith("/api/fiscal-reserve?") for method, path, *rest in calls if method == "GET")
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=5)
