@@ -2029,3 +2029,21 @@ def test_streamlit_fiscal_review_history_explicitly_shows_unverified_identity_an
     assert source.count('"Identidade verificada": "NÃO VERIFICADA" if item.get("reviewer_identity_status") == "DECLARED_NOT_VERIFIED" else "Estado inválido"') == 2
     assert source.count('"Registro profissional verificado": "NÃO VERIFICADO" if item.get("professional_registration_verified") is False else "Estado inválido"') == 2
     assert source.count('"Observações": item.get("review_notes", "")') == 2
+
+def test_streamlit_memory_allows_manual_outcomes_for_confirmed_directional_decisions():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    memory_start = source.index('if module_name == "Memória":')
+    memory_end = source.index('if module_name == "Motor de Decisão":', memory_start)
+    memory_view = source[memory_start:memory_end]
+
+    assert "pending_outcome_records = [" in memory_view
+    assert 'item.get("confirmed") is True' in memory_view
+    assert 'in {"COMPRA", "VENDA"}' in memory_view
+    assert 'and not str(item.get("outcome") or "").strip()' in memory_view
+    assert 'api(' in memory_view
+    assert '"/api/outcome"' in memory_view
+    assert '"decision_id": selected_decision_id' in memory_view
+    assert '"outcome": selected_outcome' in memory_view
+    assert '["WIN", "LOSS", "DRAW", "OPEN", "VOID"]' in memory_view
+    assert 'saved_outcome.get("outcome_source") == "MANUAL_STUDY"' in memory_view
+    assert "anotação manual de estudo, não uma confirmação independente da corretora" in memory_view
