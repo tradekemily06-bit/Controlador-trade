@@ -1467,7 +1467,7 @@ def application(environ, start_response):
             automation_state = getattr(getattr(cycle.automation_lifecycle, "state", None), "value", None)
             execution_gate_blocked = execution is None and automation_state == "BLOCKED"
             execution_rejected = execution is not None and not execution_accepted
-            execution_not_authorized = execution_gate_blocked or execution_rejected
+            execution_not_authorized = not execution_accepted
             decision_value = "AGUARDAR" if execution_not_authorized else candidate_decision_value
             candidate_signal = orchestration.analysis.signal.value
             display_signal = candidate_signal if decision_value == "EXECUTAR" and execution_accepted else "AGUARDAR"
@@ -1476,6 +1476,8 @@ def application(environ, start_response):
             elif execution_rejected:
                 rejection_detail = execution.message or getattr(execution.status, "value", "estado não confirmado")
                 display_reason = f"Análise concluída; executor não confirmou a execução: {rejection_detail}."
+            elif execution is None and candidate_decision_value == "EXECUTAR":
+                display_reason = f"Análise concluída; runtime não confirmou uma execução aceita: {result.stop_reason or 'estado de execução indisponível'}."
             else:
                 display_reason = (
                     orchestration.analysis.reason
