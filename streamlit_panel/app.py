@@ -1690,12 +1690,15 @@ def show_finance_overview() -> None:
             f"Período mensal: {month.get('start', '—')} a {month.get('end', '—')} · "
             "valores de planejamento, não apuração de imposto."
         )
-        domestic = summary.get("domestic_pending", {})
         foreign = summary.get("foreign_pending", {})
+        try:
+            domestic = api("/api/fiscal-reserve/domestic-pending/summary")
+        except Exception:
+            domestic = {}
         pending_columns = st.columns(2)
         domestic_count = (
             str(_safe_fiscal_count(domestic.get("total", 0)))
-            if isinstance(domestic, dict) and domestic.get("available") is True
+            if _valid_pending_queue_summary(domestic, "results")
             else "Indisponível"
         )
         foreign_count = (
