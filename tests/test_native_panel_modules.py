@@ -138,3 +138,13 @@ def test_native_mt5_assistant_paginates_the_complete_response_instead_of_silentl
     assert 'if(active_view=="ASSISTENTE" && assistant_answer_page>0)' in events
     assert 'if(active_view=="ASSISTENTE" && (assistant_answer_page+1)*330<StringLen(assistant_answer))' in events
     assert 'StringSubstr(answer,132,66)' not in send
+
+def test_native_mt5_assistant_does_not_overwrite_persisted_answer_with_status_on_reentry():
+    source = EA.read_text(encoding="utf-8")
+    render = source.split("void RenderAssistant(){", 1)[1].split("void SendAssistantMessage()", 1)[0]
+
+    assert 'if(assistant_answer==""){' in render
+    assert "RefreshAssistantStatus();" in render
+    assert "RenderAssistantAnswer();" in render
+    assert render.index("RefreshAssistantStatus();") < render.index("}else{")
+    assert render.index("}else{") < render.index("RenderAssistantAnswer();")
