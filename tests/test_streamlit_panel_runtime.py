@@ -48,6 +48,36 @@ def test_streamlit_fiscal_reserve_is_a_separate_main_area(monkeypatch):
     assert any(item.value == "Reserva Fiscal" for item in app.subheader)
 
 
+
+def test_streamlit_fiscal_mutation_forms_stay_hidden_when_summary_is_unavailable(monkeypatch):
+    app = _open_panel(monkeypatch)
+    area = next(item for item in app.radio if item.label == "Áreas principais")
+    area.set_value("RESERVA FISCAL").run(timeout=30)
+
+    assert not app.exception
+    assert any(
+        "Resumo fiscal indisponível" in item.value
+        or "Resumo fiscal incompleto ou inválido" in item.value
+        for item in app.error
+    )
+    # No fiscal form may be rendered from an unavailable or unvalidated snapshot.
+    visible_inputs = {item.label for item in app.text_input}
+    assert "Ativo / instrumento negociado" not in visible_inputs
+    assert "Referência / comprovante" not in visible_inputs
+    assert "Referência / comprovante · Brasil" not in visible_inputs
+
+
+def test_streamlit_assistant_consent_is_disabled_without_owner_identity(monkeypatch):
+    monkeypatch.delenv("CONTROLADOR_SINGLE_USER_IDENTITY", raising=False)
+    app = _open_panel(monkeypatch)
+    area = next(item for item in app.radio if item.label == "Áreas principais")
+    area.set_value("ASSISTENTE DO ECOSSISTEMA").run(timeout=30)
+
+    consent = next(item for item in app.checkbox if "Autorizo enviar minha pergunta" in item.label)
+    assert consent.disabled is True
+    assert not app.exception
+
+
 def test_streamlit_financeiro_remains_available_under_more_admin(monkeypatch):
     app = _open_panel(monkeypatch)
     area = next(item for item in app.radio if item.label == "Áreas principais")
