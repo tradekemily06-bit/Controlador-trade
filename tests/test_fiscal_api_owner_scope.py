@@ -2,6 +2,8 @@ import io
 import json
 import sqlite3
 
+import pytest
+
 import app as app_module
 from assistant.conversation_store import AssistantConversationStore
 from finance.fiscal_pending_queue import FiscalPendingQueue
@@ -376,7 +378,8 @@ def test_foreign_pending_api_intake_results_and_reviews_stay_owner_scoped_and_un
 
     listing = queue.list_pending(owner_id)
     assert queue.list_pending("single:attacker-selected-owner")["total"] == 0
-    assert queue.list_reviews("single:attacker-selected-owner", pending_id) == []
+    with pytest.raises(ValueError, match="pendência não encontrada"):
+        queue.list_reviews("single:attacker-selected-owner", pending_id)
     assert len(queue.list_reviews(owner_id, pending_id)) == 1
     assert listing["total"] == 2
     assert {item["reference"] for item in listing["items"]} == {
