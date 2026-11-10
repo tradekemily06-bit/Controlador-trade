@@ -203,7 +203,7 @@ def test_fiscal_pending_intake_ignores_forged_owner_id_in_request_bodies(tmp_pat
         payload={
             "owner_id": "single:attacker-selected-owner",
             "reference": "OWNER-BODY-DOMESTIC-001",
-            "category_candidate": "BR_FII",
+            "category_candidate": "BR_FII_FIAGRO",
             "instrument": "FII",
             "market_scope": "B3",
             "occurred_on": "2026-11-05",
@@ -403,6 +403,12 @@ def test_mt5_pending_result_ignores_forged_owner_id_and_uses_authenticated_owner
     owner_id = migrate_fiscal_schema(str(database))
     queue = FiscalPendingQueue(str(database))
     monkeypatch.setattr(app_module, "FISCAL_PENDING_QUEUE", queue)
+    import execution.mt5_session_lock as mt5_session_lock
+
+    adapter = app_module.SERVICE.mt5_operational_adapter
+    session_lock = _ObservedSessionLock()
+    monkeypatch.setattr(mt5_session_lock, "MT5_TERMINAL_SESSION_LOCK", session_lock)
+    monkeypatch.setattr(adapter, "_session_lock", session_lock)
 
     candidate = {
         "account_currency": "USD",
@@ -582,7 +588,7 @@ def test_domestic_pending_api_list_summary_and_reviews_are_owner_scoped(
     queue = FiscalDomesticPendingQueue(str(database))
     own_item = queue.add(owner_id, {
         "reference": "BR-OWNER-ONLY",
-        "category_candidate": "BR_FII",
+        "category_candidate": "BR_FII_FIAGRO",
         "instrument": "FII",
         "market_scope": "B3",
         "occurred_on": "2026-11-04",
@@ -590,7 +596,7 @@ def test_domestic_pending_api_list_summary_and_reviews_are_owner_scoped(
     })
     foreign_owner_item = queue.add("single:other-owner", {
         "reference": "BR-OTHER-OWNER-ONLY",
-        "category_candidate": "BR_FII",
+        "category_candidate": "BR_FII_FIAGRO",
         "instrument": "FII",
         "market_scope": "B3",
         "occurred_on": "2026-11-04",
