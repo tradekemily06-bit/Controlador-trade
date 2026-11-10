@@ -1008,11 +1008,14 @@ def test_fiscal_api_to_assistant_context_flow_preserves_evidence_and_privacy(tmp
     assert pending["evidence_completeness"]["missing_core_evidence"] == 0
     assert pending["included_in_totals"] is False
     assert pending["reserve_calculated"] is False
+    serialized_context = json.dumps(context, ensure_ascii=False)
     for private_value in (
         "PRIVATE-E2E-REFERENCE",
         "PRIVATE-E2E-BROKER",
         "PRIVATE-E2E-NOTE",
-        "250",
-        "200",
+        "original_amount",
+        "acquisition_cost",
+        "transaction_fees",
+        "foreign_tax_paid",
     ):
-        assert private_value not in json.dumps(context, ensure_ascii=False)
+        assert private_value not in serialized_context

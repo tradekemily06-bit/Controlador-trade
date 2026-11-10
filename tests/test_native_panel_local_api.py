@@ -221,3 +221,119 @@ def test_native_fiscal_summary_uses_server_owner_and_keeps_foreign_pending_separ
     assert "rate" not in payload["categories"]["FOREIGN_FINANCIAL_ASSET"]
     assert "reserve_amount_brl" not in payload["history"][0]
     assert payload["domestic_pending"]["total"] == 3
+
+
+def test_native_assistant_status_works_with_remote_identity_required_without_proxy_header(tmp_path, monkeypatch):
+    class Assistant:
+        def readiness(self):
+            return {"available": True, "read_only": True}
+
+    _allow_native_local(monkeypatch)
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "Cf-Access-Authenticated-User-Email")
+    monkeypatch.setattr(app_module, "ASSISTANT", Assistant())
+    monkeypatch.setattr(app_module, "configured_fiscal_owner_id", lambda: "single:native-owner")
+
+    status, payload = _request("/api/assistant/local/status")
+
+    assert status.startswith("200")
+    assert payload["available"] is True
+
+
+def test_native_fiscal_summary_works_with_remote_identity_required_without_proxy_header(tmp_path, monkeypatch):
+    class Fiscal:
+        def summary(self, owner_id, history_limit=20, history_offset=0):
+            assert owner_id == "single:native-owner"
+            return {"total_reserved_brl": 0.0, "categories": {}, "history": []}
+
+    class Queue:
+        def summary(self, owner_id):
+            assert owner_id == "single:native-owner"
+            return {"total": 0, "included_in_totals": False, "reserve_calculated": False}
+
+    _allow_native_local(monkeypatch)
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "Cf-Access-Authenticated-User-Email")
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE", Fiscal())
+    monkeypatch.setattr(app_module, "FISCAL_PENDING_QUEUE", Queue())
+    monkeypatch.setattr(app_module, "FISCAL_DOMESTIC_PENDING_QUEUE", Queue())
+    monkeypatch.setattr(app_module, "configured_fiscal_owner_id", lambda: "single:native-owner")
+    monkeypatch.setattr(app_module, "migrate_fiscal_schema", lambda _path: "single:native-owner")
+    monkeypatch.setattr(app_module, "fiscal_classification_catalog", lambda: {})
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", tmp_path / "fiscal.sqlite3")
+
+    status, payload = _request("/api/fiscal-reserve/local")
+
+    assert status.startswith("200")
+    assert payload["total_reserved_brl"] == 0.0
+    assert payload["foreign_pending"]["included_in_totals"] is False
+    assert payload["domestic_pending"]["included_in_totals"] is False
+
+
+def test_native_ea_read_only_allowlist_stays_loopback_and_host_restricted(monkeypatch):
+    _allow_native_local(monkeypatch)
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "Cf-Access-Authenticated-User-Email")
+
+    for path in (
+        "/api/health",
+        "/api/preferences",
+        "/api/notifications",
+        "/api/learning",
+        "/api/market/assets",
+        "/api/risk",
+        "/api/statistics",
+        "/api/news",
+        "/api/memory",
+        "/api/runtime/positions/recovery/local",
+        "/api/fiscal-reserve/local",
+        "/api/assistant/local/status",
+    ):
+        status, _ = _request(path, remote_addr="203.0.113.8")
+        assert not status.startswith("2"), (path, status)
+
+        status, _ = _request(path, host="attacker.example")
+        assert not status.startswith("2"), (path, status)
+
+
+def test_native_ea_preferences_read_uses_local_gate_when_proxy_identity_is_absent(monkeypatch):
+    _allow_native_local(monkeypatch)
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "Cf-Access-Authenticated-User-Email")
+
+    status, payload = _request("/api/preferences")
+
+    assert status.startswith("200")
+    assert "preferences" in payload
+
+
+def test_authenticated_streamlit_can_read_shared_endpoint_in_remote_mode(monkeypatch):
+    _allow_native_local(monkeypatch)
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "Cf-Access-Authenticated-User-Email")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+
+    status, payload = _request(
+        "/api/preferences",
+        identity_header="Cf-Access-Authenticated-User-Email",
+        identity_value="owner@example.com",
+    )
+
+    assert status.startswith("200")
+    assert "preferences" in payload
+
+
+def test_invalid_proxy_identity_does_not_fall_back_to_native_local_gate(monkeypatch):
+    _allow_native_local(monkeypatch)
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "Cf-Access-Authenticated-User-Email")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+
+    status, payload = _request(
+        "/api/preferences",
+        identity_header="Cf-Access-Authenticated-User-Email",
+        identity_value="attacker@example.com",
+    )
+
+    assert status.startswith("403")
+    assert "Identidade autenticada necessária." in payload["error"]
