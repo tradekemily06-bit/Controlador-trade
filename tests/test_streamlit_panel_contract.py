@@ -29,6 +29,9 @@ def test_streamlit_operational_navigation_has_six_areas_and_central_last():
 def test_streamlit_reports_uses_dedicated_read_only_reports_endpoint_and_avoids_fake_modules():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert '"Relatórios": ("Resumo operacional", "/api/reports")' in source
+    reports_view = source.split('if module_name == "Relatórios":', 1)[1].split("\n    except Exception:", 1)[0]
+    assert 'report_summary = data.get("summary", {})' in reports_view
+    assert 'data.get("records", [])' in reports_view
     views = source.split("views = {", 1)[1].split("}", 1)[0]
     assert '"Segurança":' not in views
     assert '"Multi-Broker":' not in views
