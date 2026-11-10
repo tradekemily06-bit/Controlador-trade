@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
-from core.kill_switch import KillSwitch
+from core.operational_runtime import build_operational_runtime
 from execution.broker_registry import BrokerRegistry
-from execution.gateway import ExecutionGateway
 from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, ICMarketsMT5DemoConfig, ICMarketsMT5RealAdapter
 
 IC_MARKETS_MT5_DEMO = "ic_markets_mt5_demo"
@@ -31,19 +31,21 @@ def build_demo_registry(*, mt5_module: Any = None, symbol: str | None = None) ->
 
 def build_ic_markets_mt5_demo_gateway(
     *,
+    root: str | Path,
     mt5_module: Any = None,
     symbol: str | None = None,
-    kill_switch: KillSwitch | None = None,
-) -> ExecutionGateway:
-    """Compose the IC Markets MT5 DEMO adapter behind the safety gateway.
+):
+    """Build the MT5 DEMO gateway through the authoritative guarded runtime.
 
-    Construction is side-effect free. The MT5 terminal is not initialized and
-    no order can be sent until the returned gateway receives an explicit DEMO
-    execution request that passes its safety checks.
+    The factory deliberately does not construct a standalone ExecutionGateway:
+    doing so would bypass the shared recovery coordinator, durable ledger,
+    lifecycle store, and operational recorder used by the application runtime.
+    Construction does not initialize MT5 or dispatch an order.
     """
     registry = build_demo_registry(mt5_module=mt5_module, symbol=symbol)
     adapter = registry.get(IC_MARKETS_MT5_DEMO)
-    return ExecutionGateway(adapter, kill_switch or KillSwitch())
+    runtime = build_operational_runtime(root, executor=adapter)
+    return runtime.gateway
 
 
 def build_real_registry(*, mt5_module: Any = None, symbol: str | None = None) -> BrokerRegistry:
