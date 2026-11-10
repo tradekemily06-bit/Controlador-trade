@@ -133,10 +133,11 @@ if ($remoteRequired) {
 $failed = @($checks | Where-Object { -not $_.ok -and -not $_.skipped })
 $passed = @($checks | Where-Object { $_.ok -and -not $_.skipped }).Count
 $skipped = @($checks | Where-Object { $_.skipped }).Count
+$identityMode = if ($remoteRequired) { 'TRUSTED_REMOTE' } else { 'LOCAL_LOOPBACK' }
 $result = [pscustomobject]@{
     generated_at = (Get-Date).ToUniversalTime().ToString('o')
     base_url = $BaseUrl
-    identity_mode = if ($remoteRequired) { 'TRUSTED_REMOTE' } else { 'LOCAL_LOOPBACK' }
+    identity_mode = $identityMode
     checks = $checks
     passed = $passed
     skipped = $skipped
