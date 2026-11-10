@@ -1819,7 +1819,7 @@ def test_streamlit_fiscal_panel_never_displays_raw_exception_details():
     assert "st.warning(str(exc))" not in fiscal
     assert "{exc}" not in fiscal
     assert "exc.reason" not in fiscal
-    assert "details técnicos não são exibidos no painel" in fiscal
+    assert "detalhes técnicos não são exibidos no painel" in fiscal.lower()
 
 
 def test_streamlit_assistant_panel_never_displays_raw_exception_details():
