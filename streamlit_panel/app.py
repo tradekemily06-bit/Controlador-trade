@@ -1954,25 +1954,6 @@ def show_readonly_module(module_name: str) -> None:
 
     try:
         data = api(endpoint)
-        if module_name == "Segurança":
-            storage = data.get("production_storage", {}) if isinstance(data, dict) else {}
-            gate = data.get("production_operation_gate", {}) if isinstance(data, dict) else {}
-            storage_state = storage.get("state") if isinstance(storage, dict) else None
-            gate_state = gate.get("storage_state") if isinstance(gate, dict) else None
-            identity_provider = data.get("trusted_identity_provider") if isinstance(data, dict) else None
-            tenant_isolation = data.get("tenant_isolation") if isinstance(data, dict) else None
-            real_state = data.get("real") if isinstance(data, dict) else None
-            cols = st.columns(2)
-            cols[0].metric("Armazenamento", str(storage_state or "NÃO CONFIRMADO"))
-            cols[1].metric("Gate operacional", str(gate_state or "NÃO CONFIRMADO"))
-            cols = st.columns(2)
-            cols[0].metric("Provedor de identidade", str(identity_provider or "NÃO CONFIRMADO"))
-            cols[1].metric("Isolamento de tenant", str(tenant_isolation or "NÃO CONFIRMADO"))
-            st.caption("Execução REAL: " + str(real_state or "NÃO CONFIRMADO"))
-            st.caption("Esta tela exibe indicadores declarados pelo runtime; não substitui auditoria de configuração, teste de isolamento ou revisão de infraestrutura.")
-            st.caption("Somente leitura · nenhuma permissão de execução é concedida.")
-            return
-
         if module_name == "Configurações":
             prefs = data.get("preferences", {}) if isinstance(data, dict) else {}
             candle = prefs.get("candle", {}) if isinstance(prefs.get("candle"), dict) else {}
@@ -2581,6 +2562,7 @@ def show_readonly_module(module_name: str) -> None:
             st.metric("Integração MT5 DEMO", str(data.get("ic_markets_mt5_demo", "NÃO CONFIRMADO")))
             st.metric("cTrader", str(data.get("cTrader", "FUTURO_NAO_BLOQUEANTE")))
             st.warning("Não há evidência nesta resposta de uma segunda corretora conectada e validada. Não trate a arquitetura multi-broker como integração concluída.")
+            st.caption("Execução multi-broker: NÃO IMPLEMENTADA · nenhum roteamento de ordens foi ativado.")
             st.caption("A conexão com outras corretoras exige adaptador próprio, credenciais configuradas com segurança e testes DEMO por corretora.")
             st.caption("Nenhuma ordem é enviada por esta tela. REAL permanece DESABILITADO.")
             return
