@@ -74,6 +74,9 @@ def test_streamlit_mt5_preview_requires_explicit_classification_and_confirmation
     assert 'account_currency == "BRL"' in source
     assert '"/api/fiscal-reserve/mt5-pending-result"' in source
     assert "Guardar como pendência" in source
+    assert "Confirmar e guardar como pendência" in source
+    assert "fila brasileira de revisão fiscal" in source
+    assert "Continua pendente, sem cálculo e fora dos totais." in source
 
 
 def test_streamlit_panel_preserves_signed_foreign_results_as_pending():
