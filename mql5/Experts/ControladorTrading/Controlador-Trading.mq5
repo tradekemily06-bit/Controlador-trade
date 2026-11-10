@@ -274,6 +274,7 @@ string AreaModuleLabel(string module){
    if(module=="Relatórios") return "RELAT.";
    if(module=="Laboratório") return "LAB";
    if(module=="Replay") return "REPLAY";
+      if(module=="Simulador") return "SIMULATOR";
    if(module=="Simulador") return "SIMUL.";
    if(module=="Aprendizado") return "APREND.";
    if(module=="Descobertas") return "DESCOB.";
@@ -1221,8 +1222,30 @@ void SendAssistantMessage(){
    RenderAssistantAnswer();
    ObjectSetString(0,Obj("ASSISTANT_INPUT"),OBJPROP_TEXT,"");
 }
+void RunHistoricalReplay(){
+   string response=""; int code=0;
+   string symbol=_Symbol;
+   string timeframe=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
+   string q=CharToString(34);
+   string body="{"+q+"symbol"+q+":"+q+JsonEscape(symbol)+q+","+q+"timeframe"+q+":"+q+JsonEscape(timeframe)+q+","+q+"limit"+q+":100}";
+   if(!Http("POST","/api/replay/mt5",body,response,code)){
+      SetLabel(Obj("INFO1"),"Replay indisponivel • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Runtime sem resposta; nenhuma ordem foi enviada.",20,381,8,C'205,215,230'); return;
+   }
+   string source=JsonValue(response,"source"), symbol_out=JsonValue(response,"symbol");
+   string tf_out=JsonValue(response,"timeframe"), candles=JsonValue(response,"candles_replayed");
+   string buys=JsonValue(response,"buy_signals"), sells=JsonValue(response,"sell_signals");
+   string waiting=JsonValue(response,"waiting"), orders=JsonValue(response,"orders_sent");
+   SetLabel(Obj("INFO1"),"Replay: "+(candles==""?"nao informado":candles)+" candles",20,361,9,C'88,214,141');
+   SetLabel(Obj("INFO2"),"Ativo/periodo: "+(symbol_out==""?symbol:symbol_out)+" / "+(tf_out==""?timeframe:tf_out),20,381,8,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Compra: "+(buys==""?"—":buys)+" • Venda: "+(sells==""?"—":sells),20,401,8,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Aguardar: "+(waiting==""?"—":waiting)+" • Fonte: "+(source==""?"nao informada":source),20,421,8,C'205,215,230');
+   SetLabel(Obj("INFO5"),"Ordens enviadas: "+(orders==""?"nao confirmado":orders)+" • Execucao: NAO",20,441,8,C'255,155,155');
+}
 void RenderView(){
    ClearAssistantControls();
+   string replay_controls[]={"REPLAY_RUN"};
+   for(int k=0;k<ArraySize(replay_controls);k++) if(ObjectFind(0,Obj(replay_controls[k]))>=0) ObjectDelete(0,Obj(replay_controls[k]));
    string kill_controls[]={"KILL_REASON","KILL_CONFIRM","KILL_ACTIVATE"};
    for(int k=0;k<ArraySize(kill_controls);k++) if(ObjectFind(0,Obj(kill_controls[k]))>=0) ObjectDelete(0,Obj(kill_controls[k]));
    string action_buttons[]={"ANALYZE","CYCLE","SAVE","CLOSE"};
@@ -1242,6 +1265,25 @@ void RenderView(){
    }
    if(active_view=="RESERVA") { RenderFiscal(); return; }
    if(active_view=="ASSISTENTE") { RenderAssistant(); return; }
+   if(active_view=="REPLAY"){
+      ClearCockpitFields();
+      SetLabel(Obj("SUB"),"REPLAY HISTORICO • candles fechados do grafico MT5",20,47,9,C'150,165,185');
+      SetButton(Obj("REPLAY_RUN"),"REPRODUZIR 100 CANDLES",20,284,220,30);
+      SetLabel(Obj("INFO1"),"Ativo e periodo seguem o grafico atual.",20,361,9,C'205,215,230');
+      SetLabel(Obj("INFO2"),"A reproducao usa somente candles historicos fechados.",20,381,8,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Nao cria ordens nem altera memoria operacional.",20,401,8,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Historico depende da disponibilidade no runtime.",20,421,8,C'205,215,230');
+      SetLabel(Obj("INFO5"),"REAL bloqueado • execucao permitida: NAO",20,441,8,C'255,155,155'); return;
+   }
+   if(active_view=="SIMULATOR"){
+      ClearCockpitFields();
+      SetLabel(Obj("SUB"),"SIMULADOR HISTORICO • configuracao",20,47,9,C'150,165,185');
+      SetLabel(Obj("INFO1"),"Backtest disponivel no painel Streamlit.",20,361,9,C'205,215,230');
+      SetLabel(Obj("INFO2"),"Interface MT5 ainda precisa de campos para stop,",20,381,8,C'255,209,102');
+      SetLabel(Obj("INFO3"),"alvo, quantidade, multiplicador e custos.",20,401,8,C'255,209,102');
+      SetLabel(Obj("INFO4"),"Nenhum parametro sera presumido.",20,421,8,C'205,215,230');
+      SetLabel(Obj("INFO5"),"Execucao permitida: NAO • REAL bloqueado",20,441,8,C'255,155,155'); return;
+   }
    if(active_view=="KILL_SWITCH"){
       ClearCockpitFields();
       SetLabel(Obj("SUB"),"KILL SWITCH • bloqueio protegido de novas execucoes",20,47,9,C'150,165,185');
@@ -1380,7 +1422,7 @@ void RefreshHealth(){
    SetLabel(Obj("RUNTIME"),"Sistema: online",20,104,10,C'88,214,141');
    SetLabel(Obj("MODE"),"Modo: "+(mode==""?"nao informado":mode)+" • MT5: "+(mt5==""?"nao confirmado":mt5),20,124,10,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • autorizacao separada",20,441,9,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
-   if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="DECISION" || active_view=="KILL_SWITCH" || active_view=="UNAVAILABLE" || active_view=="MEMORIA" || active_view=="RISK" || active_view=="STATS" || active_view=="CONNECTIONS" || active_view=="ENVIRONMENT" || active_view=="SECURITY" || active_view=="REPORTS" || active_view=="AUDIT" || active_view=="FINANCE") return;
+   if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="DECISION" || active_view=="REPLAY" || active_view=="SIMULATOR" || active_view=="KILL_SWITCH" || active_view=="UNAVAILABLE" || active_view=="MEMORIA" || active_view=="RISK" || active_view=="STATS" || active_view=="CONNECTIONS" || active_view=="ENVIRONMENT" || active_view=="SECURITY" || active_view=="REPORTS" || active_view=="AUDIT" || active_view=="FINANCE") return;
    SetLabel(Obj("INFO1"),"Analise do ecossistema: "+(engine==""?"online":engine),20,361,9,C'205,215,230');
 }
 void RefreshMarketAssets(){
@@ -1665,6 +1707,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("MEMORY_NEXT")) { if(active_view=="MEMORIA" && (memory_page+1)*5<ArraySize(memory_records)) { memory_page++; RenderMemoryPage(); } }
    else if(sparam==Obj("ASSISTANT_PREV")) { if(active_view=="ASSISTENTE" && assistant_answer_page>0) { assistant_answer_page--; RenderAssistantAnswer(); } }
    else if(sparam==Obj("ASSISTANT_NEXT")) { if(active_view=="ASSISTENTE" && (assistant_answer_page+1)*330<StringLen(assistant_answer)) { assistant_answer_page++; RenderAssistantAnswer(); } }
+   else if(sparam==Obj("REPLAY_RUN") && active_view=="REPLAY") RunHistoricalReplay();
    else if(sparam==Obj("ANALYZE")) {
       if(active_view=="DECISION") RefreshDecisionView();
       else if(active_view=="KILL_SWITCH") RefreshKillSwitchStatus();
