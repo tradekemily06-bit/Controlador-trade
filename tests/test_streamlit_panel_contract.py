@@ -441,7 +441,7 @@ def test_financeiro_functions_have_dedicated_top_level_areas_without_changing_fi
     assert list(config["open_state"]["tabs"]) == ["COCKPIT", "ANÁLISE", "ESTUDO", "MAIS / ADMIN"]
     assert config["open_state"]["tabs"]["MAIS / ADMIN"][0] == "Financeiro"
     assert 'AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]' in source
-    assert 'AREAS["ASSISTENTE"] = ["Assistente do Ecossistema"]' in source
+    assert 'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]' in source
     assert 'if module != "Financeiro"' in source
     assert 'if module == "Reserva Fiscal":' in source
     assert 'elif module == "Assistente do Ecossistema":' in source
@@ -1020,7 +1020,7 @@ def test_every_reference_navigation_module_has_a_functional_streamlit_route():
     assert 'elif module == "Assistente do Ecossistema":' in source
     assert 'if module == "Financeiro":' not in source
     assert 'AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]' in source
-    assert 'AREAS["ASSISTENTE"] = ["Assistente do Ecossistema"]' in source
+    assert 'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]' in source
     assert 'show_assistant()' in source
     assert "show_fiscal()" in source
 
