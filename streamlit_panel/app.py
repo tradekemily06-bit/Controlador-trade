@@ -1788,14 +1788,20 @@ def show_kill_switch() -> None:
         status = api("/api/health")
         observability = status.get("operational_observability", {})
         kill = observability.get("kill_switch", {}) if isinstance(observability, dict) else {}
-        enabled = kill.get("enabled") is True if isinstance(kill, dict) else False
-        if enabled:
+        enabled = kill.get("enabled") is True if isinstance(kill, dict) else None
+        kill_state = kill.get("state") if isinstance(kill, dict) else None
+        if enabled is True or kill_state == "ACTIVE":
             st.error("KILL SWITCH ATIVO · novas execuções bloqueadas")
             reason = kill.get("reason")
             if isinstance(reason, str) and reason.strip():
                 st.caption(f"Motivo registrado: {reason}")
+        elif enabled is False and kill_state == "CLEAR":
+            st.success("Kill Switch confirmado como inativo pelo runtime.")
         else:
-            st.success("Kill Switch não está ativo no estado informado pelo runtime.")
+            st.warning(
+                "Estado do Kill Switch não confirmado pelo runtime. "
+                "Não interprete ausência de conexão como proteção inativa."
+            )
         execution = observability.get("execution", {}) if isinstance(observability, dict) else {}
         st.caption(
             "Estado de execução: "
