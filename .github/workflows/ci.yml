@@ -242,6 +242,7 @@ jobs:
               $overwriteRejected = $true
             }
             if (-not $overwriteRejected) { throw 'Runtime restore did not reject overwriting existing state.' }
+            $global:LASTEXITCODE = 0
             Write-Host 'Runtime backup/restore PowerShell smoke test passed.'
           } finally {
             Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
