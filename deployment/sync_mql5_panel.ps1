@@ -261,8 +261,7 @@ if (-not $PSCmdlet.ShouldProcess($destination, $actionDescription)) {
     return
 }
 
-New-Item -ItemType Directory -Force -Path $destinationDir | Out-Null
-$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+$stamp = (Get-Date -Format 'yyyyMMdd-HHmmss-fff') + '-' + [guid]::NewGuid().ToString('N')
 $backupSource = "$destination.$stamp.bak"
 $backupBinary = [System.IO.Path]::ChangeExtension($destination, '.ex5') + ".$stamp.bak"
 $backupProvenance = "$provenance.$stamp.bak"
@@ -272,6 +271,7 @@ $backupCollision = @($backupTargets | Where-Object { Test-Path -LiteralPath $_ }
 if ($backupCollision.Count -gt 0) {
     throw "Backup com nome já existente; nenhum artefato do EA foi alterado. Escolha uma nova execução após inspecionar: $($backupCollision -join '; ')"
 }
+New-Item -ItemType Directory -Force -Path $destinationDir | Out-Null
 try {
     if (Test-Path -LiteralPath $destination) { Copy-WithRetry -Source $destination -Destination $backupSource }
     if (Test-Path -LiteralPath $binary) { Copy-WithRetry -Source $binary -Destination $backupBinary }
