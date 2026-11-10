@@ -56,9 +56,11 @@ def test_native_mt5_module_navigation_recreates_base_controls_without_background
     events = source.split("void OnChartEvent", 1)[1]
     timer = source.split("void OnTimer()", 1)[1].split("void OnChartEvent", 1)[0]
     health = source.split("void RefreshHealth()", 1)[1].split("void RefreshSecondary()", 1)[0]
+    clear_fields = source.split("void ClearCockpitFields()", 1)[1].split("void ClearAssistantControls()", 1)[0]
 
     assert 'active_view="RESERVA"; Panel(); RenderView();' in events
     assert 'active_view="ASSISTENTE"; Panel(); RenderView();' in events
     assert 'else if(active_view=="RESERVA") RefreshFiscal();' not in timer
     assert 'else if(active_view=="ASSISTENTE") RefreshAssistantStatus();' not in timer
     assert 'if(active_view=="RESERVA" || active_view=="ASSISTENTE") return;' in health
+    assert '"REC_REFRESH"' in clear_fields and '"REC_CLOSE"' in clear_fields
