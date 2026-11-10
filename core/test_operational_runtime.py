@@ -121,3 +121,46 @@ def test_kill_switch_activation_is_persisted_and_restored_fail_closed(tmp_path):
         "reason": "parada de emergência",
     }
     assert snapshot["execution"]["state"] == "BLOCKED"
+
+
+
+def test_kill_switch_persists_active_intent_before_in_memory_transition(tmp_path):
+    runtime = build_operational_runtime(tmp_path)
+    observed = {}
+
+    class ObservingSafetyStore:
+        def save(self, audit, persisted_kill_switch):
+            observed["persisted_enabled"] = persisted_kill_switch.state.enabled
+            observed["persisted_reason"] = persisted_kill_switch.state.reason
+            observed["runtime_enabled_during_persist"] = runtime.kill_switch.state.enabled
+
+    runtime.operational_recorder.safety_store = ObservingSafetyStore()
+    state = runtime.operational_recorder.activate_kill_switch("falha crítica")
+
+    assert observed == {
+        "persisted_enabled": True,
+        "persisted_reason": "falha crítica",
+        "runtime_enabled_during_persist": False,
+    }
+    assert state.enabled is True
+    assert runtime.kill_switch.state.enabled is True
+
+
+def test_kill_switch_remains_active_in_process_when_persistence_fails(tmp_path):
+    runtime = build_operational_runtime(tmp_path)
+
+    class BrokenSafetyStore:
+        def save(self, _audit, _persisted_kill_switch):
+            raise OSError("disco indisponível")
+
+    runtime.operational_recorder.safety_store = BrokenSafetyStore()
+    try:
+        runtime.operational_recorder.activate_kill_switch("falha crítica")
+    except OSError:
+        pass
+    else:
+        raise AssertionError("a falha de persistência deveria ser propagada")
+
+    assert runtime.kill_switch.state.enabled is True
+    assert runtime.kill_switch.state.reason == "falha crítica"
+    assert runtime.gateway._kill_switch is runtime.kill_switch
