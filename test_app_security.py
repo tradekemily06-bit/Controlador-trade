@@ -16,8 +16,10 @@ class AppSecurityTests(unittest.TestCase):
         from finance.fiscal_reserve import FiscalReserve
         from finance.fiscal_pending_queue import FiscalPendingQueue
         self.app_module = app
-        # Each test starts with a clean in-memory rate-limit window; the
-        # dedicated rate-limit test exercises the limiter within its own case.
+        from security_guard import RATE_LIMIT_REQUESTS
+        # Each test starts with a clean in-memory rate-limit window and default
+        # limit; the dedicated rate-limit test exercises its own reduced limit.
+        app.SECURITY.limit = RATE_LIMIT_REQUESTS
         app.SECURITY._buckets.clear()
         self.temp_dir = tempfile.TemporaryDirectory()
         self.old_fiscal_db = app.FISCAL_RESERVE_DB
