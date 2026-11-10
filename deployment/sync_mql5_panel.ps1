@@ -252,6 +252,7 @@ if ($copiedSourceHash -ne $sourceHash) {
     Restore-File -Backup $backupBinary -Target $binary
     Restore-File -Backup $backupProvenance -Target $provenance
     Restore-File -Backup $backupLog -Target $log
+    Restore-File -Backup $backupLog -Target $log
     throw "A fonte mudou durante a sincronização; destino restaurado: $destination"
 }
 
@@ -267,6 +268,7 @@ if (-not (Test-Path -LiteralPath $log -PathType Leaf)) {
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
     Restore-File -Backup $backupProvenance -Target $provenance
+    Restore-File -Backup $backupLog -Target $log
     throw "MetaEditor não produziu log de compilação: $log"
 }
 
@@ -277,6 +279,7 @@ if (-not $errorMatch.Success -or -not $warningMatch.Success) {
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
     Restore-File -Backup $backupProvenance -Target $provenance
+    Restore-File -Backup $backupLog -Target $log
     throw "Log de compilação sem contagem inequívoca de erros/avisos: $log"
 }
 $errors = $errorMatch.Groups[1].Value
@@ -285,6 +288,7 @@ if ($errors -ne '0' -or $warnings -ne '0') {
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
     Restore-File -Backup $backupProvenance -Target $provenance
+    Restore-File -Backup $backupLog -Target $log
     throw "Compilação MQL5 rejeitada: errors=$errors warnings=$warnings. Log: $log"
 }
 
@@ -292,6 +296,7 @@ if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) {
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
     Restore-File -Backup $backupProvenance -Target $provenance
+    Restore-File -Backup $backupLog -Target $log
     throw "MetaEditor terminou sem gerar o EX5 esperado: $binary"
 }
 
@@ -301,6 +306,7 @@ if ($binaryWriteTime -lt $compileStartedAt.AddSeconds(-2)) {
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
     Restore-File -Backup $backupProvenance -Target $provenance
+    Restore-File -Backup $backupLog -Target $log
     throw "O EX5 não foi atualizado pela compilação (timestamp anterior à compilação): $binary"
 }
 
@@ -319,6 +325,7 @@ try {
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
     Restore-File -Backup $backupProvenance -Target $provenance
+    Restore-File -Backup $backupLog -Target $log
     Remove-Item -LiteralPath $provenanceTemp -Force -ErrorAction SilentlyContinue
     throw "Não foi possível registrar a proveniência da compilação; arquivos anteriores restaurados. $($_.Exception.Message)"
 }
