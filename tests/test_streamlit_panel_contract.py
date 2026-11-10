@@ -34,7 +34,9 @@ def test_streamlit_reports_uses_dedicated_read_only_reports_endpoint_and_avoids_
     assert 'data.get("records", [])' in reports_view
     views = source.split("views = {", 1)[1].split("}", 1)[0]
     assert '"Segurança": ("Postura de segurança do runtime", "/api/health")' in views
-    assert '"Multi-Broker":' not in views
+    assert '"Multi-Broker": ("Visão de provedores · somente leitura", "/api/connections")' in views
+    multi_broker_view = source.split('if module_name == "Multi-Broker":', 1)[1].split('if module_name == "Segurança":', 1)[0]
+    assert "Execução multi-broker: NÃO IMPLEMENTADA" in multi_broker_view
     security_view = source.split('if module_name == "Segurança":', 1)[1].split('if module_name == "Configurações":', 1)[0]
     assert 'data.get("production_storage", {})' in security_view
     assert 'data.get("production_operation_gate", {})' in security_view
