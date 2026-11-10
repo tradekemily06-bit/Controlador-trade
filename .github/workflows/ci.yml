@@ -45,6 +45,45 @@ jobs:
       - name: Compile all Python project surfaces
         run: python -m compileall -q app.py assistant finance core data execution audit analysis integration security_guard.py security_audit.py web streamlit_panel
 
+      - name: Start Streamlit panel and verify HTTP health
+        env:
+          CONTROLADOR_SINGLE_USER_IDENTITY: streamlit-ci-owner
+          CONTROLADOR_REMOTE_ACCESS_REQUIRED: "false"
+          CONTROLADOR_API_BASE_URL: http://127.0.0.1:9
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m streamlit run streamlit_panel/app.py \
+            --server.address 127.0.0.1 \
+            --server.port 8501 \
+            --server.headless true \
+            --browser.gatherUsageStats false > /tmp/controlador-streamlit-ci.log 2>&1 &
+          streamlit_pid=$!
+          cleanup() {
+            kill "$streamlit_pid" 2>/dev/null || true
+            wait "$streamlit_pid" 2>/dev/null || true
+            cat /tmp/controlador-streamlit-ci.log
+          }
+          trap cleanup EXIT
+          ready=0
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8501/_stcore/health >/dev/null; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$streamlit_pid" 2>/dev/null; then
+              echo "Streamlit exited before becoming healthy."
+              exit 1
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "Streamlit panel did not become healthy within 60 seconds."
+            exit 1
+          fi
+          curl --fail --silent http://127.0.0.1:8501/ >/dev/null
+          echo "Streamlit panel started and served its browser entry point."
+
       - name: Build production container
         run: docker build --tag controlador-trade:ci .
 
