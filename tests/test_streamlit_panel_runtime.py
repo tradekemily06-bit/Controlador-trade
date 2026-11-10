@@ -23,7 +23,6 @@ def test_streamlit_panel_starts_and_exposes_the_expected_main_areas(monkeypatch)
         "COCKPIT",
         "ANÁLISE",
         "ESTUDO",
-        "FINANCEIRO",
         "RESERVA FISCAL",
         "ASSISTENTE DO ECOSSISTEMA",
         "CENTRAL",
@@ -79,13 +78,16 @@ def test_streamlit_assistant_consent_is_disabled_without_owner_identity(monkeypa
     assert not app.exception
 
 
-def test_streamlit_financeiro_has_its_own_main_area(monkeypatch):
+def test_streamlit_financeiro_is_a_module_inside_central(monkeypatch):
     app = _open_panel(monkeypatch)
     area = next(item for item in app.radio if item.label == "Áreas principais")
-    area.set_value("FINANCEIRO").run(timeout=30)
+    area.set_value("CENTRAL").run(timeout=30)
 
     assert not app.exception
-    assert not any(item.label == "Módulos" for item in app.radio)
+    module = next(item for item in app.radio if item.label == "Módulos")
+    assert "Financeiro" in list(module.options)
+    module.set_value("Financeiro").run(timeout=30)
+    assert not app.exception
     assert any(item.value == "Financeiro" for item in app.subheader)
 
 
