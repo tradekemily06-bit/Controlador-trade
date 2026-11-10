@@ -395,3 +395,14 @@ def test_mql5_sync_backup_creation_fails_closed_before_any_destination_write():
     assert text.index("Falha ao criar os backups dos artefatos") < text.index(
         "Copy-WithRetry -Source $source -Destination $destination"
     )
+
+def test_mql5_sync_refuses_to_overwrite_preexisting_backup_artifacts():
+    text = SCRIPT.read_text(encoding="utf-8")
+    backup_start = text.index("$backupSource =")
+    backup_try = text.index("try {", backup_start)
+    collision_guard = text.index("$backupCollision =", backup_start)
+    assert backup_start < collision_guard < backup_try
+    assert "$backupTargets = @($backupSource, $backupBinary, $backupProvenance, $backupLog)" in text
+    assert "Test-Path -LiteralPath $_" in text[collision_guard:backup_try]
+    assert "Backup com nome já existente" in text[collision_guard:backup_try]
+    assert "nenhum artefato do EA foi alterado" in text[collision_guard:backup_try]
