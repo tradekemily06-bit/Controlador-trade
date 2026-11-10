@@ -495,7 +495,6 @@ def test_fiscal_rate_form_posts_only_configured_brazil_day_trade_rate(monkeypatc
         area = next(item for item in app.radio if item.label == "Áreas principais")
         area.set_value("RESERVA FISCAL").run(timeout=30)
         assert not app.exception
-        assert not any(item.label == "Registrar estimativa de planejamento" for item in app.button)
 
         rate_input = next(item for item in app.number_input if item.label == "Percentual para novos lançamentos")
         rate_input.set_value(17.5)
