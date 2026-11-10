@@ -399,10 +399,15 @@ def test_runtime_backup_uses_collision_resistant_archive_names():
 
 
 
-def test_windows_ci_parses_runtime_backup_and_restore_scripts():
+def test_windows_ci_parses_and_exercises_runtime_backup_and_restore_scripts():
     workflow = _read(".github/workflows/ci.yml")
     assert "'backup_runtime.ps1'" in workflow
     assert "'restore_runtime.ps1'" in workflow
+    assert "Exercise runtime backup and restore without live services" in workflow
+    assert "backup_runtime.ps1" in workflow
+    assert "restore_runtime.ps1" in workflow
+    assert "Runtime backup restore content mismatch" in workflow
+    assert "Runtime restore did not reject overwriting existing state" in workflow
 
 
 
