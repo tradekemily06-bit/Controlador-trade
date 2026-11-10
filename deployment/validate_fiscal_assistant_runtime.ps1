@@ -158,7 +158,7 @@ $result = [pscustomobject]@{
     skipped = $skipped
     failed = $failed.Count
     ready = ($failed.Count -eq 0)
-    note = 'Somente GET. Nenhuma chave, conversa, ordem, lançamento fiscal ou chamada paga foi criada.'
+    note = 'Somente GET; rotas fiscais podem executar migração transacional do esquema. Faça backup do SQLite antes. Nenhuma chave, conversa, ordem, lançamento fiscal ou chamada paga foi criada.'
 }
 $result | ConvertTo-Json -Depth 5
 if ($failed.Count -gt 0) { exit 2 }
