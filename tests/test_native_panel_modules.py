@@ -204,7 +204,7 @@ def test_native_statistics_view_exposes_outcomes_and_daily_weekly_monthly_totals
         assert f'JsonObjectValue(r,"periods","{period}")' in stats
     assert '"Hoje: "+(daily_total' in stats
     assert 'weekly_total==""?"?":weekly_total' in stats
-    assert '"Mes: "+(monthly_total' in stats
+    assert 'monthly_total==""?"?":monthly_total' in stats
 
 def test_native_memory_view_reads_real_decision_records_and_paginates_them():
     source = EA.read_text(encoding="utf-8")
