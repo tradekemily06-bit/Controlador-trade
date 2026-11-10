@@ -10,6 +10,7 @@ from core.p122_broker_market_data import BrokerMarketDataSnapshot
 from core.kill_switch import KillSwitch
 from core.models import Signal
 from core.p4_operational_recorder import P4OperationalRecorder, RecordedOperation
+from core.recovery_coordinator import RecoveryCoordinator
 from execution.execution_ledger import ExecutionLedger
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionPort, ExecutionRequest, ExecutionResult
@@ -47,6 +48,7 @@ class ExecutionGateway:
         ledger: ExecutionLedger | None = None,
         lifecycle: ExecutionLifecycleStore | None = None,
         market_data: MarketDataRuntimeState | None = None,
+        recovery: RecoveryCoordinator | None = None,
     ) -> None:
         if executor is None:
             raise ValueError("executor é obrigatório.")
@@ -58,6 +60,7 @@ class ExecutionGateway:
         self._ledger = ledger
         self._lifecycle = lifecycle
         self._market_data = market_data
+        self._recovery = recovery
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
 
     def execute(
@@ -94,6 +97,22 @@ class ExecutionGateway:
         validation_error = self._validate(request_id, request)
         if validation_error is not None:
             return GatewayResult(GatewayStatus.INVALID_REQUEST, validation_error)
+
+        # Recovery is a global dispatch prerequisite, not only a dashboard status.
+        # Any uncertain, inconsistent, or unreadable persisted state blocks new work.
+        if self._recovery is not None:
+            try:
+                recovery = self._recovery.assess()
+            except Exception as exc:
+                return GatewayResult(
+                    GatewayStatus.BLOCKED,
+                    f"execução bloqueada: avaliação de recuperação indisponível ({type(exc).__name__}).",
+                )
+            if not recovery.can_resume:
+                return GatewayResult(
+                    GatewayStatus.BLOCKED,
+                    f"execução bloqueada: reconciliação operacional necessária ({recovery.state.value}): {recovery.message}",
+                )
 
         event_time = timestamp or datetime.now(timezone.utc)
         audit_record = None
