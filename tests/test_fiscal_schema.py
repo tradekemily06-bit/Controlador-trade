@@ -177,6 +177,7 @@ def test_rebuild_path_reinstalls_domestic_review_guards_if_missing(tmp_path, mon
     path = str(tmp_path / "domestic-review-rebuild.sqlite3")
     monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
     owner = configured_fiscal_owner_id()
+    migrate_fiscal_schema(path)
     queue = FiscalDomesticPendingQueue(path)
     item = queue.add(owner, {
         "reference": "BR-REVIEW-REBUILD-1",
@@ -374,7 +375,7 @@ def test_migration_refuses_a_different_owner_for_domestic_pending_queue(tmp_path
     migrate_fiscal_schema(path)
 
     monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner-b")
-    with pytest.raises(RuntimeError, match="proprietário da fila brasileira"):
+    with pytest.raises(RuntimeError, match="não corresponde ao proprietário"):
         migrate_fiscal_schema(path)
     assert queue.list_pending(owner)["total"] == 1
 
@@ -498,6 +499,7 @@ def test_schema_validator_rejects_partial_unique_index_as_full_owner_constraint(
     from finance.fiscal_schema import _has_unique_index
 
     db = sqlite3.connect(":memory:")
+    db.row_factory = sqlite3.Row
     try:
         db.execute(
             "CREATE TABLE fiscal_reserve_pending_foreign "
