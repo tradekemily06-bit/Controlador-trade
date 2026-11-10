@@ -59,6 +59,7 @@ def test_kill_switch_activation_rejects_wrong_identity(monkeypatch, tmp_path):
     status, payload = _post_kill_switch(identity="other@example.test")
 
     assert status == "403 Forbidden"
+    assert payload["error"] == "authenticated identity is not authorized for this single-user runtime"
     assert runtime.kill_switch.state.enabled is False
 
 
