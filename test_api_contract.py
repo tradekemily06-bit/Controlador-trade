@@ -37,6 +37,7 @@ class ApiContractTests(unittest.TestCase):
         import app as app_module
         with patch.object(app_module, "_authorize_remote_mutation", return_value=(True, "")), \
              patch.object(app_module, "migrate_fiscal_schema", return_value="single:test-owner"), \
+             patch.object(app_module, "configured_fiscal_owner_id", return_value="single:test-owner"), \
              patch.object(app_module.ASSISTANT, "ask", return_value={
                  "answer": "Resposta segura", "conversation_id": "conversation-test",
                  "read_only": True, "execution_allowed": False,
