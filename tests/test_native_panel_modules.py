@@ -112,7 +112,8 @@ def test_native_mt5_decision_engine_is_a_read_only_latest_analysis_view():
     assert 'if(module=="Motor de Decisão") return "DECISION";' in routes
     assert 'Http("GET","/api/runtime/analysis/latest","",r,code)' in decision
     assert 'JsonValue(r,"available")' in decision
-    assert 'JsonValue(analysis,"signal")' in decision
+    assert 'JsonObjectValue(r,"analysis","signal")' in decision
+    assert 'JsonObjectValue(r,"analysis","quality")' in decision
     assert 'if(active_view=="DECISION") RefreshDecisionView();' in events
     assert 'active_view=="DECISION"' in health
     assert "nao cria ordem" in decision
