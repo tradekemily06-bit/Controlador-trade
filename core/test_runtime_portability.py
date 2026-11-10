@@ -118,3 +118,29 @@ def test_backup_rejects_corrupt_sqlite_database_even_when_manifest_hash_matches(
         archive.writestr("fiscal-reserve.sqlite3", payload)
     with pytest.raises(ValueError, match="SQLite integrity failure"):
         verify_backup(bad)
+
+
+
+def test_sqlite3_backup_captures_committed_wal_pages(tmp_path: Path):
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    database = runtime / "fiscal-reserve.sqlite3"
+    writer = sqlite3.connect(database)
+    try:
+        writer.execute("PRAGMA journal_mode=WAL")
+        writer.execute("CREATE TABLE fiscal_entries(reference TEXT PRIMARY KEY)")
+        writer.execute("INSERT INTO fiscal_entries VALUES ('wal-committed-entry')")
+        writer.commit()
+
+        backup = tmp_path / "wal-state.zip"
+        manifest = create_backup(runtime, backup)
+        assert "fiscal-reserve.sqlite3" in [item["path"] for item in manifest["files"]]
+    finally:
+        writer.close()
+
+    restored = tmp_path / "restored"
+    restore_backup(backup, restored)
+    with sqlite3.connect(restored / "fiscal-reserve.sqlite3") as connection:
+        assert connection.execute("SELECT reference FROM fiscal_entries").fetchone() == (
+            "wal-committed-entry",
+        )
