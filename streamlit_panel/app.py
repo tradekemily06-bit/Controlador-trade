@@ -2955,19 +2955,25 @@ def show_readonly_module(module_name: str) -> None:
             return
 
         if module_name == "Relatórios":
-            periods = data.get("periods", {})
-            breakdowns = data.get("breakdowns", {})
-            st.caption("Relatório consolidado dos registros disponíveis no runtime. Não representa extrato financeiro, apuração fiscal ou garantia de resultado.")
+            report_summary = data.get("summary", {}) if isinstance(data, dict) else {}
+            if not isinstance(report_summary, dict):
+                report_summary = {}
+            periods = report_summary.get("periods", {})
+            breakdowns = report_summary.get("breakdowns", {})
+            records = data.get("records", []) if isinstance(data, dict) else []
+            records = [item for item in records if isinstance(item, dict)] if isinstance(records, list) else []
+            st.caption("Relatório consolidado da memória de decisões do runtime. Não representa extrato financeiro, apuração fiscal ou garantia de resultado.")
+            st.caption("Gerado em: " + str(data.get("generated_at") or "data não informada") + " · Fonte: " + str(data.get("source") or "não informada") + " · Registros detalhados: " + str(data.get("record_count", len(records))))
             st.markdown("#### Resumo executivo")
             st.write(
-                f"Base analisada: {data.get('total', 0)} registro(s), "
-                f"{data.get('actionable', 0)} acionável(is), "
-                f"{data.get('wins', 0)} vitória(s), {data.get('losses', 0)} derrota(s) "
-                f"e {data.get('draws', 0)} empate(s)."
+                f"Base analisada: {report_summary.get('total', 0)} registro(s), "
+                f"{report_summary.get('actionable', 0)} acionável(is), "
+                f"{report_summary.get('wins', 0)} vitória(s), {report_summary.get('losses', 0)} derrota(s) "
+                f"e {report_summary.get('draws', 0)} empate(s)."
             )
-            st.metric("Taxa de vitória · operações encerradas", f"{float(data.get('win_rate', 0.0)):.1f}%")
+            st.metric("Taxa de vitória · operações encerradas", f"{float(report_summary.get('win_rate', 0.0)):.1f}%")
             report_rows = []
-            for key, label in (("daily", "Hoje · UTC"), ("weekly", "Semana · UTC"), ("monthly", "Mês · UTC")):
+            for key, label in (("daily", "Hoje"), ("weekly", "Semana"), ("monthly", "Mês")):
                 item = periods.get(key, {})
                 report_rows.append({
                     "Seção": "Período",
@@ -3013,8 +3019,12 @@ def show_readonly_module(module_name: str) -> None:
                 )
             else:
                 st.info("Ainda não há dados para compor o relatório.")
+            if records:
+                st.markdown("#### Registros recentes")
+                detail_rows = [{"Data/hora": item.get("created_at") or "—", "Ativo": item.get("symbol") or "—", "Período": item.get("timeframe") or "—", "Sinal": item.get("signal") or "—", "Pontuação": item.get("score", "—"), "Resultado": item.get("outcome") or "EM ABERTO / NÃO INFORMADO"} for item in records]
+                st.dataframe(detail_rows, use_container_width=True, hide_index=True)
             st.caption("O relatório usa somente estatísticas agregadas; não inclui credenciais, dados bancários ou ordens.")
-            st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
+            st.caption("Somente leitura · execução permitida: NÃO · REAL: DESABILITADO")
             return
 
     except Exception:
