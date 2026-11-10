@@ -640,7 +640,18 @@ void RefreshAssistantStatus(){
    SetLabel(Obj("INFO1"),available=="true"?"Assistente: provedor configurado.":"Assistente: provedor indisponivel.",20,361,9,available=="true"?C'88,214,141':C'255,118,118');
    SetLabel(Obj("INFO2"),"Chat somente leitura; consentimento exigido a cada envio.",20,381,9,C'205,215,230');
 }
+void ClearCockpitFields(){
+   string names[]={"SYM","TF","SYML","TFL","MARKET","SIGNAL","SCORE","REASON","MODE"};
+   for(int i=0;i<ArraySize(names);i++)
+      if(ObjectFind(0,Obj(names[i]))>=0) ObjectDelete(0,Obj(names[i]));
+}
+void ClearAssistantControls(){
+   string names[]={"ASSISTANT_PROMPT","ASSISTANT_INPUT","ASSISTANT_CONSENT","ASSISTANT_SEND"};
+   for(int i=0;i<ArraySize(names);i++)
+      if(ObjectFind(0,Obj(names[i]))>=0) ObjectDelete(0,Obj(names[i]));
+}
 void RenderFiscal(){
+   ClearCockpitFields();
    SetLabel(Obj("SUB"),"RESERVA FISCAL • resumo conectado ao runtime",20,47,9,C'150,165,185');
    SetButton(Obj("ANALYZE"),"ATUALIZAR RESERVA",20,294,172,30);
    if(ObjectFind(0,Obj("CYCLE"))>=0) ObjectDelete(0,Obj("CYCLE"));
@@ -657,6 +668,7 @@ void RenderFiscal(){
    RefreshFiscal();
 }
 void RenderAssistant(){
+   ClearCockpitFields();
    SetLabel(Obj("SUB"),"ASSISTENTE DO ECOSSISTEMA • leitura e orientacao",20,47,9,C'150,165,185');
    if(ObjectFind(0,Obj("ANALYZE"))>=0) ObjectDelete(0,Obj("ANALYZE"));
    if(ObjectFind(0,Obj("CYCLE"))>=0) ObjectDelete(0,Obj("CYCLE"));
@@ -713,6 +725,7 @@ void SendAssistantMessage(){
    ObjectSetString(0,Obj("ASSISTANT_INPUT"),OBJPROP_TEXT,"");
 }
 void RenderView(){
+   ClearAssistantControls();
    if(active_view=="RESERVA") { RenderFiscal(); return; }
    if(active_view=="ASSISTENTE") { RenderAssistant(); return; }
    if(active_view=="COCKPIT"){
@@ -819,6 +832,7 @@ void RefreshHealth(){
    SetLabel(Obj("RUNTIME"),"Sistema: online",20,104,10,C'88,214,141');
    SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),20,124,10,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • autorizacao separada",20,441,9,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
+   if(active_view=="RESERVA" || active_view=="ASSISTENTE") return;
    SetLabel(Obj("INFO1"),"Analise do ecossistema: "+(engine==""?"online":engine),20,361,9,C'205,215,230');
 }
 void RefreshMarketAssets(){
@@ -1069,8 +1083,6 @@ void OnTimer(){
    if(active_view=="COCKPIT") { RefreshSecondary(); RefreshMarketAssets(); }
    else if(active_view=="CONFIG") RefreshPreferences();
    else if(active_view=="NOTIF") RefreshNotifications();
-   else if(active_view=="RESERVA") RefreshFiscal();
-   else if(active_view=="ASSISTENTE") RefreshAssistantStatus();
    datetime current_bar=iTime(_Symbol,_Period,0);
    bool new_bar=(current_bar>0 && current_bar!=last_analysis_bar);
    if(new_bar) last_analysis_bar=current_bar;
@@ -1083,15 +1095,15 @@ void OnTimer(){
 void OnChartEvent(const int id,const long &lparam,const double &dparam,const string &sparam){
    if(id!=CHARTEVENT_OBJECT_CLICK) return;
    if(sparam==Obj("PANEL_TOGGLE") || sparam==Obj("PANEL_TOGGLE_BG")) { TogglePanel(); return; }
-   if(sparam==Obj("V1")) { active_view="COCKPIT"; RenderView(); }
-   else if(sparam==Obj("V2")) { active_view="ANALISE"; RenderView(); }
-   else if(sparam==Obj("V3")) { active_view="MEMORIA"; RenderView(); }
-   else if(sparam==Obj("V4")) { active_view="LAB"; RenderView(); }
-   else if(sparam==Obj("V5")) { active_view="ENSINO"; RenderView(); }
-   else if(sparam==Obj("V6")) { active_view="NOTIF"; RenderView(); }
-   else if(sparam==Obj("V7")) { active_view="CONFIG"; RenderView(); }
-   else if(sparam==Obj("V8")) { active_view="RESERVA"; RenderView(); }
-   else if(sparam==Obj("V9")) { active_view="ASSISTENTE"; RenderView(); }
+   if(sparam==Obj("V1")) { active_view="COCKPIT"; Panel(); RenderView(); }
+   else if(sparam==Obj("V2")) { active_view="ANALISE"; Panel(); RenderView(); }
+   else if(sparam==Obj("V3")) { active_view="MEMORIA"; Panel(); RenderView(); }
+   else if(sparam==Obj("V4")) { active_view="LAB"; Panel(); RenderView(); }
+   else if(sparam==Obj("V5")) { active_view="ENSINO"; Panel(); RenderView(); }
+   else if(sparam==Obj("V6")) { active_view="NOTIF"; Panel(); RenderView(); }
+   else if(sparam==Obj("V7")) { active_view="CONFIG"; Panel(); RenderView(); }
+   else if(sparam==Obj("V8")) { active_view="RESERVA"; Panel(); RenderView(); }
+   else if(sparam==Obj("V9")) { active_view="ASSISTENTE"; Panel(); RenderView(); }
    else if(sparam==Obj("ASSISTANT_CONSENT")) { assistant_consent_armed=!assistant_consent_armed; SetButton(Obj("ASSISTANT_CONSENT"),assistant_consent_armed?"CONSENTIMENTO OPENAI: SIM":"CONSENTIMENTO OPENAI: NAO",20,307,220,28); }
    else if(sparam==Obj("ASSISTANT_SEND")) SendAssistantMessage();
    else if(sparam==Obj("ANALYZE")) {
