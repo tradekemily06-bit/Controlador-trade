@@ -7,7 +7,7 @@ import app as app_module
 from assistant.chat_service import AssistantUnavailableError
 
 
-def _request(path, *, method="GET", payload=None, remote_addr="127.0.0.1", host="localhost:8000"):
+def _request(path, *, method="GET", payload=None, remote_addr="127.0.0.1", host="localhost:8000", identity_header=None, identity_value=None):
     raw = json.dumps(payload or {}).encode("utf-8")
     route, separator, query = path.partition("?")
     environ = {
@@ -19,6 +19,8 @@ def _request(path, *, method="GET", payload=None, remote_addr="127.0.0.1", host=
         "CONTENT_LENGTH": str(len(raw)),
         "wsgi.input": io.BytesIO(raw),
     }
+    if identity_header:
+        environ["HTTP_" + identity_header.upper().replace("-", "_")] = identity_value or ""
     response = {}
 
     def start_response(status, headers):
@@ -49,6 +51,30 @@ def test_native_assistant_status_is_loopback_only(tmp_path, monkeypatch):
     status, payload = _request("/api/assistant/local/status", remote_addr="203.0.113.8")
 
     assert status.startswith("403")
+    assert "error" in payload
+
+
+def test_native_assistant_local_route_rejects_a_cloudflare_identity_header(tmp_path, monkeypatch):
+    _allow_native_local(monkeypatch)
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "Cf-Access-Authenticated-User-Email")
+
+    status, payload = _request(
+        "/api/assistant/local/status",
+        identity_header="Cf-Access-Authenticated-User-Email",
+        identity_value="owner@example.com",
+    )
+
+    assert status.startswith("403")
+    assert "error" in payload
+
+
+def test_native_assistant_local_route_requires_local_mutations_to_be_enabled(tmp_path, monkeypatch):
+    _allow_native_local(monkeypatch)
+    monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "false")
+
+    status, payload = _request("/api/assistant/local/status")
+
+    assert status.startswith("503")
     assert "error" in payload
 
 
