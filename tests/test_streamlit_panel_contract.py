@@ -447,15 +447,16 @@ def test_streamlit_leverage_control_persists_only_the_preference_without_executi
 
 
 
-def test_financeiro_overview_remains_available_with_dedicated_fiscal_and_assistant_areas():
+def test_streamlit_uses_exactly_six_main_areas_in_the_approved_order():
     config = json.loads((PANEL_DIR / "controlador_trader_referencia_visual.json").read_text(encoding="utf-8"))
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert list(config["open_state"]["tabs"]) == ["COCKPIT", "ANÁLISE", "ESTUDO", "MAIS / ADMIN"]
     assert config["open_state"]["tabs"]["MAIS / ADMIN"][0] == "Financeiro"
     assert 'AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]' in source
     assert 'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]' in source
-    assert 'AREAS["FINANCEIRO"] = ["Financeiro"]' in source
-    assert 'AREAS["CENTRAL"] = [module for module in _REFERENCE_TABS["MAIS / ADMIN"] if module != "Financeiro"]' in source
+    assert 'AREAS["CENTRAL"] = ["Financeiro", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]' in source
+    assert "list(AREAS)" in source
+    assert 'for name in ("COCKPIT", "ANÁLISE", "ESTUDO")' in source
     assert 'if module_name == "Financeiro":' in source
     assert "show_finance_overview()" in source
     assert 'if module == "Reserva Fiscal":' in source
