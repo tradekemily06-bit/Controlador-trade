@@ -744,7 +744,7 @@ void SaveConfig(){
    string leverage=leverage_enabled?"true":"false";
    string body="{\"selected_mode\":\"DEMO\",\"leverage_enabled\":"+leverage+",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":true,\"require_filters\":true}";
    string r; int code=0;
-   if(Http("POST","/api/preferences",body,r,code)){
+   if(Http("POST","/api/preferences/local",body,r,code)){
       SetLabel(Obj("INFO4"),"Configuracoes sincronizadas",20,421,9,C'88,214,141');
       RefreshPreferences();
    }else{
@@ -766,7 +766,7 @@ void Analyze(bool render=true){
    tf=NormalizeTimeframe(tf);
    string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100}";
    string r; int code=0;
-   if(!Http("POST","/api/runtime/analysis",body,r,code)){
+   if(!Http("POST","/api/runtime/analysis/local",body,r,code)){
       runtime_ok=false;
       UpdateCompactSignal("INDISPONIVEL","",false);
       if(render) SetLabel(Obj("REASON"),"Analise indisponivel",20,204,9,C'255,118,118');
@@ -831,7 +831,7 @@ void RunCycle(){
    string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100,\"amount\":0.01,\"duration_seconds\":60}";
    string r; int code=0;
    SetLabel(Obj("INFO1"),"Validando ciclo DEMO...",20,361,9,C'255,209,102');
-   if(!Http("POST","/api/runtime/cycle",body,r,code)){
+   if(!Http("POST","/api/runtime/cycle/local",body,r,code)){
       UpdateCompactSignal("INDISPONIVEL","",false);
       SetLabel(Obj("INFO1"),"Ciclo indisponivel ou bloqueado",20,361,9,C'255,118,118');
       return;
