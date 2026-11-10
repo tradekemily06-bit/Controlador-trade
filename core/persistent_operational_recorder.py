@@ -78,9 +78,20 @@ class PersistentOperationalRecorder:
         self.recorder.guard_execution()
 
     def activate_kill_switch(self, reason: str):
-        state = self.kill_switch.activate(reason)
-        self._persist_safety()
-        return state
+        # Serialize persistence and the in-memory transition with broker dispatch.
+        # Persist the ACTIVE intent first so a crash before the in-memory update
+        # restores fail-closed on the next process start.
+        with self.kill_switch.execution_lock():
+            if self.safety_store is not None:
+                persisted_state = KillSwitch()
+                persisted_state.activate(reason)
+                try:
+                    self.safety_store.save(self.audit, persisted_state)
+                except Exception:
+                    # Even if durable storage fails, keep this process blocked.
+                    self.kill_switch.activate(reason)
+                    raise
+            return self.kill_switch.activate(reason)
 
     def deactivate_kill_switch(self):
         state = self.kill_switch.deactivate()
