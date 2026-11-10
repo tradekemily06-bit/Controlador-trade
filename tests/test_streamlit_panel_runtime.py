@@ -87,8 +87,6 @@ def test_streamlit_financeiro_has_its_own_main_area(monkeypatch):
     assert not app.exception
     assert not any(item.label == "Módulos" for item in app.radio)
     assert any(item.value == "Financeiro" for item in app.subheader)
-    assert not app.exception
-    assert any(item.value == "Financeiro" for item in app.subheader)
 
 
 
@@ -113,7 +111,7 @@ def test_kill_switch_panel_requires_reason_and_explicit_confirmation(monkeypatch
 
 def test_all_streamlit_module_destinations_render_without_uncaught_exceptions(monkeypatch):
     app = _open_panel(monkeypatch)
-    for area_name in ("COCKPIT", "ANÁLISE", "ESTUDO", "FINANCEIRO", "CENTRAL"):
+    for area_name in ("COCKPIT", "ANÁLISE", "ESTUDO", "FINANCEIRO", "RESERVA FISCAL", "ASSISTENTE DO ECOSSISTEMA", "CENTRAL"):
         area = next(item for item in app.radio if item.label == "Áreas principais")
         area.set_value(area_name).run(timeout=30)
         assert not app.exception, f"area failed to render: {area_name}"
