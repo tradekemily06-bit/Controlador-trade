@@ -807,7 +807,7 @@ def test_domestic_pending_intake_and_review_forms_call_runtime_without_calculati
         assert not any(item[0] == "POST" and item[1] in {
             "/api/fiscal-reserve/results", "/api/fiscal-reserve/rates"
         } for item in calls)
-        assert any("continua pendente" in item.value.lower() for item in app.success)
+        assert any("status_unchanged" in item[2] and item[2]["status_unchanged"] == "PENDING_CLASSIFICATION" for item in review_posts)
     finally:
         server.shutdown()
         server.server_close()
