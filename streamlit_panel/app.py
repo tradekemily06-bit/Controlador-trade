@@ -3077,9 +3077,10 @@ AREAS = {
     ]
     for name in ("COCKPIT", "ANÁLISE", "ESTUDO")
 }
+AREAS["FINANCEIRO"] = ["Financeiro"]
 AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]
 AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]
-AREAS["CENTRAL"] = list(_REFERENCE_TABS["MAIS / ADMIN"])
+AREAS["CENTRAL"] = [module for module in _REFERENCE_TABS["MAIS / ADMIN"] if module != "Financeiro"]
 if "Kill Switch" not in AREAS["CENTRAL"]:
     AREAS["CENTRAL"].append("Kill Switch")
 if "panel_open" not in st.session_state:
@@ -3109,7 +3110,7 @@ with st.container(key="control-hub-shell"):
 
     area = st.radio("Áreas principais", list(AREAS), horizontal=True, key="main_area_navigation", label_visibility="collapsed")
     st.divider()
-    if area in {"RESERVA FISCAL", "ASSISTENTE DO ECOSSISTEMA"}:
+    if area in {"FINANCEIRO", "RESERVA FISCAL", "ASSISTENTE DO ECOSSISTEMA"}:
         module = AREAS[area][0]
     else:
         # The previous Financeiro selector may remain in Streamlit session state
