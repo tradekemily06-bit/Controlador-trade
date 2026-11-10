@@ -122,6 +122,54 @@ def test_runtime_cycle_exposes_authoritative_cycle_lineage(monkeypatch):
 
 
 
+def test_runtime_cycle_displays_wait_when_automation_gate_blocks_execution(monkeypatch):
+    import app
+
+    orchestration = SimpleNamespace(
+        timestamp=datetime(2026, 10, 16, 12, tzinfo=timezone.utc),
+        decision=SimpleNamespace(decision="EXECUTAR", reason="market gates passed"),
+        analysis=SimpleNamespace(
+            signal=SimpleNamespace(value="COMPRAR"),
+            score=91.0,
+            reason="candidate is strong",
+            confirmed=True,
+            symbol="EURUSD",
+            timeframe="5m",
+        ),
+        quality=SimpleNamespace(score=91.0, level=SimpleNamespace(value="FORTE"), actionable=True),
+        snapshot=SimpleNamespace(market_context=None),
+        market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=tuple(
+            Candle(datetime(2026, 10, 16, 11, tzinfo=timezone.utc) + timedelta(minutes=i), 100, 101, 99, 100, 1)
+            for i in range(3)
+        )),
+        senior_context=SimpleNamespace(cycle_id="senior-cycle-blocked"),
+    )
+    cycle = SimpleNamespace(
+        orchestration=orchestration,
+        execution=None,
+        plan=SimpleNamespace(request_id="req-blocked"),
+        automation_lifecycle=SimpleNamespace(state=SimpleNamespace(value="BLOCKED")),
+    )
+    fake_result = SimpleNamespace(stopped=True, stop_reason="automation disabled", cycles=(cycle,))
+    monkeypatch.setattr(app.SERVICE, "get_preferences", lambda: {"selected_mode": "DEMO", "leverage_enabled": False})
+    monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **kwargs: fake_result)
+    monkeypatch.setattr(app.SERVICE, "schedule_mt5_timed_exit", lambda cycle, duration_seconds: {"state": "NOT_APPLICABLE", "scheduled": False, "message": "sem execução aceita"})
+
+    status, data = call_app(
+        "/api/runtime/cycle",
+        "POST",
+        {"symbol": "EURUSD", "timeframe": "5m", "limit": 20, "amount": 0.01, "duration_seconds": 60},
+    )
+
+    assert status.startswith("200")
+    assert data["runtime"]["candidate_decision"] == "EXECUTAR"
+    assert data["runtime"]["decision"] == "AGUARDAR"
+    assert data["runtime"]["signal"] == "AGUARDAR"
+    assert data["runtime"]["quality"]["actionable"] is False
+    assert "execução bloqueada pelo runtime" in data["runtime"]["reason"]
+    assert data["execution_allowed"] is False
+
+
 def test_runtime_cycle_rejects_boolean_sizing_and_invalid_limits_before_service(monkeypatch):
     import app
 
