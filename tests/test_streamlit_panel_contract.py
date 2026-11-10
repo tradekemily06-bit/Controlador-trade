@@ -454,7 +454,9 @@ def test_financeiro_functions_have_dedicated_top_level_areas_without_changing_fi
     assert config["open_state"]["tabs"]["MAIS / ADMIN"][0] == "Financeiro"
     assert 'AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]' in source
     assert 'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]' in source
-    assert 'if module != "Financeiro"' in source
+    assert 'AREAS["MAIS / ADMIN"] = list(_REFERENCE_TABS["MAIS / ADMIN"])' in source
+    assert 'if module_name == "Financeiro":' in source
+    assert "show_finance_overview()" in source
     assert 'if module == "Reserva Fiscal":' in source
     assert 'elif module == "Assistente do Ecossistema":' in source
     assert "show_fiscal()" in source
@@ -1023,14 +1025,14 @@ def test_every_reference_navigation_module_has_a_functional_streamlit_route():
                                 if isinstance(key, ast.Constant) and isinstance(key.value, str)
                             )
     dedicated_routes = {"Análise de Mercado", "Replay", "Simulador"}
-    configured_modules.discard("Financeiro")
     configured_modules.discard("MT5 DEMO / Simulação")
     configured_modules.add("Ambiente MT5 DEMO")
     special_routes = {"Reserva Fiscal", "Assistente do Ecossistema"}
     assert configured_modules <= (readonly_modules | dedicated_routes | special_routes)
+    assert 'if module_name == "Financeiro":' in source
+    assert "show_finance_overview()" in source
     assert 'if module == "Reserva Fiscal":' in source
     assert 'elif module == "Assistente do Ecossistema":' in source
-    assert 'if module == "Financeiro":' not in source
     assert 'AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]' in source
     assert 'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]' in source
     assert 'show_assistant()' in source
@@ -1714,10 +1716,8 @@ def test_every_reference_navigation_module_has_an_explicit_streamlit_handler():
         for group in re.findall(r"if module_name in \{([^}]+)\}:", source)
         for module in re.findall(r"[\"']([^\"']+)[\"']", group)
     }
-    # The reference still lists Financeiro and the old MT5 label. The active
-    # Streamlit navigation turns them into standalone finance destinations
-    # and a clearer connection label without editing the reference JSON.
-    configured_modules.discard("Financeiro")
+    # The active navigation retains Financeiro as a read-only overview and
+    # renames the old MT5 label without editing the supplied reference JSON.
     configured_modules.discard("MT5 DEMO / Simulação")
     configured_modules.add("Ambiente MT5 DEMO")
     explicitly_routed = explicit_handlers | grouped_handlers | {"Reserva Fiscal", "Assistente do Ecossistema"}
@@ -2036,7 +2036,6 @@ def test_every_reference_navigation_module_has_a_real_panel_handler_or_view():
         for values in config["open_state"]["tabs"].values()
         for module in values
     }
-    modules.discard("Financeiro")
     modules.discard("MT5 DEMO / Simulação")
     modules.update({"Ambiente MT5 DEMO", "Reserva Fiscal", "Assistente do Ecossistema"})
     handlers = set(re.findall(r'module_name == "([^"]+)"', source))
