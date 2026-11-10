@@ -290,6 +290,7 @@ string AreaModuleLabel(string module){
 string ViewForModule(string area,string module){
    if(area=="COCKPIT"){
       if(module=="Operação") return "COCKPIT";
+      if(module=="Motor de Decisão") return "DECISION";
       if(module=="Gestão de Risco") return "RISK";
       if(module=="Ambiente MT5 DEMO / Simulação") return "ENVIRONMENT";
       if(module=="Notificações") return "NOTIF";
@@ -856,6 +857,38 @@ void RefreshStatistics(){
    SetLabel(Obj("INFO4"),"Hoje: "+(daily_total==""?"?":daily_total)+" • Semana: "+(weekly_total==""?"?":weekly_total)+" • Mes: "+(monthly_total==""?"?":monthly_total),20,421,8,C'205,215,230');
    SetLabel(Obj("INFO5"),"Estatisticas historicas; nao sao garantia de resultado.",20,441,8,C'255,209,102');
 }
+void RefreshDecisionView(){
+   string r; int code=0;
+   if(!Http("GET","/api/runtime/analysis/latest","",r,code)){
+      SetLabel(Obj("INFO1"),"Motor de decisao: runtime indisponivel",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Nenhuma decisao nova foi criada.",20,381,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Ultima leitura nao confirmada.",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Somente leitura.",20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
+      return;
+   }
+   string available=JsonValue(r,"available");
+   string analysis=JsonValue(r,"analysis");
+   string signal=JsonValue(analysis,"signal");
+   if(signal=="") signal=JsonValue(analysis,"decision");
+   string score=JsonObjectValue(analysis,"quality","score");
+   string reason=JsonValue(analysis,"reason");
+   string symbol=JsonValue(analysis,"symbol");
+   string timeframe=JsonValue(analysis,"timeframe");
+   if(available!="true" || analysis==""){
+      SetLabel(Obj("INFO1"),"Motor: nenhuma analise disponivel",20,361,9,C'255,209,102');
+      SetLabel(Obj("INFO2"),"Sinal: AGUARDAR",20,381,9,C'255,209,102');
+      SetLabel(Obj("INFO3"),"Pontuacao: nao informada",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Ativo/periodo: nao informados",20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"Consulta somente leitura; REAL bloqueado.",20,441,8,C'255,155,155');
+      return;
+   }
+   SetLabel(Obj("INFO1"),"Sinal: "+(signal==""?"AGUARDAR":signal),20,361,9,C'205,215,230');
+   SetLabel(Obj("INFO2"),"Pontuacao: "+(score==""?"nao informada":score),20,381,9,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Ativo: "+(symbol==""?"nao informado":symbol)+" • periodo: "+(timeframe==""?"nao informado":timeframe),20,401,8,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Motivo: "+StringSubstr(reason==""?"nao informado":reason,0,55),20,421,8,C'205,215,230');
+   SetLabel(Obj("INFO5"),"Ultima decisao consultada; nao cria ordem. REAL bloqueado.",20,441,7,C'255,155,155');
+}
 void RefreshRiskView(){
    string r; int code=0;
    if(!Http("GET","/api/risk","",r,code)){
@@ -1140,7 +1173,12 @@ void RenderView(){
    }
    if(active_view=="RESERVA") { RenderFiscal(); return; }
    if(active_view=="ASSISTENTE") { RenderAssistant(); return; }
-   if(active_view=="COCKPIT"){
+   if(active_view=="DECISION"){
+      ClearCockpitFields();
+      SetLabel(Obj("SUB"),"MOTOR DE DECISAO • ultima leitura, somente leitura",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR MOTOR",20,284,172,30);
+      RefreshDecisionView();
+   }else if(active_view=="COCKPIT"){
       SetLabel(Obj("SUB"),"COCKPIT • motor, decisao, risco, execucao",20,47,9,C'150,165,185');
       SetLabel(Obj("INFO1"),"Análise do ecossistema",20,361,9,C'205,215,230');
       SetLabel(Obj("INFO2"),"Risco: atualizando...",20,381,9,C'255,209,102');
@@ -1265,7 +1303,7 @@ void RefreshHealth(){
    SetLabel(Obj("RUNTIME"),"Sistema: online",20,104,10,C'88,214,141');
    SetLabel(Obj("MODE"),"Modo: "+(mode==""?"nao informado":mode)+" • MT5: "+(mt5==""?"nao confirmado":mt5),20,124,10,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • autorizacao separada",20,441,9,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
-   if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="UNAVAILABLE" || active_view=="MEMORIA" || active_view=="RISK" || active_view=="STATS" || active_view=="CONNECTIONS" || active_view=="ENVIRONMENT" || active_view=="SECURITY" || active_view=="REPORTS" || active_view=="AUDIT" || active_view=="FINANCE") return;
+   if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="DECISION" || active_view=="UNAVAILABLE" || active_view=="MEMORIA" || active_view=="RISK" || active_view=="STATS" || active_view=="CONNECTIONS" || active_view=="ENVIRONMENT" || active_view=="SECURITY" || active_view=="REPORTS" || active_view=="AUDIT" || active_view=="FINANCE") return;
    SetLabel(Obj("INFO1"),"Analise do ecossistema: "+(engine==""?"online":engine),20,361,9,C'205,215,230');
 }
 void RefreshMarketAssets(){
@@ -1549,7 +1587,8 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("ASSISTANT_PREV")) { if(active_view=="ASSISTENTE" && assistant_answer_page>0) { assistant_answer_page--; RenderAssistantAnswer(); } }
    else if(sparam==Obj("ASSISTANT_NEXT")) { if(active_view=="ASSISTENTE" && (assistant_answer_page+1)*330<StringLen(assistant_answer)) { assistant_answer_page++; RenderAssistantAnswer(); } }
    else if(sparam==Obj("ANALYZE")) {
-      if(active_view=="ANALISE") Analyze();
+      if(active_view=="DECISION") RefreshDecisionView();
+      else if(active_view=="ANALISE") Analyze();
       else if(active_view=="CONFIG") RefreshPreferences();
       else if(active_view=="MEMORIA") RefreshMemory();
       else if(active_view=="RISK") RefreshRiskView();
