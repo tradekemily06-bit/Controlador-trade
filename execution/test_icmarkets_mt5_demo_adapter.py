@@ -396,7 +396,7 @@ def test_configured_terminal_path_is_pinned_before_demo_order():
 
     result = adapter.execute(request())
 
-    assert result.success is True
+    assert result.accepted is True
     assert ("initialize", terminal) in fake.calls
 
 
