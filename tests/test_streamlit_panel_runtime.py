@@ -109,3 +109,18 @@ def test_kill_switch_panel_requires_reason_and_explicit_confirmation(monkeypatch
         for item in app.checkbox
     )
     assert any(item.label == "Ativar Kill Switch" for item in app.button)
+
+
+
+def test_all_streamlit_module_destinations_render_without_uncaught_exceptions(monkeypatch):
+    app = _open_panel(monkeypatch)
+    for area_name in ("COCKPIT", "ANÁLISE", "ESTUDO", "MAIS / ADMIN"):
+        area = next(item for item in app.radio if item.label == "Áreas principais")
+        area.set_value(area_name).run(timeout=30)
+        assert not app.exception, f"area failed to render: {area_name}"
+
+        module = next(item for item in app.radio if item.label == "Módulos")
+        for module_name in list(module.options):
+            module = next(item for item in app.radio if item.label == "Módulos")
+            module.set_value(module_name).run(timeout=30)
+            assert not app.exception, f"module failed to render: {area_name} / {module_name}"
