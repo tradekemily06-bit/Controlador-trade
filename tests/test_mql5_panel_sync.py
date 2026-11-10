@@ -52,10 +52,16 @@ def test_mql5_panel_has_single_repository_source():
     assert not legacy.exists()
 
 
-def test_controller_startup_calls_panel_sync():
+def test_controller_startup_never_syncs_or_compiles_installed_ea_automatically():
     startup = (ROOT / "deployment" / "start_controlador_runtime.ps1").read_text(encoding="utf-8")
-    assert "Sync-Mt5Panel" in startup
-    assert "sync_mql5_panel.ps1" in startup
+    installer = (ROOT / "deployment" / "install_windows_autostart.ps1").read_text(encoding="utf-8")
+
+    assert "Sync-Mt5Panel" not in startup
+    assert "sync_mql5_panel.ps1" not in startup
+    assert "sem alterar os arquivos do EA" in startup
+    assert "$syncScript" not in installer
+    assert "Painel MQL5 é sincronizado e compilado automaticamente" not in installer
+    assert "ação manual separada" in installer
 
 
 def test_mql5_panel_primes_runtime_and_refreshes_market_data_on_new_bars():
