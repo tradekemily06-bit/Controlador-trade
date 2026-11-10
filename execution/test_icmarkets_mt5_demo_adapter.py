@@ -262,7 +262,7 @@ def test_query_order_reconciles_canceled_external_order_as_not_executed():
 
 
 def test_query_order_accepts_filled_order_with_its_associated_deal_history():
-    class CollidingTicketMT5(FakeMT5):
+    class FilledOrderWithDealHistoryMT5(FakeMT5):
         def history_deals_get(self, *args, **kwargs):
             if kwargs.get("ticket") == 123456:
                 return (SimpleNamespace(ticket=123456, profit=1.0),)
@@ -279,7 +279,7 @@ def test_query_order_accepts_filled_order_with_its_associated_deal_history():
             return ()
 
     observation = ICMarketsMT5DemoAdapter(
-        mt5_module=CollidingTicketMT5()
+        mt5_module=FilledOrderWithDealHistoryMT5()
     ).query_order("123456")
 
     assert observation.status.value == "EXECUTED"
