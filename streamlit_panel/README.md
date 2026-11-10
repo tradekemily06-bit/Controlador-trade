@@ -92,3 +92,14 @@ A arquitetura tem dois clientes ligados ao mesmo runtime:
 - **Streamlit:** é a interface web complementar para as áreas do Ecossistema, incluindo Reserva Fiscal e Assistente, conectada à mesma API/runtime.
 
 **Limite importante:** o Streamlit não é executado dentro do gráfico MT5 e não deve ser descrito como se fosse. A camada que aparece dentro do gráfico é o EA MQL5. As duas interfaces só podem ser consideradas integradas ponta a ponta depois de validar que consultam e atualizam o mesmo estado do runtime, com autenticação e permissões seguras. O EA atualmente usa por padrão `http://127.0.0.1:8000`; esse endereço local exige que o runtime esteja ativo no mesmo computador. Para uso remoto, a arquitetura precisa ser adaptada com segurança, sem expor a API diretamente.
+## Liberação incremental: painel primeiro, módulos em paralelo
+
+A prioridade de entrega é concluir e validar a interface Streamlit como painel de uso do Ecossistema. Reserva Fiscal e Assistente do Ecossistema continuam em trilhas paralelas e não podem ser pré-requisitos para iniciar a validação das demais áreas.
+
+- O painel deve iniciar, manter a navegação principal e renderizar COCKPIT, ANÁLISE, ESTUDO e CENTRAL mesmo quando as APIs da Reserva Fiscal ou do Assistente estiverem indisponíveis.
+- RESERVA FISCAL e ASSISTENTE DO ECOSSISTEMA permanecem em suas áreas independentes. Se seus serviços não estiverem prontos, a interface deve informar indisponibilidade, ocultar ações que dependam de dados não validados e não simular sucesso.
+- FINANCEIRO pode apresentar indisponibilidade ou dados parciais quando depender do resumo fiscal; não deve inventar saldos nem tratar falha de consulta como zero.
+- A validação visual do usuário é uma etapa obrigatória antes de declarar o painel aprovado. As cinco capturas originais (8870.jpg, 8871.jpg, 8872.jpg, 8873.jpg e 8878.jpg) precisam estar disponíveis para comparação lado a lado; o JSON de referência sozinho não comprova fidelidade visual.
+- Depois da aprovação visual, o usuário poderá iniciar uma rodada controlada de testes do Ecossistema nas áreas efetivamente liberadas, sem esperar a conclusão dos dois módulos. Essa rodada deve usar somente dados de teste e MT5 DEMO; funcionalidades indisponíveis devem continuar claramente identificadas.
+- A liberação para teste não equivale à aprovação de produção: continuam obrigatórios o runtime persistente, identidade/autorização remota, armazenamento durável, validação real do MT5 DEMO e verificação de recuperação/backup.
+- REAL permanece bloqueado. Nenhuma ação de interface, teste visual ou teste prático concede autorização para enviar ordens reais.
