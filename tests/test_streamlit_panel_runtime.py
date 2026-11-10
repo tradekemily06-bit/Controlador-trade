@@ -131,3 +131,94 @@ def test_all_streamlit_module_destinations_render_without_uncaught_exceptions(mo
             module.set_value(module_name).run(timeout=30)
             assert not app.exception, f"module failed to render: {area_name} / {module_name}"
             assert not any("ainda não possui integração operacional" in item.value.lower() for item in app.info), f"placeholder module: {area_name} / {module_name}"
+
+
+def test_assistant_provider_connection_button_calls_runtime_and_reports_success(monkeypatch):
+    import json
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    calls = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def _send(self, payload, status=200):
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            calls.append(("GET", self.path))
+            if self.path == "/api/assistant/status":
+                return self._send({
+                    "available": True,
+                    "message": "Credenciais configuradas; conexão ainda não testada.",
+                    "model": "modelo-de-teste",
+                })
+            if self.path == "/api/assistant/conversations":
+                return self._send({"conversations": []})
+            if self.path == "/api/runtime/analysis/latest":
+                return self._send({"available": False, "analysis": None})
+            if self.path == "/api/health":
+                return self._send({
+                    "health": "OK",
+                    "execution_allowed": False,
+                    "real": "DESABILITADO",
+                    "components": {},
+                })
+            if self.path == "/api/preferences":
+                return self._send({"preferences": {}})
+            return self._send({"error": "not found"}, 404)
+
+        def do_POST(self):
+            calls.append(("POST", self.path))
+            length = int(self.headers.get("Content-Length", "0"))
+            payload = json.loads(self.rfile.read(length) or b"{}")
+            if self.path == "/api/assistant/test-connection":
+                assert payload == {}
+                return self._send({"success": True, "connection_tested": True})
+            return self._send({"error": "not found"}, 404)
+
+        def log_message(self, format, *args):
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    try:
+        monkeypatch.setenv(
+            "CONTROLADOR_API_BASE_URL",
+            f"http://127.0.0.1:{server.server_port}",
+        )
+        monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "false")
+        monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "test-owner")
+        monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "false")
+
+        app = AppTest.from_file(str(PANEL_APP)).run(timeout=30)
+        area = next(item for item in app.radio if item.label == "Áreas principais")
+        area.set_value("ASSISTENTE DO ECOSSISTEMA").run(timeout=30)
+
+        assert not app.exception
+        button = next(
+            item for item in app.button
+            if item.label == "Testar conexão com a OpenAI"
+        )
+        button.click().run(timeout=30)
+
+        assert not app.exception
+        assert ("POST", "/api/assistant/test-connection") in calls
+        assert any(
+            "Conexão com a OpenAI testada com sucesso" in item.value
+            for item in app.success
+        )
+        assert any(
+            "Nenhuma pergunta, conversa ou dado fiscal foi enviado neste teste."
+            in item.value
+            for item in app.success
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=5)
