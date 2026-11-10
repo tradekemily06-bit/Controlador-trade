@@ -761,13 +761,22 @@ void RefreshStatistics(){
       return;
    }
    string total=JsonValue(r,"total");
+   string actionable=JsonValue(r,"actionable");
    string rate=JsonValue(r,"win_rate");
    string wins=JsonValue(r,"wins");
    string losses=JsonValue(r,"losses");
-   SetLabel(Obj("INFO1"),"Decisoes registradas: "+(total==""?"nao informado":total),20,361,9,C'205,215,230');
-   SetLabel(Obj("INFO2"),"Win rate: "+(rate==""?"nao informado":rate),20,381,9,C'205,215,230');
-   SetLabel(Obj("INFO3"),"WIN: "+(wins==""?"nao informado":wins)+" • LOSS: "+(losses==""?"nao informado":losses),20,401,9,C'205,215,230');
-   SetLabel(Obj("INFO4"),"Detalhes por periodo disponiveis no runtime.",20,421,9,C'205,215,230');
+   string draws=JsonValue(r,"draws");
+   string opened=JsonValue(r,"open");
+   string daily=JsonObjectValue(r,"periods","daily");
+   string weekly=JsonObjectValue(r,"periods","weekly");
+   string monthly=JsonObjectValue(r,"periods","monthly");
+   string daily_total=JsonValue(daily,"total");
+   string weekly_total=JsonValue(weekly,"total");
+   string monthly_total=JsonValue(monthly,"total");
+   SetLabel(Obj("INFO1"),"Decisoes: "+(total==""?"nao informado":total)+" • acionaveis: "+(actionable==""?"nao informado":actionable),20,361,8,C'205,215,230');
+   SetLabel(Obj("INFO2"),"Win rate: "+(rate==""?"nao informado":rate)+"% • WIN: "+(wins==""?"?":wins)+" LOSS: "+(losses==""?"?":losses),20,381,8,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Empates: "+(draws==""?"nao informado":draws)+" • Abertas: "+(opened==""?"nao informado":opened),20,401,9,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Hoje: "+(daily_total==""?"?":daily_total)+" • Semana: "+(weekly_total==""?"?":weekly_total)+" • Mes: "+(monthly_total==""?"?":monthly_total),20,421,8,C'205,215,230');
    SetLabel(Obj("INFO5"),"Estatisticas historicas; nao sao garantia de resultado.",20,441,8,C'255,209,102');
 }
 void RefreshRiskView(){
