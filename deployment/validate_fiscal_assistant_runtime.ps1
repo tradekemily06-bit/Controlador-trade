@@ -8,12 +8,21 @@ if ([string]::IsNullOrWhiteSpace($identity)) {
     throw 'CONTROLADOR_SINGLE_USER_IDENTITY ausente. Configure a identidade autorizada no ambiente Windows; o valor não será exibido.'
 }
 
+$remoteRequired = [string]$env:CONTROLADOR_REMOTE_ACCESS_REQUIRED -match '^(1|true|yes)$'
+$identityHeader = [string]$env:CONTROLADOR_TRUSTED_IDENTITY_HEADER
+if ($remoteRequired -and [string]::IsNullOrWhiteSpace($identityHeader)) {
+    throw 'CONTROLADOR_TRUSTED_IDENTITY_HEADER ausente para validação remota; o nome do cabeçalho não será presumido.'
+}
+
 $BaseUrl = $BaseUrl.TrimEnd('/')
-$headers = @{ 'Cf-Access-Authenticated-User-Email' = $identity }
+$headers = @{}
+if ($remoteRequired) {
+    $headers[$identityHeader] = $identity
+}
 $checks = New-Object System.Collections.Generic.List[object]
 
-function Add-Check([string]$Name, [bool]$Ok, [string]$Detail) {
-    $checks.Add([pscustomobject]@{ check = $Name; ok = $Ok; detail = $Detail })
+function Add-Check([string]$Name, [bool]$Ok, [string]$Detail, [bool]$Skipped = $false) {
+    $checks.Add([pscustomobject]@{ check = $Name; ok = $Ok; skipped = $Skipped; detail = $Detail })
 }
 
 function Get-LocalJson([string]$Path) {
@@ -25,7 +34,11 @@ function Get-LocalJson([string]$Path) {
 }
 
 function Test-RejectedIdentity([string]$Path) {
-    $invalidHeaders = @{ 'Cf-Access-Authenticated-User-Email' = 'unauthorized-smoke-identity@example.invalid' }
+    if (-not $remoteRequired) {
+        return $null
+    }
+    $invalidHeaders = @{}
+    $invalidHeaders[$identityHeader] = 'unauthorized-smoke-identity@example.invalid'
     try {
         Invoke-WebRequest -UseBasicParsing -Method Get -Uri ($BaseUrl + $Path) -Headers $invalidHeaders -TimeoutSec 8 -ErrorAction Stop | Out-Null
         return $false
@@ -120,23 +133,32 @@ try {
     Add-Check 'assistant-read-only-status' $false 'Status do Assistente indisponível ou contrato de segurança inválido.'
 }
 
-try {
-    $assistantDenied = Test-RejectedIdentity '/api/assistant/status'
-    $fiscalDenied = Test-RejectedIdentity '/api/fiscal-reserve/pending?limit=1'
-    Add-Check 'unauthorized-identity-denied' ($assistantDenied -and $fiscalDenied) 'Identidade sintética não autorizada recebeu HTTP 403 nos dois módulos.'
-} catch {
-    Add-Check 'unauthorized-identity-denied' $false 'Não foi possível confirmar a rejeição da identidade sintética.'
+if ($remoteRequired) {
+    try {
+        $assistantDenied = Test-RejectedIdentity '/api/assistant/status'
+        $fiscalDenied = Test-RejectedIdentity '/api/fiscal-reserve/pending?limit=1'
+        Add-Check 'unauthorized-identity-denied' ($assistantDenied -and $fiscalDenied) 'Identidade sintética não autorizada recebeu HTTP 403 nos dois módulos.'
+    } catch {
+        Add-Check 'unauthorized-identity-denied' $false 'Não foi possível confirmar a rejeição da identidade sintética.'
+    }
+} else {
+    Add-Check 'unauthorized-identity-denied' $true 'Não aplicável em modo local: identidade do proprietário vem da configuração do servidor e cabeçalhos de visitante são ignorados.' $true
 }
 
-$failed = @($checks | Where-Object { -not $_.ok })
+$failed = @($checks | Where-Object { -not $_.ok -and -not $_.skipped })
+$passed = @($checks | Where-Object { $_.ok -and -not $_.skipped }).Count
+$skipped = @($checks | Where-Object { $_.skipped }).Count
+$identityMode = if ($remoteRequired) { 'TRUSTED_REMOTE' } else { 'LOCAL_LOOPBACK' }
 $result = [pscustomobject]@{
     generated_at = (Get-Date).ToUniversalTime().ToString('o')
     base_url = $BaseUrl
+    identity_mode = $identityMode
     checks = $checks
-    passed = ($checks.Count - $failed.Count)
+    passed = $passed
+    skipped = $skipped
     failed = $failed.Count
     ready = ($failed.Count -eq 0)
-    note = 'Somente GET local. Nenhuma chave, conversa, ordem, lançamento fiscal ou chamada paga foi criada.'
+    note = 'Somente GET; rotas fiscais podem executar migração transacional do esquema. Faça backup do SQLite antes. Nenhuma chave, conversa, ordem, lançamento fiscal ou chamada paga foi criada.'
 }
 $result | ConvertTo-Json -Depth 5
 if ($failed.Count -gt 0) { exit 2 }

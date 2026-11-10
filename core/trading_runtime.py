@@ -341,9 +341,17 @@ class TradingRuntime:
                 automation_audit = automation_result.audit
                 if not automation_result.admission.admitted or automation_result.handoff is None or not automation_result.handoff.handed_off:
                     stopped = True
-                    stop_reason = "; ".join(automation_result.admission.reasons) or "; ".join(
-                        automation_result.handoff.reasons if automation_result.handoff is not None else ()
-                    ) or "automação controlada bloqueada."
+                    stop_reason = (
+                        automation_result.decision.reason
+                        if not automation_result.decision.allowed
+                        else (
+                            "; ".join(automation_result.admission.reasons)
+                            or "; ".join(
+                                automation_result.handoff.reasons if automation_result.handoff is not None else ()
+                            )
+                            or "automação controlada bloqueada."
+                        )
+                    )
                     cycles.append(RuntimeCycle(
                         orchestration=orchestration,
                         plan=plan,

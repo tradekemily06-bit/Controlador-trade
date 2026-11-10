@@ -1457,15 +1457,33 @@ def application(environ, start_response):
             cycle = result.cycles[-1]
             execution = cycle.execution
             orchestration = cycle.orchestration
-            timed_exit = SERVICE.schedule_mt5_timed_exit(cycle, duration_seconds=duration_seconds)
-            decision_value = getattr(orchestration.decision.decision, "value", orchestration.decision.decision)
-            candidate_signal = orchestration.analysis.signal.value
-            display_signal = candidate_signal if decision_value == "EXECUTAR" else "AGUARDAR"
-            display_reason = (
-                orchestration.analysis.reason
-                if decision_value == "EXECUTAR"
-                else orchestration.decision.reason
+            execution_accepted = execution is not None and execution.accepted is True
+            timed_exit = (
+                SERVICE.schedule_mt5_timed_exit(cycle, duration_seconds=duration_seconds)
+                if execution_accepted
+                else {"state": "NOT_APPLICABLE", "scheduled": False, "message": "sem execução aceita"}
             )
+            candidate_decision_value = getattr(orchestration.decision.decision, "value", orchestration.decision.decision)
+            automation_state = getattr(getattr(cycle.automation_lifecycle, "state", None), "value", None)
+            execution_gate_blocked = execution is None and automation_state == "BLOCKED"
+            execution_rejected = execution is not None and not execution_accepted
+            execution_not_authorized = not execution_accepted
+            decision_value = "AGUARDAR" if execution_not_authorized else candidate_decision_value
+            candidate_signal = orchestration.analysis.signal.value
+            display_signal = candidate_signal if decision_value == "EXECUTAR" and execution_accepted else "AGUARDAR"
+            if execution_gate_blocked:
+                display_reason = f"Análise concluída; execução bloqueada pelo runtime: {result.stop_reason or 'autorização de execução ausente'}."
+            elif execution_rejected and candidate_decision_value == "EXECUTAR":
+                rejection_detail = execution.message or getattr(execution.status, "value", "estado não confirmado")
+                display_reason = f"Análise concluída; executor não confirmou a execução: {rejection_detail}."
+            elif execution is None and candidate_decision_value == "EXECUTAR":
+                display_reason = f"Análise concluída; runtime não confirmou uma execução aceita: {result.stop_reason or 'estado de execução indisponível'}."
+            else:
+                display_reason = (
+                    orchestration.analysis.reason
+                    if decision_value == "EXECUTAR" and execution_accepted
+                    else orchestration.decision.reason
+                )
             payload = {
                 "stopped": result.stopped,
                 "stop_reason": result.stop_reason,
@@ -1475,6 +1493,7 @@ def application(environ, start_response):
                     "timeframe": orchestration.analysis.timeframe,
                 },
                 "decision": decision_value,
+                "candidate_decision": candidate_decision_value,
                 "signal": display_signal,
                 "candidate_signal": candidate_signal,
                 "score": orchestration.analysis.score,

@@ -122,6 +122,171 @@ def test_runtime_cycle_exposes_authoritative_cycle_lineage(monkeypatch):
 
 
 
+def test_runtime_cycle_displays_wait_when_automation_gate_blocks_execution(monkeypatch):
+    import app
+
+    orchestration = SimpleNamespace(
+        timestamp=datetime(2026, 10, 16, 12, tzinfo=timezone.utc),
+        decision=SimpleNamespace(decision="EXECUTAR", reason="market gates passed"),
+        analysis=SimpleNamespace(
+            signal=SimpleNamespace(value="COMPRAR"),
+            score=91.0,
+            reason="candidate is strong",
+            confirmed=True,
+            symbol="EURUSD",
+            timeframe="5m",
+        ),
+        quality=SimpleNamespace(score=91.0, level=SimpleNamespace(value="FORTE"), actionable=True),
+        snapshot=SimpleNamespace(market_context=None),
+        market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=tuple(
+            Candle(datetime(2026, 10, 16, 11, tzinfo=timezone.utc) + timedelta(minutes=i), 100, 101, 99, 100, 1)
+            for i in range(3)
+        )),
+        senior_context=SimpleNamespace(cycle_id="senior-cycle-blocked"),
+    )
+    cycle = SimpleNamespace(
+        orchestration=orchestration,
+        execution=None,
+        plan=SimpleNamespace(request_id="req-blocked"),
+        automation_lifecycle=SimpleNamespace(state=SimpleNamespace(value="BLOCKED")),
+    )
+    fake_result = SimpleNamespace(stopped=True, stop_reason="automation disabled", cycles=(cycle,))
+    monkeypatch.setattr(app.SERVICE, "get_preferences", lambda: {"selected_mode": "DEMO", "leverage_enabled": False})
+    monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **kwargs: fake_result)
+    monkeypatch.setattr(app.SERVICE, "schedule_mt5_timed_exit", lambda cycle, duration_seconds: {"state": "NOT_APPLICABLE", "scheduled": False, "message": "sem execução aceita"})
+
+    status, data = call_app(
+        "/api/runtime/cycle",
+        "POST",
+        {"symbol": "EURUSD", "timeframe": "5m", "limit": 20, "amount": 0.01, "duration_seconds": 60},
+    )
+
+    assert status.startswith("200")
+    assert data["runtime"]["candidate_decision"] == "EXECUTAR"
+    assert data["runtime"]["decision"] == "AGUARDAR"
+    assert data["runtime"]["signal"] == "AGUARDAR"
+    assert data["runtime"]["quality"]["actionable"] is False
+    assert "execução bloqueada pelo runtime" in data["runtime"]["reason"]
+    assert data["execution_allowed"] is False
+
+
+def test_runtime_cycle_displays_wait_when_executor_does_not_accept_execution(monkeypatch):
+    import app
+
+    orchestration = SimpleNamespace(
+        timestamp=datetime(2026, 10, 16, 12, tzinfo=timezone.utc),
+        decision=SimpleNamespace(decision="EXECUTAR", reason="market gates passed"),
+        analysis=SimpleNamespace(
+            signal=SimpleNamespace(value="COMPRAR"),
+            score=93.0,
+            reason="candidate is strong",
+            confirmed=True,
+            symbol="EURUSD",
+            timeframe="5m",
+        ),
+        quality=SimpleNamespace(score=93.0, level=SimpleNamespace(value="FORTE"), actionable=True),
+        snapshot=SimpleNamespace(market_context=None),
+        market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=tuple(
+            Candle(datetime(2026, 10, 16, 11, tzinfo=timezone.utc) + timedelta(minutes=i), 100, 101, 99, 100, 1)
+            for i in range(3)
+        )),
+        senior_context=SimpleNamespace(cycle_id="senior-cycle-rejected"),
+    )
+    execution = SimpleNamespace(
+        accepted=False,
+        status=SimpleNamespace(value="EXECUTION_REJECTED"),
+        message="broker rejected request",
+        external_id=None,
+    )
+    cycle = SimpleNamespace(
+        orchestration=orchestration,
+        execution=execution,
+        plan=SimpleNamespace(request_id="req-rejected"),
+        automation_lifecycle=None,
+    )
+    fake_result = SimpleNamespace(stopped=True, stop_reason="executor rejected", cycles=(cycle,))
+    monkeypatch.setattr(app.SERVICE, "get_preferences", lambda: {"selected_mode": "DEMO", "leverage_enabled": False})
+    monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **kwargs: fake_result)
+    monkeypatch.setattr(
+        app.SERVICE,
+        "schedule_mt5_timed_exit",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("timed exit must not be scheduled without accepted execution")),
+    )
+
+    status, data = call_app(
+        "/api/runtime/cycle",
+        "POST",
+        {"symbol": "EURUSD", "timeframe": "5m", "limit": 20, "amount": 0.01, "duration_seconds": 60},
+    )
+
+    assert status.startswith("200")
+    assert data["runtime"]["candidate_decision"] == "EXECUTAR"
+    assert data["runtime"]["candidate_signal"] == "COMPRAR"
+    assert data["runtime"]["decision"] == "AGUARDAR"
+    assert data["runtime"]["signal"] == "AGUARDAR"
+    assert data["runtime"]["analysis"]["signal"] == "AGUARDAR"
+    assert data["runtime"]["analysis"]["candidate_signal"] == "COMPRAR"
+    assert data["runtime"]["quality"]["actionable"] is False
+    assert "executor não confirmou a execução" in data["runtime"]["reason"]
+    assert data["runtime"]["execution"]["accepted"] is False
+    assert data["runtime"]["timed_exit_scheduled"] is False
+    assert data["runtime"]["timed_exit"]["state"] == "NOT_APPLICABLE"
+    assert data["execution_allowed"] is False
+
+
+def test_runtime_cycle_without_execution_object_cannot_show_actionable_candidate(monkeypatch):
+    import app
+
+    orchestration = SimpleNamespace(
+        timestamp=datetime(2026, 10, 16, 12, tzinfo=timezone.utc),
+        decision=SimpleNamespace(decision="EXECUTAR", reason="candidate passed analysis"),
+        analysis=SimpleNamespace(
+            signal=SimpleNamespace(value="VENDER"),
+            score=88.0,
+            reason="candidate is strong",
+            confirmed=True,
+            symbol="EURUSD",
+            timeframe="5m",
+        ),
+        quality=SimpleNamespace(score=88.0, level=SimpleNamespace(value="FORTE"), actionable=True),
+        snapshot=SimpleNamespace(market_context=None),
+        market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=tuple(
+            Candle(datetime(2026, 10, 16, 11, tzinfo=timezone.utc) + timedelta(minutes=i), 100, 101, 99, 100, 1)
+            for i in range(3)
+        )),
+        senior_context=SimpleNamespace(cycle_id="senior-cycle-no-execution"),
+    )
+    cycle = SimpleNamespace(
+        orchestration=orchestration,
+        execution=None,
+        plan=None,
+        automation_lifecycle=None,
+    )
+    fake_result = SimpleNamespace(stopped=True, stop_reason="execution not dispatched", cycles=(cycle,))
+    monkeypatch.setattr(app.SERVICE, "get_preferences", lambda: {"selected_mode": "DEMO", "leverage_enabled": False})
+    monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **kwargs: fake_result)
+    monkeypatch.setattr(
+        app.SERVICE,
+        "schedule_mt5_timed_exit",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("timed exit must not be scheduled")),
+    )
+
+    status, data = call_app(
+        "/api/runtime/cycle",
+        "POST",
+        {"symbol": "EURUSD", "timeframe": "5m", "limit": 20, "amount": 0.01, "duration_seconds": 60},
+    )
+
+    assert status.startswith("200")
+    assert data["runtime"]["candidate_decision"] == "EXECUTAR"
+    assert data["runtime"]["candidate_signal"] == "VENDER"
+    assert data["runtime"]["decision"] == "AGUARDAR"
+    assert data["runtime"]["signal"] == "AGUARDAR"
+    assert data["runtime"]["quality"]["actionable"] is False
+    assert data["runtime"]["timed_exit_scheduled"] is False
+    assert data["execution_allowed"] is False
+
+
 def test_runtime_cycle_rejects_boolean_sizing_and_invalid_limits_before_service(monkeypatch):
     import app
 
@@ -264,6 +429,35 @@ def test_remote_mutation_is_blocked_without_trusted_identity():
     assert captured["status"].startswith("503")
     assert json.loads(result)["error"] == "trusted remote identity provider is not configured"
 
+
+
+def test_runtime_reconcile_requires_trusted_remote_identity(monkeypatch):
+    import app as app_module
+
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.delenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", raising=False)
+    monkeypatch.setattr(
+        app_module.SERVICE,
+        "reconcile_mt5_cycle",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("reconciliation must not run without trusted identity")),
+    )
+    body = json.dumps({"cycle_id": "cycle-1", "external_id": "ticket-1"}).encode()
+    captured = {}
+
+    def start_response(status, headers):
+        captured["status"] = status
+
+    environ = {
+        "PATH_INFO": "/api/runtime/reconcile",
+        "REQUEST_METHOD": "POST",
+        "CONTENT_LENGTH": str(len(body)),
+        "REMOTE_ADDR": "10.0.0.25",
+        "wsgi.input": io.BytesIO(body),
+    }
+    result = b"".join(application(environ, start_response))
+
+    assert captured["status"].startswith("503")
+    assert json.loads(result)["error"] == "trusted identity header is not configured"
 
 
 def test_fiscal_pending_api_returns_conflict_for_duplicate_reference(tmp_path, monkeypatch):
