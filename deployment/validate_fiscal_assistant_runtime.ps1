@@ -8,7 +8,22 @@ if ([string]::IsNullOrWhiteSpace($identity)) {
     throw 'CONTROLADOR_SINGLE_USER_IDENTITY ausente. Configure a identidade autorizada no ambiente Windows; o valor não será exibido.'
 }
 
-$remoteRequired = [string]$env:CONTROLADOR_REMOTE_ACCESS_REQUIRED -match '^(1|true|yes)
+$remoteRequired = [string]$env:CONTROLADOR_REMOTE_ACCESS_REQUIRED -match '^(1|true|yes)$'
+$identityHeader = [string]$env:CONTROLADOR_TRUSTED_IDENTITY_HEADER
+if ($remoteRequired -and [string]::IsNullOrWhiteSpace($identityHeader)) {
+    throw 'CONTROLADOR_TRUSTED_IDENTITY_HEADER ausente para validação remota; o nome do cabeçalho não será presumido.'
+}
+
+$BaseUrl = $BaseUrl.TrimEnd('/')
+$headers = @{}
+if ($remoteRequired) {
+    $headers[$identityHeader] = $identity
+}
+$checks = New-Object System.Collections.Generic.List[object]
+
+function Add-Check([string]$Name, [bool]$Ok, [string]$Detail, [bool]$Skipped = $false) {
+    $checks.Add([pscustomobject]@{ check = $Name; ok = $Ok; skipped = $Skipped; detail = $Detail })
+}
 
 function Get-LocalJson([string]$Path) {
     $response = Invoke-WebRequest -UseBasicParsing -Method Get -Uri ($BaseUrl + $Path) -Headers $headers -TimeoutSec 8 -ErrorAction Stop
