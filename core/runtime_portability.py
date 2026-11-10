@@ -125,7 +125,8 @@ def restore_backup(backup_file:str|Path,runtime_dir:str|Path,*,replace:bool=Fals
         conflicts=[name for name in entries if (runtime/name).exists()]
         if conflicts:
             raise FileExistsError(f"restore would overwrite existing state: {', '.join(conflicts)}")
-    with zipfile.ZipFile(backup_file,"r") as archive, tempfile.TemporaryDirectory(prefix="controlador-restore-") as tmp:
+    # Stage beside the destination so os.replace stays on the same volume on Windows.
+    with zipfile.ZipFile(backup_file,"r") as archive, tempfile.TemporaryDirectory(prefix=".controlador-restore-", dir=runtime) as tmp:
         staged={}
         for name in entries:
             staged[name]=Path(tmp)/name
