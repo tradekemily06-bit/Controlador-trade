@@ -1099,3 +1099,74 @@ def test_assistant_conversation_owner_identity_is_case_insensitive(tmp_path):
     )
 
     assert store.history("owner@example.com", conversation_id)[0]["content"] == "mensagem do mesmo titular"
+
+
+def test_assistant_history_and_delete_routes_hide_foreign_conversation_ids(tmp_path, monkeypatch):
+    database = tmp_path / "assistant-route-owner-isolation.sqlite3"
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "X-Auth-User")
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", database)
+    monkeypatch.setattr(app_module.SECURITY, "allow", lambda environ: True)
+    monkeypatch.setattr(app_module.SECURITY, "headers", lambda request_id, **kwargs: [])
+    monkeypatch.setattr(app_module, "_audit", lambda *args, **kwargs: None)
+
+    owner_id = migrate_fiscal_schema(str(database))
+    store = AssistantConversationStore(tmp_path / "assistant-route-owner-isolation.sqlite3")
+    owner_conversation = store.append(owner_id, None, "user", "histórico privado do titular")
+    foreign_conversation = store.append(
+        "single:other-owner", None, "user", "histórico de outro titular"
+    )
+
+    class Assistant:
+        def conversations(self, identity):
+            return store.list(identity)
+
+        def history(self, identity, conversation_id):
+            return store.history(identity, conversation_id)
+
+        def delete_conversation(self, identity, conversation_id):
+            return store.delete(identity, conversation_id)
+
+    monkeypatch.setattr(app_module, "ASSISTANT", Assistant())
+
+    status, body = _request(
+        "/api/assistant/history",
+        query=f"conversation_id={foreign_conversation}",
+    )
+    assert status.startswith("404")
+    assert body["error"] == "conversa não encontrada"
+
+    status, body = _request(
+        "/api/assistant/conversations",
+        method="DELETE",
+        query=f"conversation_id={foreign_conversation}",
+    )
+    assert status.startswith("404")
+    assert body["error"] == "conversa não encontrada"
+
+    assert store.history(owner_id, owner_conversation)[0]["content"] == (
+        "histórico privado do titular"
+    )
+    assert store.history("single:other-owner", foreign_conversation)[0]["content"] == (
+        "histórico de outro titular"
+    )
+
+    status, body = _request(
+        "/api/assistant/history",
+        query=f"conversation_id={owner_conversation}",
+    )
+    assert status.startswith("200")
+    assert body["messages"][0]["content"] == "histórico privado do titular"
+
+    status, body = _request(
+        "/api/assistant/conversations",
+        method="DELETE",
+        query=f"conversation_id={owner_conversation}",
+    )
+    assert status.startswith("200")
+    assert body["deleted"] is True
+    assert store.list(owner_id) == []
+    assert store.list("single:other-owner") == [
+        store.list("single:other-owner")[0]
+    ]
