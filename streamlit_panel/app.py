@@ -1865,6 +1865,7 @@ def show_readonly_module(module_name: str) -> None:
         "Escola / Tutorial / Onboarding": ("Primeiros passos", "/api/onboarding"),
         "Configurações": ("Preferências do Ecossistema", "/api/preferences"),
         "Conexões": ("Conexões disponíveis", "/api/connections"),
+        "Multi-Broker": ("Visão de provedores · somente leitura", "/api/connections"),
         "Segurança": ("Postura de segurança do runtime", "/api/health"),
         "Auditoria": ("Auditoria operacional", "/api/security/audit"),
     }
@@ -1891,6 +1892,21 @@ def show_readonly_module(module_name: str) -> None:
 
     try:
         data = api(endpoint)
+        if module_name == "Multi-Broker":
+            providers = (
+                ("IC Markets MT5 DEMO", data.get("ic_markets_mt5_demo")),
+                ("cTrader", data.get("cTrader")),
+                ("SaaS", data.get("saas")),
+            ) if isinstance(data, dict) else ()
+            st.caption("Esta tela consulta os estados reportados pelos conectores. Não conecta novas corretoras, não habilita roteamento multi-broker e não envia ordens.")
+            provider_cols = st.columns(3)
+            for column, (label, state) in zip(provider_cols, providers):
+                column.metric(label, str(state or "NÃO CONFIRMADO"))
+            st.caption("Motor de decisão: " + str(data.get("decision_core") or "NÃO CONFIRMADO"))
+            st.caption("Gateway de execução: " + str(data.get("execution_gateway") or "NÃO CONFIRMADO"))
+            st.caption("Execução multi-broker: NÃO IMPLEMENTADA · REAL: DESABILITADO")
+            return
+
         if module_name == "Segurança":
             storage = data.get("production_storage", {}) if isinstance(data, dict) else {}
             gate = data.get("production_operation_gate", {}) if isinstance(data, dict) else {}
