@@ -334,11 +334,29 @@ def application(environ, start_response):
     # writes. Keep only the minimal liveness probe public; /api/health and
     # /api/status expose operational details and therefore require identity.
     remote_access_required = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "").strip().lower() in {"1", "true", "yes"}
+    # The native MT5 EA calls a narrow set of read-only endpoints directly
+    # over loopback. These are not public exceptions: each request must pass
+    # the same loopback + Host allowlist + no trusted-proxy-identity gate below.
+    local_ea_get_paths = {
+        "/api/health",
+        "/api/preferences",
+        "/api/notifications",
+        "/api/learning",
+        "/api/market/assets",
+        "/api/risk",
+        "/api/statistics",
+        "/api/news",
+        "/api/memory",
+        "/api/runtime/positions/recovery/local",
+        "/api/fiscal-reserve/local",
+        "/api/assistant/local/status",
+    }
     if (
         remote_access_required
         and method == "GET"
         and path.startswith("/api/")
         and path != "/api/health/live"
+        and path not in local_ea_get_paths
     ):
         authorized, reason = _authorize_remote_mutation(environ)
         if not authorized:
@@ -346,6 +364,20 @@ def application(environ, start_response):
                 start_response,
                 _remote_identity_http_status(reason),
                 {"error": "Identidade autenticada necessária.", "request_id": request_id},
+                request_id,
+                environ,
+            )
+
+    # Native EA read-only calls have an exact loopback/Host allowlist. They
+    # never inherit the remote identity header and cannot be reached through
+    # the public Tunnel/proxy.
+    if method == "GET" and path in local_ea_get_paths:
+        authorized, reason = _authorize_local_runtime(environ)
+        if not authorized:
+            return _json_response(
+                start_response,
+                HTTPStatus.FORBIDDEN,
+                {"error": "Acesso local do terminal não autorizado."},
                 request_id,
                 environ,
             )
