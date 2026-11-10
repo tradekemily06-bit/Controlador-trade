@@ -285,7 +285,6 @@ string AreaModuleLabel(string module){
 string ViewForModule(string area,string module){
    if(area=="COCKPIT"){
       if(module=="Operação") return "COCKPIT";
-      if(module=="Motor de Decisão") return "ANALISE";
       if(module=="Notificações") return "NOTIF";
       if(module=="Ambiente MT5 DEMO / Simulação") return "LAB";
    }else if(area=="ANÁLISE"){
@@ -934,6 +933,7 @@ void RenderView(){
 
 }
 void RefreshHealth(){
+   if(active_view=="UNAVAILABLE") return;
    string r; int code=0;
    if(!Http("GET","/api/health","",r,code)){
       runtime_ok=false;
