@@ -125,6 +125,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
       - name: Parse deployment PowerShell scripts
         shell: powershell
         run: |
@@ -210,6 +215,37 @@ jobs:
             Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
           }
           Write-Host 'MT5 sync WhatIf runtime checks passed without a live terminal or EA writes.'
+
+      - name: Exercise runtime backup and restore without live services
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = $env:GITHUB_WORKSPACE
+          $python = (Get-Command python -ErrorAction Stop).Source
+          $temp = Join-Path $env:RUNNER_TEMP ("controlador-backup-smoke-" + [guid]::NewGuid().ToString('N'))
+          $runtime = Join-Path $temp 'runtime'
+          $backupDir = Join-Path $temp 'backups'
+          $restored = Join-Path $temp 'restored'
+          New-Item -ItemType Directory -Force -Path $runtime | Out-Null
+          try {
+            Set-Content -LiteralPath (Join-Path $runtime 'operation-memory.json') -Value '{"smoke":"backup-restore"}' -Encoding UTF8
+            & (Join-Path $root 'deployment/backup_runtime.ps1') -ProjectRoot $root -PythonExe $python -RuntimeDir $runtime -OutputDir $backupDir
+            $backup = Get-ChildItem -LiteralPath $backupDir -Filter '*.zip' -File | Select-Object -First 1
+            if ($null -eq $backup) { throw 'Runtime backup archive was not created.' }
+            & (Join-Path $root 'deployment/restore_runtime.ps1') -ProjectRoot $root -PythonExe $python -BackupFile $backup.FullName -RuntimeDir $restored
+            $restoredState = Get-Content -LiteralPath (Join-Path $restored 'operation-memory.json') -Raw
+            if ($restoredState -notmatch 'backup-restore') { throw 'Runtime backup restore content mismatch.' }
+            $overwriteRejected = $false
+            try {
+              & (Join-Path $root 'deployment/restore_runtime.ps1') -ProjectRoot $root -PythonExe $python -BackupFile $backup.FullName -RuntimeDir $restored
+            } catch {
+              $overwriteRejected = $true
+            }
+            if (-not $overwriteRejected) { throw 'Runtime restore did not reject overwriting existing state.' }
+            Write-Host 'Runtime backup/restore PowerShell smoke test passed.'
+          } finally {
+            Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
+          }
 
   test:
     needs: CI
