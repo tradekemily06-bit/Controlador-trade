@@ -187,8 +187,8 @@ class FiscalReserve:
             raise ValueError("percentual deve estar entre 0 e 100")
         with self._connect() as db:
             db.execute(
-                "INSERT INTO fiscal_reserve_settings(owner_id, category, rate) VALUES (?, ?, ?) "
-                "ON CONFLICT(owner_id, category) DO UPDATE SET rate = excluded.rate",
+                "INSERT INTO fiscal_reserve_settings(owner_id, category, rate, rate_source) VALUES (?, ?, ?, 'USER_CONFIGURED') "
+                "ON CONFLICT(owner_id, category) DO UPDATE SET rate = excluded.rate, rate_source = 'USER_CONFIGURED'",
                 (owner_id, category, parsed),
             )
         return self.settings(owner_id)
@@ -204,8 +204,8 @@ class FiscalReserve:
             raise ValueError("percentuais devem estar entre 0 e 100")
         with self._connect() as db:
             db.executemany(
-                "INSERT INTO fiscal_reserve_settings(owner_id, category, rate) VALUES (?, ?, ?) "
-                "ON CONFLICT(owner_id, category) DO UPDATE SET rate = excluded.rate",
+                "INSERT INTO fiscal_reserve_settings(owner_id, category, rate, rate_source) VALUES (?, ?, ?, 'USER_CONFIGURED') "
+                "ON CONFLICT(owner_id, category) DO UPDATE SET rate = excluded.rate, rate_source = 'USER_CONFIGURED'",
                 [(owner_id, category, rate) for category, rate in parsed.items()],
             )
         return self.settings(owner_id)
@@ -360,8 +360,19 @@ class FiscalReserve:
                         "rate_available": False,
                     }
                 else:
+                    source_row = db.execute(
+                        "SELECT rate_source FROM fiscal_reserve_settings WHERE owner_id = ? AND category = ?",
+                        (owner_id, category),
+                    ).fetchone()
+                    rate_source = (
+                        str(source_row["rate_source"])
+                        if source_row is not None
+                        and source_row["rate_source"] in {"DEFAULT", "USER_CONFIGURED", "LEGACY_UNKNOWN"}
+                        else "LEGACY_UNKNOWN"
+                    )
                     categories[category] = {
                         "rate": rates[category],
+                        "rate_source": rate_source,
                         "entries": int(row["count"]),
                         "realized_result_brl": round(float(row["realized_result_brl"]), 2),
                         "reserve_amount_brl": round(float(row["reserve_amount_brl"]), 2),
