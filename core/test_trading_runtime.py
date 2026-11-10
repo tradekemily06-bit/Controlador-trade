@@ -124,6 +124,29 @@ def test_runtime_checkpoint_records_execution_request_id(tmp_path) -> None:
     assert store.load().last_request_id == "runtime-000001"
 
 
+def test_blocked_unreserved_request_is_not_written_to_checkpoint(tmp_path) -> None:
+    store = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
+    result = TradingRuntime(
+        orchestrator=FakeOrchestrator(executable=True),
+        coordinator=FakeCoordinator(accepted=False),
+    ).run(
+        request(),
+        operational_state=None,
+        market_context=None,
+        amount=1,
+        duration_seconds=60,
+        max_cycles=1,
+        checkpoint_store=store,
+        session_id="session-blocked",
+    )
+
+    checkpoint = store.load()
+    assert result.stopped is True
+    assert result.cycles[0].execution.status is GatewayStatus.BLOCKED
+    assert checkpoint.last_cycle == 1
+    assert checkpoint.last_request_id is None
+
+
 def test_checkpoint_requires_session_id(tmp_path) -> None:
     with pytest.raises(ValueError, match="session_id"):
         TradingRuntime(orchestrator=FakeOrchestrator(), coordinator=FakeCoordinator()).run(
