@@ -43,7 +43,6 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 
 $mt5Script = Join-Path $ProjectRoot 'deployment\start_mt5_runtime.ps1'
 $controllerScript = Join-Path $ProjectRoot 'deployment\start_controlador_runtime.ps1'
-$syncScript = Join-Path $ProjectRoot 'deployment\sync_mql5_panel.ps1'
 $streamlitScript = Join-Path $ProjectRoot 'deployment\start_streamlit_panel.ps1'
 
 foreach ($path in @($mt5Script, $controllerScript, $streamlitScript)) {
