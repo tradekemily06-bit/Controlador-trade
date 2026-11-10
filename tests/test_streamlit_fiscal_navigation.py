@@ -28,7 +28,7 @@ def test_mt5_demo_cockpit_navigation_name_distinguishes_connection_from_simulato
 
     assert '"Ambiente MT5 DEMO": ("Conexões e ambiente", "/api/connections")' in source
     assert 'if module_name == "Ambiente MT5 DEMO":' in source
-    assert "Replay e Simulador permanecem em ESTUDO" in readme
+    assert "Replay** e **Simulador** permanecem em ESTUDO" in readme
 
 
 def test_streamlit_labels_default_and_user_configured_planning_rates_separately():
