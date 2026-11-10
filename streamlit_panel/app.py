@@ -64,7 +64,7 @@ st.markdown("""
 .st-key-panel-toggle .closed-status { color: #7F8B97; font-size: 10px; font-weight: 800; letter-spacing: .06em; padding-left: 0; }
 .st-key-panel-toggle .closed-signal { max-width: 190px; font-size: 13px; line-height: 1.25; font-weight: 900; letter-spacing: .025em; white-space: nowrap; }
 .st-key-panel-toggle .closed-score { color: #E9EEF3; font-size: 11px; line-height: 1.2; font-weight: 700; white-space: nowrap; }
-.st-key-control-hub-shell { width: min(100%, 980px); margin: 1rem auto 2rem; padding: clamp(1rem, 2vw, 1.5rem); background: #10151B; border: 1px solid #25303B; border-radius: 24px; }
+.st-key-control-hub-shell { width: 100%; max-width: none; margin: 1rem 0 2rem; padding: clamp(1rem, 2vw, 1.5rem); background: #10151B; border: 1px solid #25303B; border-radius: 24px; }
 .st-key-control-hub-shell .hub-title { color: #E9EEF3; font-size: 1.35rem; font-weight: 800; padding: .35rem 0 .9rem; }
 .st-key-control-hub-shell .demo-pill-wrap { display: flex; justify-content: flex-end; padding-top: .3rem; }
 .st-key-control-hub-shell .system-state-value { color: #7F8B97; text-align: right; font-size: .78rem; font-weight: 800; }
