@@ -97,7 +97,7 @@ void RefreshPanelLayout(){
    panel_height=MathMin(InpPanelHeight,MathMax(280,(int)MathRound(ch*0.50)));
    panel_x=MathMax(12,cw-panel_width-12);
    panel_sx=(double)panel_width/430.0;
-   panel_sy=(double)panel_height/654.0;
+   panel_sy=(double)panel_height/670.0;
    string bg=Obj("BG");
    if(ObjectFind(0,bg)>=0){
       ObjectSetInteger(0,bg,OBJPROP_XDISTANCE,panel_x);
@@ -301,12 +301,18 @@ string ViewForModule(string area,string module){
 }
 void RenderNavigation(){
    string area_labels[6]={"COCKPIT","ANÁLISE","ESTUDO","FISCAL","ASSIST.","CENTRAL"};
-   for(int i=0;i<6;i++) SetButton(Obj("A"+IntegerToString(i+1)),area_labels[i],18+i*67,67,64,25);
+   for(int i=0;i<6;i++){
+      string area_button=Obj("A"+IntegerToString(i+1));
+      SetButton(area_button,area_labels[i],18+i*67,67,64,25);
+      bool selected=(i==0 && active_area=="COCKPIT") || (i==1 && active_area=="ANÁLISE") || (i==2 && active_area=="ESTUDO") || (i==3 && active_area=="RESERVA FISCAL") || (i==4 && active_area=="ASSISTENTE DO ECOSSISTEMA") || (i==5 && active_area=="CENTRAL");
+      ObjectSetInteger(0,area_button,OBJPROP_BGCOLOR,selected?C'24,86,72':C'35,43,58');
+   }
    for(int i=0;i<6;i++){
       string name=AreaModuleName(active_area,i);
       string button=Obj("M"+IntegerToString(i+1));
       if(i<AreaModuleCount(active_area) && name!="")
          SetButton(button,AreaModuleLabel(name),18+i*67,98,64,25);
+      if(i<AreaModuleCount(active_area) && name!="") ObjectSetInteger(0,button,OBJPROP_BGCOLOR,(name==active_module)?C'24,86,72':C'35,43,58');
       else if(ObjectFind(0,button)>=0) ObjectDelete(0,button);
    }
 }
@@ -946,7 +952,7 @@ void RefreshHealth(){
    SetLabel(Obj("RUNTIME"),"Sistema: online",20,104,10,C'88,214,141');
    SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),20,124,10,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • autorizacao separada",20,441,9,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
-   if(active_view=="RESERVA" || active_view=="ASSISTENTE") return;
+   if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="UNAVAILABLE") return;
    SetLabel(Obj("INFO1"),"Analise do ecossistema: "+(engine==""?"online":engine),20,361,9,C'205,215,230');
 }
 void RefreshMarketAssets(){
@@ -1206,7 +1212,7 @@ void OnTimer(){
    // panel details only when a new bar arrives in the analysis views.
    Analyze(new_bar && (active_view=="COCKPIT" || active_view=="ANALISE"));
    double bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
-   if(bid>0) SetLabel(Obj("PRICE"),"Preco atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
+   if(active_view!="UNAVAILABLE" && bid>0) SetLabel(Obj("PRICE"),"Preco atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
 }
 void OnChartEvent(const int id,const long &lparam,const double &dparam,const string &sparam){
    if(id!=CHARTEVENT_OBJECT_CLICK) return;
