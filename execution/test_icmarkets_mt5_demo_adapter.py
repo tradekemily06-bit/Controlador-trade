@@ -285,6 +285,18 @@ def test_query_order_accepts_filled_order_with_its_associated_deal_history():
     assert observation.status.value == "EXECUTED"
 
 
+def test_query_order_keeps_unknown_when_mt5_history_query_fails():
+    class HistoryFailureMT5(FakeMT5):
+        def history_deals_get(self, *args, **kwargs):
+            return None
+
+    observation = ICMarketsMT5DemoAdapter(
+        mt5_module=HistoryFailureMT5()
+    ).query_order("123456")
+
+    assert observation.status.value == "UNKNOWN"
+
+
 def test_query_order_reconciles_filled_order_ticket_as_executed():
     class FilledOrderMT5(FakeMT5):
         def history_deals_get(self, *args, **kwargs):
