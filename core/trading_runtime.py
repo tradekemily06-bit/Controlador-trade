@@ -391,11 +391,20 @@ class TradingRuntime:
             ))
 
             if checkpoint_store is not None:
+                # A request blocked before the gateway's durable reservation has
+                # no Ledger/Lifecycle identity. Do not write it as the checkpoint's
+                # last request, or recovery would flag a false divergence forever.
+                checkpoint_request_id = request_id
+                if execution_result is not None and execution_result.status in (
+                    GatewayStatus.BLOCKED,
+                    GatewayStatus.INVALID_REQUEST,
+                ):
+                    checkpoint_request_id = None
                 checkpoint_store.save(
                     RuntimeCheckpoint(
                         session_id=session_id,
                         last_cycle=index,
-                        last_request_id=request_id,
+                        last_request_id=checkpoint_request_id,
                         updated_at=datetime.now(timezone.utc),
                     )
                 )
