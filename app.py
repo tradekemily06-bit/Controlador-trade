@@ -1473,7 +1473,7 @@ def application(environ, start_response):
             display_signal = candidate_signal if decision_value == "EXECUTAR" and execution_accepted else "AGUARDAR"
             if execution_gate_blocked:
                 display_reason = f"Análise concluída; execução bloqueada pelo runtime: {result.stop_reason or 'autorização de execução ausente'}."
-            elif execution_rejected:
+            elif execution_rejected and candidate_decision_value == "EXECUTAR":
                 rejection_detail = execution.message or getattr(execution.status, "value", "estado não confirmado")
                 display_reason = f"Análise concluída; executor não confirmou a execução: {rejection_detail}."
             elif execution is None and candidate_decision_value == "EXECUTAR":
