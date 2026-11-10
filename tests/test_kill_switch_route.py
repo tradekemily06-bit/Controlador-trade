@@ -90,7 +90,7 @@ def test_kill_switch_activation_requires_explicit_confirmation(monkeypatch, tmp_
 def test_kill_switch_activation_requires_nonempty_bounded_reason(monkeypatch, tmp_path):
     runtime = _configure_remote_runtime(monkeypatch, tmp_path)
 
-    status, payload = _post_kill_switch(identity="owner@example.test", reason=" " * 241)
+    status, payload = _post_kill_switch(identity="owner@example.test", reason="x" * 241)
 
     assert status == "400 Bad Request"
     assert payload["execution_allowed"] is False
