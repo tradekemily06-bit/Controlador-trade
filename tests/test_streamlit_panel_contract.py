@@ -1027,7 +1027,7 @@ def test_every_reference_navigation_module_has_a_functional_streamlit_route():
     dedicated_routes = {"Análise de Mercado", "Replay", "Simulador"}
     configured_modules.discard("MT5 DEMO / Simulação")
     configured_modules.add("Ambiente MT5 DEMO")
-    special_routes = {"Reserva Fiscal", "Assistente do Ecossistema"}
+    special_routes = {"Financeiro", "Reserva Fiscal", "Assistente do Ecossistema"}
     assert configured_modules <= (readonly_modules | dedicated_routes | special_routes)
     assert 'if module_name == "Financeiro":' in source
     assert "show_finance_overview()" in source
