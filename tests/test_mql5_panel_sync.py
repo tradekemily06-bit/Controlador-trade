@@ -375,3 +375,21 @@ def test_mql5_json_helpers_accept_standard_json_whitespace_and_escaped_strings()
     assert "if(escaped) escaped=false;" in helpers
     assert r"else if(c=='\\') escaped=true;" in helpers
     assert r"else if(ch=='\\') escaped=true;" in helpers
+
+
+def test_mql5_sync_backup_creation_fails_closed_before_any_destination_write():
+    text = SCRIPT.read_text(encoding="utf-8")
+    backup_phase = text.split("$backupSource =", 1)[1].split(
+        "try:\\n    Copy-WithRetry -Source $source -Destination $destination", 1
+    )[0]
+    assert "try {" in backup_phase
+    assert "Copy-WithRetry -Source $destination -Destination $backupSource" in backup_phase
+    assert "Copy-WithRetry -Source $binary -Destination $backupBinary" in backup_phase
+    assert "Copy-WithRetry -Source $provenance -Destination $backupProvenance" in backup_phase
+    assert "Copy-WithRetry -Source $log -Destination $backupLog" in backup_phase
+    assert "catch {" in backup_phase
+    assert "o destino do EA ainda não foi modificado" in backup_phase
+    assert "Restore-File" not in backup_phase
+    assert text.index("Falha ao criar os backups dos artefatos") < text.index(
+        "Copy-WithRetry -Source $source -Destination $destination"
+    )
