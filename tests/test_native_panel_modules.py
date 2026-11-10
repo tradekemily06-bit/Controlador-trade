@@ -66,3 +66,16 @@ def test_native_mt5_module_navigation_recreates_base_controls_without_background
     assert 'else if(active_view=="ASSISTENTE") RefreshAssistantStatus();' not in timer
     assert 'if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="UNAVAILABLE") return;' in health
     assert '"REC_REFRESH"' in clear_fields and '"REC_CLOSE"' in clear_fields
+
+
+
+def test_native_mt5_navigation_never_routes_unimplemented_modules_to_unrelated_views():
+    source = EA.read_text(encoding="utf-8")
+    routing = source.split("string ViewForModule(", 1)[1].split("void RenderNavigation()", 1)[0]
+    health = source.split("void RefreshHealth()", 1)[1].split("void RefreshMarketAssets()", 1)[0]
+
+    # Decision engine has no dedicated native view yet; do not disguise analysis as it.
+    assert 'if(module=="Motor de Decisão") return "ANALISE";' not in routing
+    assert 'return "UNAVAILABLE";' in routing
+    # An unavailable module must not create background health widgets over its notice.
+    assert 'if(active_view=="UNAVAILABLE") return;' in health
