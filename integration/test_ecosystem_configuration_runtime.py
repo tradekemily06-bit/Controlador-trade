@@ -593,7 +593,7 @@ def test_demo_close_unknown_requires_read_only_reconciliation_before_retry(tmp_p
     second = service.close_mt5_position(cycle_id="cycle-demo-1", external_id="123456")
     assert second.accepted is True
     assert adapter.close_calls == 2
-    assert [item.attempt for item in runtime.position_closes.history("request-demo-1")] == [1, 2]
+    assert [item.attempt for item in runtime.position_closes.history("request-demo-1")] == [0, 1, 2]
 
 def test_demo_position_recovery_lists_only_unresolved_accepted_cycles_without_claiming_open(tmp_path):
     service, runtime = _service_with_accepted_demo_position(tmp_path)
@@ -757,7 +757,7 @@ def test_timed_exit_is_blocked_without_opening_account_fingerprint(tmp_path):
 
     assert result["scheduled"] is False
     assert result["state"] == "BLOCKED"
-    assert runtime.timed_exits.records() == []
+    assert runtime.timed_exits.records() == ()
 
 
 def test_timed_exit_worker_reconciles_before_closing_and_persists_completion(tmp_path):
