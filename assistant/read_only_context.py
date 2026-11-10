@@ -326,9 +326,21 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id
                     "rate_available": False,
                 }
                 continue
+            raw_rate_source = item.get("rate_source")
+            rate_source = (
+                raw_rate_source
+                if raw_rate_source in {"DEFAULT", "USER_CONFIGURED", "LEGACY_UNKNOWN"}
+                else "LEGACY_UNKNOWN"
+            )
+            rate_kind = {
+                "DEFAULT": "SYSTEM_DEFAULT_PLANNING_RATE",
+                "USER_CONFIGURED": "USER_CONFIGURED_PLANNING_RATE",
+                "LEGACY_UNKNOWN": "LEGACY_RATE_ORIGIN_UNKNOWN",
+            }[rate_source]
             safe_item = {
                 "entries": _count(item.get("entries")),
-                "rate_kind": "USER_CONFIGURED_PLANNING_RATE",
+                "rate_source": rate_source,
+                "rate_kind": rate_kind,
                 "tax_rate_verified": False,
             }
             for key in ("rate", "realized_result_brl", "reserve_amount_brl"):
