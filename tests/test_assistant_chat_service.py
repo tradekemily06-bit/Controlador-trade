@@ -189,7 +189,7 @@ def test_ask_provider_error_is_sanitized_and_user_message_remains_in_history(mon
         raise AssertionError("provider errors must be returned as a sanitized failure")
 
     assert store.messages == [
-        ("single:owner", None, "user", "Minha pergunta")
+        ("single:owner", "conversation-test", "user", "Minha pergunta")
     ]
 
 
