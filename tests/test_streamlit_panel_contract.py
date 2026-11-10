@@ -2106,3 +2106,26 @@ def test_streamlit_fiscal_monthly_planning_validates_and_labels_the_annual_estim
     assert '"Reserva estimada": money(item["reserve_amount_brl"])' in source
     assert "não compensa prejuízos e não desconta créditos de IRRF" in source
     assert "Os valores não foram estimados nem substituídos por zeros." in source
+
+
+def test_mt5_native_panel_uses_six_areas_and_explicit_module_routes():
+    source = (
+        (PANEL_DIR.parent / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5")
+        .read_text(encoding="utf-8")
+    )
+    assert 'string area_labels[6]={"COCKPIT","ANÁLISE","ESTUDO","FISCAL","ASSIST.","CENTRAL"};' in source
+    for area in (
+        'SelectArea("COCKPIT")',
+        'SelectArea("ANÁLISE")',
+        'SelectArea("ESTUDO")',
+        'SelectArea("RESERVA FISCAL")',
+        'SelectArea("ASSISTENTE DO ECOSSISTEMA")',
+        'SelectArea("CENTRAL")',
+    ):
+        assert area in source
+    assert 'active_view=="UNAVAILABLE"' in source
+    assert 'return "UNAVAILABLE";' in source
+    assert 'active_area=="CENTRAL" && module=="Configurações"' in source
+    assert 'active_area=="CENTRAL"' in source
+    assert 'Obj("V1")' not in source
+    assert 'Obj("V9")' not in source
