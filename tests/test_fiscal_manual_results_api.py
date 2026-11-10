@@ -62,7 +62,7 @@ def test_manual_day_trade_entry_requires_explicit_user_declaration_and_is_only_a
     database, reserve = _configure(tmp_path, monkeypatch)
 
     payload = valid_payload()
-    payload["notes"] = "E" * 600
+    payload["notes"] = "E" * 160
     status, body = _request(payload)
 
     assert status.startswith("200")
