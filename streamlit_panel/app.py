@@ -2853,19 +2853,23 @@ def render_latest_signal(closed: bool = False) -> None:
 
 
 # Keep the supplied Figma reference JSON untouched. The active Streamlit
-# navigation may separate complex product modules into their own destinations.
-# "MT5 DEMO / Simulação" in the reference is operational connection/recovery,
+# navigation separates complex product modules into their own destinations.
+# "MT5 DEMO / Simulação" in the reference is operational environment/recovery,
 # not the historical Simulador module already housed under ESTUDO.
+_REFERENCE_TABS = CONFIG["open_state"]["tabs"]
 AREAS = {
     name: [
         "Ambiente MT5 DEMO" if module == "MT5 DEMO / Simulação" else module
-        for module in modules
-        if module != "Financeiro"
+        for module in _REFERENCE_TABS[name]
     ]
-    for name, modules in CONFIG["open_state"]["tabs"].items()
+    for name in ("COCKPIT", "ANÁLISE", "ESTUDO")
 }
 AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]
-AREAS["ASSISTENTE"] = ["Assistente do Ecossistema"]
+AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]
+AREAS["MAIS / ADMIN"] = [
+    module for module in _REFERENCE_TABS["MAIS / ADMIN"]
+    if module != "Financeiro"
+]
 if "panel_open" not in st.session_state:
     st.session_state.panel_open = True
 
