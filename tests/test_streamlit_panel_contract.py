@@ -475,14 +475,14 @@ def test_streamlit_module_dispatch_has_no_unreachable_duplicate_handlers():
         "module_name == 'Escola / Tutorial / Onboarding'",
         "module_name == 'Estatísticas'",
         "module_name == 'Relatórios'",
-        "module_name == 'Conexão MT5 DEMO'",
+        "module_name == 'Ambiente MT5 DEMO'",
         "module_name == 'Conexões'",
         "module_name == 'Multi-Broker'",
     ):
         assert rendered.count(expression) == 1
     assert "module_name in {'Memória', 'Replay'}" not in rendered
     assert "module_name in {'Motor de Decisão', 'Estatísticas', 'Relatórios'}" not in rendered
-    assert "module_name in {'Conexão MT5 DEMO', 'Conexões', 'Multi-Broker'}" not in rendered
+    assert "module_name in {'Ambiente MT5 DEMO', 'Conexões', 'Multi-Broker'}" not in rendered
 
 
 def test_streamlit_local_quickstart_configures_the_required_fiscal_owner_identity():
@@ -831,7 +831,7 @@ def test_streamlit_security_view_discloses_deployment_boundaries():
 
 def test_streamlit_mt5_demo_connections_and_multibroker_views_are_distinct():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
-    start = source.index('if module_name == "Conexão MT5 DEMO":')
+    start = source.index('if module_name == "Ambiente MT5 DEMO":')
     end = source.index('if module_name == "Kill Switch":', start)
     views = source[start:end]
     assert 'if module_name == "Conexões":' in views
@@ -1013,7 +1013,7 @@ def test_every_reference_navigation_module_has_a_functional_streamlit_route():
     dedicated_routes = {"Análise de Mercado", "Replay", "Simulador"}
     configured_modules.discard("Financeiro")
     configured_modules.discard("MT5 DEMO / Simulação")
-    configured_modules.add("Conexão MT5 DEMO")
+    configured_modules.add("Ambiente MT5 DEMO")
     special_routes = {"Reserva Fiscal", "Assistente do Ecossistema"}
     assert configured_modules <= (readonly_modules | dedicated_routes | special_routes)
     assert 'if module == "Reserva Fiscal":' in source
@@ -1707,7 +1707,7 @@ def test_every_reference_navigation_module_has_an_explicit_streamlit_handler():
     # and a clearer connection label without editing the reference JSON.
     configured_modules.discard("Financeiro")
     configured_modules.discard("MT5 DEMO / Simulação")
-    configured_modules.add("Conexão MT5 DEMO")
+    configured_modules.add("Ambiente MT5 DEMO")
     explicitly_routed = explicit_handlers | grouped_handlers | {"Reserva Fiscal", "Assistente do Ecossistema"}
     missing = configured_modules - explicitly_routed
 
@@ -2021,7 +2021,7 @@ def test_every_reference_navigation_module_has_a_real_panel_handler_or_view():
     }
     modules.discard("Financeiro")
     modules.discard("MT5 DEMO / Simulação")
-    modules.update({"Conexão MT5 DEMO", "Reserva Fiscal", "Assistente do Ecossistema"})
+    modules.update({"Ambiente MT5 DEMO", "Reserva Fiscal", "Assistente do Ecossistema"})
     handlers = set(re.findall(r'module_name == "([^"]+)"', source))
     views_start = source.index("def show_readonly_module")
     views_end = source.index('    if module_name == "Análise de Mercado":', views_start)
