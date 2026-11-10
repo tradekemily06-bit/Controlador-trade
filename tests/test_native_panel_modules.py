@@ -64,7 +64,7 @@ def test_native_mt5_module_navigation_recreates_base_controls_without_background
     assert 'SelectArea("CENTRAL")' in events
     assert 'else if(active_view=="RESERVA") RefreshFiscal();' not in timer
     assert 'else if(active_view=="ASSISTENTE") RefreshAssistantStatus();' not in timer
-    assert 'if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="UNAVAILABLE") return;' in health
+    assert 'if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="UNAVAILABLE" || active_view=="MEMORIA" || active_view=="RISK" || active_view=="STATS" || active_view=="CONNECTIONS") return;' in health
     assert '"REC_REFRESH"' in clear_fields and '"REC_CLOSE"' in clear_fields
 
 
@@ -203,7 +203,7 @@ def test_native_statistics_view_exposes_outcomes_and_daily_weekly_monthly_totals
     for period in ("daily", "weekly", "monthly"):
         assert f'JsonObjectValue(r,"periods","{period}")' in stats
     assert '"Hoje: "+(daily_total' in stats
-    assert '"Semana: "+(weekly_total' in stats
+    assert 'weekly_total==""?"?":weekly_total' in stats
     assert '"Mes: "+(monthly_total' in stats
 
 def test_native_memory_view_reads_real_decision_records_and_paginates_them():
