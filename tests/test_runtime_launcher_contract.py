@@ -389,3 +389,10 @@ def test_remote_runtime_docs_distinguish_windows_supervisors_from_cloudflare_tun
     assert "não instala nem registra o serviço Windows `cloudflared`" in text
     assert "porta 8000" in text
     assert "AtStartupS4U" in text
+
+
+
+def test_runtime_backup_uses_collision_resistant_archive_names():
+    script = _read("deployment/backup_runtime.ps1")
+    assert "yyyyMMdd-HHmmss-fff" in script
+    assert "[guid]::NewGuid().ToString('N')" in script
