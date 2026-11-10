@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_streamlit_demo_recovery_lists_positions_and_requires_read_only_reconciliation_before_close():
     panel = (ROOT / "streamlit_panel" / "app.py").read_text(encoding="utf-8")
-    branch = panel.split('if module_name == "MT5 DEMO / Simulação":', 1)[1].split(
+    branch = panel.split('if module_name == "Ambiente MT5 DEMO":', 1)[1].split(
         'if module_name == "Conexões":', 1
     )[0]
 
@@ -22,7 +22,7 @@ def test_streamlit_demo_recovery_lists_positions_and_requires_read_only_reconcil
 
 def test_streamlit_demo_recovery_disables_close_when_account_identity_is_unverified():
     panel = (ROOT / "streamlit_panel" / "app.py").read_text(encoding="utf-8")
-    branch = panel.split('if module_name == "MT5 DEMO / Simulação":', 1)[1].split(
+    branch = panel.split('if module_name == "Ambiente MT5 DEMO":', 1)[1].split(
         'if module_name == "Conexões":', 1
     )[0]
 
@@ -35,7 +35,7 @@ def test_streamlit_demo_recovery_disables_close_when_account_identity_is_unverif
 
 def test_streamlit_mt5_demo_module_displays_timed_exit_status():
     panel = (ROOT / "streamlit_panel" / "app.py").read_text(encoding="utf-8")
-    branch = panel.split('if module_name == "MT5 DEMO / Simulação":', 1)[1].split(
+    branch = panel.split('if module_name == "Ambiente MT5 DEMO":', 1)[1].split(
         'if module_name == "Conexões":', 1
     )[0]
     assert 'api("/api/runtime/timed-exits")' in branch
