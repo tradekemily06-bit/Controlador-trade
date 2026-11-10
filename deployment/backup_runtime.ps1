@@ -10,7 +10,7 @@ Set-Location $ProjectRoot
 $env:CONTROLADOR_BACKUP_RUNTIME_DIR = $RuntimeDir
 $env:CONTROLADOR_BACKUP_OUTPUT_FILE = $backup
 try {
-    & $PythonExe -c 'import os; from core.runtime_portability import create_backup; print(create_backup(os.environ["CONTROLADOR_BACKUP_RUNTIME_DIR"], os.environ["CONTROLADOR_BACKUP_OUTPUT_FILE"]))'
+    & $PythonExe -c "import os; from core.runtime_portability import create_backup; print(create_backup(os.environ['CONTROLADOR_BACKUP_RUNTIME_DIR'], os.environ['CONTROLADOR_BACKUP_OUTPUT_FILE']))"
     $backupExitCode = $LASTEXITCODE
 } finally {
     Remove-Item Env:CONTROLADOR_BACKUP_RUNTIME_DIR -ErrorAction SilentlyContinue
