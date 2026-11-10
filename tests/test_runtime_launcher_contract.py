@@ -392,7 +392,11 @@ def test_mql5_sync_requires_explicit_confirmation_and_supports_whatif():
     text = _read("deployment/sync_mql5_panel.ps1")
     assert "[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]" in text
     assert "$PSCmdlet.ShouldProcess($destination, $actionDescription)" in text
-    assert "Substituir Controlador-Trading.mq5 e compilar o EA (.ex5)" in text
+    assert "Substituir o fonte .mq5 e o binário .ex5" in text
+    assert "$backupLog = \"$log.$stamp.bak\"" in text
+    assert "Copy-WithRetry -Source $log -Destination $backupLog" in text
+    assert "Restore-File -Backup $backupLog -Target $log" in text
+    assert "Remove-Item -LiteralPath $backupLog -Force -ErrorAction SilentlyContinue" in text
     assert text.index("$PSCmdlet.ShouldProcess") < text.index("New-Item -ItemType Directory -Force -Path $destinationDir")
     assert text.index("$PSCmdlet.ShouldProcess") < text.index("Copy-WithRetry -Source $source -Destination $destination")
     assert text.index("$PSCmdlet.ShouldProcess") < text.index('& $MetaEditorPath "/compile:$destination"')
