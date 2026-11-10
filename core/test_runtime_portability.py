@@ -1,5 +1,5 @@
 from pathlib import Path
-import hashlib, json, sqlite3, zipfile, pytest
+import hashlib, json, os, sqlite3, zipfile, pytest
 from core.runtime_portability import create_backup, restore_backup, verify_backup
 def test_backup_round_trip(tmp_path:Path):
     runtime=tmp_path/"runtime"; runtime.mkdir()
@@ -174,3 +174,57 @@ def test_backup_refuses_to_overwrite_existing_archive(tmp_path: Path):
     with pytest.raises(FileExistsError, match="refusing to overwrite"):
         create_backup(runtime, archive)
     assert archive.read_bytes() == original
+
+
+
+def test_restore_rolls_back_new_files_when_a_later_replace_fails(tmp_path: Path, monkeypatch):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "operation-memory.json").write_text("new-memory", encoding="utf-8")
+    (source / "operational-safety.json").write_text("new-safety", encoding="utf-8")
+    backup = tmp_path / "state.zip"
+    create_backup(source, backup)
+
+    target = tmp_path / "target"
+    real_replace = os.replace
+
+    def fail_second_destination(source_path, destination_path):
+        if Path(destination_path) == target / "operational-safety.json":
+            raise OSError("simulated second-file replacement failure")
+        return real_replace(source_path, destination_path)
+
+    monkeypatch.setattr("core.runtime_portability.os.replace", fail_second_destination)
+    with pytest.raises(OSError, match="simulated second-file replacement failure"):
+        restore_backup(backup, target)
+
+    assert not (target / "operation-memory.json").exists()
+    assert not (target / "operational-safety.json").exists()
+    assert not list(target.glob("*.restore.tmp"))
+
+
+def test_restore_rolls_back_replaced_files_when_a_later_replace_fails(tmp_path: Path, monkeypatch):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "operation-memory.json").write_text("new-memory", encoding="utf-8")
+    (source / "operational-safety.json").write_text("new-safety", encoding="utf-8")
+    backup = tmp_path / "state.zip"
+    create_backup(source, backup)
+
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "operation-memory.json").write_text("old-memory", encoding="utf-8")
+    (target / "operational-safety.json").write_text("old-safety", encoding="utf-8")
+    real_replace = os.replace
+
+    def fail_second_destination(source_path, destination_path):
+        if Path(destination_path) == target / "operational-safety.json":
+            raise OSError("simulated second-file replacement failure")
+        return real_replace(source_path, destination_path)
+
+    monkeypatch.setattr("core.runtime_portability.os.replace", fail_second_destination)
+    with pytest.raises(OSError, match="simulated second-file replacement failure"):
+        restore_backup(backup, target, replace=True)
+
+    assert (target / "operation-memory.json").read_text(encoding="utf-8") == "old-memory"
+    assert (target / "operational-safety.json").read_text(encoding="utf-8") == "old-safety"
+    assert not list(target.glob("*.rollback-*"))
