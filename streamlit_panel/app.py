@@ -1815,6 +1815,68 @@ def show_kill_switch() -> None:
             "pela confirmação do servidor; confira a conectividade antes de prosseguir."
         )
 
+    st.markdown("#### Reconciliação de fechamento · consulta protegida")
+    try:
+        real_status = api("/api/runtime/real/status")
+        st.caption(
+            "Estado REAL reportado: "
+            + str(real_status.get("real_execution_allowed", False))
+            + " · autorização ativa: "
+            + str(real_status.get("authorization_active", False))
+            + " · despacho: "
+            + str(real_status.get("real_dispatch", "não informado"))
+        )
+        recovery_items = real_status.get("position_close_recovery_items", [])
+        recovery_items = [
+            item for item in recovery_items
+            if isinstance(item, dict)
+            and isinstance(item.get("request_id"), str)
+            and item.get("request_id").strip()
+            and isinstance(item.get("external_id"), str)
+            and item.get("external_id").strip()
+        ] if isinstance(recovery_items, list) else []
+        if recovery_items:
+            item_by_request = {item["request_id"]: item for item in recovery_items}
+            selected_request = st.selectbox(
+                "Fechamento pendente/desconhecido",
+                options=list(item_by_request),
+                format_func=lambda request_id: (
+                    request_id + " · " + str(item_by_request[request_id].get("state") or "UNKNOWN")
+                    + " · " + str(item_by_request[request_id].get("external_id") or "sem referência")
+                ),
+                key="real_close_reconcile_request",
+            )
+            selected_item = item_by_request[selected_request]
+            st.caption("A reconciliação consulta evidência do broker e atualiza o estado persistido. Não envia ordem de abertura ou fechamento.")
+            with st.form("real_close_reconcile_form"):
+                confirm_read = st.checkbox(
+                    "Confirmo consultar o broker e reconciliar somente este fechamento já registrado."
+                )
+                reconcile_submit = st.form_submit_button("CONSULTAR E RECONCILIAR")
+            if reconcile_submit:
+                if confirm_read is not True:
+                    st.error("Confirme explicitamente a consulta antes de reconciliar.")
+                else:
+                    try:
+                        result = api(
+                            "/api/runtime/real/close/reconcile",
+                            "POST",
+                            {
+                                "request_id": selected_request,
+                                "external_id": selected_item["external_id"],
+                            },
+                        )
+                        reconciliation = result.get("close_reconciliation", {})
+                        st.success("Estado consultado: " + str(reconciliation.get("state") or "NÃO CONFIRMADO"))
+                        st.caption(str(reconciliation.get("message") or "Sem mensagem adicional do adaptador."))
+                        st.rerun()
+                    except Exception:
+                        st.error("Não foi possível reconciliar. Nenhuma ordem de abertura/fechamento foi enviada.")
+        else:
+            st.info("Nenhum fechamento REAL pendente/desconhecido foi reportado pelo runtime.")
+    except Exception:
+        st.warning("Status REAL e reconciliação indisponíveis ou não autorizados. Não interprete ausência de dados como ausência de pendências.")
+
     with st.form("guarded_kill_switch_activation_form"):
         reason = st.text_input("Motivo obrigatório da ativação", max_chars=240)
         confirmed = st.checkbox(
