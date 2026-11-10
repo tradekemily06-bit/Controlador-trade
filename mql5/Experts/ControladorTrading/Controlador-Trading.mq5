@@ -641,7 +641,7 @@ void RefreshAssistantStatus(){
    SetLabel(Obj("INFO2"),"Chat somente leitura; consentimento exigido a cada envio.",20,381,9,C'205,215,230');
 }
 void ClearCockpitFields(){
-   string names[]={"SYM","TF","SYML","TFL","MARKET","SIGNAL","SCORE","REASON","MODE"};
+   string names[]={"SYM","TF","SYML","TFL","MARKET","SIGNAL","SCORE","REASON","MODE","RECOVERY_TITLE","RECOVERY_ITEM","REC_REFRESH","REC_PREV","REC_NEXT","REC_RECONCILE","REC_CLOSE","RECOVERY_STATUS"};
    for(int i=0;i<ArraySize(names);i++)
       if(ObjectFind(0,Obj(names[i]))>=0) ObjectDelete(0,Obj(names[i]));
 }
