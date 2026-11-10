@@ -368,10 +368,10 @@ class FiscalReserve:
                         str(source_row["rate_source"])
                         if source_row is not None
                         and source_row["rate_source"] in {"DEFAULT", "USER_CONFIGURED", "LEGACY_UNKNOWN"}
-                        else "LEGACY_UNKNOWN"
+                        else ("DEFAULT" if category in DEFAULT_RATES else "LEGACY_UNKNOWN")
                     )
                     categories[category] = {
-                        "rate": rates[category],
+                        "rate": rates.get(category, DEFAULT_RATES.get(category, 0.0)),
                         "rate_source": rate_source,
                         "entries": int(row["count"]),
                         "realized_result_brl": round(float(row["realized_result_brl"]), 2),
