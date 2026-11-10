@@ -2,6 +2,7 @@ from __future__ import annotations
 import hashlib, json, os, shutil, sqlite3, tempfile, zipfile
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
+import uuid
 from typing import Any
 
 PORTABILITY_VERSION = 1
@@ -126,14 +127,65 @@ def restore_backup(backup_file:str|Path,runtime_dir:str|Path,*,replace:bool=Fals
         if conflicts:
             raise FileExistsError(f"restore would overwrite existing state: {', '.join(conflicts)}")
     # Stage beside the destination so os.replace stays on the same volume on Windows.
+    rollback_copies: dict[str, Path] = {}
+    replaced: list[str] = []
     with zipfile.ZipFile(backup_file,"r") as archive, tempfile.TemporaryDirectory(prefix=".controlador-restore-", dir=runtime) as tmp:
-        staged={}
+        stage = Path(tmp)
+        incoming = stage / "incoming"
+        incoming.mkdir()
+        staged = {}
         for name in entries:
-            staged[name]=Path(tmp)/name
+            staged[name] = incoming / name
             staged[name].write_bytes(archive.read(name))
-        for name in entries:
-            destination=runtime/name
-            temporary=destination.with_name(f".{destination.name}.restore.tmp")
-            os.replace(staged[name],temporary)
-            os.replace(temporary,destination)
+        try:
+            for name in entries:
+                destination = runtime / name
+                if destination.exists():
+                    if not replace:
+                        raise FileExistsError(f"restore would overwrite existing state: {name}")
+                    if not destination.is_file():
+                        raise ValueError(f"restore destination is not a regular file: {name}")
+                    rollback_path = runtime / f".{destination.stem}.rollback-{uuid.uuid4().hex}{destination.suffix}"
+                    _copy_state(destination, rollback_path)
+                    rollback_copies[name] = rollback_path
+                temporary = destination.with_name(f".{destination.name}.restore.tmp")
+                try:
+                    os.replace(staged[name], temporary)
+                    os.replace(temporary, destination)
+                except Exception:
+                    temporary.unlink(missing_ok=True)
+                    raise
+                replaced.append(name)
+        except Exception as restore_error:
+            rollback_failures: dict[str, str] = {}
+            for name in reversed(replaced):
+                destination = runtime / name
+                if name in rollback_copies:
+                    rollback_temporary = destination.with_name(
+                        f".{destination.stem}.rollback-tmp{destination.suffix}"
+                    )
+                    try:
+                        _copy_state(rollback_copies[name], rollback_temporary)
+                        os.replace(rollback_temporary, destination)
+                    except Exception as rollback_error:
+                        rollback_temporary.unlink(missing_ok=True)
+                        rollback_failures[name] = str(rollback_error)
+                else:
+                    try:
+                        destination.unlink(missing_ok=True)
+                    except OSError as rollback_error:
+                        rollback_failures[name] = str(rollback_error)
+            for name, backup_path in rollback_copies.items():
+                if name not in rollback_failures:
+                    backup_path.unlink(missing_ok=True)
+            if rollback_failures:
+                details = "; ".join(
+                    f"{name}: {error} (cópia anterior preservada em {rollback_copies.get(name, 'destino')})"
+                    for name, error in rollback_failures.items()
+                )
+                raise RuntimeError(f"restore failed and rollback was incomplete: {details}") from restore_error
+            raise
+        else:
+            for backup_path in rollback_copies.values():
+                backup_path.unlink(missing_ok=True)
     return {"restored":True,"runtime_dir":str(runtime),"files":entries,"machine_specific_configuration":"deployment-owned","secrets":"deployment-owned"}
