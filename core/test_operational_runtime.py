@@ -3,6 +3,9 @@ from datetime import datetime, timezone
 from integration.ecosystem_service import EcosystemService
 from core.operational_runtime import build_operational_runtime
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState
+from core.models import Signal
+from execution.paper import PaperExecutor
+from execution.ports import ExecutionMode, ExecutionRequest
 
 
 def test_shared_runtime_starts_fail_closed_and_exposes_authoritative_state(tmp_path):
@@ -14,6 +17,7 @@ def test_shared_runtime_starts_fail_closed_and_exposes_authoritative_state(tmp_p
     assert runtime.gateway._kill_switch is runtime.kill_switch
     assert runtime.gateway._ledger is runtime.execution_ledger
     assert runtime.gateway._lifecycle is runtime.execution_lifecycle
+    assert runtime.gateway._recovery is runtime.recovery
     assert snapshot["execution"] == {
         "allowed": False,
         "mode": "DEMO",
@@ -180,3 +184,67 @@ def test_kill_switch_does_not_report_success_without_persistent_storage(tmp_path
     assert runtime.kill_switch.state.enabled is True
     assert runtime.kill_switch.state.reason == "persistência indisponível"
     assert runtime.gateway._kill_switch is runtime.kill_switch
+
+
+
+def _valid_demo_request():
+    return ExecutionRequest(
+        symbol="BTCUSD",
+        signal=Signal.COMPRA,
+        amount=10.0,
+        duration_seconds=60,
+        mode=ExecutionMode.DEMO,
+    )
+
+
+def test_gateway_blocks_new_dispatch_while_old_request_is_pending(tmp_path):
+    executor = PaperExecutor()
+    runtime = build_operational_runtime(tmp_path, executor=executor)
+    runtime.execution_lifecycle.put(
+        ExecutionLifecycleRecord("old-pending", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc))
+    )
+
+    result = runtime.gateway.execute("new-request", _valid_demo_request())
+
+    assert result.status.value == "BLOCKED"
+    assert "reconciliação operacional necessária" in result.message
+    assert executor.executions() == ()
+
+
+def test_gateway_blocks_new_dispatch_while_old_request_is_unknown(tmp_path):
+    executor = PaperExecutor()
+    runtime = build_operational_runtime(tmp_path, executor=executor)
+    runtime.execution_lifecycle.put(
+        ExecutionLifecycleRecord("old-unknown", ExecutionLifecycleState.UNKNOWN, datetime.now(timezone.utc))
+    )
+
+    result = runtime.gateway.execute("new-request", _valid_demo_request())
+
+    assert result.status.value == "BLOCKED"
+    assert executor.executions() == ()
+
+
+def test_gateway_blocks_new_dispatch_when_recovery_persistence_is_invalid(tmp_path):
+    executor = PaperExecutor()
+    runtime = build_operational_runtime(tmp_path, executor=executor)
+    (tmp_path / "runtime-checkpoint.json").write_text("{invalid", encoding="utf-8")
+
+    result = runtime.gateway.execute("new-request", _valid_demo_request())
+
+    assert result.status.value == "BLOCKED"
+    assert "INVALID" in result.message
+    assert executor.executions() == ()
+
+
+def test_gateway_blocks_new_dispatch_when_ledger_and_lifecycle_diverge(tmp_path):
+    executor = PaperExecutor()
+    runtime = build_operational_runtime(tmp_path, executor=executor)
+    runtime.execution_ledger.reserve("old-divergent")
+    runtime.execution_lifecycle.put(
+        ExecutionLifecycleRecord("old-divergent", ExecutionLifecycleState.REJECTED, datetime.now(timezone.utc))
+    )
+
+    result = runtime.gateway.execute("new-request", _valid_demo_request())
+
+    assert result.status.value == "BLOCKED"
+    assert executor.executions() == ()
