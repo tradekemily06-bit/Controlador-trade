@@ -68,7 +68,7 @@ def test_mql5_panel_primes_runtime_and_refreshes_market_data_on_new_bars():
     assert "current_bar!=last_analysis_bar" in timer
     assert "Analyze(new_bar && (active_view==\"COCKPIT\" || active_view==\"ANALISE\"));" in timer
     assert "Analyze(false);" in timer
-    assert '"/api/runtime/analysis"' in analyze
+    assert '"/api/runtime/analysis/local"' in analyze
     assert "if(!render) return;" in analyze
 
 
@@ -280,7 +280,7 @@ def test_mql5_close_preserves_cycle_until_broker_confirms_position_closed():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     close = panel.split("void CloseCycle()", 1)[1].split("int OnInit()", 1)[0]
     assert 'JsonValue(r,"closed")=="true"' in close
-    assert '"/api/runtime/close/reconcile"' in close
+    assert '"/api/runtime/close/local/reconcile"' in close
     assert 'JsonObjectValue(reconciliation,"close_reconciliation","state")' in close
     assert 'state=="CLOSED"' in close
     assert 'state=="OPEN"' in close
@@ -328,7 +328,7 @@ def test_mql5_releases_stale_cycle_only_after_read_only_broker_confirmation():
 
 def test_mql5_native_recovery_inventory_supports_multiple_exact_tickets():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
-    parser = panel.split("bool ExtractJsonArrayObjects", 1)[1].split("bool ParseRecoveryInventory", 1)[0]
+    parser = panel.split("bool ExtractJsonArrayObjects", 1)[1].split("bool RefreshRecoveryInventory", 1)[0]
     selection = panel.split("void ReconcileSelectedRecovery()", 1)[1].split("int OnInit()", 1)[0]
     events = panel.split("void OnChartEvent", 1)[1]
 

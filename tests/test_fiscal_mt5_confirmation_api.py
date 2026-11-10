@@ -239,6 +239,33 @@ def test_mt5_foreign_result_is_imported_as_pending_with_private_dedupe_key(monke
     assert duplicate["registered"] is False
 
 
+def test_mt5_foreign_pending_import_accepts_valid_currency_outside_legacy_list(monkeypatch, tmp_path):
+    status, body, _ = call_pending_result(
+        monkeypatch,
+        tmp_path,
+        {"confirmed": True, "ticket": "7654321"},
+        adapter=FakeFiscalAdapter(currency="NZD", result=18.25),
+    )
+    assert status.startswith("201")
+    assert body["registered"] is True
+    assert body["pending"]["original_currency"] == "NZD"
+    assert body["pending"]["status"] == "PENDING_CLASSIFICATION"
+    assert body["reserve_calculated"] is False
+
+
+def test_mt5_foreign_pending_import_rejects_malformed_currency_code(monkeypatch, tmp_path):
+    status, body, _ = call_pending_result(
+        monkeypatch,
+        tmp_path,
+        {"confirmed": True, "ticket": "7654321"},
+        adapter=FakeFiscalAdapter(currency="US1", result=18.25),
+    )
+    assert status.startswith("422")
+    assert body["registered"] is False
+    assert body["reserve_calculated"] is False
+
+
+
 def test_mt5_foreign_pending_import_rejects_missing_confirmation_and_brl(monkeypatch, tmp_path):
     status, _, adapter = call_pending_result(
         monkeypatch, tmp_path, {"confirmed": False, "ticket": "7654321"}

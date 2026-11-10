@@ -279,7 +279,7 @@ def migrate_fiscal_schema(database_path: str) -> str:
                 owner_id TEXT NOT NULL,
                 category TEXT NOT NULL,
                 rate REAL NOT NULL CHECK(rate >= 0 AND rate <= 100),
-                rate_source TEXT NOT NULL
+                rate_source TEXT NOT NULL DEFAULT 'LEGACY_UNKNOWN'
                     CHECK(rate_source IN ('DEFAULT','USER_CONFIGURED','LEGACY_UNKNOWN')),
                 PRIMARY KEY(owner_id, category)
             )

@@ -40,7 +40,7 @@ class FiscalOwnerIdentityTests(unittest.TestCase):
         )
         for value in malformed_values:
             with self.subTest(value=repr(value)):
-                with patch.dict(os.environ, {"CONTROLADOR_SINGLE_USER_IDENTITY": value}):
+                with patch("finance.fiscal_identity.os.getenv", return_value=value):
                     with self.assertRaises(FiscalOwnerIdentityError):
                         configured_fiscal_owner_id()
 

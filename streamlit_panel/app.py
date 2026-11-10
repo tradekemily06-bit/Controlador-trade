@@ -773,7 +773,6 @@ def _valid_fiscal_summary(summary: Any) -> bool:
             if not isinstance(value, str) or len(value) != 10:
                 return False
             try:
-                from datetime import date
                 parsed_date = date.fromisoformat(value)
                 if parsed_date.isoformat() != value:
                     return False

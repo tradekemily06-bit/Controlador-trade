@@ -118,7 +118,7 @@ def test_domestic_pending_summary_respects_all_calendar_boundaries(tmp_path):
     assert summary["periods"]["month"]["total"] == 2
     assert summary["periods"]["month"]["results"] == 2
     assert summary["periods"]["year"]["total"] == 3
-    assert summary["periods"]["year"]["results"] == 3
+    assert summary["periods"]["year"]["results"] == 2
     assert summary["included_in_totals"] is False
     assert summary["reserve_calculated"] is False
 

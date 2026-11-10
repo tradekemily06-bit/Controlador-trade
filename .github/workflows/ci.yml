@@ -27,7 +27,7 @@ jobs:
           python -m pip install -r streamlit_panel/requirements.txt
 
       - name: Run P1.9 robustness tests
-        run: python -m pytest -q core/test_strategy_robustness.py
+        run: python -m pytest --import-mode=importlib -q core/test_strategy_robustness.py
 
       - name: Run full test suite
         env:
@@ -35,7 +35,7 @@ jobs:
           CONTROLADOR_REMOTE_ACCESS_REQUIRED: "false"
           CONTROLADOR_LOCAL_MUTATIONS_ALLOWED: "true"
           CONTROLADOR_LOCAL_MUTATION_HOSTS: "localhost,127.0.0.1,[::1]"
-        run: python -m pytest -q
+        run: python -m pytest --import-mode=importlib -q
 
       - name: Dependency security audit
         run: |

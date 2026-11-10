@@ -117,19 +117,19 @@ class FiscalDomesticPendingQueue:
             db.close()
 
     @staticmethod
-    def _day(value: Any) -> str:
+    def _day(value: Any, *, field: str = "occurred_on") -> str:
         if not isinstance(value, str):
-            raise ValueError("occurred_on deve ser texto no formato YYYY-MM-DD")
+            raise ValueError(f"{field} deve ser texto no formato YYYY-MM-DD")
         raw = value.strip()
         try:
             parsed = date.fromisoformat(raw)
         except ValueError as exc:
-            raise ValueError("occurred_on deve usar YYYY-MM-DD") from exc
+            raise ValueError(f"{field} deve usar YYYY-MM-DD") from exc
         if parsed.isoformat() != raw:
-            raise ValueError("occurred_on deve usar YYYY-MM-DD")
+            raise ValueError(f"{field} deve usar YYYY-MM-DD")
         today = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
         if parsed > today:
-            raise ValueError("occurred_on não pode estar no futuro")
+            raise ValueError(f"{field} não pode estar no futuro")
         return raw
 
     @staticmethod
@@ -252,9 +252,7 @@ class FiscalDomesticPendingQueue:
             raise ValueError("reviewer_role deve identificar um profissional tributário")
         registration = required("professional_registration", 100)
         evidence = required("evidence_reference", 500)
-        reviewed_on = self._day(payload.get("reviewed_on"))
-        if date.fromisoformat(reviewed_on) > datetime.now(ZoneInfo("America/Sao_Paulo")).date():
-            raise ValueError("reviewed_on não pode estar no futuro")
+        reviewed_on = self._day(payload.get("reviewed_on"), field="reviewed_on")
         raw_notes = payload.get("review_notes", "")
         if not isinstance(raw_notes, str):
             raise ValueError("review_notes deve ser texto")

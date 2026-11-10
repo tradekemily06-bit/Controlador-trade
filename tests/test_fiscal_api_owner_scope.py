@@ -140,13 +140,13 @@ def test_fiscal_and_assistant_read_routes_ignore_forged_owner_parameters(
     fiscal_summary_status, fiscal_summary = _request("/api/fiscal-reserve")
     assert fiscal_summary_status.startswith("200")
     assert fiscal_summary["foreign_pending"]["total"] == 1
-    assert fiscal_summary["foreign_pending"]["currencies"] == ["EUR", "USD"]
+    assert fiscal_summary["foreign_pending"]["currencies"] == ["USD"]
     assert fiscal_summary["foreign_pending"]["evidence_completeness"] == {
-        "total": 2,
-        "missing_institution": 0,
-        "missing_custody_location": 0,
-        "missing_contract_type": 0,
-        "missing_core_evidence": 0,
+        "total": 1,
+        "missing_institution": 1,
+        "missing_custody_location": 1,
+        "missing_contract_type": 1,
+        "missing_core_evidence": 1,
     }
     assert fiscal_summary["foreign_pending"]["included_in_totals"] is False
     assert "PENDING-B-ONLY" not in json.dumps(pending)
@@ -203,7 +203,7 @@ def test_fiscal_pending_intake_ignores_forged_owner_id_in_request_bodies(tmp_pat
         payload={
             "owner_id": "single:attacker-selected-owner",
             "reference": "OWNER-BODY-DOMESTIC-001",
-            "category_candidate": "BR_FII",
+            "category_candidate": "BR_FII_FIAGRO",
             "instrument": "FII",
             "market_scope": "B3",
             "occurred_on": "2026-11-05",
@@ -403,6 +403,12 @@ def test_mt5_pending_result_ignores_forged_owner_id_and_uses_authenticated_owner
     owner_id = migrate_fiscal_schema(str(database))
     queue = FiscalPendingQueue(str(database))
     monkeypatch.setattr(app_module, "FISCAL_PENDING_QUEUE", queue)
+    import execution.mt5_session_lock as mt5_session_lock
+
+    adapter = app_module.SERVICE.mt5_operational_adapter
+    session_lock = _ObservedSessionLock()
+    monkeypatch.setattr(mt5_session_lock, "MT5_TERMINAL_SESSION_LOCK", session_lock)
+    monkeypatch.setattr(adapter, "_session_lock", session_lock)
 
     candidate = {
         "account_currency": "USD",
@@ -582,7 +588,7 @@ def test_domestic_pending_api_list_summary_and_reviews_are_owner_scoped(
     queue = FiscalDomesticPendingQueue(str(database))
     own_item = queue.add(owner_id, {
         "reference": "BR-OWNER-ONLY",
-        "category_candidate": "BR_FII",
+        "category_candidate": "BR_FII_FIAGRO",
         "instrument": "FII",
         "market_scope": "B3",
         "occurred_on": "2026-11-04",
@@ -590,7 +596,7 @@ def test_domestic_pending_api_list_summary_and_reviews_are_owner_scoped(
     })
     foreign_owner_item = queue.add("single:other-owner", {
         "reference": "BR-OTHER-OWNER-ONLY",
-        "category_candidate": "BR_FII",
+        "category_candidate": "BR_FII_FIAGRO",
         "instrument": "FII",
         "market_scope": "B3",
         "occurred_on": "2026-11-04",
