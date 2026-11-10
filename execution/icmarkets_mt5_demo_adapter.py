@@ -585,9 +585,21 @@ class ICMarketsMT5DemoAdapter:
             except (TypeError, ValueError) as exc:
                 raise ValueError("external_id deve ser um ticket MT5 numérico") from exc
             deal_fn = getattr(mt5, "history_deals_get", None)
-            deals = deal_fn(ticket=ticket) if callable(deal_fn) else ()
             order_fn = getattr(mt5, "history_orders_get", None)
-            orders = order_fn(ticket=ticket) if callable(order_fn) else ()
+            if not callable(deal_fn) or not callable(order_fn):
+                return ExternalOrderObservation(
+                    external_id,
+                    ExternalOrderStatus.UNKNOWN,
+                    "consulta de histórico de ordens/negócios indisponível",
+                )
+            deals = deal_fn(ticket=ticket)
+            orders = order_fn(ticket=ticket)
+            if deals is None or orders is None:
+                return ExternalOrderObservation(
+                    external_id,
+                    ExternalOrderStatus.UNKNOWN,
+                    "falha ao consultar histórico MT5; reconciliação bloqueada",
+                )
 
             if orders:
                 order = tuple(orders)[-1]
