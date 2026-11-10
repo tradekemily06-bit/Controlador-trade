@@ -352,7 +352,7 @@ def application(environ, start_response):
                 request_id,
                 environ,
             )
-    if method == "POST" and path != "/api/updates" and path not in local_ea_post_paths:
+    if method == "POST" and path != "/api/updates" and path not in local_ea_post_paths and not path.startswith("/api/assistant/"):
         raw_length = environ.get("CONTENT_LENGTH")
         try:
             declared_length = int(raw_length) if raw_length not in (None, "") else 0
