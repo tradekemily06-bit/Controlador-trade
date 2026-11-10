@@ -193,3 +193,15 @@ def test_native_read_only_views_are_not_overwritten_by_cockpit_timer_refresh():
     for view in ("RISK", "STATS", "CONNECTIONS"):
         block = render.split(f'active_view=="{view}"', 1)[1].split('}else if', 1)[0]
         assert "ClearCockpitFields();" in block
+
+def test_native_statistics_view_exposes_outcomes_and_daily_weekly_monthly_totals():
+    source = EA.read_text(encoding="utf-8")
+    stats = source.split("void RefreshStatistics()", 1)[1].split("void RefreshRiskView()", 1)[0]
+
+    for field in ("actionable", "wins", "losses", "draws", "open"):
+        assert f'JsonValue(r,"{field}")' in stats
+    for period in ("daily", "weekly", "monthly"):
+        assert f'JsonObjectValue(r,"periods","{period}")' in stats
+    assert '"Hoje: "+(daily_total' in stats
+    assert '"Semana: "+(weekly_total' in stats
+    assert '"Mes: "+(monthly_total' in stats
