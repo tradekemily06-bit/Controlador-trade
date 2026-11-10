@@ -26,8 +26,8 @@ def test_mt5_demo_cockpit_navigation_name_distinguishes_connection_from_simulato
     source = (PANEL / "app.py").read_text(encoding="utf-8")
     readme = (PANEL / "README.md").read_text(encoding="utf-8")
 
-    assert '"Conexão MT5 DEMO": ("Conexões e ambiente", "/api/connections")' in source
-    assert 'if module_name == "Conexão MT5 DEMO":' in source
+    assert '"Ambiente MT5 DEMO": ("Conexões e ambiente", "/api/connections")' in source
+    assert 'if module_name == "Ambiente MT5 DEMO":' in source
     assert "Replay e Simulador permanecem em ESTUDO" in readme
 
 
