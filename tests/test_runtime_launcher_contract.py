@@ -55,6 +55,8 @@ def test_read_only_windows_validator_covers_deployment_surface():
     assert "$payload.execution.real" not in text
     assert "Register-ScheduledTask" not in text
     assert "Start-Process" not in text
+    assert text.count("function Get-LocalJson") == 1
+    assert text.count("function Add-Check") == 1
     assert "mt5.initialize(path=p)" in text
     assert "$Mt5TerminalPath | Out-Null" in text
     assert "Invoke-WebRequest -UseBasicParsing -Method Post" not in text
