@@ -22,11 +22,38 @@ function Copy-WithRetry([string]$Source, [string]$Destination, [int]$Attempts = 
     }
 }
 
+$script:RestoreFailures = [System.Collections.Generic.List[string]]::new()
+
 function Restore-File([string]$Backup, [string]$Target) {
-    if (Test-Path -LiteralPath $Backup -PathType Leaf) {
-        Copy-WithRetry -Source $Backup -Destination $Target
-    } elseif (Test-Path -LiteralPath $Target -PathType Leaf) {
-        Remove-Item -LiteralPath $Target -Force -ErrorAction SilentlyContinue
+    try {
+        if (Test-Path -LiteralPath $Backup -PathType Leaf) {
+            Copy-WithRetry -Source $Backup -Destination $Target
+            if (-not (Test-Path -LiteralPath $Target -PathType Leaf)) {
+                throw 'O arquivo restaurado não existe no destino.'
+            }
+            $backupHash = (Get-FileHash -LiteralPath $Backup -Algorithm SHA256).Hash
+            $targetHash = (Get-FileHash -LiteralPath $Target -Algorithm SHA256).Hash
+            if ($backupHash -ne $targetHash) {
+                throw 'O hash do arquivo restaurado diverge do backup.'
+            }
+        } elseif (Test-Path -LiteralPath $Target -PathType Leaf) {
+            Remove-Item -LiteralPath $Target -Force -ErrorAction Stop
+            if (Test-Path -LiteralPath $Target -PathType Leaf) {
+                throw 'O arquivo novo não foi removido durante a restauração.'
+            }
+        }
+        return $true
+    } catch {
+        [void]$script:RestoreFailures.Add("$Target :: $($_.Exception.Message)")
+        Write-Error "Falha ao restaurar '$Target': $($_.Exception.Message)" -ErrorAction Continue
+        return $false
+    }
+}
+
+function Assert-RestoreComplete {
+    if ($script:RestoreFailures.Count -gt 0) {
+        $details = $script:RestoreFailures -join ' | '
+        throw "ROLLBACK_INCOMPLETO: um ou mais artefatos não puderam ser restaurados. $details"
     }
 }
 
@@ -252,10 +279,12 @@ try {
         throw "A fonte mudou durante a sincronização; destino será restaurado: $destination"
     }
 } catch {
+    $script:RestoreFailures.Clear()
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
     Restore-File -Backup $backupProvenance -Target $provenance
     Restore-File -Backup $backupLog -Target $log
+    Assert-RestoreComplete
     throw "Falha ao substituir a fonte MQL5; arquivos anteriores restaurados. $($_.Exception.Message)"
 }
 
@@ -270,10 +299,12 @@ $binaryHashBefore = if (Test-Path -LiteralPath $binary -PathType Leaf) { (Get-Fi
 $metaEditorExitCode = $LASTEXITCODE
 Start-Sleep -Milliseconds 500
 if (-not (Test-Path -LiteralPath $log -PathType Leaf)) {
+    $script:RestoreFailures.Clear()
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
     Restore-File -Backup $backupProvenance -Target $provenance
     Restore-File -Backup $backupLog -Target $log
+    Assert-RestoreComplete
     throw "MetaEditor não produziu log de compilação: $log"
 }
 
@@ -281,37 +312,45 @@ $logText = Get-Content -LiteralPath $log -Raw -ErrorAction SilentlyContinue
 $errorMatch = [regex]::Match($logText, '(?i)(\d+)\s+(errors?|erros?)')
 $warningMatch = [regex]::Match($logText, '(?i)(\d+)\s+(warnings?|avisos?)')
 if (-not $errorMatch.Success -or -not $warningMatch.Success) {
+    $script:RestoreFailures.Clear()
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
     Restore-File -Backup $backupProvenance -Target $provenance
     Restore-File -Backup $backupLog -Target $log
+    Assert-RestoreComplete
     throw "Log de compilação sem contagem inequívoca de erros/avisos: $log"
 }
 $errors = $errorMatch.Groups[1].Value
 $warnings = $warningMatch.Groups[1].Value
 if ($errors -ne '0' -or $warnings -ne '0') {
+    $script:RestoreFailures.Clear()
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
     Restore-File -Backup $backupProvenance -Target $provenance
     Restore-File -Backup $backupLog -Target $log
+    Assert-RestoreComplete
     throw "Compilação MQL5 rejeitada: errors=$errors warnings=$warnings. Log: $log"
 }
 
 if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) {
+    $script:RestoreFailures.Clear()
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
     Restore-File -Backup $backupProvenance -Target $provenance
     Restore-File -Backup $backupLog -Target $log
+    Assert-RestoreComplete
     throw "MetaEditor terminou sem gerar o EX5 esperado: $binary"
 }
 
 $binaryWriteTime = (Get-Item -LiteralPath $binary).LastWriteTime
 $binaryHashAfter = (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash
 if ($binaryWriteTime -lt $compileStartedAt.AddSeconds(-2)) {
+    $script:RestoreFailures.Clear()
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
     Restore-File -Backup $backupProvenance -Target $provenance
     Restore-File -Backup $backupLog -Target $log
+    Assert-RestoreComplete
     throw "O EX5 não foi atualizado pela compilação (timestamp anterior à compilação): $binary"
 }
 
@@ -326,20 +365,24 @@ try {
         Set-Content -LiteralPath $provenanceTemp -Encoding ASCII
     Move-Item -LiteralPath $provenanceTemp -Destination $provenance -Force
 } catch {
+    $script:RestoreFailures.Clear()
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
     Restore-File -Backup $backupProvenance -Target $provenance
     Restore-File -Backup $backupLog -Target $log
+    Assert-RestoreComplete
     Remove-Item -LiteralPath $provenanceTemp -Force -ErrorAction SilentlyContinue
     throw "Não foi possível registrar a proveniência da compilação; arquivos anteriores restaurados. $($_.Exception.Message)"
 }
 
 
 } catch {
+    $script:RestoreFailures.Clear()
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
     Restore-File -Backup $backupProvenance -Target $provenance
     Restore-File -Backup $backupLog -Target $log
+    Assert-RestoreComplete
     Remove-Item -LiteralPath $provenanceTemp -Force -ErrorAction SilentlyContinue
     throw "Falha inesperada na sincronização/compilação; artefatos anteriores restaurados. $($_.Exception.Message)"
 }
