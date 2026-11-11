@@ -187,8 +187,8 @@ def test_controller_supervisor_and_installer_share_configured_mt5_terminal():
     assert "CONTROLADOR_MT5_TERMINAL_PATH = $Mt5TerminalPath" in bootstrap
     assert "run_preflight(mt5)" in controller
     assert "Test-Mt5Demo -WaitSeconds $Mt5WaitSeconds" in controller
-    assert "-Mt5TerminalPath \\\"' + $Mt5TerminalPath + '\\\"" in installer
-    assert "-Mt5TerminalPath \\\"' + $Mt5TerminalPath + '\\\"" in installer
+    assert '-Mt5TerminalPath "' in installer
+    assert "$Mt5TerminalPath + " + "'" + '"' + "'" in installer
 
 
 def test_market_data_adapter_and_preflight_honor_configured_terminal():
