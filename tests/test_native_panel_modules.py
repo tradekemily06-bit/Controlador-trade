@@ -376,3 +376,26 @@ def test_native_mt5_simulator_submits_explicit_historical_backtest_parameters_wi
     assert 'sparam==Obj("SIM_RUN") && active_view=="SIMULATOR"' in events
     assert "Ordens enviadas: NAO" in renderer
     assert "REAL: BLOQUEADO" in renderer
+
+
+def test_native_mt5_discoveries_reads_resources_and_saves_unvalidated_observations():
+    source = EA.read_text(encoding="utf-8")
+    refresh = source.split("void RefreshDiscoveries()", 1)[1].split("void SaveDiscovery()", 1)[0]
+    save = source.split("void SaveDiscovery()", 1)[1].split("void RunHistoricalReplay()", 1)[0]
+    renderer = source.split('if(active_view=="DISCOVERIES"){', 1)[1].split('if(active_view=="REPLAY"){', 1)[0]
+    events = source.split("void OnChartEvent", 1)[1]
+
+    assert 'if(module=="Descobertas") return "DISCOVERIES";' in source
+    assert 'Http("GET","/api/learning/resources","",resources,resources_code)' in refresh
+    assert 'Http("GET","/api/learning/observations","",observations,observations_code)' in refresh
+    assert 'Http("POST","/api/learning/observations",body,response,code)' in save
+    assert 'q+"validated"+q+":false"' in save
+    assert 'q+"concepts"+q+":"+concepts_json' in save
+    assert 'SetChatEdit(Obj("DISC_RESOURCE")' in renderer
+    assert 'SetChatEdit(Obj("DISC_STATEMENT")' in renderer
+    assert 'SetChatEdit(Obj("DISC_CONCEPTS")' in renderer
+    assert 'SetChatEdit(Obj("DISC_EVIDENCE")' in renderer
+    assert 'sparam==Obj("DISC_SAVE") && active_view=="DISCOVERIES"' in events
+    assert 'sparam==Obj("DISC_REFRESH") && active_view=="DISCOVERIES"' in events
+    assert "Nao influencia sinais, filtros ou parametros." in renderer
+    assert "Execucao permitida: NAO" in renderer
