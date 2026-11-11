@@ -422,6 +422,20 @@ def test_windows_ci_parses_and_exercises_runtime_backup_and_restore_scripts():
     assert "$global:LASTEXITCODE = 0" in workflow
 
 
+def test_restore_launcher_resolves_project_relative_paths_and_validates_backup_before_restore():
+    text = _read("deployment/restore_runtime.ps1")
+    assert "$ProjectRoot = [System.IO.Path]::GetFullPath($ProjectRoot)" in text
+    assert "if(-not [System.IO.Path]::IsPathRooted($BackupFile))" in text
+    assert "$BackupFile=[System.IO.Path]::GetFullPath($BackupFile)" in text
+    assert "Backup não encontrado" in text
+    assert "$RuntimeDir=Join-Path $ProjectRoot '.runtime'" in text
+    assert "$RuntimeDir=Join-Path $ProjectRoot $RuntimeDir" in text
+    assert "$RuntimeDir=[System.IO.Path]::GetFullPath($RuntimeDir)" in text
+    assert text.index("Backup não encontrado") < text.index("restore_backup")
+    assert "CONTROLADOR_RESTORE_BACKUP_FILE" in text
+    assert "CONTROLADOR_RESTORE_RUNTIME_DIR" in text
+
+
 def test_backup_and_restore_pass_paths_as_environment_data_not_python_source():
     backup = _read("deployment/backup_runtime.ps1")
     restore = _read("deployment/restore_runtime.ps1")
