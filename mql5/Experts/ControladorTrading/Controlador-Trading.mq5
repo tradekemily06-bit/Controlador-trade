@@ -2066,7 +2066,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
       else if(active_view=="NOTIF") RefreshNotifications();
       else if(active_view=="RESERVA") RefreshFiscal();
       else if(active_view=="ASSISTENTE") RefreshAssistantStatus();
-      else Analyze();
+      else if(active_view=="COCKPIT") Analyze();
    }
    else if(sparam==Obj("CYCLE")) { if(active_view=="COCKPIT") RunCycle(); }
    else if(sparam==Obj("SAVE")) { if(active_view=="CONFIG") SaveConfig(); }
