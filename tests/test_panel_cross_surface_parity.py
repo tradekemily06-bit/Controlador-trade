@@ -33,6 +33,12 @@ def test_streamlit_and_native_mt5_share_the_six_area_and_module_contract():
     assert '"America/Sao_Paulo"' in journal_route
     assert '"execution_allowed": False' in journal_route
     assert '"execution_authority": False' in journal_route
+    market_route = (ROOT / "app.py").read_text(encoding="utf-8").split('if path == "/api/market/status" and method == "GET":', 1)[1].split('if path == "/api/market/assets" and method == "GET":', 1)[0]
+    assert 'market_state.status()' in market_route
+    assert '"safe_for_analysis": False' in market_route
+    assert '"execution_allowed": False' in market_route
+    assert 'market_status = api("/api/market/status")' in streamlit
+    assert 'Integridade dos dados de mercado' in streamlit
     area_definition = streamlit.split("AREAS = {", 1)[1].split('if "panel_open"', 1)[0]
     assert 'for name in ("COCKPIT", "ANÁLISE", "ESTUDO")' in area_definition
     assert expected_areas[-1] == "CENTRAL"
