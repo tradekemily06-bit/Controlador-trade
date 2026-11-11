@@ -65,7 +65,6 @@ def test_streamlit_and_native_mt5_share_the_six_area_and_module_contract():
         "Laboratório": "LAB",
         "Replay": "REPLAY",
         "Simulador": "SIMULATOR",
-        "Aprendizado": "ENSINO",
         "Descobertas": "DISCOVERIES",
         "Escola / Tutorial / Onboarding": "ENSINO",
         "Financeiro": "FINANCE",
@@ -77,6 +76,7 @@ def test_streamlit_and_native_mt5_share_the_six_area_and_module_contract():
     }.items():
         assert f'if(module=="{module}") return "{view}";' in routing, f"native route mismatch: {module}"
 
+    assert 'if(module=="Aprendizado" || module=="Escola / Tutorial / Onboarding") return "ENSINO";' in routing
     assert 'else if(area=="RESERVA FISCAL") return "RESERVA";' in routing
     assert 'else if(area=="ASSISTENTE DO ECOSSISTEMA") return "ASSISTENTE";' in routing
     assert 'return "UNAVAILABLE";' in routing
