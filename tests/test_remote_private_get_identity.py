@@ -49,6 +49,7 @@ def remote_identity_required(monkeypatch):
         "/api/status",
         "/api/memory",
         "/api/journal",
+        "/api/market/status",
         "/api/statistics",
         "/api/preferences",
         "/api/notifications",
@@ -188,3 +189,39 @@ def test_journal_rejects_invalid_date(remote_identity_required):
 
     assert status == "400 Bad Request"
     assert payload["error"] == "Entrada inválida"
+
+
+
+def test_market_status_returns_integrity_state_without_execution_authority(monkeypatch, remote_identity_required):
+    market_status = {
+        "health": "HEALTHY",
+        "safe_for_analysis": True,
+        "source": "IC Markets MT5 DEMO",
+        "symbol": "EURUSD",
+        "timeframe": "M5",
+        "candle_count": 100,
+        "gap_count": 0,
+        "stale": False,
+        "message": "dados íntegros",
+    }
+    market_state = SimpleNamespace(status=lambda: market_status)
+    monkeypatch.setattr(app_module.SERVICE, "trading_runtime", SimpleNamespace(market_data_state=market_state))
+
+    status, _, payload = request("/api/market/status", identity="owner@example.test")
+
+    assert status == "200 OK"
+    assert payload["health"] == "HEALTHY"
+    assert payload["safe_for_analysis"] is True
+    assert payload["read_only"] is True
+    assert payload["execution_allowed"] is False
+
+
+def test_market_status_fails_closed_when_integrity_state_is_missing(monkeypatch, remote_identity_required):
+    monkeypatch.setattr(app_module.SERVICE, "trading_runtime", None)
+
+    status, _, payload = request("/api/market/status", identity="owner@example.test")
+
+    assert status == "200 OK"
+    assert payload["health"] == "NOT_CONNECTED"
+    assert payload["safe_for_analysis"] is False
+    assert payload["execution_allowed"] is False
