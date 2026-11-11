@@ -506,6 +506,28 @@ bool ExtractJsonArrayObjects(string json,string arrayKey,string &objects[]){
    }
    return false;
 }
+string JsonRawObject(string json,string key){
+   int valueStart=JsonValueStart(json,key);
+   if(valueStart<0 || valueStart>=StringLen(json) || StringGetCharacter(json,valueStart)!='{') return "";
+   int depth=0;
+   bool inString=false,escaped=false;
+   for(int i=valueStart;i<StringLen(json);i++){
+      ushort ch=StringGetCharacter(json,i);
+      if(inString){
+         if(escaped) escaped=false;
+         else if(ch=='\\') escaped=true;
+         else if(ch=='"') inString=false;
+      }else{
+         if(ch=='"') inString=true;
+         else if(ch=='{') depth++;
+         else if(ch=='}'){
+            depth--;
+            if(depth==0) return StringSubstr(json,valueStart,i-valueStart+1);
+         }
+      }
+   }
+   return "";
+}
 string JsonObjectValue(string json,string objectKey,string key){
    int valueStart=JsonValueStart(json,objectKey);
    if(valueStart<0 || valueStart>=StringLen(json) || StringGetCharacter(json,valueStart)!='{') return "";
@@ -736,15 +758,16 @@ void RefreshLearning(){
 
 void RenderOnboardingPage(){
    int count=ArraySize(onboarding_steps);
-   int page_size=5;
+   int page_size=1;
    int page_count=(count+page_size-1)/page_size;
    if(page_count<1) page_count=1;
    onboarding_page=MathMax(0,MathMin(onboarding_page,page_count-1));
-   for(int row=0;row<5;row++){
-      int idx=onboarding_page*page_size+row;
-      string line=(idx<count?onboarding_steps[idx]:"");
-      SetLabel(Obj("INFO"+IntegerToString(row+1)),line,20,361+row*20,7,line==""?C'100,110,125':C'205,215,230');
-   }
+   int idx=onboarding_page;
+   SetLabel(Obj("INFO1"),idx<count?onboarding_steps[idx]:"",20,361,8,C'205,215,230');
+   SetLabel(Obj("INFO2"),"Objetivo:",20,381,8,C'150,165,185');
+   SetLabel(Obj("INFO3"),"Orientacao detalhada carregada no roteiro.",20,401,8,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Consulta somente leitura; sem conclusao persistida.",20,421,8,C'205,215,230');
+   SetLabel(Obj("INFO5"),"Execucao: NAO • REAL: BLOQUEADO",20,441,8,C'255,155,155');
    SetButton(Obj("ONBOARD_PREV"),"ANTERIOR",20,470,104,26);
    SetLabel(Obj("ONBOARD_PAGE"),"ETAPAS "+IntegerToString(onboarding_page+1)+"/"+IntegerToString(page_count),138,476,8,C'150,165,185');
    SetButton(Obj("ONBOARD_NEXT"),"PROXIMA",296,470,114,26);
@@ -762,12 +785,13 @@ void RefreshOnboarding(){
       SetLabel(Obj("INFO2"),"Nenhuma etapa foi marcada ou alterada.",20,381,8,C'205,215,230');
       return;
    }
-   string guide=JsonObjectValue(response,"guide","guide_id");
-   string authorized=JsonObjectValue(response,"guide","execution_authorized");
-   onboarding_title=JsonObjectValue(response,"guide","title");
-   onboarding_completion=JsonObjectValue(response,"guide","completion_message");
+   string guide_json=JsonRawObject(response,"guide");
+   string guide=JsonValue(guide_json,"guide_id");
+   string authorized=JsonValue(guide_json,"execution_authorized");
+   onboarding_title=JsonValue(guide_json,"title");
+   onboarding_completion=JsonValue(guide_json,"completion_message");
    string objects[];
-   if(guide=="" || authorized!="false" || !ExtractJsonArrayObjects(response,"steps",objects)){
+   if(guide_json=="" || guide=="" || authorized!="false" || !ExtractJsonArrayObjects(guide_json,"steps",objects)){
       onboarding_valid=false;
       ArrayResize(onboarding_steps,0);
       SetLabel(Obj("INFO1"),"Roteiro invalido ou sem bloqueio explicito.",20,361,8,C'255,118,118');
@@ -786,7 +810,7 @@ void RefreshOnboarding(){
          SetLabel(Obj("INFO1"),"Etapa inconsistente; roteiro bloqueado.",20,361,8,C'255,118,118');
          return;
       }
-      string line=IntegerToString(i+1)+". "+title+" ["+location+"]: "+purpose;
+      string line=IntegerToString(i+1)+". "+title+" ["+location+"]";
       if(StringLen(line)>66) line=StringSubstr(line,0,63)+"...";
       int n=ArraySize(onboarding_steps);
       if(ArrayResize(onboarding_steps,n+1)!=n+1){ onboarding_valid=false; return; }
@@ -798,10 +822,9 @@ void RefreshOnboarding(){
       return;
    }
    onboarding_valid=true;
-   SetLabel(Obj("INFO1"),onboarding_title,20,361,8,C'205,215,230');
-   SetLabel(Obj("INFO2"),onboarding_completion,20,381,8,C'205,215,230');
-   SetLabel(Obj("INFO3"),"Roteiro educativo; consulta somente leitura.",20,401,8,C'205,215,230');
-   SetLabel(Obj("INFO4"),"Nenhuma etapa e salva como concluida.",20,421,8,C'205,215,230');
+   SetLabel(Obj("INFO2"),"OBJETIVO: "+JsonValue(objects[onboarding_page],"purpose"),20,381,7,C'205,215,230');
+   SetLabel(Obj("INFO3"),"PROXIMO: "+JsonValue(objects[onboarding_page],"action_hint"),20,401,7,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Conclusao apenas nesta orientacao; nao altera runtime.",20,421,7,C'205,215,230');
    SetLabel(Obj("INFO5"),"Execucao: NAO • REAL: BLOQUEADO",20,441,8,C'255,155,155');
    RenderOnboardingPage();
 }
