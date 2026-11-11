@@ -1287,7 +1287,7 @@ void RunHistoricalSimulator(){
 }
 void RenderView(){
    ClearAssistantControls();
-   string simulator_controls[]={"SIM_STOP","SIM_TARGET","SIM_QTY","SIM_MULT","SIM_SPREAD","SIM_SLIP","SIM_COMM","SIM_RUN"};
+   string simulator_controls[]={"SIM_STOP","SIM_TARGET","SIM_QTY","SIM_MULT","SIM_SPREAD","SIM_SLIP","SIM_COMM","SIM_RUN","SIM_L1","SIM_L2","SIM_L3","SIM_L4"};
    for(int k=0;k<ArraySize(simulator_controls);k++) if(ObjectFind(0,Obj(simulator_controls[k]))>=0) ObjectDelete(0,Obj(simulator_controls[k]));
    string replay_controls[]={"REPLAY_RUN"};
    for(int k=0;k<ArraySize(replay_controls);k++) if(ObjectFind(0,Obj(replay_controls[k]))>=0) ObjectDelete(0,Obj(replay_controls[k]));
