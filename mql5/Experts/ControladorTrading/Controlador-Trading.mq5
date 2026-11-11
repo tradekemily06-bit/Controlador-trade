@@ -1248,9 +1248,19 @@ void SaveDiscovery(){
       SetLabel(Obj("INFO1"),"Informe ID do material e observacao.",20,361,8,C'255,118,118'); return;
    }
    string q=CharToString(34);
+   string concept_items[]; int concept_count=StringSplit(concepts,',',concept_items);
+   string concepts_json="[";
+   for(int i=0;i<concept_count;i++){
+      string concept=StringTrim(concept_items[i]);
+      if(concept=="") continue;
+      if(StringLen(concepts_json)>1) concepts_json+=",";
+      concepts_json+=q+JsonEscape(concept)+q;
+   }
+   concepts_json+="]";
    string body="{"+q+"resource_id"+q+":"+q+JsonEscape(resource_id)+q+","+
       q+"statement"+q+":"+q+JsonEscape(statement)+q+","+
-      q+"concepts"+q+":[], "+q+"evidence"+q+":"+(evidence==""?"null":q+JsonEscape(evidence)+q)+","+
+      q+"concepts"+q+":"+concepts_json+","+
+      q+"evidence"+q+":"+(evidence==""?"null":q+JsonEscape(evidence)+q)+","+
       q+"validated"+q+":false}";
    string response=""; int code=0;
    if(!Http("POST","/api/learning/observations",body,response,code)){
