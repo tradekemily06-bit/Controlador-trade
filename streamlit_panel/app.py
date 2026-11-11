@@ -1516,6 +1516,18 @@ def show_market_analysis() -> None:
     st.subheader("Análise de Mercado")
     st.caption("Disponibilidade de ativos e sessões consultada no MT5 DEMO. Capacidade de negociar no fim de semana não significa mercado aberto agora. Esta tela não envia ordens.")
     try:
+        market_status = api("/api/market/status")
+        st.markdown("#### Integridade dos dados de mercado")
+        status_cols = st.columns(4)
+        status_cols[0].metric("Estado", str(market_status.get("health") or "NOT_CONNECTED"))
+        status_cols[1].metric("Seguro para análise", "SIM" if market_status.get("safe_for_analysis") is True else "NÃO")
+        status_cols[2].metric("Candles", str(market_status.get("candle_count") if market_status.get("candle_count") is not None else "—"))
+        status_cols[3].metric("Lacunas", str(market_status.get("gap_count") if market_status.get("gap_count") is not None else "—"))
+        st.caption(str(market_status.get("message") or "Estado de integridade sem mensagem adicional."))
+        st.caption("Este estado descreve a qualidade/frescor do último snapshot recebido; não autoriza execução nem confirma mercado aberto.")
+    except Exception:
+        st.warning("Estado de integridade do mercado indisponível. Trate os dados como não confirmados.")
+    try:
         assets_payload = api("/api/market/assets")
         raw_assets = assets_payload.get("assets", [])
         assets = [item for item in raw_assets if isinstance(item, dict)] if isinstance(raw_assets, list) else []
