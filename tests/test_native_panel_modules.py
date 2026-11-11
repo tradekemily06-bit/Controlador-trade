@@ -354,6 +354,8 @@ def test_native_finance_overview_uses_fiscal_api_without_claiming_cash_balance()
 
 def test_native_mt5_simulator_submits_explicit_historical_backtest_parameters_without_orders():
     source = EA.read_text(encoding="utf-8")
+    routing = source.split("string ViewForModule(", 1)[1].split("void RenderNavigation()", 1)[0]
+    assert 'if(module=="Simulador") return "SIMULATOR";' in routing
     runner = source.split("void RunHistoricalSimulator()", 1)[1].split("void RenderView()", 1)[0]
     renderer = source.split('if(active_view=="SIMULATOR"){', 1)[1].split('if(active_view=="KILL_SWITCH"){', 1)[0]
     events = source.split("void OnChartEvent", 1)[1]
@@ -388,6 +390,7 @@ def test_native_mt5_discoveries_reads_resources_and_saves_unvalidated_observatio
 
     routing = source.split("string ViewForModule(", 1)[1].split("void RenderNavigation()", 1)[0]
     assert 'if(module=="Descobertas") return "DISCOVERIES";' in routing
+    assert 'ObjectSetString(0,Obj("DISC_RESOURCE"),OBJPROP_TEXT,resource_id);' in refresh
     assert 'Http("GET","/api/learning/resources","",resources,resources_code)' in refresh
     assert 'Http("GET","/api/learning/observations","",observations,observations_code)' in refresh
     assert 'Http("POST","/api/learning/observations",body,response,code)' in save
