@@ -1292,7 +1292,7 @@ void RefreshAuditView(){
    SetLabel(Obj("INFO5"),"Persistencia: "+(persistence==""?"nao informada":persistence)+" • consulta somente leitura",20,461,7,persistence=="DURABLE"?C'88,214,141':C'255,209,102');
 }
 void ClearCockpitFields(){
-   string names[]={"SYM","TF","SYML","TFL","MARKET","SIGNAL","SCORE","REASON","MODE","RECOVERY_TITLE","RECOVERY_ITEM","REC_REFRESH","REC_PREV","REC_NEXT","REC_RECONCILE","REC_CLOSE","RECOVERY_STATUS","INFO6"};
+   string names[]={"SYM","TF","SYML","TFL","MARKET","SIGNAL","SCORE","REASON","MODE","CYCLEID","EXTID","PRICE","SAFE","RECOVERY_TITLE","RECOVERY_ITEM","REC_REFRESH","REC_PREV","REC_NEXT","REC_RECONCILE","REC_CLOSE","RECOVERY_STATUS","INFO6"};
    for(int i=0;i<ArraySize(names);i++)
       if(ObjectFind(0,Obj(names[i]))>=0) ObjectDelete(0,Obj(names[i]));
 }
@@ -1530,6 +1530,8 @@ void RunHistoricalSimulator(){
 }
 void RenderView(){
    ClearAssistantControls();
+   // Non-operational modules must never retain visible cockpit/recovery controls.
+   if(active_view!="COCKPIT") ClearCockpitFields();
    string simulator_controls[]={"SIM_STOP","SIM_TARGET","SIM_QTY","SIM_MULT","SIM_SPREAD","SIM_SLIP","SIM_COMM","SIM_RUN","SIM_L1","SIM_L2","SIM_L3","SIM_L4"};
    string discovery_controls[]={"DISC_RESOURCE","DISC_STATEMENT","DISC_CONCEPTS","DISC_EVIDENCE","DISC_SAVE","DISC_REFRESH","DISC_L1","DISC_L2","DISC_L3","DISC_L4"};
    for(int k=0;k<ArraySize(discovery_controls);k++) if(ObjectFind(0,Obj(discovery_controls[k]))>=0) ObjectDelete(0,Obj(discovery_controls[k]));
