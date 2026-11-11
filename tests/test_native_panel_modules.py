@@ -555,3 +555,24 @@ def test_native_assistant_consent_and_send_events_require_assistant_view():
 
     assert 'sparam==Obj("ASSISTANT_CONSENT") && active_view=="ASSISTENTE"' in events
     assert 'sparam==Obj("ASSISTANT_SEND") && active_view=="ASSISTENTE"' in events
+
+def test_native_shared_analyze_button_only_runs_generic_analysis_in_cockpit():
+    source = EA.read_text(encoding="utf-8")
+    events = source.split("void OnChartEvent", 1)[1]
+    analyze = events.split('else if(sparam==Obj("ANALYZE")) {', 1)[1].split('else if(sparam==Obj("CYCLE"))', 1)[0]
+
+    assert 'else if(active_view=="COCKPIT") Analyze();' in analyze
+    assert 'else Analyze();' not in analyze
+    for view, action in (
+        ("DECISION", "RefreshDecisionView"),
+        ("KILL_SWITCH", "RefreshKillSwitchStatus"),
+        ("ANALISE", "Analyze"),
+        ("MEMORIA", "RefreshMemory"),
+        ("RISK", "RefreshRiskView"),
+        ("STATS", "RefreshStatistics"),
+        ("CONNECTIONS", "RefreshConnections"),
+        ("JOURNAL", "RefreshJournal"),
+        ("RESERVA", "RefreshFiscal"),
+        ("ASSISTENTE", "RefreshAssistantStatus"),
+    ):
+        assert f'active_view=="{view}") {action}();' in analyze
