@@ -20,7 +20,7 @@ if ($LASTEXITCODE -ne 0 -or -not $gitRoot) {
     throw 'A pasta selecionada não é uma cópia Git válida; prévia cancelada.'
 }
 $gitRoot = [System.IO.Path]::GetFullPath($gitRoot.Trim())
-if ($gitRoot.TrimEnd('\') -ne $ProjectRoot.TrimEnd('\')) {
+if ($gitRoot.TrimEnd([char]'\') -ne $ProjectRoot.TrimEnd([char]'\')) {
     throw "A raiz Git ($gitRoot) não corresponde à pasta selecionada ($ProjectRoot)."
 }
 $actualBranch = (& git -C $ProjectRoot branch --show-current 2>$null | Select-Object -First 1)
@@ -215,8 +215,8 @@ Write-Output 'Próximo passo: no MT5, atualize o Navegador e anexe Controlador-T
 , ''
 $allowedOrigins = @(
     'https://github.com/tradekemily06-bit/Controlador-trade',
-    'http://github.com/tradekemilly06-bit/Controlador-trade',
-    'git@github.com:tradekemilly06-bit/Controlador-trade'
+    'http://github.com/tradekemily06-bit/Controlador-trade',
+    'git@github.com:tradekemily06-bit/Controlador-trade'
 )
 if ($normalizedOrigin -notin $allowedOrigins) {
     throw "Repositório remoto inesperado: $origin"
