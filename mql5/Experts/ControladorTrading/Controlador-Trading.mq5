@@ -1251,7 +1251,8 @@ void SaveDiscovery(){
    string concept_items[]; int concept_count=StringSplit(concepts,',',concept_items);
    string concepts_json="[";
    for(int i=0;i<concept_count;i++){
-      string concept=StringTrim(concept_items[i]);
+      string concept=concept_items[i];
+      StringTrimLeft(concept); StringTrimRight(concept);
       if(concept=="") continue;
       if(StringLen(concepts_json)>1) concepts_json+=",";
       concepts_json+=q+JsonEscape(concept)+q;
