@@ -43,11 +43,22 @@ def create_backup(runtime_dir: str|Path, output_file: str|Path) -> dict[str,Any]
             raise ValueError("runtime contains no portable state files; backup was not created")
         manifest={"format":"controlador-runtime-portable","version":PORTABILITY_VERSION,"created_at":datetime.now(timezone.utc).isoformat(),"runtime_identity":"portable-runtime-state","machine_specific_configuration":"excluded","secrets":"excluded","files":[{"path":n,"sha256":_sha256(p),"size":p.stat().st_size} for n,p in staged]}
         (stage/"manifest.json").write_text(json.dumps(manifest,ensure_ascii=False,indent=2,sort_keys=True),encoding="utf-8")
-        temporary=output.with_suffix(output.suffix+".tmp")
-        with zipfile.ZipFile(temporary,"w",compression=zipfile.ZIP_DEFLATED) as archive:
-            archive.write(stage/"manifest.json","manifest.json")
-            for name,path in staged: archive.write(path,name)
-        os.replace(temporary,output)
+        # Use a unique staging file in the destination directory. A fixed
+        # ``.tmp`` name could overwrite an unrelated file or collide with a
+        # concurrent backup attempt; same-directory staging keeps os.replace
+        # on the same volume for an atomic publication.
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{output.name}.", suffix=".tmp", dir=output.parent
+        )
+        os.close(descriptor)
+        temporary = Path(temporary_name)
+        try:
+            with zipfile.ZipFile(temporary,"w",compression=zipfile.ZIP_DEFLATED) as archive:
+                archive.write(stage/"manifest.json","manifest.json")
+                for name,path in staged: archive.write(path,name)
+            os.replace(temporary,output)
+        finally:
+            temporary.unlink(missing_ok=True)
     try:
         verify_backup(output)
     except Exception:
