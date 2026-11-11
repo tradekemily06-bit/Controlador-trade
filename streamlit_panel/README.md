@@ -11,7 +11,7 @@ A navegação principal do painel tem exatamente seis áreas, nesta ordem:
 3. ESTUDO — Laboratório, Replay, Simulador, Aprendizado, Descobertas e Escola / Tutorial / Onboarding.
 4. RESERVA FISCAL — permanece visível enquanto o módulo é concluído; estados indisponíveis devem ser explícitos.
 5. ASSISTENTE DO ECOSSISTEMA — permanece visível enquanto o módulo é concluído; consentimento explícito continua obrigatório.
-6. CENTRAL — Financeiro, Configurações, Auditoria, Segurança, Conexões e Multi-Broker. CENTRAL é sempre a última área.
+6. CENTRAL — Financeiro, Diário Operacional, Configurações, Auditoria, Segurança, Conexões e Multi-Broker. CENTRAL é sempre a última área.
 
 Financeiro não é uma sétima área: é um módulo dentro de CENTRAL. O JSON visual de referência permanece intacto. Cada área usa o mesmo seletor de módulos no Streamlit, inclusive as áreas que atualmente contêm apenas um módulo.
 
