@@ -187,4 +187,4 @@ def test_journal_rejects_invalid_date(remote_identity_required):
     )
 
     assert status == "400 Bad Request"
-    assert "YYYY-MM-DD" in payload["error"]
+    assert payload["error"] == "Entrada inválida"
