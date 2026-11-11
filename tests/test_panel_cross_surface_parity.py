@@ -78,7 +78,14 @@ def test_streamlit_and_native_mt5_share_the_six_area_and_module_contract():
     assert 'if(module=="Aprendizado") return "ENSINO";' in routing
     assert 'if(module=="Escola / Tutorial / Onboarding") return "ONBOARDING";' in routing
     assert 'Http("GET","/api/onboarding","",response,code)' in native
+    assert 'string guide_json=JsonRawObject(response,"guide");' in native
+    assert 'ExtractJsonArrayObjects(guide_json,"steps",objects)' in native
     assert 'authorized!="false"' in native
+    api_source = (ROOT / "app.py").read_text(encoding="utf-8")
+    onboarding_route = api_source.split('if path == "/api/onboarding" and method == "GET":', 1)[1].split('if path == "/api/preferences" and method == "GET":', 1)[0]
+    assert '{"guide": {' in onboarding_route
+    assert '"steps": [{ "step_id": step.step_id' in onboarding_route
+    assert 'execution_authorized": guide.execution_authorized' in onboarding_route
     assert 'else if(area=="RESERVA FISCAL") return "RESERVA";' in routing
     assert 'else if(area=="ASSISTENTE DO ECOSSISTEMA") return "ASSISTENTE";' in routing
     assert 'return "UNAVAILABLE";' in routing
