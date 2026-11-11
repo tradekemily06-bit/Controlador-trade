@@ -442,6 +442,8 @@ def test_mql5_preview_compile_requires_exact_clean_reviewed_worktree():
     assert "git -C $ProjectRoot rev-parse HEAD" in preview
     assert "git -C $ProjectRoot status --porcelain" in preview
     assert "git -C $ProjectRoot remote get-url origin" in preview
+    assert 'git -C $ProjectRoot ls-remote origin "refs/heads/$ExpectedBranch"' in preview
+    assert "A cópia local não corresponde ao último commit remoto" in preview
     assert "A cópia de trabalho contém alterações locais ou arquivos não rastreados" in preview
     assert "Repositório remoto inesperado" in preview
     assert 'Write-Output "SOURCE_BRANCH=$actualBranch"' in preview
