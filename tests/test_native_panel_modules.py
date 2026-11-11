@@ -434,3 +434,18 @@ def test_native_multi_broker_opens_read_only_connection_status_without_claiming_
     assert 'active_module=="Multi-Broker"?"MULTI-BROKER • conectores somente leitura; roteamento nao implementado"' in renderer
     assert 'active_module=="Multi-Broker"?"Execucao multi-broker: NAO IMPLEMENTADA"' in connections
     assert 'Http("GET","/api/connections","",r,code)' in connections
+
+
+def test_native_mt5_header_status_does_not_overlap_area_or_module_navigation():
+    source = EA.read_text(encoding="utf-8")
+    panel = source.split("void Panel(){", 1)[1].split("void DeletePanel", 1)[0]
+    health = source.split("void RefreshHealth()", 1)[1].split("void RefreshMarketAssets()", 1)[0]
+    navigation = source.split("void RenderNavigation()", 1)[1].split("void SelectArea", 1)[0]
+
+    assert 'SetLabel(Obj("RUNTIME"),"API ...",350,27,8' in panel
+    assert 'SetLabel(Obj("MODE"),"MODO ?",350,47,8' in panel
+    assert 'SetLabel(Obj("RUNTIME"),"API OFF",350,27,8' in health
+    assert 'SetLabel(Obj("RUNTIME"),"API OK",350,27,8' in health
+    assert 'SetLabel(Obj("MODE"),mode_label,350,47,8' in health
+    assert 'SetButton(area_button,area_labels[i],18+i*54,67,52,25)' in navigation
+    assert 'SetButton(button,AreaModuleLabel(name),18+i*54,98,52,25)' in navigation
