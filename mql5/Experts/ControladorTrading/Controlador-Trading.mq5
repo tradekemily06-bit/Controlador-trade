@@ -1564,7 +1564,6 @@ void RefreshHealth(){
    runtime_ok=true;
    health_ok=true;
    string mode=JsonValue(r,"mode");
-   string mt5=JsonValue(r,"mt5_demo");
    string engine=JsonValue(r,"decision_engine");
    SetLabel(Obj("RUNTIME"),"API OK",350,27,8,C'88,214,141');
    string mode_label=(mode=="DEMO" || mode=="SIMULACAO")?"DEMO":(mode==""?"MODO ?":StringSubstr(mode,0,8));
