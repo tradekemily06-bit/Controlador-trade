@@ -312,7 +312,7 @@ string ViewForModule(string area,string module){
    else if(area=="CENTRAL"){
       if(module=="Financeiro") return "FINANCE";
       if(module=="Configurações") return "CONFIG";
-      if(module=="Conexões") return "CONNECTIONS";
+      if(module=="Conexões" || module=="Multi-Broker") return "CONNECTIONS";
       if(module=="Segurança") return "SECURITY";
       if(module=="Auditoria") return "AUDIT";
    }
@@ -994,7 +994,7 @@ void RefreshConnections(){
    SetLabel(Obj("INFO2"),"Gateway: "+(gateway==""?"nao informado":gateway),20,381,9,C'205,215,230');
    SetLabel(Obj("INFO3"),"IC Markets MT5 DEMO: "+(mt5==""?"nao informado":mt5),20,401,9,C'205,215,230');
    SetLabel(Obj("INFO4"),"cTrader: "+(ctrader==""?"nao informado":ctrader)+" • SaaS: "+(saas==""?"nao informado":saas),20,421,8,C'205,215,230');
-   SetLabel(Obj("INFO5"),"REAL: "+(real==""?"estado nao informado":real),20,441,9,C'255,155,155');
+   SetLabel(Obj("INFO5"),active_module=="Multi-Broker"?"Execucao multi-broker: NAO IMPLEMENTADA":"REAL: "+(real==""?"estado nao informado":real),20,441,9,C'255,155,155');
 }
 void RefreshEnvironmentView(){
    string health; int health_code=0;
@@ -1480,7 +1480,7 @@ void RenderView(){
       RefreshStatistics();
    }else if(active_view=="CONNECTIONS"){
       ClearCockpitFields();
-      SetLabel(Obj("SUB"),"CONEXOES • estado reportado pelos provedores",20,47,9,C'150,165,185');
+      SetLabel(Obj("SUB"),active_module=="Multi-Broker"?"MULTI-BROKER • conectores somente leitura; roteamento nao implementado":"CONEXOES • estado reportado pelos provedores",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR CONEXOES",20,284,172,30);
       RefreshConnections();
    }else if(active_view=="ENVIRONMENT"){
