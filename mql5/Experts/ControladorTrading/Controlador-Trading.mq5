@@ -1752,7 +1752,7 @@ void RefreshHealth(){
    string mode_label=(mode=="DEMO" || mode=="SIMULACAO")?"DEMO":(mode==""?"MODO ?":StringSubstr(mode,0,8));
    if(active_view=="COCKPIT") SetLabel(Obj("MODE"),mode_label,350,47,8,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • autorizacao separada",20,441,9,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
-   if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="DECISION" || active_view=="REPLAY" || active_view=="SIMULATOR" || active_view=="KILL_SWITCH" || active_view=="UNAVAILABLE" || active_view=="MEMORIA" || active_view=="RISK" || active_view=="STATS" || active_view=="CONNECTIONS" || active_view=="ENVIRONMENT" || active_view=="SECURITY" || active_view=="REPORTS" || active_view=="JOURNAL" || active_view=="AUDIT" || active_view=="FINANCE" || active_view=="DISCOVERIES") return;
+   if(active_view!="COCKPIT" && active_view!="ANALISE") return;
    SetLabel(Obj("INFO1"),"Analise do ecossistema: "+(engine==""?"online":engine),20,361,9,C'205,215,230');
 }
 void RefreshMarketAssets(){
