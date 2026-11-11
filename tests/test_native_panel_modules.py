@@ -422,3 +422,15 @@ def test_native_mt5_discoveries_reads_resources_and_saves_unvalidated_observatio
     health = source.split("void RefreshHealth()", 1)[1].split("void RefreshMarketAssets()", 1)[0]
     assert 'active_view=="DISCOVERIES"' in health
     assert 'StringLen(statement)>3000' in save
+
+
+def test_native_multi_broker_opens_read_only_connection_status_without_claiming_routing():
+    source = EA.read_text(encoding="utf-8")
+    routing = source.split("string ViewForModule(", 1)[1].split("void RenderNavigation()", 1)[0]
+    connections = source.split("void RefreshConnections()", 1)[1].split("void RefreshEnvironmentView()", 1)[0]
+    renderer = source.split('}else if(active_view=="CONNECTIONS"){', 1)[1].split('}else if(active_view=="ENVIRONMENT"){', 1)[0]
+
+    assert 'if(module=="Conexões" || module=="Multi-Broker") return "CONNECTIONS";' in routing
+    assert 'active_module=="Multi-Broker"?"MULTI-BROKER • conectores somente leitura; roteamento nao implementado"' in renderer
+    assert 'active_module=="Multi-Broker"?"Execucao multi-broker: NAO IMPLEMENTADA"' in connections
+    assert 'Http("GET","/api/connections","",r,code)' in connections
