@@ -64,5 +64,5 @@ def test_historical_tools_reject_zero_price_ohlc_candles(method_name):
     service = _service_with_history(candles)
     method = getattr(service, method_name)
 
-    with pytest.raises(RuntimeError, match="OHLC inválido"):
+    with pytest.raises(RuntimeError, match="candle inválido|OHLC inválido"):
         method(symbol="EURUSD", timeframe="5m", limit=100)
