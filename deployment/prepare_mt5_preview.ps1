@@ -24,7 +24,7 @@ if ($gitRoot.TrimEnd([char]'\') -ne $ProjectRoot.TrimEnd([char]'\')) {
     throw "A raiz Git ($gitRoot) não corresponde à pasta selecionada ($ProjectRoot)."
 }
 $actualBranch = (& git -C $ProjectRoot branch --show-current 2>$null | Select-Object -First 1)
-if ($LASTEXITCODE -ne 0 -or $actualBranch.Trim() -ne $ExpectedBranch) {
+if ($LASTEXITCODE -ne 0 -or -not $actualBranch -or $actualBranch.Trim() -ne $ExpectedBranch) {
     throw "Branch incorreta para prévia. Esperada: $ExpectedBranch; encontrada: $actualBranch"
 }
 $actualCommit = (& git -C $ProjectRoot rev-parse HEAD 2>$null | Select-Object -First 1)
