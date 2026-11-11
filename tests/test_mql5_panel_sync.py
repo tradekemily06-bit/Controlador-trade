@@ -469,4 +469,5 @@ def test_mt5_preview_rejects_invalid_or_stale_remote_commit_before_touching_term
     assert "A chamada de execução permaneceu na fonte da prévia" in preview
     assert "A chamada de fechamento permaneceu na fonte da prévia" in preview
     assert '$httpSignature = \'bool Http(string method,string path,string body,string &response,int &code){\'' in preview
+    assert "[regex]::Matches($sourceText, [regex]::Escape($httpSignature)).Count -ne 1" in preview
     assert 'if(method!="GET"){ response="PREVIA VISUAL: acoes desabilitadas."' in preview
