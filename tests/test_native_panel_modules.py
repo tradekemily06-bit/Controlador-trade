@@ -68,8 +68,11 @@ def test_native_mt5_module_navigation_recreates_base_controls_without_background
     assert 'SelectArea("CENTRAL")' in events
     assert 'else if(active_view=="RESERVA") RefreshFiscal();' not in timer
     assert 'else if(active_view=="ASSISTENTE") RefreshAssistantStatus();' not in timer
-    for view in ("RESERVA", "ASSISTENTE", "DECISION", "KILL_SWITCH", "UNAVAILABLE", "MEMORIA", "RISK", "STATS", "CONNECTIONS", "ENVIRONMENT", "SECURITY", "REPORTS", "AUDIT", "FINANCE", "REPLAY", "SIMULATOR", "DISCOVERIES"):
-        assert f'active_view=="{view}"' in health
+    # Health polling must not repaint module content outside the two approved views.
+    assert 'if(active_view!="COCKPIT" && active_view!="ANALISE") return;' in health
+    assert 'active_view=="RESERVA"' not in health
+    assert 'active_view=="ASSISTENTE"' not in health
+    assert 'active_view=="DECISION"' not in health
     assert '"REC_REFRESH"' in clear_fields and '"REC_CLOSE"' in clear_fields
 
 
@@ -120,7 +123,8 @@ def test_native_mt5_decision_engine_is_a_read_only_latest_analysis_view():
     assert 'JsonObjectValue(r,"analysis","signal")' in decision
     assert 'JsonObjectValue(r,"analysis","quality")' in decision
     assert 'if(active_view=="DECISION") RefreshDecisionView();' in events
-    assert 'active_view=="DECISION"' in health
+    assert 'if(active_view!="COCKPIT" && active_view!="ANALISE") return;' in health
+    assert 'active_view=="DECISION"' not in health
     assert "nao cria ordem" in decision
 
 
@@ -137,7 +141,9 @@ def test_native_replay_calls_the_historical_runtime_without_enabling_execution()
     assert 'JsonValue(response,"candles_replayed")' in runner
     assert 'JsonValue(response,"orders_sent")' in runner
     assert 'sparam==Obj("REPLAY_RUN") && active_view=="REPLAY"' in events
-    assert 'active_view=="REPLAY" || active_view=="SIMULATOR" || active_view=="KILL_SWITCH"' in source
+    assert 'sparam==Obj("REPLAY_RUN") && active_view=="REPLAY"' in events
+    assert 'sparam==Obj("SIM_RUN") && active_view=="SIMULATOR"' in events
+    assert 'sparam==Obj("KILL_ACTIVATE") && active_view=="KILL_SWITCH"' in events
     assert "REAL bloqueado" in runner or "Execucao: NAO" in runner
 
 
@@ -276,8 +282,9 @@ def test_native_read_only_views_are_not_overwritten_by_cockpit_timer_refresh():
     timer = source.split("void OnTimer()", 1)[1].split("void OnChartEvent", 1)[0]
     render = source.split("void RenderView(){", 1)[1].split("void RefreshHealth()", 1)[0]
 
+    assert 'if(active_view!="COCKPIT" && active_view!="ANALISE") return;' in health
     for view in ("MEMORIA", "RISK", "STATS", "CONNECTIONS", "ENVIRONMENT", "SECURITY"):
-        assert f'active_view=="{view}"' in health
+        assert f'active_view=="{view}"' not in health
     assert 'if(active_view=="COCKPIT" && bid>0)' in timer
     for view in ("RISK", "STATS", "CONNECTIONS"):
         block = render.split(f'active_view=="{view}"', 1)[1].split('}else if', 1)[0]
@@ -424,7 +431,8 @@ def test_native_mt5_discoveries_reads_resources_and_saves_unvalidated_observatio
     assert "Nao influencia sinais, filtros ou parametros." in renderer
     assert "Execucao permitida: NAO" in renderer
     health = source.split("void RefreshHealth()", 1)[1].split("void RefreshMarketAssets()", 1)[0]
-    assert 'active_view=="DISCOVERIES"' in health
+    assert 'if(active_view!="COCKPIT" && active_view!="ANALISE") return;' in health
+    assert 'active_view=="DISCOVERIES"' not in health
     assert 'StringLen(statement)>3000' in save
 
 
@@ -506,7 +514,8 @@ def test_native_mt5_operational_journal_is_read_only_and_uses_persisted_runtime_
     assert 'orders_sent' not in journal
     assert 'active_view=="JOURNAL"' in renderer
     assert 'sparam==Obj("M7")' in events
-    assert '|| active_view=="JOURNAL"' in source
+    timer = source.split("void OnTimer()", 1)[1].split("void OnChartEvent", 1)[0]
+    assert 'active_view=="JOURNAL"' not in timer
     assert 'for(int i=0;i<4;i++){' in journal
     assert 'Obj("INFO6")' in journal
 
