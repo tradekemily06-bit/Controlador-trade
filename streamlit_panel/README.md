@@ -2,6 +2,19 @@
 
 Esta é a interface Streamlit do Controlador-Trader destinada a reunir o painel operacional e os módulos Reserva Fiscal e Assistente do Ecossistema. O Figma é somente referência visual e não é alterado por esta implementação; o Streamlit é o painel de uso pretendido. A aplicação Streamlit conecta-se ao runtime do Ecossistema, que por sua vez integra as funções de MT5. A interface é uma aplicação web, não um overlay nativo desenhado dentro do gráfico MT5.
 
+## Navegação principal: seis áreas
+
+A navegação principal do painel tem exatamente seis áreas, nesta ordem:
+
+1. COCKPIT — Operação, Motor de Decisão, Gestão de Risco, Notificações, MT5 DEMO / Simulação e Kill Switch.
+2. ANÁLISE — Análise de Mercado, Memória, Estatísticas e Relatórios.
+3. ESTUDO — Laboratório, Replay, Simulador, Aprendizado, Descobertas e Escola / Tutorial / Onboarding.
+4. RESERVA FISCAL — permanece visível enquanto o módulo é concluído; estados indisponíveis devem ser explícitos.
+5. ASSISTENTE DO ECOSSISTEMA — permanece visível enquanto o módulo é concluído; consentimento explícito continua obrigatório.
+6. CENTRAL — Financeiro, Diário Operacional, Configurações, Auditoria, Segurança, Conexões e Multi-Broker. CENTRAL é sempre a última área.
+
+Financeiro não é uma sétima área: é um módulo dentro de CENTRAL. O JSON visual de referência permanece intacto. Cada área usa o mesmo seletor de módulos no Streamlit, inclusive as áreas que atualmente contêm apenas um módulo.
+
 ## Instalação local (Windows / Python 3.12)
 
 No diretório raiz do repositório:
@@ -49,7 +62,7 @@ No host Windows remoto, `deployment/bootstrap_windows_runtime.ps1` também insta
 ## Módulos no painel
 
 - **Reserva Fiscal** possui uma área principal própria no Streamlit, com estimativas, histórico, períodos, filas brasileira/estrangeira e revisões. O histórico mensal consolida os 12 meses do ano de referência apenas com lançamentos brasileiros elegíveis até a data de referência; não compensa prejuízos, não desconta IRRF e não é apuração mensal de imposto. Categorias sem cálculo validado ficam pendentes e fora dos totais; a estimativa brasileira identificada na interface é planejamento, não apuração de imposto devido.
-- **Financeiro** continua disponível em **MAIS / ADMIN** como visão geral consolidada de reservas estimadas, resultado mensal e contagem de pendências. Os lançamentos, filas, revisões e histórico completo ficam na área principal independente **Reserva Fiscal**.
+- **Financeiro** é um módulo dentro de **CENTRAL**, com visão geral consolidada de reservas estimadas, resultado mensal e contagem de pendências. Os lançamentos, filas, revisões e histórico fiscal completo ficam na área principal **Reserva Fiscal**.
 - **Assistente do Ecossistema** possui uma área principal própria, independente de Financeiro, com suas conversas, histórico e contexto operacional filtrado.
 - Memória permite anotar manualmente WIN/LOSS/DRAW/OPEN/VOID para decisões direcionais confirmadas. Essas anotações são de estudo e não são resultados financeiros confirmados pela corretora.
 - A fila estrangeira registra instituição, custódia, tipo de contrato, custo de aquisição, taxas e imposto pago no exterior na moeda original quando informados. Esses campos são evidências declaradas para triagem; não confirmam localização fiscal, enquadramento, conversão cambial ou crédito tributário e não geram cálculo automático.
@@ -63,8 +76,8 @@ No host Windows remoto, `deployment/bootstrap_windows_runtime.ps1` também insta
 ## Limites conhecidos — fidelidade visual e implantação
 
 - O JSON contém a estrutura de navegação e tokens visuais extraídos das referências.
-- **As cinco imagens originais listadas no JSON (8870.jpg, 8871.jpg, 8872.jpg, 8873.jpg e 8878.jpg) não estão presentes neste branch do repositório.** Portanto, ainda não é possível fazer a comparação visual final.
-- O JSON fornecido como referência do Figma permanece intacto, com seus quatro grupos originais. A navegação efetiva do Streamlit acrescenta destinos principais próprios para Reserva Fiscal e Assistente do Ecossistema, pois são módulos completos e independentes. Essa adaptação não edita nem recria o Figma.
+- As cinco imagens originais listadas no JSON (8870.jpg, 8871.jpg, 8872.jpg, 8873.jpg e 8878.jpg) foram localizadas e recuperadas da Biblioteca do ChatGPT. Elas não estão versionadas neste branch do repositório, mas estão disponíveis como referências para comparação visual sem alterar o Figma original. A comparação da renderização final do Streamlit e a aprovação visual do usuário continuam pendentes.
+- O JSON fornecido como referência do Figma permanece intacto, com seus quatro grupos originais. A navegação efetiva do Streamlit acrescenta destinos principais próprios para Reserva Fiscal e Assistente do Ecossistema, pois são módulos completos e independentes. A sequência efetiva do Streamlit é COCKPIT, ANÁLISE, ESTUDO, RESERVA FISCAL, ASSISTENTE DO ECOSSISTEMA e CENTRAL; Financeiro é um módulo dentro de CENTRAL, que reúne funções transversais de administração, segurança e conexões. Essa adaptação não edita nem recria o Figma.
 - Não modificar nem recriar as imagens ou o arquivo original do Figma. A validação visual só poderá avançar quando as cinco imagens originais forem disponibilizadas para comparação, mantendo os arquivos intactos.
 - O Streamlit é acessado como painel web e conversa com o runtime do Ecossistema; não é desenhado nativamente sobre o gráfico MT5. A conexão funcional com MT5 deve ser validada no runtime DEMO antes do uso operacional.
 
@@ -92,3 +105,20 @@ A arquitetura tem dois clientes ligados ao mesmo runtime:
 - **Streamlit:** é a interface web complementar para as áreas do Ecossistema, incluindo Reserva Fiscal e Assistente, conectada à mesma API/runtime.
 
 **Limite importante:** o Streamlit não é executado dentro do gráfico MT5 e não deve ser descrito como se fosse. A camada que aparece dentro do gráfico é o EA MQL5. As duas interfaces só podem ser consideradas integradas ponta a ponta depois de validar que consultam e atualizam o mesmo estado do runtime, com autenticação e permissões seguras. O EA atualmente usa por padrão `http://127.0.0.1:8000`; esse endereço local exige que o runtime esteja ativo no mesmo computador. Para uso remoto, a arquitetura precisa ser adaptada com segurança, sem expor a API diretamente.
+## Liberação incremental: painel primeiro, módulos em paralelo
+
+A prioridade de entrega é concluir e validar a interface Streamlit como painel de uso do Ecossistema. Reserva Fiscal e Assistente do Ecossistema continuam em trilhas paralelas e não podem ser pré-requisitos para iniciar a validação das demais áreas.
+
+- O painel deve iniciar, manter a navegação principal e renderizar COCKPIT, ANÁLISE, ESTUDO e CENTRAL mesmo quando as APIs da Reserva Fiscal ou do Assistente estiverem indisponíveis.
+- RESERVA FISCAL e ASSISTENTE DO ECOSSISTEMA permanecem em suas áreas independentes. Se seus serviços não estiverem prontos, a interface deve informar indisponibilidade, ocultar ações que dependam de dados não validados e não simular sucesso.
+- FINANCEIRO pode apresentar indisponibilidade ou dados parciais quando depender do resumo fiscal; não deve inventar saldos nem tratar falha de consulta como zero.
+- A validação visual do usuário é uma etapa obrigatória antes de declarar o painel aprovado. As cinco capturas originais (8870.jpg, 8871.jpg, 8872.jpg, 8873.jpg e 8878.jpg) precisam estar disponíveis para comparação lado a lado; o JSON de referência sozinho não comprova fidelidade visual.
+- Depois da aprovação visual, o usuário poderá iniciar uma rodada controlada de testes do Ecossistema nas áreas efetivamente liberadas, sem esperar a conclusão dos dois módulos. Essa rodada deve usar somente dados de teste e MT5 DEMO; funcionalidades indisponíveis devem continuar claramente identificadas.
+- A liberação para teste não equivale à aprovação de produção: continuam obrigatórios o runtime persistente, identidade/autorização remota, armazenamento durável, validação real do MT5 DEMO e verificação de recuperação/backup.
+- REAL permanece bloqueado. Nenhuma ação de interface, teste visual ou teste prático concede autorização para enviar ordens reais.
+
+### Integração funcional dentro do gráfico MT5
+
+O EA MQL5 desenha a interface nativamente no gráfico por objetos do próprio terminal. A navegação nativa foi atualizada para as seis áreas aprovadas, na ordem COCKPIT, ANÁLISE, ESTUDO, RESERVA FISCAL, ASSISTENTE DO ECOSSISTEMA e CENTRAL; cada área expõe seus módulos em uma segunda faixa de botões. Os módulos sem tela/integração MQL5 concluída são identificados como em desenvolvimento, sem simular ações ou resultados. Os módulos já ligados reutilizam os endpoints do runtime do Ecossistema, compartilhados com o painel Streamlit.
+
+Esta atualização de navegação no código-fonte ainda não equivale à instalação no terminal: a compilação no MetaEditor, a sincronização do EA para a pasta Experts, a execução no gráfico e a validação visual/interativa em MT5 DEMO continuam pendentes. Não foi enviada nenhuma ordem e REAL continua bloqueado. A interface Streamlit continua sendo uma aplicação operacional separada; o EA é a camada nativa que aparece no gráfico MT5. Não se afirma que o Streamlit seja incorporado como HTML dentro do gráfico.

@@ -250,6 +250,48 @@ class AppSecurityTests(unittest.TestCase):
                     os.environ[name] = value
 
 
+
+    def test_assistant_chat_requires_server_side_explicit_consent_before_persisting(self):
+        from app import ASSISTANT_STORE
+
+        names = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED",
+            "CONTROLADOR_TRUSTED_IDENTITY_HEADER",
+            "CONTROLADOR_LOCAL_MUTATIONS_ALLOWED",
+            "CONTROLADOR_SINGLE_USER_IDENTITY",
+        }
+        old = {name: os.environ.get(name) for name in names}
+        owner = "consent-owner@example.com"
+        try:
+            os.environ["CONTROLADOR_REMOTE_ACCESS_REQUIRED"] = "true"
+            os.environ["CONTROLADOR_TRUSTED_IDENTITY_HEADER"] = "X-Authenticated-User"
+            os.environ["CONTROLADOR_LOCAL_MUTATIONS_ALLOWED"] = "false"
+            os.environ["CONTROLADOR_SINGLE_USER_IDENTITY"] = owner
+            before = ASSISTANT_STORE.list(owner)
+
+            for payload in ({"message": "pergunta sem consentimento"}, {
+                "message": "pergunta com consentimento falso",
+                "consent_to_openai": False,
+            }):
+                status, _, body = self.request(
+                    "/api/assistant/chat",
+                    method="POST",
+                    payload=payload,
+                    remote="203.0.113.44",
+                    headers={"HTTP_X_AUTHENTICATED_USER": owner},
+                )
+                self.assertEqual(status, "400 Bad Request")
+                self.assertIn("Consentimento explícito", body.decode("utf-8"))
+
+            self.assertEqual(ASSISTANT_STORE.list(owner), before)
+        finally:
+            for name, value in old.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
+
     def test_fiscal_rate_api_never_exposes_legacy_foreign_percentage(self):
         old_required = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED")
         try:

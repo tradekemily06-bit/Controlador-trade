@@ -1,5 +1,5 @@
 from pathlib import Path
-import sqlite3, zipfile, pytest
+import hashlib, json, os, sqlite3, zipfile, pytest
 from core.runtime_portability import create_backup, restore_backup, verify_backup
 def test_backup_round_trip(tmp_path:Path):
     runtime=tmp_path/"runtime"; runtime.mkdir()
@@ -7,11 +7,44 @@ def test_backup_round_trip(tmp_path:Path):
     db=runtime/"decision-memory.sqlite"
     with sqlite3.connect(db) as con:
         con.execute("create table decisions(id text primary key)"); con.execute("insert into decisions values ('d1')")
+    module_databases = {
+        "fiscal-reserve.sqlite3": ("fiscal_entries", "fiscal-1"),
+        "assistant.sqlite3": ("messages", "assistant-1"),
+        "latest-market-analysis.sqlite3": ("snapshots", "market-1"),
+    }
+    for filename, (table, value) in module_databases.items():
+        with sqlite3.connect(runtime / filename) as con:
+            con.execute(f"create table {table}(id text primary key)")
+            con.execute(f"insert into {table} values (?)", (value,))
     backup=tmp_path/"state.zip"; manifest=create_backup(runtime,backup)
-    assert "decision-memory.sqlite" in [x["path"] for x in manifest["files"]]
+    backed_up = [x["path"] for x in manifest["files"]]
+    assert "decision-memory.sqlite" in backed_up
+    assert set(module_databases).issubset(backed_up)
     verify_backup(backup); restored=tmp_path/"restored"; assert restore_backup(backup,restored)["restored"]
     assert (restored/"operation-memory.json").read_text(encoding="utf-8")=='{"x":1}'
     with sqlite3.connect(restored/"decision-memory.sqlite") as con: assert con.execute("select id from decisions").fetchone()==("d1",)
+    for filename, (table, value) in module_databases.items():
+        with sqlite3.connect(restored / filename) as con:
+            assert con.execute(f"select id from {table}").fetchone() == (value,)
+
+def test_restore_preserves_unrelated_fixed_staging_file(tmp_path: Path):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "operation-memory.json").write_text("new-state", encoding="utf-8")
+    backup = tmp_path / "state.zip"
+    create_backup(source, backup)
+
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "operation-memory.json").write_text("old-state", encoding="utf-8")
+    unrelated_temporary = target / ".operation-memory.json.restore.tmp"
+    unrelated_temporary.write_text("preserve-me", encoding="utf-8")
+
+    restore_backup(backup, target, replace=True)
+
+    assert (target / "operation-memory.json").read_text(encoding="utf-8") == "new-state"
+    assert unrelated_temporary.read_text(encoding="utf-8") == "preserve-me"
+
 def test_restore_refuses_overwrite(tmp_path:Path):
     runtime=tmp_path/"runtime"; runtime.mkdir(); (runtime/"operation-memory.json").write_text("1")
     backup=tmp_path/"state.zip"; create_backup(runtime,backup); (runtime/"operation-memory.json").write_text("2")
@@ -84,3 +117,194 @@ def test_backup_rejects_duplicate_manifest(tmp_path: Path):
             archive.writestr("manifest.json", '{"format":"controlador-runtime-portable","version":1,"files":[]}')
     with pytest.raises(ValueError, match="manifest is missing or duplicated"):
         verify_backup(bad)
+
+
+
+def test_backup_rejects_corrupt_sqlite_database_even_when_manifest_hash_matches(tmp_path: Path):
+    bad = tmp_path / "corrupt-sqlite.zip"
+    payload = b"this is not a sqlite database"
+    manifest = {
+        "format": "controlador-runtime-portable",
+        "version": 1,
+        "files": [{
+            "path": "fiscal-reserve.sqlite3",
+            "sha256": hashlib.sha256(payload).hexdigest(),
+            "size": len(payload),
+        }],
+    }
+    with zipfile.ZipFile(bad, "w") as archive:
+        archive.writestr("manifest.json", json.dumps(manifest))
+        archive.writestr("fiscal-reserve.sqlite3", payload)
+    with pytest.raises(ValueError, match="SQLite integrity failure"):
+        verify_backup(bad)
+
+
+
+def test_sqlite3_backup_captures_committed_wal_pages(tmp_path: Path):
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    database = runtime / "fiscal-reserve.sqlite3"
+    writer = sqlite3.connect(database)
+    try:
+        writer.execute("PRAGMA journal_mode=WAL")
+        writer.execute("CREATE TABLE fiscal_entries(reference TEXT PRIMARY KEY)")
+        writer.execute("INSERT INTO fiscal_entries VALUES ('wal-committed-entry')")
+        writer.commit()
+
+        backup = tmp_path / "wal-state.zip"
+        manifest = create_backup(runtime, backup)
+        assert "fiscal-reserve.sqlite3" in [item["path"] for item in manifest["files"]]
+    finally:
+        writer.close()
+
+    restored = tmp_path / "restored"
+    restore_backup(backup, restored)
+    with sqlite3.connect(restored / "fiscal-reserve.sqlite3") as connection:
+        assert connection.execute("SELECT reference FROM fiscal_entries").fetchone() == (
+            "wal-committed-entry",
+        )
+
+
+
+def test_backup_refuses_empty_runtime_directory(tmp_path: Path):
+    runtime = tmp_path / "empty-runtime"
+    runtime.mkdir()
+    with pytest.raises(ValueError, match="no portable state files"):
+        create_backup(runtime, tmp_path / "empty.zip")
+    assert not (tmp_path / "empty.zip").exists()
+
+
+
+def test_private_runtime_backup_directory_is_git_ignored():
+    ignore_rules = (Path(__file__).resolve().parents[1] / ".gitignore").read_text(encoding="utf-8")
+    assert ".runtime-backups/" in ignore_rules.splitlines()
+
+
+
+def test_backup_refuses_to_overwrite_existing_archive(tmp_path: Path):
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / "operation-memory.json").write_text('{"version":1}', encoding="utf-8")
+    archive = tmp_path / "protected-backup.zip"
+    create_backup(runtime, archive)
+    original = archive.read_bytes()
+
+    (runtime / "operation-memory.json").write_text('{"version":2}', encoding="utf-8")
+    with pytest.raises(FileExistsError, match="refusing to overwrite"):
+        create_backup(runtime, archive)
+    assert archive.read_bytes() == original
+
+
+
+def test_restore_rolls_back_new_files_when_a_later_replace_fails(tmp_path: Path, monkeypatch):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "operation-memory.json").write_text("new-memory", encoding="utf-8")
+    (source / "operational-safety.json").write_text("new-safety", encoding="utf-8")
+    backup = tmp_path / "state.zip"
+    create_backup(source, backup)
+
+    target = tmp_path / "target"
+    real_replace = os.replace
+
+    def fail_second_destination(source_path, destination_path):
+        if Path(destination_path) == target / "operational-safety.json":
+            raise OSError("simulated second-file replacement failure")
+        return real_replace(source_path, destination_path)
+
+    monkeypatch.setattr("core.runtime_portability.os.replace", fail_second_destination)
+    with pytest.raises(OSError, match="simulated second-file replacement failure"):
+        restore_backup(backup, target)
+
+    assert not (target / "operation-memory.json").exists()
+    assert not (target / "operational-safety.json").exists()
+    assert not list(target.glob("*.restore.tmp"))
+
+
+def test_restore_rolls_back_replaced_files_when_a_later_replace_fails(tmp_path: Path, monkeypatch):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "operation-memory.json").write_text("new-memory", encoding="utf-8")
+    (source / "operational-safety.json").write_text("new-safety", encoding="utf-8")
+    backup = tmp_path / "state.zip"
+    create_backup(source, backup)
+
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "operation-memory.json").write_text("old-memory", encoding="utf-8")
+    (target / "operational-safety.json").write_text("old-safety", encoding="utf-8")
+    unrelated_rollback_temp = target / ".operation-memory.rollback-tmp.json"
+    unrelated_rollback_temp.write_text("preserve-me", encoding="utf-8")
+    real_replace = os.replace
+
+    def fail_second_destination(source_path, destination_path):
+        if Path(destination_path) == target / "operational-safety.json":
+            raise OSError("simulated second-file replacement failure")
+        return real_replace(source_path, destination_path)
+
+    monkeypatch.setattr("core.runtime_portability.os.replace", fail_second_destination)
+    with pytest.raises(OSError, match="simulated second-file replacement failure"):
+        restore_backup(backup, target, replace=True)
+
+    assert (target / "operation-memory.json").read_text(encoding="utf-8") == "old-memory"
+    assert (target / "operational-safety.json").read_text(encoding="utf-8") == "old-safety"
+    assert unrelated_rollback_temp.read_text(encoding="utf-8") == "preserve-me"
+    assert not list(target.glob(".operation-memory.json.rollback-*"))
+
+
+
+def test_backup_preserves_unrelated_fixed_tmp_file(tmp_path: Path):
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / "operation-memory.json").write_text('{"safe":true}', encoding="utf-8")
+    archive = tmp_path / "state.zip"
+    unrelated_temporary = tmp_path / "state.zip.tmp"
+    unrelated_temporary.write_text("do not overwrite", encoding="utf-8")
+
+    create_backup(runtime, archive)
+
+    assert unrelated_temporary.read_text(encoding="utf-8") == "do not overwrite"
+    assert verify_backup(archive)["format"] == "controlador-runtime-portable"
+
+
+
+def test_backup_does_not_replace_destination_created_during_publication(tmp_path: Path, monkeypatch):
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / "operation-memory.json").write_text('{"safe":true}', encoding="utf-8")
+    archive = tmp_path / "state.zip"
+    real_link = os.link
+
+    def create_racing_destination(source, destination):
+        Path(destination).write_bytes(b"concurrent-owner-file")
+        return real_link(source, destination)
+
+    monkeypatch.setattr("core.runtime_portability.os.link", create_racing_destination)
+    with pytest.raises(FileExistsError):
+        create_backup(runtime, archive)
+
+    assert archive.read_bytes() == b"concurrent-owner-file"
+    assert not list(tmp_path.glob(".state.zip.*.tmp"))
+
+def test_backup_is_not_published_when_staged_archive_verification_fails(tmp_path: Path, monkeypatch):
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / "operation-memory.json").write_text('{"safe":true}', encoding="utf-8")
+    archive = tmp_path / "state.zip"
+    verification_targets = []
+
+    def reject_staged_archive(path):
+        verification_targets.append(Path(path))
+        raise ValueError("simulated staged archive verification failure")
+
+    monkeypatch.setattr("core.runtime_portability.verify_backup", reject_staged_archive)
+    with pytest.raises(ValueError, match="simulated staged archive verification failure"):
+        create_backup(runtime, archive)
+
+    assert len(verification_targets) == 1
+    assert verification_targets[0] != archive
+    assert verification_targets[0].parent == archive.parent
+    assert not archive.exists()
+    assert not verification_targets[0].exists()
+    assert not list(tmp_path.glob(".state.zip.*.tmp"))
+

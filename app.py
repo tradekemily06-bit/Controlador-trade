@@ -1552,6 +1552,30 @@ def application(environ, start_response):
                 "execution": {"accepted": execution.accepted, "status": execution.status.value, "message": execution.message, "external_id": execution.external_id} if execution else None,
             }
             return _json_response(start_response, HTTPStatus.OK, {"runtime": payload, "execution_allowed": bool(execution and execution.accepted)}, request_id, environ)
+        if path == "/api/market/status" and method == "GET":
+            trading_runtime = getattr(SERVICE, "trading_runtime", None)
+            market_state = getattr(trading_runtime, "market_data_state", None) if trading_runtime is not None else None
+            if market_state is None:
+                status = {
+                    "health": "NOT_CONNECTED",
+                    "safe_for_analysis": False,
+                    "source": None,
+                    "symbol": None,
+                    "timeframe": None,
+                    "candle_count": None,
+                    "gap_count": None,
+                    "stale": None,
+                    "message": "integridade dos dados de mercado não conectada",
+                }
+            else:
+                status = market_state.status()
+            return _json_response(
+                start_response,
+                HTTPStatus.OK,
+                {**status, "read_only": True, "execution_allowed": False},
+                request_id,
+                environ,
+            )
         if path == "/api/market/assets" and method == "GET":
             query = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
             # The ecosystem's default catalog must include every broker-listed symbol,
@@ -1720,36 +1744,57 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {**record.to_dict(), **serialize_decision_record(record), "execution_allowed": False}, request_id, environ)
         if path == "/api/simulator/mt5/backtest" and method == "POST":
             data = _read_json(environ)
-            result = SERVICE.run_mt5_historical_backtest(
-                symbol=str(data.get("symbol", "")),
-                timeframe=str(data.get("timeframe", "5m")),
-                limit=data.get("limit", 200),
-                stop_distance=data.get("stop_distance"),
-                take_profit_distance=data.get("take_profit_distance"),
-                quantity_units=data.get("quantity_units"),
-                contract_multiplier=data.get("contract_multiplier", 1.0),
-                spread_price_units=data.get("spread_price_units"),
-                slippage_price_units_per_side=data.get("slippage_price_units_per_side"),
-                commission_quote_per_unit_round_turn=data.get("commission_quote_per_unit_round_turn", 0.0),
-                minimum_directional_score=data.get("minimum_directional_score", 80),
-            )
+            try:
+                result = SERVICE.run_mt5_historical_backtest(
+                    symbol=str(data.get("symbol", "")),
+                    timeframe=str(data.get("timeframe", "5m")),
+                    limit=data.get("limit", 200),
+                    stop_distance=data.get("stop_distance"),
+                    take_profit_distance=data.get("take_profit_distance"),
+                    quantity_units=data.get("quantity_units"),
+                    contract_multiplier=data.get("contract_multiplier", 1.0),
+                    spread_price_units=data.get("spread_price_units"),
+                    slippage_price_units_per_side=data.get("slippage_price_units_per_side"),
+                    commission_quote_per_unit_round_turn=data.get("commission_quote_per_unit_round_turn", 0.0),
+                    minimum_directional_score=data.get("minimum_directional_score", 80),
+                )
+            except RuntimeError:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "backtest histórico indisponível", "orders_sent": False, "execution_allowed": False},
+                    request_id, environ,
+                )
             return _json_response(start_response, HTTPStatus.OK, result, request_id, environ)
         if path == "/api/simulator/mt5" and method == "POST":
             data = _read_json(environ)
-            result = SERVICE.simulate_mt5_signal_scenario(
-                symbol=str(data.get("symbol", "")),
-                timeframe=str(data.get("timeframe", "5m")),
-                limit=data.get("limit", 100),
-                minimum_directional_score=data.get("minimum_directional_score", 70),
-            )
+            try:
+                result = SERVICE.simulate_mt5_signal_scenario(
+                    symbol=str(data.get("symbol", "")),
+                    timeframe=str(data.get("timeframe", "5m")),
+                    limit=data.get("limit", 100),
+                    minimum_directional_score=data.get("minimum_directional_score", 70),
+                )
+            except RuntimeError:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "simulação histórica indisponível", "orders_sent": False, "execution_allowed": False},
+                    request_id, environ,
+                )
             return _json_response(start_response, HTTPStatus.OK, result, request_id, environ)
         if path == "/api/replay/mt5" and method == "POST":
             data = _read_json(environ)
-            result = SERVICE.replay_mt5_history(
-                symbol=str(data.get("symbol", "")),
-                timeframe=str(data.get("timeframe", "5m")),
-                limit=data.get("limit", 100),
-            )
+            try:
+                result = SERVICE.replay_mt5_history(
+                    symbol=str(data.get("symbol", "")),
+                    timeframe=str(data.get("timeframe", "5m")),
+                    limit=data.get("limit", 100),
+                )
+            except RuntimeError:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "Replay histórico indisponível", "orders_sent": False, "execution_allowed": False},
+                    request_id, environ,
+                )
             return _json_response(start_response, HTTPStatus.OK, result, request_id, environ)
         if path == "/api/replay" and method == "POST":
             cases = _read_json(environ).get("cases")
@@ -1758,6 +1803,98 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {"results": SERVICE.replay(cases), "execution_allowed": False}, request_id, environ)
         if path == "/api/memory" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, {"records": SERVICE.memory_view(_query_limit(environ, 50))}, request_id, environ)
+        if path == "/api/journal" and method == "GET":
+            runtime = getattr(SERVICE, "operational_runtime", None)
+            recorder = getattr(runtime, "operational_recorder", None) if runtime is not None else None
+            operational_memory = getattr(recorder, "memory", None) if recorder is not None else None
+            if operational_memory is None or not callable(getattr(operational_memory, "records", None)):
+                return _json_response(
+                    start_response,
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    {
+                        "error": "Diário operacional indisponível: memória persistente do runtime não conectada.",
+                        "entries": [],
+                        "execution_allowed": False,
+                    },
+                    request_id,
+                    environ,
+                )
+            query = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
+            selected_date_text = str(query.get("date", [datetime.now(ZoneInfo("America/Sao_Paulo")).date().isoformat()])[-1]).strip()
+            try:
+                selected_date = datetime.fromisoformat(selected_date_text).date()
+            except ValueError as exc:
+                raise ValueError("date deve usar o formato YYYY-MM-DD") from exc
+            timezone = ZoneInfo("America/Sao_Paulo")
+            day_start = datetime(selected_date.year, selected_date.month, selected_date.day, tzinfo=timezone)
+            next_date = selected_date.fromordinal(selected_date.toordinal() + 1)
+            day_end = datetime(next_date.year, next_date.month, next_date.day, tzinfo=timezone)
+            limit = _query_limit(environ, 100, maximum=500)
+            selected_records = []
+            for record in operational_memory.records():
+                timestamp = record.timestamp
+                if timestamp.tzinfo is None:
+                    timestamp = timestamp.replace(tzinfo=timezone)
+                else:
+                    timestamp = timestamp.astimezone(timezone)
+                if day_start <= timestamp < day_end:
+                    selected_records.append((timestamp, record))
+            selected_records.sort(key=lambda item: item[0], reverse=True)
+            entries = []
+            for timestamp, record in selected_records[:limit]:
+                signal = getattr(record.signal, "value", str(record.signal))
+                entries.append({
+                    "timestamp": timestamp.isoformat(),
+                    "signal": signal,
+                    "score": record.score,
+                    "decision": record.decision,
+                    "reason": record.reason,
+                    "result": record.result,
+                    "symbol": record.symbol,
+                    "timeframe": record.timeframe,
+                    "quality_score": record.quality_score,
+                    "quality_level": record.quality_level,
+                    "entry_conditions": list(record.entry_conditions),
+                })
+            all_day = [record for _, record in selected_records]
+            summary = {
+                "date": selected_date.isoformat(),
+                "total": len(all_day),
+                "win": sum(record.result == "WIN" for record in all_day),
+                "loss": sum(record.result == "LOSS" for record in all_day),
+                "ambos": sum(record.result == "AMBOS" for record in all_day),
+                "pending": sum(record.result == "PENDENTE" for record in all_day),
+            }
+            return _json_response(
+                start_response,
+                HTTPStatus.OK,
+                {
+                    "entries": entries,
+                    "today_summary": summary,
+                    "date": selected_date.isoformat(),
+                    "timezone": "America/Sao_Paulo",
+                    "source": "persistent_operational_runtime_memory",
+                    "automatic": True,
+                    "execution_authority": False,
+                    "read_only": True,
+                    "execution_allowed": False,
+                    "count": len(entries),
+                },
+                request_id,
+                environ,
+            )
+        if path == "/api/reports" and method == "GET":
+            limit = _query_limit(environ, 50, maximum=200)
+            report = {
+                "generated_at": datetime.now(ZoneInfo("America/Sao_Paulo")).isoformat(),
+                "summary": SERVICE.statistics(),
+                "records": SERVICE.memory_view(limit),
+                "record_count": min(len(SERVICE.memory), limit),
+                "source": "decision_memory",
+                "read_only": True,
+                "execution_allowed": False,
+            }
+            return _json_response(start_response, HTTPStatus.OK, report, request_id, environ)
         if path == "/api/statistics" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.statistics(), request_id, environ)
         if path == "/api/outcome" and method == "POST":

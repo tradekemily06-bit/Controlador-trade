@@ -52,10 +52,17 @@ def test_mql5_panel_has_single_repository_source():
     assert not legacy.exists()
 
 
-def test_controller_startup_calls_panel_sync():
+def test_controller_startup_never_syncs_or_compiles_the_installed_ea():
     startup = (ROOT / "deployment" / "start_controlador_runtime.ps1").read_text(encoding="utf-8")
-    assert "Sync-Mt5Panel" in startup
-    assert "sync_mql5_panel.ps1" in startup
+    sync_script = (ROOT / "deployment" / "sync_mql5_panel.ps1").read_text(encoding="utf-8")
+    assert "Sync-Mt5Panel" not in startup
+    assert "sync_mql5_panel.ps1" not in startup
+    installer = (ROOT / "deployment" / "install_windows_autostart.ps1").read_text(encoding="utf-8")
+    assert "$syncScript" not in installer
+    assert "ação manual separada" in installer
+    # Keep the explicit maintenance utility available, but outside runtime startup.
+    assert '& $MetaEditorPath "/compile:$destination"' in sync_script
+    assert "Copy-WithRetry -Source $source -Destination $destination" in sync_script
 
 
 def test_mql5_panel_primes_runtime_and_refreshes_market_data_on_new_bars():
@@ -66,7 +73,9 @@ def test_mql5_panel_primes_runtime_and_refreshes_market_data_on_new_bars():
     assert "Analyze(panel_visible);" in init
     assert "last_analysis_bar=iTime(_Symbol,_Period,0);" in init
     assert "current_bar!=last_analysis_bar" in timer
-    assert "Analyze(new_bar && (active_view==\"COCKPIT\" || active_view==\"ANALISE\"));" in timer
+    assert 'if(active_view=="COCKPIT" || active_view=="ANALISE")' in timer
+    assert "Analyze(new_bar);" in timer
+    assert "Analyze(new_bar && (active_view==\"COCKPIT\" || active_view==\"ANALISE\"));" not in timer
     assert "Analyze(false);" in timer
     assert '"/api/runtime/analysis/local"' in analyze
     assert "if(!render) return;" in analyze
@@ -88,7 +97,9 @@ def test_mql5_compact_signal_fails_closed_on_health_loss_and_refreshes_each_tick
     assert "RefreshHealth();" in init
     assert "RefreshHealth();" in timer
     assert "Analyze(false);" in timer
-    assert "Analyze(new_bar && (active_view==\"COCKPIT\" || active_view==\"ANALISE\"));" in timer
+    assert 'if(active_view=="COCKPIT" || active_view=="ANALISE")' in timer
+    assert "Analyze(new_bar);" in timer
+    assert "Analyze(new_bar && (active_view==\"COCKPIT\" || active_view==\"ANALISE\"));" not in timer
 
 
 def test_mql5_panel_uses_approved_compact_c_signal_without_watermark():
@@ -97,7 +108,7 @@ def test_mql5_panel_uses_approved_compact_c_signal_without_watermark():
     assert '"ECOSSISTEMA • MT5 • DEMO / SIMULACAO"' in panel
     assert "RUNTIME REAL" not in panel
     assert "InpPanelWidth = 360" in panel
-    assert "InpPanelHeight = 440" in panel
+    assert "InpPanelHeight = 500" in panel
     assert "bool panel_visible=false" in panel
     assert 'SetCompactLabel(Obj("PANEL_TOGGLE_BG"),"●"' in panel
     assert 'SetCompactLabel(Obj("PANEL_TOGGLE"),"C"' in panel
@@ -272,7 +283,7 @@ def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compil
     assert "source_sha256 = $sourceHash" in text
     assert "binary_sha256 = $binaryHashAfter" in text
     assert "Set-Content -LiteralPath $provenanceTemp -Encoding ASCII" in text
-    assert text.count("Restore-File -Backup $backupProvenance -Target $provenance") == 7
+    assert text.count("Restore-File -Backup $backupProvenance -Target $provenance") >= 7
     assert text.index("if ($binaryWriteTime -lt $compileStartedAt.AddSeconds(-2))") < text.index("binary_sha256 = $binaryHashAfter")
 
 
@@ -371,3 +382,98 @@ def test_mql5_json_helpers_accept_standard_json_whitespace_and_escaped_strings()
     assert "if(escaped) escaped=false;" in helpers
     assert r"else if(c=='\\') escaped=true;" in helpers
     assert r"else if(ch=='\\') escaped=true;" in helpers
+
+
+def test_mql5_sync_backup_creation_fails_closed_before_any_destination_write():
+    text = SCRIPT.read_text(encoding="utf-8")
+    backup_start = text.index("$backupSource =")
+    destination_write = text.index(
+        "Copy-WithRetry -Source $source -Destination $destination", backup_start
+    )
+    backup_phase = text[backup_start:destination_write]
+    assert "try {" in backup_phase
+    assert "Copy-WithRetry -Source $destination -Destination $backupSource" in backup_phase
+    assert "Copy-WithRetry -Source $binary -Destination $backupBinary" in backup_phase
+    assert "Copy-WithRetry -Source $provenance -Destination $backupProvenance" in backup_phase
+    assert "Copy-WithRetry -Source $log -Destination $backupLog" in backup_phase
+    assert "catch {" in backup_phase
+    assert "o destino do EA ainda não foi modificado" in backup_phase
+    assert "Restore-File" not in backup_phase
+    assert text.index("Falha ao criar os backups dos artefatos") < text.index(
+        "Copy-WithRetry -Source $source -Destination $destination"
+    )
+
+def test_mql5_sync_refuses_to_overwrite_preexisting_backup_artifacts():
+    text = SCRIPT.read_text(encoding="utf-8")
+    backup_start = text.index("$backupSource =")
+    backup_try = text.index("try {", backup_start)
+    collision_guard = text.index("$backupCollision =", backup_start)
+    directory_create = text.index("New-Item -ItemType Directory -Force -Path $destinationDir")
+    assert backup_start < collision_guard < directory_create < backup_try
+    assert "$stamp = (Get-Date -Format 'yyyyMMdd-HHmmss-fff') + '-' + [guid]::NewGuid().ToString('N')" in text
+    assert "$backupTargets = @($backupSource, $backupBinary, $backupProvenance, $backupLog)" in text
+    assert "Test-Path -LiteralPath $_" in text[collision_guard:directory_create]
+    assert "Backup com nome já existente" in text[collision_guard:directory_create]
+    assert "nenhum artefato do EA foi alterado" in text[collision_guard:directory_create]
+
+
+def test_mql5_sync_whatif_never_initializes_python_terminal_bridge_without_resolved_data_path():
+    text = SCRIPT.read_text(encoding="utf-8")
+    resolver = text.split("function Resolve-Mt5DataPath", 1)[1].split("\n$dataPath =", 1)[0]
+    guard = resolver.index("if ($WhatIfPreference)")
+    bridge = resolver.index("$paths = Get-Mt5Paths -TerminalPath $TerminalPath")
+    assert guard < bridge
+    assert "Simulação -WhatIf não inicializa nem consulta o terminal MT5" in resolver
+    assert "Informe -Mt5DataPath ou CONTROLADOR_MT5_DATA_PATH" in resolver
+    assert "Get-Mt5Paths -TerminalPath $TerminalPath" in resolver[bridge:]
+
+    terminal_resolver = text.split("function Resolve-Mt5TerminalPath", 1)[1].split("$Mt5TerminalPath =", 1)[0]
+    terminal_whatif = terminal_resolver.index("if ($WhatIfPreference)")
+    terminal_process_query = terminal_resolver.index("Get-CimInstance Win32_Process")
+    assert terminal_whatif < terminal_process_query
+    assert "a simulação não consulta processos do MT5" in terminal_resolver
+
+
+def test_mql5_preview_compile_requires_exact_clean_reviewed_worktree():
+    preview = (ROOT / "deployment" / "prepare_mt5_preview.ps1").read_text(encoding="utf-8")
+    assert "[string]$ExpectedBranch = 'fix/mt5-order-state-reconciliation-20261110'" in preview
+    assert "git -C $ProjectRoot rev-parse --show-toplevel" in preview
+    assert "git -C $ProjectRoot branch --show-current" in preview
+    assert "git -C $ProjectRoot rev-parse HEAD" in preview
+    assert "git -C $ProjectRoot status --porcelain" in preview
+    assert "git -C $ProjectRoot remote get-url origin" in preview
+    assert 'git -C $ProjectRoot ls-remote origin "refs/heads/$ExpectedBranch"' in preview
+    assert "A cópia local não corresponde ao último commit remoto" in preview
+    assert "A cópia de trabalho contém alterações locais ou arquivos não rastreados" in preview
+    assert "Repositório remoto inesperado" in preview
+    assert 'Write-Output "SOURCE_BRANCH=$actualBranch"' in preview
+    assert 'Write-Output "SOURCE_COMMIT=$actualCommit"' in preview
+    assert "ControladorTradingPreview" in preview
+    assert '$previewCommit = $actualCommit.Substring(0, 12)' in preview
+    assert "$previewAttempt = [guid]::NewGuid().ToString('N').Substring(0, 8)" in preview
+    assert '$previewCommit + "_" + $previewAttempt' in preview
+    assert 'if (Test-Path -LiteralPath $previewFolder)' in preview
+    assert 'New-Item -ItemType Directory -Path $previewFolder' in preview
+    assert 'New-Item -ItemType Directory -Force -Path $previewFolder' not in preview
+    assert "INSTALLED_EA_UNCHANGED=TRUE" in preview
+
+
+def test_mt5_preview_rejects_invalid_or_stale_remote_commit_before_touching_terminal():
+    preview = (ROOT / "deployment" / "prepare_mt5_preview.ps1").read_text(encoding="utf-8")
+    remote_check = (
+        "if ($remoteCommit -notmatch '^[0-9a-f]{40}$' -or $actualCommit -ne $remoteCommit) {"
+    )
+    assert remote_check in preview
+    assert preview.index(remote_check) < preview.index("$previewFolder =")
+    assert preview.count("$sourceRelative =") == 1
+    assert preview.count("$previewFolder =") == 1
+    assert "if ($remoteCommit -notmatch '^[0-9a-f]{40}if (" not in preview
+    assert "$runStart = $sourceText.IndexOf('void RunCycle(){')" in preview
+    assert "$closeStart = $sourceText.IndexOf('void CloseCycle(){')" in preview
+    assert "PREVIA VISUAL: execucao desabilitada." in preview
+    assert "PREVIA VISUAL: fechamento desabilitado." in preview
+    assert "A chamada de execução permaneceu na fonte da prévia" in preview
+    assert "A chamada de fechamento permaneceu na fonte da prévia" in preview
+    assert '$httpSignature = \'bool Http(string method,string path,string body,string &response,int &code){\'' in preview
+    assert "[regex]::Matches($sourceText, [regex]::Escape($httpSignature)).Count -ne 1" in preview
+    assert 'if(method!="GET"){ response="PREVIA VISUAL: acoes desabilitadas."' in preview

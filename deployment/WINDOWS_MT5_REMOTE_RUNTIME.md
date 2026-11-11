@@ -100,6 +100,12 @@ Exemplo do modo 24/7: `-AutostartMode AtStartupS4U`. A configuração é feita u
 
 O instalador não grava senha, token ou segredo. O Controlador continua fazendo preflight DEMO e não transforma uma falha do MT5 em autorização: sem DEMO válido, a execução permanece bloqueada.
 
+## Sincronização do EA MQL5 — ação manual separada
+
+O supervisor do Controlador e o instalador de tarefas do Windows **não copiam nem compilam o EA** durante a inicialização. A rotina de sincronização fica separada em `deployment/sync_mql5_panel.ps1`, com confirmação de alto impacto, backup dos artefatos existentes e tentativa de rollback em caso de falha. Use `-WhatIf` para simular a operação: a simulação não cria a pasta de destino, não copia arquivos e não inicia MetaEditor. Não coloque essa rotina em tarefas de boot nem a execute como parte do startup do runtime.
+
+A validação Windows automatizada usa executáveis fictícios e confirma que `-WhatIf` não altera os arquivos de teste. Isso não substitui a revisão manual do caminho de destino, backup e confirmação antes de uma sincronização real no terminal selecionado.
+
 ## Serviço persistente do Cloudflare Tunnel — etapa separada
 
 O instalador `install_windows_autostart.ps1` registra somente as três tarefas agendadas do MT5, Controlador e Streamlit. Ele **não instala nem registra o serviço Windows `cloudflared`** e não cria a conta, o túnel, o DNS, o hostname ou a aplicação Cloudflare Access. Portanto, instalar as tarefas do ecossistema, isoladamente, não conclui o acesso remoto 24/7.
@@ -168,11 +174,20 @@ Os artefatos de estado portáveis são:
 - `execution-lifecycle.json`
 - `automation-lifecycle.json`
 - `runtime-checkpoint.json`
+- `demo-position-closes.json`
+- `demo-timed-exits.json`
 - `ecosystem-state.sqlite`
 - `decision-memory.sqlite`
 - `security-audit.sqlite`
+- `fiscal-reserve.sqlite3` — lançamentos, configurações, filas e revisões da Reserva Fiscal
+- `assistant.sqlite3` — conversas e mensagens locais do Assistente do Ecossistema
+- `latest-market-analysis.sqlite3` — snapshots recentes de análise
 
-`deployment/backup_runtime.ps1` cria um pacote verificado desses artefatos. O backup inclui também o lifecycle persistente da automação; usa a API de backup do SQLite para os bancos e registra SHA-256 no manifesto; segredos, tokens, senhas e configuração específica da máquina ficam fora do pacote. A restauração usa `deployment/restore_runtime.ps1`, valida o manifesto e não sobrescreve estado existente por padrão.
+`deployment/backup_runtime.ps1` cria um pacote verificado desses artefatos. Os bancos com sufixo `.sqlite`, `.sqlite3` ou `.db` são copiados pela API de backup do SQLite (incluindo páginas WAL já confirmadas), e o manifesto registra SHA-256 e tamanho. A verificação também executa `PRAGMA integrity_check` nos bancos incluídos antes de permitir a restauração. Segredos, tokens, senhas e configuração específica da máquina ficam fora do pacote.
+
+A restauração usa `deployment/restore_runtime.ps1`. Se uma substituição falhar no meio do processo, o utilitário tenta reverter os arquivos já restaurados; se a própria reversão falhar, preserva a cópia anterior em arquivo oculto no runtime e informa o caminho para recuperação manual.
+
+**Proteção do arquivo:** o ZIP contém dados financeiros e conversas locais e não é criptografado pelo utilitário. Armazene-o somente em volume protegido por criptografia de disco e permissões restritas, não o envie por canais públicos e defina retenção e cópias externas protegidas. Antes de restaurar, pare os serviços do runtime/Streamlit/MT5 e confirme que o destino está correto; a restauração não deve concorrer com processos que mantenham bancos abertos. A rotina recusa sobrescrever arquivos existentes por padrão.
 
 Assim, a troca de Windows/VPS preserva o estado do ecossistema sem transportar a identidade da máquina. O novo host deve fornecer novamente sua configuração local, MT5, Cloudflare/Access e segredos pelo mecanismo de implantação apropriado.
 

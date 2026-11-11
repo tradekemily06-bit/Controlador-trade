@@ -476,8 +476,22 @@ class ConfiguredEcosystemService(EcosystemService):
         candles = tuple(self.mt5_market_adapter.fetch_market_data(request))
         if len(candles) < 2:
             raise RuntimeError("histórico insuficiente: são necessários pelo menos dois candles fechados")
-        if any(candles[index].timestamp < candles[index - 1].timestamp for index in range(1, len(candles))):
-            raise RuntimeError("histórico MT5 fora de ordem cronológica; replay bloqueado")
+        if any(
+            candles[index].timestamp <= candles[index - 1].timestamp
+            for index in range(1, len(candles))
+        ):
+            raise RuntimeError(
+                "histórico MT5 fora de ordem cronológica ou com timestamps duplicados; replay bloqueado"
+            )
+        if any(
+            not candle.is_valid()
+            or any(
+                value <= 0
+                for value in (candle.open, candle.high, candle.low, candle.close)
+            )
+            for candle in candles
+        ):
+            raise RuntimeError("histórico MT5 contém candle OHLC inválido; replay bloqueado")
 
         records: list[dict[str, Any]] = []
         for index in range(1, len(candles)):
@@ -546,11 +560,20 @@ class ConfiguredEcosystemService(EcosystemService):
         if len(candles) < 2:
             raise RuntimeError("histórico insuficiente: são necessários pelo menos dois candles fechados")
         if any(
-            candles[index].timestamp < candles[index - 1].timestamp
+            candles[index].timestamp <= candles[index - 1].timestamp
             for index in range(1, len(candles))
         ):
-            raise RuntimeError("histórico MT5 fora de ordem cronológica; simulação bloqueada")
-        if any(not candle.is_valid() for candle in candles):
+            raise RuntimeError(
+                "histórico MT5 fora de ordem cronológica ou com timestamps duplicados; simulação bloqueada"
+            )
+        if any(
+            not candle.is_valid()
+            or any(
+                value <= 0
+                for value in (candle.open, candle.high, candle.low, candle.close)
+            )
+            for candle in candles
+        ):
             raise RuntimeError("histórico MT5 contém candle inválido; simulação bloqueada")
 
         records: list[dict[str, Any]] = []
@@ -659,7 +682,14 @@ class ConfiguredEcosystemService(EcosystemService):
             for index in range(1, len(candles))
         ):
             raise RuntimeError("histórico MT5 fora de ordem ou com timestamps repetidos; backtest bloqueado")
-        if any(not candle.is_valid() for candle in candles):
+        if any(
+            not candle.is_valid()
+            or any(
+                value <= 0
+                for value in (candle.open, candle.high, candle.low, candle.close)
+            )
+            for candle in candles
+        ):
             raise RuntimeError("histórico MT5 contém candle inválido; backtest bloqueado")
 
         signals: list[HistoricalSignal] = []

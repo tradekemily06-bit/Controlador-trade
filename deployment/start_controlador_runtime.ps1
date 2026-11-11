@@ -24,7 +24,12 @@ if ($PythonExe -eq 'python' -or $PythonExe -eq 'python.exe') {
     $projectPython = Join-Path $ProjectRoot $PythonExe
     if (Test-Path -LiteralPath $projectPython -PathType Leaf) {
         $PythonExe = [System.IO.Path]::GetFullPath($projectPython)
+    } else {
+        $PythonExe = [System.IO.Path]::GetFullPath($PythonExe)
     }
+}
+if (-not [System.IO.Path]::IsPathRooted($PythonExe)) {
+    $PythonExe = [System.IO.Path]::GetFullPath($PythonExe)
 }
 if (-not (Test-Path -LiteralPath $PythonExe -PathType Leaf)) {
     throw "Python não encontrado: $PythonExe"
@@ -127,31 +132,6 @@ function Write-SupervisorStatus([string]$State, [string]$Reason) {
     $tmp = "$statusPath.tmp"
     Set-Content -LiteralPath $tmp -Value $payload -Encoding UTF8
     Move-Item -LiteralPath $tmp -Destination $statusPath -Force
-}
-
-function Sync-Mt5Panel {
-    $syncScript = Join-Path $ProjectRoot 'deployment\sync_mql5_panel.ps1'
-    if (-not (Test-Path -LiteralPath $syncScript -PathType Leaf)) {
-        Write-StartupLog 'Sincronizador MQL5 não encontrado; seguindo sem alterar o painel.'
-        return
-    }
-    try {
-        $syncOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $syncScript -ProjectRoot $ProjectRoot -PythonExe $PythonExe -Mt5TerminalPath $Mt5TerminalPath 2>&1
-        $syncExitCode = $LASTEXITCODE
-        foreach ($line in @($syncOutput)) {
-            $message = [string]$line
-            if (-not [string]::IsNullOrWhiteSpace($message)) {
-                Write-StartupLog "Sincronização MQL5: $message"
-            }
-        }
-        if ($syncExitCode -eq 0) {
-            Write-StartupLog 'Painel MQL5 sincronizado/compilado automaticamente.'
-        } else {
-            Write-StartupLog "Sincronização MQL5 terminou com código $syncExitCode; runtime seguirá protegido."
-        }
-    } catch {
-        Write-StartupLog "Falha na sincronização MQL5: $($_.Exception.Message). Runtime seguirá protegido."
-    }
 }
 
 function Test-Mt5Demo {
@@ -440,8 +420,7 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
     $demoReady = Test-Mt5Demo -WaitSeconds $Mt5WaitSeconds
 
     if ($demoReady) {
-        Write-StartupLog 'MT5 DEMO confirmado; sincronizando ponte MQL5 antes do Controlador.'
-        Sync-Mt5Panel
+        Write-StartupLog 'MT5 DEMO confirmado; iniciando Controlador sem alterar os arquivos do EA.'
         Write-StartupLog 'MT5 DEMO confirmado; iniciando Controlador.'
     } else {
         Write-StartupLog 'MT5 DEMO não confirmado; Controlador será iniciado, mas execução deve permanecer bloqueada pelo safety gate.'

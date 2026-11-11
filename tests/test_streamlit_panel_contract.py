@@ -16,6 +16,36 @@ def test_streamlit_panel_keeps_the_four_reference_navigation_areas():
     assert config["closed_state"]["trigger"] == "C"
 
 
+def test_streamlit_operational_navigation_has_six_areas_and_central_last():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]' in source
+    assert 'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]' in source
+    assert 'AREAS["CENTRAL"] = ["Financeiro", "Diário Operacional", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]' in source
+    area_order = source.split("area = st.radio(\"Áreas principais\", list(AREAS)", 1)[0]
+    assert 'for name in ("COCKPIT", "ANÁLISE", "ESTUDO")' in area_order
+    assert "NÃO CONFIRMADO" in source
+
+
+def test_streamlit_reports_uses_dedicated_read_only_reports_endpoint_and_avoids_fake_modules():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert '"Relatórios": ("Resumo operacional", "/api/reports")' in source
+    reports_view = source.split('if module_name == "Relatórios":', 1)[1].split("\n    except Exception:", 1)[0]
+    assert 'report_summary = data.get("summary", {})' in reports_view
+    assert 'data.get("records", [])' in reports_view
+    views = source.split("views = {", 1)[1].split("}", 1)[0]
+    assert '"Segurança": ("Postura de segurança do runtime", "/api/health")' in views
+    assert '"Multi-Broker": ("Visão de provedores · somente leitura", "/api/connections")' in views
+    multi_broker_view = source.split('if module_name == "Multi-Broker":', 1)[1].split('if module_name == "Segurança":', 1)[0]
+    assert "Execução multi-broker: NÃO IMPLEMENTADA" in multi_broker_view
+    security_view = source.split('if module_name == "Segurança":', 1)[1].split('if module_name == "Laboratório":', 1)[0]
+    assert 'data.get("production_storage", {})' in security_view
+    assert 'data.get("production_operation_gate", {})' in security_view
+    assert 'data.get("identity", data)' in security_view
+    assert 'identity.get("trusted_identity_provider"' in security_view
+    assert 'identity.get("tenant_isolation"' in security_view
+    assert '"NÃO CONFIRMADO"' in security_view
+
+
 def test_streamlit_panel_connects_assistant_and_fiscal_to_existing_api():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     for route in (
@@ -156,7 +186,7 @@ def test_streamlit_domestic_pending_can_distinguish_zero_from_missing_result():
 def test_streamlit_documents_missing_reference_images_outside_the_panel():
     readme = (PANEL_DIR / "README.md").read_text(encoding="utf-8")
     assert "O Figma é somente referência visual" in readme
-    assert "não estão presentes neste branch" in readme
+    assert "não estão versionadas neste branch" in readme
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert "não é a reprodução visual aprovada do Figma" not in source
     assert "As cinco imagens originais" not in source
@@ -398,7 +428,7 @@ def test_streamlit_open_panel_is_rendered_inside_a_single_shell():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert 'with st.container(key="control-hub-shell"):' in source
     assert '<div class="hub-title">Controlador-Trader</div>' in source
-    assert '<span class="demo-pill">DEMO</span>' in source
+    assert '<span class="demo-pill">NÃO CONFIRMADO</span>' in source
     assert 'AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]' in source
     assert 'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]' in source
 
@@ -447,14 +477,24 @@ def test_streamlit_leverage_control_persists_only_the_preference_without_executi
 
 
 
-def test_financeiro_overview_remains_available_with_dedicated_fiscal_and_assistant_areas():
+def test_streamlit_uses_exactly_six_main_areas_in_the_approved_order():
     config = json.loads((PANEL_DIR / "controlador_trader_referencia_visual.json").read_text(encoding="utf-8"))
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert list(config["open_state"]["tabs"]) == ["COCKPIT", "ANÁLISE", "ESTUDO", "MAIS / ADMIN"]
     assert config["open_state"]["tabs"]["MAIS / ADMIN"][0] == "Financeiro"
     assert 'AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]' in source
     assert 'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]' in source
-    assert 'AREAS["MAIS / ADMIN"] = list(_REFERENCE_TABS["MAIS / ADMIN"])' in source
+    assert 'AREAS["CENTRAL"] = ["Financeiro", "Diário Operacional", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]' in source
+    assert "list(AREAS)" in source
+    ordered_area_markers = [
+        'for name in ("COCKPIT", "ANÁLISE", "ESTUDO")',
+        'AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]',
+        'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]',
+        'AREAS["CENTRAL"] = ["Financeiro", "Diário Operacional", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]',
+    ]
+    positions = [source.index(marker) for marker in ordered_area_markers]
+    assert positions == sorted(positions)
+    assert 'AREAS["FINANCEIRO"]' not in source
     assert 'if module_name == "Financeiro":' in source
     assert "show_finance_overview()" in source
     assert 'if module == "Reserva Fiscal":' in source
@@ -467,7 +507,7 @@ def test_streamlit_readme_identifies_the_streamlit_panel_as_user_facing_and_figm
     readme = (PANEL_DIR / "README.md").read_text(encoding="utf-8")
     assert "O Figma é somente referência visual" in readme
     assert "painel de uso pretendido" in readme
-    assert "**Financeiro** continua disponível em **MAIS / ADMIN**" in readme
+    assert "**Financeiro** é um módulo dentro de **CENTRAL**" in readme
     assert "**Reserva Fiscal** possui uma área principal própria" in readme
     assert "**Assistente do Ecossistema** possui uma área principal própria" in readme
 
@@ -818,17 +858,16 @@ def test_streamlit_audit_module_uses_redacted_security_event_feed():
 
 def test_streamlit_kill_switch_view_is_dedicated_and_read_only():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
-    start = source.index('if module_name == "Kill Switch":')
-    end = source.index('if module_name == "Segurança":', start)
+    start = source.index("def show_kill_switch()")
+    end = source.index("def show_readonly_module(", start)
     view = source[start:end]
-    assert 'data.get("operational_observability", {})' in view
-    assert 'obs.get("kill_switch", {})' in view
-    assert 'obs.get("recovery", {})' in view
-    assert 'obs.get("reconciliation", {})' in view
-    assert 'reconciliation.get("unknown_request_ids", [])' in view
+    assert 'status.get("operational_observability", {})' in view
+    assert 'api("/api/runtime/real/status")' in view
+    assert 'position_close_recovery_items' in view
+    assert '"/api/runtime/real/close/reconcile"' in view
     assert "A ativação bloqueia novas execuções." in view
-    assert "não há cancelamento automático" in view
-    assert "Execução permitida: NÃO" in view
+    assert "não foram canceladas" in view
+    assert "CONSULTAR E RECONCILIAR" in view
 
 
 def test_streamlit_security_view_discloses_deployment_boundaries():
@@ -881,7 +920,7 @@ def test_streamlit_statistics_and_reports_have_distinct_aggregated_views():
     assert "controlador-trading-relatorio-operacional.csv" in reports_view
     assert "não inclui credenciais, dados bancários ou ordens" in reports_view
     assert "Execução permitida: NÃO · REAL: DESABILITADO" in statistics_view
-    assert "Execução permitida: NÃO · REAL: DESABILITADO" in reports_view
+    assert "Somente leitura · execução permitida: NÃO · REAL: DESABILITADO" in reports_view
 
 
 def test_streamlit_notifications_screen_reads_full_history_without_mutations():
@@ -1578,8 +1617,8 @@ def test_streamlit_foreign_fiscal_inputs_match_api_limits():
     assert 'max_value=1_000_000_000_000.0' in source
     assert 'placeholder="ETF, ação, Forex, CFD, cripto", max_chars=80' in source
     assert 'placeholder="EUA, Brasil, outro", max_chars=80' in source
-    assert 'instrument_signed = st.text_input("Instrumento", max_chars=80)' in source
-    assert 'jurisdiction_signed = st.text_input("Jurisdição", max_chars=80)' in source
+    assert 'instrument_signed = st.text_input("Instrumento", max_chars=80, key="foreign_signed_instrument")' in source
+    assert 'jurisdiction_signed = st.text_input("Jurisdição", max_chars=80, key="foreign_signed_jurisdiction")' in source
     assert '_text(payload, "instrument", 80, required=True)' in api_source
     assert '_text(payload, "jurisdiction", 80, required=True)' in api_source
     assert '_positive(payload.get("original_amount"), "original_amount")' in api_source
@@ -1626,18 +1665,20 @@ def test_streamlit_fiscal_review_forms_match_queue_validation_limits():
 
 def test_streamlit_kill_switch_requires_explicit_confirmation_and_has_no_deactivation():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
-    start = source.index('if module_name == "Kill Switch":')
-    end = source.index('if module_name == "Segurança":', start)
+    start = source.index("def show_kill_switch()")
+    end = source.index("def show_readonly_module(", start)
     view = source[start:end]
 
-    assert 'activate_kill_switch_form' in view
-    assert 'emergency_confirm = st.checkbox(' in view
-    assert '"confirmed": True' in view
+    assert 'guarded_kill_switch_activation_form' in view
+    assert 'confirmed = st.checkbox(' in view
+    assert '("confirmed", True)' in source
     assert '"/api/runtime/kill-switch/activate"' in view
-    assert 'if state != "ACTIVE":' in view
-    assert 'A desativação não está disponível nesta interface.' in view
-    assert 'A ativação não as cancela.' in view
-    assert 'st.caption("Execução permitida: NÃO · REAL: DESABILITADO")' in view
+    assert 'kill_state == "ACTIVE"' in view
+    assert 'deactivation' in view.lower()
+    assert 'real_close_reconcile_form' in view
+    assert '"request_id": selected_request' in view
+    assert '"external_id": selected_item["external_id"]' in view
+    assert 'CONSULTAR E RECONCILIAR' in view
 
 
 def test_streamlit_dynamic_api_actions_have_matching_runtime_route_prefixes():
@@ -1683,8 +1724,8 @@ def test_streamlit_kill_switch_exposes_read_only_position_close_reconciliation()
     panel_source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     runtime_source = (PANEL_DIR.parent / "app.py").read_text(encoding="utf-8")
     controller_source = (PANEL_DIR.parent / "core" / "real_runtime_controller.py").read_text(encoding="utf-8")
-    start = panel_source.index('if module_name == "Kill Switch":')
-    end = panel_source.index('if module_name == "Segurança":', start)
+    start = panel_source.index("def show_kill_switch()")
+    end = panel_source.index("def show_readonly_module(", start)
     view = panel_source[start:end]
     route_start = runtime_source.index('if path == "/api/runtime/real/close/reconcile" and method == "POST":')
     route_end = runtime_source.index('if path == "/api/runtime/real/close" and method == "POST":', route_start)
@@ -2039,7 +2080,7 @@ def test_every_reference_navigation_module_has_a_real_panel_handler_or_view():
         for module in values
     }
     modules.discard("MT5 DEMO / Simulação")
-    modules.update({"Ambiente MT5 DEMO", "Reserva Fiscal", "Assistente do Ecossistema"})
+    modules.update({"Ambiente MT5 DEMO", "Reserva Fiscal", "Assistente do Ecossistema", "Diário Operacional"})
     handlers = set(re.findall(r'module_name == "([^"]+)"', source))
     views_start = source.index("def show_readonly_module")
     views_end = source.index('    if module_name == "Análise de Mercado":', views_start)
@@ -2096,3 +2137,31 @@ def test_streamlit_fiscal_monthly_planning_validates_and_labels_the_annual_estim
     assert '"Reserva estimada": money(item["reserve_amount_brl"])' in source
     assert "não compensa prejuízos e não desconta créditos de IRRF" in source
     assert "Os valores não foram estimados nem substituídos por zeros." in source
+
+
+def test_mt5_native_panel_uses_six_areas_and_explicit_module_routes():
+    source = (
+        (PANEL_DIR.parent / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5")
+        .read_text(encoding="utf-8")
+    )
+    assert 'string area_labels[6]={"COCKPIT","ANÁLISE","ESTUDO","FISCAL","ASSIST.","CENTRAL"};' in source
+    for area in (
+        'SelectArea("COCKPIT")',
+        'SelectArea("ANÁLISE")',
+        'SelectArea("ESTUDO")',
+        'SelectArea("RESERVA FISCAL")',
+        'SelectArea("ASSISTENTE DO ECOSSISTEMA")',
+        'SelectArea("CENTRAL")',
+    ):
+        assert area in source
+    assert 'active_view=="UNAVAILABLE"' in source
+    assert 'return "UNAVAILABLE";' in source
+    assert 'if(area=="CENTRAL"){' in source
+    assert 'if(module=="Configurações") return "CONFIG";' in source
+    assert 'if(module=="Conexões") return "CONNECTIONS";' in source
+    assert 'if(module=="Multi-Broker") return "CONNECTIONS";' in source
+    assert 'if(module=="Relatórios") return "REPORTS";' in source
+    assert 'if(module=="Auditoria") return "AUDIT";' in source
+    assert 'if(module=="Financeiro") return "FINANCE";' in source
+    assert 'Obj("V1")' not in source
+    assert 'Obj("V9")' not in source

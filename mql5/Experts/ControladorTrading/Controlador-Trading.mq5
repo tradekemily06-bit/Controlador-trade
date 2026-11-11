@@ -6,14 +6,28 @@
 input string InpRuntimeUrl = "http://127.0.0.1:8000";
 input int    InpRefreshSeconds = 3;
 input int    InpPanelWidth = 360;
-input int    InpPanelHeight = 440;
+input int    InpPanelHeight = 500;
 
 string P="CTP_";
 string last_cycle_id="";
 string last_external_id="";
 bool cycle_identity_store_valid=true;
 string active_view="COCKPIT";
+string active_area="COCKPIT";
+string active_module="Operação";
 string assistant_conversation_id="";
+string assistant_answer="";
+int assistant_answer_page=0;
+string memory_records[];
+int memory_page=0;
+bool memory_loaded=false;
+string onboarding_steps[];
+string onboarding_purposes[];
+string onboarding_actions[];
+string onboarding_title="Primeiros passos no Ecossistema";
+string onboarding_completion="Roteiro educativo concluido.";
+int onboarding_page=0;
+bool onboarding_valid=false;
 bool assistant_consent_armed=false;
 string selected_mode="DEMO";
 bool leverage_enabled=false;
@@ -32,6 +46,7 @@ RecoveryPosition recovery_items[];
 int recovery_selected=0;
 bool recovery_inventory_valid=false;
 bool recovery_close_armed=false;
+bool kill_switch_confirm_armed=false;
 string recovery_message="Inventario nao consultado.";
 double panel_sx=1.0;
 double panel_sy=1.0;
@@ -84,7 +99,7 @@ string Obj(string suffix){ return P+suffix; }
 string PanelVisibilityKey(){ return P+IntegerToString(ChartID())+"_PANEL_VISIBLE"; }
 
 int SX(int x){ return panel_x+(int)MathRound(x*panel_sx); }
-int SY(int y){ return (int)MathRound(18+y*panel_sy); }
+int SY(int y){ if(y>=104) y+=34; return (int)MathRound(18+y*panel_sy); }
 int SW(int w){ return MathMax(1,(int)MathRound(w*panel_sx)); }
 int SH(int h){ return MathMax(1,(int)MathRound(h*panel_sy)); }
 void RefreshPanelLayout(){
@@ -95,7 +110,7 @@ void RefreshPanelLayout(){
    panel_height=MathMin(InpPanelHeight,MathMax(280,(int)MathRound(ch*0.50)));
    panel_x=MathMax(12,cw-panel_width-12);
    panel_sx=(double)panel_width/430.0;
-   panel_sy=(double)panel_height/620.0;
+   panel_sy=(double)panel_height/670.0;
    string bg=Obj("BG");
    if(ObjectFind(0,bg)>=0){
       ObjectSetInteger(0,bg,OBJPROP_XDISTANCE,panel_x);
@@ -215,6 +230,143 @@ void LoadPanelVisibility(){
    }
    RefreshPanelToggle();
 }
+
+int AreaModuleCount(string area){
+   if(area=="COCKPIT" || area=="ESTUDO") return 6;
+   if(area=="CENTRAL") return 7;
+   if(area=="ANÁLISE") return 4;
+   return 1;
+}
+string AreaModuleName(string area,int index){
+   if(area=="COCKPIT"){
+      if(index==0) return "Operação";
+      if(index==1) return "Motor de Decisão";
+      if(index==2) return "Gestão de Risco";
+      if(index==3) return "Notificações";
+      if(index==4) return "Ambiente MT5 DEMO / Simulação";
+      if(index==5) return "Kill Switch";
+   }else if(area=="ANÁLISE"){
+      if(index==0) return "Análise de Mercado";
+      if(index==1) return "Memória";
+      if(index==2) return "Estatísticas";
+      if(index==3) return "Relatórios";
+   }else if(area=="ESTUDO"){
+      if(index==0) return "Laboratório";
+      if(index==1) return "Replay";
+      if(index==2) return "Simulador";
+      if(index==3) return "Aprendizado";
+      if(index==4) return "Descobertas";
+      if(index==5) return "Escola / Tutorial / Onboarding";
+   }else if(area=="RESERVA FISCAL") return "Reserva Fiscal";
+   else if(area=="ASSISTENTE DO ECOSSISTEMA") return "Assistente do Ecossistema";
+   else if(area=="CENTRAL"){
+      if(index==0) return "Financeiro";
+      if(index==1) return "Diário Operacional";
+      if(index==2) return "Configurações";
+      if(index==3) return "Auditoria";
+      if(index==4) return "Segurança";
+      if(index==5) return "Conexões";
+      if(index==6) return "Multi-Broker";
+   }
+   return "";
+}
+string AreaModuleLabel(string module){
+   if(module=="Operação") return "OPER.";
+   if(module=="Motor de Decisão") return "MOTOR";
+   if(module=="Gestão de Risco") return "RISCO";
+   if(module=="Notificações") return "ALERT.";
+   if(module=="Ambiente MT5 DEMO / Simulação") return "MT5 DEMO";
+   if(module=="Kill Switch") return "KILL";
+   if(module=="Análise de Mercado") return "MERCADO";
+   if(module=="Memória") return "MEMÓRIA";
+   if(module=="Estatísticas") return "ESTAT.";
+   if(module=="Relatórios") return "RELAT.";
+   if(module=="Laboratório") return "LAB";
+   if(module=="Replay") return "REPLAY";
+   if(module=="Simulador") return "SIMUL.";
+   if(module=="Aprendizado") return "APREND.";
+   if(module=="Descobertas") return "DESCOB.";
+   if(module=="Escola / Tutorial / Onboarding") return "ESCOLA";
+   if(module=="Reserva Fiscal") return "RESERVA";
+   if(module=="Assistente do Ecossistema") return "ASSIST.";
+   if(module=="Financeiro") return "FINANC.";
+   if(module=="Diário Operacional") return "DIARIO";
+   if(module=="Configurações") return "CONFIG";
+   if(module=="Auditoria") return "AUDIT.";
+   if(module=="Segurança") return "SEGUR.";
+   if(module=="Conexões") return "CONEX.";
+   if(module=="Multi-Broker") return "BROKER";
+   return "—";
+}
+string ViewForModule(string area,string module){
+   if(area=="COCKPIT"){
+      if(module=="Operação") return "COCKPIT";
+      if(module=="Motor de Decisão") return "DECISION";
+      if(module=="Kill Switch") return "KILL_SWITCH";
+      if(module=="Gestão de Risco") return "RISK";
+      if(module=="Ambiente MT5 DEMO / Simulação") return "ENVIRONMENT";
+      if(module=="Notificações") return "NOTIF";
+   }else if(area=="ANÁLISE"){
+      if(module=="Análise de Mercado") return "ANALISE";
+      if(module=="Memória") return "MEMORIA";
+      if(module=="Estatísticas") return "STATS";
+      if(module=="Relatórios") return "REPORTS";
+   }else if(area=="ESTUDO"){
+      if(module=="Laboratório") return "LAB";
+      if(module=="Replay") return "REPLAY";
+      if(module=="Simulador") return "SIMULATOR";
+      if(module=="Aprendizado") return "ENSINO";
+      if(module=="Escola / Tutorial / Onboarding") return "ONBOARDING";
+      if(module=="Descobertas") return "DISCOVERIES";
+   }else if(area=="RESERVA FISCAL") return "RESERVA";
+   else if(area=="ASSISTENTE DO ECOSSISTEMA") return "ASSISTENTE";
+   else if(area=="CENTRAL"){
+      if(module=="Financeiro") return "FINANCE";
+      if(module=="Diário Operacional") return "JOURNAL";
+      if(module=="Configurações") return "CONFIG";
+      if(module=="Conexões") return "CONNECTIONS";
+      if(module=="Multi-Broker") return "CONNECTIONS";
+      if(module=="Segurança") return "SECURITY";
+      if(module=="Auditoria") return "AUDIT";
+   }
+   return "UNAVAILABLE";
+}
+void RenderNavigation(){
+   string area_labels[6]={"COCKPIT","ANÁLISE","ESTUDO","FISCAL","ASSIST.","CENTRAL"};
+   for(int i=0;i<6;i++){
+      string area_button=Obj("A"+IntegerToString(i+1));
+      SetButton(area_button,area_labels[i],18+i*54,67,52,25);
+      bool selected=(i==0 && active_area=="COCKPIT") || (i==1 && active_area=="ANÁLISE") || (i==2 && active_area=="ESTUDO") || (i==3 && active_area=="RESERVA FISCAL") || (i==4 && active_area=="ASSISTENTE DO ECOSSISTEMA") || (i==5 && active_area=="CENTRAL");
+      ObjectSetInteger(0,area_button,OBJPROP_BGCOLOR,selected?C'24,86,72':C'35,43,58');
+   }
+   for(int i=0;i<7;i++){
+      string name=AreaModuleName(active_area,i);
+      string button=Obj("M"+IntegerToString(i+1));
+      if(i<AreaModuleCount(active_area) && name!="")
+         SetButton(button,AreaModuleLabel(name),18+i*54,98,52,25);
+      if(i<AreaModuleCount(active_area) && name!="") ObjectSetInteger(0,button,OBJPROP_BGCOLOR,(name==active_module)?C'24,86,72':C'35,43,58');
+      else if(ObjectFind(0,button)>=0) ObjectDelete(0,button);
+   }
+}
+void SelectArea(string area){
+   kill_switch_confirm_armed=false;
+   assistant_consent_armed=false;
+   active_area=area;
+   active_module=AreaModuleName(active_area,0);
+   active_view=ViewForModule(active_area,active_module);
+   Panel();
+   RenderView();
+}
+void SelectModule(int index){
+   if(index<0 || index>=AreaModuleCount(active_area)) return;
+   kill_switch_confirm_armed=false;
+   assistant_consent_armed=false;
+   active_module=AreaModuleName(active_area,index);
+   active_view=ViewForModule(active_area,active_module);
+   Panel();
+   RenderView();
+}
+
 void Panel(){
    string bg=Obj("BG");
    if(ObjectFind(0,bg)<0) ObjectCreate(0,bg,OBJ_RECTANGLE_LABEL,0,0,0);
@@ -233,18 +385,10 @@ void Panel(){
 
    SetLabel(Obj("TITLE"),"Controlador Trading",20,27,13,clrWhite);
    SetLabel(Obj("SUB"),"ECOSSISTEMA • MT5 • DEMO / SIMULACAO",20,47,9,C'150,165,185');
-   SetButton(Obj("V1"),"C",18,67,42,25);
-   SetButton(Obj("V2"),"A",64,67,42,25);
-   SetButton(Obj("V3"),"M",110,67,42,25);
-   SetButton(Obj("V4"),"L",156,67,42,25);
-   SetButton(Obj("V5"),"E",202,67,42,25);
-   SetButton(Obj("V6"),"N",248,67,42,25);
-   SetButton(Obj("V7"),"G",294,67,42,25);
-   SetButton(Obj("V8"),"RF",340,67,42,25);
-   SetButton(Obj("V9"),"AE",386,67,42,25);
+   RenderNavigation();
 
-   SetLabel(Obj("RUNTIME"),"Sistema: verificando...",20,104,10,C'255,209,102');
-   SetLabel(Obj("MODE"),"Modo: DEMO / SIMULACAO",20,124,10,C'88,214,141');
+   SetLabel(Obj("RUNTIME"),"API ...",350,27,8,C'255,209,102');
+   SetLabel(Obj("MODE"),"MODO ?",350,47,8,C'88,214,141');
    SetLabel(Obj("SIGNAL"),"AGUARDAR",20,154,22,C'255,209,102');
    SetLabel(Obj("SCORE"),"Qualidade: —%",20,184,10,clrWhite);
    SetLabel(Obj("REASON"),"Aguardando analise.",20,204,9,C'180,190,205');
@@ -367,6 +511,28 @@ bool ExtractJsonArrayObjects(string json,string arrayKey,string &objects[]){
       have_item=true; after_comma=false;
    }
    return false;
+}
+string JsonRawObject(string json,string key){
+   int valueStart=JsonValueStart(json,key);
+   if(valueStart<0 || valueStart>=StringLen(json) || StringGetCharacter(json,valueStart)!='{') return "";
+   int depth=0;
+   bool inString=false,escaped=false;
+   for(int i=valueStart;i<StringLen(json);i++){
+      ushort ch=StringGetCharacter(json,i);
+      if(inString){
+         if(escaped) escaped=false;
+         else if(ch=='\\') escaped=true;
+         else if(ch=='"') inString=false;
+      }else{
+         if(ch=='"') inString=true;
+         else if(ch=='{') depth++;
+         else if(ch=='}'){
+            depth--;
+            if(depth==0) return StringSubstr(json,valueStart,i-valueStart+1);
+         }
+      }
+   }
+   return "";
 }
 string JsonObjectValue(string json,string objectKey,string key){
    int valueStart=JsonValueStart(json,objectKey);
@@ -595,6 +761,98 @@ void RefreshLearning(){
       SetLabel(Obj("INFO1"),"Ensino indisponivel",20,361,9,C'255,118,118');
    }
 }
+
+string CompactOnboardingText(string value,int max_chars=62){
+   StringTrimLeft(value);
+   StringTrimRight(value);
+   if(StringLen(value)<=max_chars) return value;
+   int cut=max_chars-3;
+   for(int i=cut;i>max_chars/2;i--){
+      if(StringGetCharacter(value,i)==' '){ cut=i; break; }
+   }
+   return StringSubstr(value,0,cut)+"...";
+}
+void RenderOnboardingPage(){
+   int count=ArraySize(onboarding_steps);
+   int page_size=1;
+   int page_count=(count+page_size-1)/page_size;
+   if(page_count<1) page_count=1;
+   onboarding_page=MathMax(0,MathMin(onboarding_page,page_count-1));
+   int idx=onboarding_page;
+   SetLabel(Obj("INFO1"),idx<count?onboarding_steps[idx]:"",20,361,8,C'205,215,230');
+   SetLabel(Obj("INFO2"),idx<count?"OBJETIVO: "+CompactOnboardingText(onboarding_purposes[idx],62):"",20,381,7,C'205,215,230');
+   SetLabel(Obj("INFO3"),idx<count?"PROXIMO: "+CompactOnboardingText(onboarding_actions[idx],62):"",20,401,7,C'205,215,230');
+   SetLabel(Obj("INFO4"),CompactOnboardingText(onboarding_completion,70),20,421,7,C'150,165,185');
+   SetLabel(Obj("INFO5"),"Execucao: NAO • REAL: BLOQUEADO",20,441,8,C'255,155,155');
+   SetButton(Obj("ONBOARD_PREV"),"ANTERIOR",20,470,104,26);
+   SetLabel(Obj("ONBOARD_PAGE"),"ETAPAS "+IntegerToString(onboarding_page+1)+"/"+IntegerToString(page_count),138,476,8,C'150,165,185');
+   SetButton(Obj("ONBOARD_NEXT"),"PROXIMA",296,470,114,26);
+   ObjectSetInteger(0,Obj("ONBOARD_PREV"),OBJPROP_STATE,false);
+   ObjectSetInteger(0,Obj("ONBOARD_NEXT"),OBJPROP_STATE,false);
+   ObjectSetInteger(0,Obj("ONBOARD_PREV"),OBJPROP_BGCOLOR,onboarding_page>0?C'35,43,58':C'20,25,32');
+   ObjectSetInteger(0,Obj("ONBOARD_NEXT"),OBJPROP_BGCOLOR,onboarding_page<page_count-1?C'35,43,58':C'20,25,32');
+}
+void RefreshOnboarding(){
+   string response; int code=0;
+   if(!Http("GET","/api/onboarding","",response,code)){
+      onboarding_valid=false;
+      ArrayResize(onboarding_steps,0);
+      ArrayResize(onboarding_purposes,0);
+      ArrayResize(onboarding_actions,0);
+      SetLabel(Obj("INFO1"),"Onboarding indisponivel no runtime.",20,361,8,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Nenhuma etapa foi marcada ou alterada.",20,381,8,C'205,215,230');
+      return;
+   }
+   string guide_json=JsonRawObject(response,"guide");
+   string guide=JsonValue(guide_json,"guide_id");
+   string authorized=JsonValue(guide_json,"execution_authorized");
+   onboarding_title=JsonValue(guide_json,"title");
+   onboarding_completion=JsonValue(guide_json,"completion_message");
+   string objects[];
+   if(guide_json=="" || guide=="" || authorized!="false" || !ExtractJsonArrayObjects(guide_json,"steps",objects)){
+      onboarding_valid=false;
+      ArrayResize(onboarding_steps,0);
+      ArrayResize(onboarding_purposes,0);
+      ArrayResize(onboarding_actions,0);
+      SetLabel(Obj("INFO1"),"Roteiro invalido ou sem bloqueio explicito.",20,361,8,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Execucao permanece nao autorizada.",20,381,8,C'255,155,155');
+      return;
+   }
+   ArrayResize(onboarding_steps,0);
+   ArrayResize(onboarding_purposes,0);
+   ArrayResize(onboarding_actions,0);
+   for(int i=0;i<ArraySize(objects);i++){
+      string step_id=JsonValue(objects[i],"step_id");
+      string title=JsonValue(objects[i],"title");
+      string location=JsonValue(objects[i],"location");
+      string purpose=JsonValue(objects[i],"purpose");
+      if(step_id=="" || title=="" || purpose==""){
+         ArrayResize(onboarding_steps,0);
+         ArrayResize(onboarding_purposes,0);
+         ArrayResize(onboarding_actions,0);
+         onboarding_valid=false;
+         SetLabel(Obj("INFO1"),"Etapa inconsistente; roteiro bloqueado.",20,361,8,C'255,118,118');
+         return;
+      }
+      string line=IntegerToString(i+1)+". "+title+" ["+location+"]";
+      if(StringLen(line)>66) line=StringSubstr(line,0,63)+"...";
+      int n=ArraySize(onboarding_steps);
+      if(ArrayResize(onboarding_steps,n+1)!=n+1){ onboarding_valid=false; return; }
+      if(ArrayResize(onboarding_purposes,n+1)!=n+1){ onboarding_valid=false; return; }
+      if(ArrayResize(onboarding_actions,n+1)!=n+1){ onboarding_valid=false; return; }
+      onboarding_steps[n]=line;
+      onboarding_purposes[n]=purpose;
+      onboarding_actions[n]=JsonValue(objects[i],"action_hint");
+   }
+   if(ArraySize(onboarding_steps)==0){
+      onboarding_valid=false;
+      SetLabel(Obj("INFO1"),"Nenhuma etapa de onboarding disponivel.",20,361,8,C'255,118,118');
+      return;
+   }
+   onboarding_valid=true;
+   RenderOnboardingPage();
+}
+
 string AssistantConversationFileName(){
    return P+"assistant-"+IntegerToString(ChartID())+".txt";
 }
@@ -627,7 +885,6 @@ void RefreshFiscal(){
    SetLabel(Obj("INFO3"),"Pendencias exterior: "+(foreign_total==""?"indisponivel":foreign_total)+" • sem calculo",20,401,9,C'205,215,230');
    SetLabel(Obj("INFO4"),"Brasil/exterior permanecem em filas separadas.",20,421,9,C'205,215,230');
    SetLabel(Obj("INFO5"),"Estimativa de planejamento; nao e imposto apurado.",20,441,9,C'255,209,102');
-   SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • Reserva Fiscal somente leitura",20,520,8,C'255,155,155');
 }
 void RefreshAssistantStatus(){
    string r; int code=0;
@@ -640,13 +897,406 @@ void RefreshAssistantStatus(){
    SetLabel(Obj("INFO1"),available=="true"?"Assistente: provedor configurado.":"Assistente: provedor indisponivel.",20,361,9,available=="true"?C'88,214,141':C'255,118,118');
    SetLabel(Obj("INFO2"),"Chat somente leitura; consentimento exigido a cada envio.",20,381,9,C'205,215,230');
 }
+void RenderMemoryPage(){
+   int count=ArraySize(memory_records);
+   int page_size=5;
+   int page_count=(count+page_size-1)/page_size;
+   if(page_count<1) page_count=1;
+   memory_page=MathMax(0,MathMin(memory_page,page_count-1));
+   for(int row=0;row<5;row++){
+      int idx=memory_page*page_size+row;
+      string line=(idx<count?memory_records[idx]:"");
+      SetLabel(Obj("INFO"+IntegerToString(row+1)),line,20,361+row*20,8,line==""?C'100,110,125':C'205,215,230');
+   }
+   SetButton(Obj("MEMORY_PREV"),"ANTERIOR",20,470,104,26);
+   SetLabel(Obj("MEMORY_PAGE"),"MEMORIA "+IntegerToString(memory_page+1)+"/"+IntegerToString(page_count)+" • "+IntegerToString(count)+" REG.",138,476,8,C'150,165,185');
+   SetButton(Obj("MEMORY_NEXT"),"PROXIMA",296,470,114,26);
+   ObjectSetInteger(0,Obj("MEMORY_PREV"),OBJPROP_STATE,false);
+   ObjectSetInteger(0,Obj("MEMORY_NEXT"),OBJPROP_STATE,false);
+   ObjectSetInteger(0,Obj("MEMORY_PREV"),OBJPROP_BGCOLOR,memory_page>0?C'35,43,58':C'20,25,32');
+   ObjectSetInteger(0,Obj("MEMORY_NEXT"),OBJPROP_BGCOLOR,memory_page<page_count-1?C'35,43,58':C'20,25,32');
+}
+void RefreshMemory(){
+   string r; int code=0;
+   if(!Http("GET","/api/memory?limit=50","",r,code)){
+      memory_loaded=false;
+      SetLabel(Obj("INFO1"),"Memoria: runtime indisponivel",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Historico nao foi atualizado.",20,381,9,C'205,215,230');
+      return;
+   }
+   string objects[];
+   if(!ExtractJsonArrayObjects(r,"records",objects)){
+      memory_loaded=false;
+      SetLabel(Obj("INFO1"),"Memoria: resposta invalida",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Formato de historico nao reconhecido.",20,381,9,C'205,215,230');
+      return;
+   }
+   ArrayResize(memory_records,0);
+   for(int i=0;i<ArraySize(objects);i++){
+      string id=JsonValue(objects[i],"decision_id");
+      string created=JsonValue(objects[i],"created_at");
+      string symbol=JsonValue(objects[i],"symbol");
+      string timeframe=JsonValue(objects[i],"timeframe");
+      string signal=JsonValue(objects[i],"signal");
+      string score=JsonValue(objects[i],"score");
+      string outcome=JsonValue(objects[i],"outcome");
+      string confirmed=JsonValue(objects[i],"confirmed");
+      if(outcome=="null") outcome="";
+      if(symbol=="null") symbol="";
+      if(timeframe=="null") timeframe="";
+      if(score=="null") score="";
+      if(id=="" || signal==""){
+         ArrayResize(memory_records,0);
+         memory_loaded=false;
+         SetLabel(Obj("INFO1"),"Memoria: registro inconsistente",20,361,9,C'255,118,118');
+         return;
+      }
+      string date=StringSubstr(created,0,16);
+      StringReplace(date,"T"," ");
+      string line=date+" "+(symbol==""?"—":symbol)+" "+(timeframe==""?"—":timeframe)+" "+signal+" "+(score==""?"—":score)+" "+(outcome==""?"ABERTA":outcome);
+      if(confirmed!="true") line+=" • NAO CONFIRM.";
+      int n=ArraySize(memory_records);
+      if(ArrayResize(memory_records,n+1)!=n+1){ memory_loaded=false; return; }
+      memory_records[n]=line;
+   }
+   memory_loaded=true;
+   memory_page=0;
+   if(ArraySize(memory_records)==0){
+      for(int i=0;i<5;i++) SetLabel(Obj("INFO"+IntegerToString(i+1)),i==0?"Nenhum registro de decisao encontrado.":"",20,361+i*20,8,C'205,215,230');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,8,C'255,155,155');
+   }else RenderMemoryPage();
+}
+void RefreshStatistics(){
+   string r; int code=0;
+   if(!Http("GET","/api/statistics","",r,code)){
+      SetLabel(Obj("INFO1"),"Estatisticas: runtime indisponivel",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Nenhum dado foi alterado.",20,381,9,C'205,215,230');
+      return;
+   }
+   string total=JsonValue(r,"total");
+   string actionable=JsonValue(r,"actionable");
+   string rate=JsonValue(r,"win_rate");
+   string wins=JsonValue(r,"wins");
+   string losses=JsonValue(r,"losses");
+   string draws=JsonValue(r,"draws");
+   string opened=JsonValue(r,"open");
+   string daily=JsonObjectValue(r,"periods","daily");
+   string weekly=JsonObjectValue(r,"periods","weekly");
+   string monthly=JsonObjectValue(r,"periods","monthly");
+   string daily_total=JsonValue(daily,"total");
+   string weekly_total=JsonValue(weekly,"total");
+   string monthly_total=JsonValue(monthly,"total");
+   SetLabel(Obj("INFO1"),"Decisoes: "+(total==""?"nao informado":total)+" • acionaveis: "+(actionable==""?"nao informado":actionable),20,361,8,C'205,215,230');
+   SetLabel(Obj("INFO2"),"Win rate: "+(rate==""?"nao informado":rate)+"% • WIN: "+(wins==""?"?":wins)+" LOSS: "+(losses==""?"?":losses),20,381,8,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Empates: "+(draws==""?"nao informado":draws)+" • Abertas: "+(opened==""?"nao informado":opened),20,401,9,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Hoje: "+(daily_total==""?"?":daily_total)+" • Semana: "+(weekly_total==""?"?":weekly_total)+" • Mes: "+(monthly_total==""?"?":monthly_total),20,421,8,C'205,215,230');
+   SetLabel(Obj("INFO5"),"Estatisticas historicas; nao sao garantia de resultado.",20,441,8,C'255,209,102');
+}
+void RefreshKillSwitchStatus(){
+   string r; int code=0;
+   if(!Http("GET","/api/health","",r,code)){
+      SetLabel(Obj("INFO1"),"Kill Switch: estado nao confirmado",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Falha de consulta nao significa protecao inativa.",20,381,8,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Nenhuma acao foi executada.",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Ativacao exige motivo e confirmacao.",20,421,8,C'205,215,230');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
+      return;
+   }
+   string kill=JsonObjectValue(r,"operational_observability","kill_switch");
+   string enabled=JsonValue(kill,"enabled");
+   string state=JsonValue(kill,"state");
+   string reason=JsonValue(kill,"reason");
+   if(enabled=="true" || state=="ACTIVE"){
+      SetLabel(Obj("INFO1"),"KILL SWITCH ATIVO • novas execucoes bloqueadas",20,361,8,C'88,214,141');
+      SetLabel(Obj("INFO2"),"Motivo: "+StringSubstr(reason==""?"nao informado":reason,0,55),20,381,8,C'205,215,230');
+   }else if(enabled=="false" || state=="CLEAR"){
+      SetLabel(Obj("INFO1"),"Kill Switch confirmado como inativo.",20,361,9,C'255,209,102');
+      SetLabel(Obj("INFO2"),"A ativacao bloqueara novas execucoes.",20,381,8,C'205,215,230');
+   }else{
+      SetLabel(Obj("INFO1"),"Estado do Kill Switch nao confirmado.",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Nao interprete ausencia de estado como inativo.",20,381,8,C'205,215,230');
+   }
+   SetLabel(Obj("INFO3"),"Confirmacao manual obrigatoria antes da ativacao.",20,401,8,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Solicitacoes ja encaminhadas nao sao canceladas.",20,421,8,C'205,215,230');
+   SetLabel(Obj("INFO5"),"Acao irreversivel nesta interface • REAL bloqueado.",20,441,7,C'255,155,155');
+}
+void ActivateKillSwitch(){
+   if(!kill_switch_confirm_armed){
+      SetLabel(Obj("INFO3"),"Confirme a ativacao antes de continuar.",20,401,8,C'255,118,118');
+      return;
+   }
+   string reason=ObjectFind(0,Obj("KILL_REASON"))>=0?ObjectGetString(0,Obj("KILL_REASON"),OBJPROP_TEXT):"";
+   StringTrimLeft(reason); StringTrimRight(reason);
+   if(reason=="" || StringLen(reason)>240){
+      SetLabel(Obj("INFO3"),"Informe um motivo de 1 a 240 caracteres.",20,401,8,C'255,118,118');
+      return;
+   }
+   string body="{\"reason\":\""+JsonEscape(reason)+"\",\"confirmed\":true}";
+   kill_switch_confirm_armed=false;
+   SetButton(Obj("KILL_CONFIRM"),"CONFIRMAR BLOQUEIO",20,320,172,30);
+   string response; int code=0;
+   if(!Http("POST","/api/runtime/kill-switch/activate",body,response,code)){
+      SetLabel(Obj("INFO1"),"Ativacao nao confirmada pelo runtime.",20,361,8,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Consulte o estado antes de repetir.",20,381,8,C'205,215,230');
+      return;
+   }
+   string activated=JsonValue(response,"activated");
+   string execution=JsonValue(response,"execution_allowed");
+   kill_switch_confirm_armed=false;
+   SetButton(Obj("KILL_CONFIRM"),"CONFIRMAR BLOQUEIO",20,320,172,30);
+   if(activated=="true" && execution=="false"){
+      SetLabel(Obj("INFO1"),"KILL SWITCH ATIVADO • novas execucoes bloqueadas",20,361,8,C'88,214,141');
+      SetLabel(Obj("INFO2"),"Solicitacoes em andamento exigem reconciliacao.",20,381,8,C'255,209,102');
+      SetLabel(Obj("INFO3"),"A interface nao oferece desativacao.",20,401,8,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Verifique pendencias no modulo de recuperacao.",20,421,8,C'205,215,230');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,8,C'255,155,155');
+   }else{
+      SetLabel(Obj("INFO1"),"Runtime nao confirmou o bloqueio.",20,361,9,C'255,118,118');
+      RefreshKillSwitchStatus();
+   }
+}
+void RefreshDecisionView(){
+   string r; int code=0;
+   if(!Http("GET","/api/runtime/analysis/latest","",r,code)){
+      SetLabel(Obj("INFO1"),"Leitura decisao: runtime indisponivel",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Nenhuma decisao nova foi criada.",20,381,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Ultima leitura nao confirmada.",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Somente leitura.",20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
+      return;
+   }
+   string available=JsonValue(r,"available");
+   string signal=JsonObjectValue(r,"analysis","signal");
+   if(signal=="") signal=JsonObjectValue(r,"analysis","decision");
+   string quality=JsonObjectValue(r,"analysis","quality");
+   string score=JsonValue(quality,"score");
+   string reason=JsonObjectValue(r,"analysis","reason");
+   string symbol=JsonObjectValue(r,"analysis","symbol");
+   string timeframe=JsonObjectValue(r,"analysis","timeframe");
+   if(available!="true"){
+      SetLabel(Obj("INFO1"),"Motor: nenhuma analise disponivel",20,361,9,C'255,209,102');
+      SetLabel(Obj("INFO2"),"Sinal: AGUARDAR",20,381,9,C'255,209,102');
+      SetLabel(Obj("INFO3"),"Pontuacao: nao informada",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Ativo/periodo: nao informados",20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"Consulta somente leitura; REAL bloqueado.",20,441,8,C'255,155,155');
+      return;
+   }
+   SetLabel(Obj("INFO1"),"Sinal: "+(signal==""?"AGUARDAR":signal),20,361,9,C'205,215,230');
+   SetLabel(Obj("INFO2"),"Pontuacao: "+(score==""?"nao informada":score),20,381,9,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Ativo: "+(symbol==""?"nao informado":symbol)+" • periodo: "+(timeframe==""?"nao informado":timeframe),20,401,8,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Motivo: "+StringSubstr(reason==""?"nao informado":reason,0,55),20,421,8,C'205,215,230');
+   SetLabel(Obj("INFO5"),"Ultima decisao consultada; nao cria ordem. REAL bloqueado.",20,441,7,C'255,155,155');
+}
+void RefreshRiskView(){
+   string r; int code=0;
+   if(!Http("GET","/api/risk","",r,code)){
+      SetLabel(Obj("INFO1"),"Avaliacao de risco indisponivel.",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Nenhuma permissao operacional foi concedida.",20,381,9,C'205,215,230');
+      return;
+   }
+   string allowed=JsonValue(r,"allowed");
+   string reason=JsonValue(r,"reason");
+   string daily=JsonObjectValue(r,"configured_limits","daily_loss_limit");
+   string operations=JsonObjectValue(r,"configured_limits","max_operations");
+   string streak=JsonObjectValue(r,"configured_limits","max_consecutive_losses");
+   SetLabel(Obj("INFO1"),"Avaliacao: "+(allowed=="true"?"dentro dos limites":"bloqueio ativo"),20,361,9,allowed=="true"?C'88,214,141':C'255,118,118');
+   SetLabel(Obj("INFO2"),"Motivo: "+(reason==""?"nao informado":StringSubstr(reason,0,55)),20,381,8,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Limite perda diaria: "+(daily==""?"nao informado":daily),20,401,9,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Max operacoes: "+(operations==""?"nao informado":operations)+" • perdas seguidas: "+(streak==""?"nao informado":streak),20,421,8,C'205,215,230');
+   SetLabel(Obj("INFO5"),"Consulta informativa; nao autoriza execucao. REAL bloqueado.",20,441,8,C'255,155,155');
+}
+void RefreshConnections(){
+   string r; int code=0;
+   if(!Http("GET","/api/connections","",r,code)){
+      SetLabel(Obj("INFO1"),"Conexoes: runtime indisponivel",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Estado dos provedores nao confirmado.",20,381,9,C'205,215,230');
+      return;
+   }
+   string decision=JsonValue(r,"decision_core");
+   string gateway=JsonValue(r,"execution_gateway");
+   string mt5=JsonValue(r,"ic_markets_mt5_demo");
+   string ctrader=JsonValue(r,"cTrader");
+   string saas=JsonValue(r,"saas");
+   string real=JsonValue(r,"real");
+   SetLabel(Obj("INFO1"),"Motor decisao: "+(decision==""?"nao informado":decision),20,361,9,C'205,215,230');
+   SetLabel(Obj("INFO2"),"Gateway: "+(gateway==""?"nao informado":gateway),20,381,9,C'205,215,230');
+   SetLabel(Obj("INFO3"),"IC Markets MT5 DEMO: "+(mt5==""?"nao informado":mt5),20,401,9,C'205,215,230');
+   SetLabel(Obj("INFO4"),"cTrader: "+(ctrader==""?"nao informado":ctrader)+" • SaaS: "+(saas==""?"nao informado":saas),20,421,8,C'205,215,230');
+   SetLabel(Obj("INFO5"),active_module=="Multi-Broker"?"Execucao multi-broker: NAO IMPLEMENTADA":"REAL: "+(real==""?"estado nao informado":real),20,441,9,C'255,155,155');
+}
+void RefreshEnvironmentView(){
+   string health; int health_code=0;
+   if(!Http("GET","/api/health","",health,health_code)){
+      SetLabel(Obj("INFO1"),"Ambiente: runtime indisponivel",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Modo nao confirmado.",20,381,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Estado MT5 DEMO nao confirmado.",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Execucao permitida: NAO",20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
+      return;
+   }
+   string mode=JsonValue(health,"mode");
+   string mt5=JsonValue(health,"mt5_demo");
+   string execution=JsonValue(health,"execution_allowed");
+   string connections; int connections_code=0;
+   string decision="nao confirmado",gateway="nao confirmado";
+   if(Http("GET","/api/connections","",connections,connections_code)){
+      string decision_value=JsonValue(connections,"decision_core");
+      string gateway_value=JsonValue(connections,"execution_gateway");
+      if(decision_value!="") decision=decision_value;
+      if(gateway_value!="") gateway=gateway_value;
+   }
+   SetLabel(Obj("INFO1"),"Modo runtime: "+(mode==""?"nao informado":mode),20,361,9,C'205,215,230');
+   SetLabel(Obj("INFO2"),"MT5 DEMO: "+(mt5==""?"nao confirmado":mt5),20,381,9,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Motor: "+decision+" • Gateway: "+gateway,20,401,8,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Execucao permitida: "+(execution=="true"?"SIM":"NAO"),20,421,9,C'255,209,102');
+   SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • status nao substitui teste local",20,441,8,C'255,155,155');
+}
+void RefreshSecurityView(){
+   string r; int code=0;
+   if(!Http("GET","/api/health","",r,code)){
+      SetLabel(Obj("INFO1"),"Seguranca: runtime indisponivel",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Estado de armazenamento nao confirmado.",20,381,8,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Gate operacional nao confirmado.",20,401,8,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Identidade e isolamento nao confirmados.",20,421,8,C'205,215,230');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • verifique a configuracao.",20,441,8,C'255,155,155');
+      return;
+   }
+   string storage=JsonObjectValue(r,"production_storage","state");
+   string gate=JsonObjectValue(r,"production_operation_gate","storage_state");
+   string identity=JsonValue(r,"trusted_identity_provider");
+   string tenant=JsonValue(r,"tenant_isolation");
+   string real=JsonValue(r,"real");
+   SetLabel(Obj("INFO1"),"Armazenamento: "+(storage==""?"nao confirmado":storage),20,361,8,C'205,215,230');
+   SetLabel(Obj("INFO2"),"Gate operacional: "+(gate==""?"nao confirmado":gate),20,381,8,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Provedor identidade: "+(identity==""?"nao configurado":identity),20,401,8,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Isolamento: "+(tenant==""?"nao confirmado":tenant),20,421,8,C'205,215,230');
+   SetLabel(Obj("INFO5"),"REAL: "+(real==""?"DESABILITADO / nao informado":real)+" • somente leitura",20,441,8,C'255,155,155');
+}
+void RefreshFinanceOverview(){
+   string r; int code=0;
+   if(!Http("GET","/api/fiscal-reserve?limit=50&offset=0","",r,code)){
+      SetLabel(Obj("INFO1"),"Financeiro: resumo indisponivel",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Nenhum saldo ou reserva foi estimado.",20,381,8,C'205,215,230');
+      return;
+   }
+   string total=JsonValue(r,"total_reserved_brl");
+   string month=JsonObjectValue(r,"periods","month");
+   string month_reserve=JsonValue(month,"reserve_amount_brl");
+   string realized=JsonValue(month,"realized_result_brl");
+   string foreign_total=JsonObjectValue(r,"foreign_pending","total");
+   string domestic_response; int domestic_code=0;
+   string domestic_total="?";
+   if(Http("GET","/api/fiscal-reserve/domestic-pending/summary","",domestic_response,domestic_code))
+      domestic_total=JsonValue(domestic_response,"total");
+   SetLabel(Obj("INFO1"),"Reserva estimada Brasil: "+(total==""?"nao informada":total)+" BRL",20,361,8,C'205,215,230');
+   SetLabel(Obj("INFO2"),"Reserva estimada no mes: "+(month_reserve==""?"nao informada":month_reserve)+" BRL",20,381,8,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Resultado realizado no mes: "+(realized==""?"nao informado":realized)+" BRL",20,401,8,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Pendencias BR: "+(domestic_total==""?"?":domestic_total)+" • exterior: "+(foreign_total==""?"?":foreign_total),20,421,8,C'205,215,230');
+   SetLabel(Obj("INFO5"),"Visao fiscal resumida; nao representa saldo bancario ou equity. Pendencias fora dos totais.",20,441,7,C'255,209,102');
+}
+void RefreshReports(){
+   string r; int code=0;
+   if(!Http("GET","/api/reports?limit=50","",r,code)){
+      SetLabel(Obj("INFO1"),"Relatorios: runtime indisponivel",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Nenhum dado foi alterado.",20,381,9,C'205,215,230');
+      return;
+   }
+   string summary=JsonObjectValue(r,"summary","total");
+   string actionable=JsonObjectValue(r,"summary","actionable");
+   string wins=JsonObjectValue(r,"summary","wins");
+   string losses=JsonObjectValue(r,"summary","losses");
+   string rate=JsonObjectValue(r,"summary","win_rate");
+   string count=JsonValue(r,"record_count");
+   string generated=JsonValue(r,"generated_at");
+   string source=JsonValue(r,"source");
+   SetLabel(Obj("INFO1"),"Registros no relatorio: "+(count==""?"?":count)+" • total: "+(summary==""?"?":summary),20,361,8,C'205,215,230');
+   SetLabel(Obj("INFO2"),"Acionaveis: "+(actionable==""?"?":actionable)+" • WIN: "+(wins==""?"?":wins)+" • LOSS: "+(losses==""?"?":losses),20,381,8,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Win rate historico: "+(rate==""?"?":rate)+"%",20,401,9,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Gerado: "+(generated==""?"nao informado":StringSubstr(generated,0,19)),20,421,8,C'145,160,180');
+   SetLabel(Obj("INFO5"),"Fonte: "+(source==""?"nao informada":source)+" • somente leitura; REAL bloqueado",20,441,8,C'255,209,102');
+}
+void RefreshJournal(){
+   string r; int code=0;
+   if(!Http("GET","/api/journal?limit=5","",r,code)){
+      SetLabel(Obj("INFO1"),"Diario: runtime indisponivel",20,361,8,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Nao foi possivel consultar registros persistidos.",20,381,8,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Nenhum dado foi alterado.",20,401,8,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Somente leitura; sem confirmacao de execucao no broker.",20,421,7,C'255,209,102');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,8,C'255,155,155');
+      return;
+   }
+   string total=JsonObjectValue(r,"today_summary","total");
+   string wins=JsonObjectValue(r,"today_summary","win");
+   string losses=JsonObjectValue(r,"today_summary","loss");
+   string pending=JsonObjectValue(r,"today_summary","pending");
+   string objects[];
+   if(!ExtractJsonArrayObjects(r,"entries",objects)){
+      SetLabel(Obj("INFO1"),"Diario: resposta invalida",20,361,8,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Formato de registros nao reconhecido.",20,381,8,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Registros indisponiveis; tente atualizar.",20,401,8,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Sem confirmacao independente de execucao.",20,421,8,C'205,215,230');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,8,C'255,155,155');
+      return;
+   }
+   SetLabel(Obj("INFO1"),"Hoje: "+(total==""?"0":total)+" • WIN "+(wins==""?"0":wins)+" • LOSS "+(losses==""?"0":losses),20,361,8,C'205,215,230');
+   for(int i=0;i<4;i++){
+      string line="";
+      if(i<ArraySize(objects)){
+         string stamp=JsonValue(objects[i],"timestamp");
+         string symbol=JsonValue(objects[i],"symbol");
+         string signal=JsonValue(objects[i],"signal");
+         string decision=JsonValue(objects[i],"decision");
+         string result=JsonValue(objects[i],"result");
+         string score=JsonValue(objects[i],"score");
+         if(stamp=="null") stamp="";
+         if(symbol=="null") symbol="";
+         if(result=="null" || result=="") result="PENDENTE";
+         line=StringSubstr(stamp,11,5)+" "+(symbol==""?"—":symbol)+" "+signal+" "+(score==""?"—":score)+" "+result;
+         if(decision!="" && decision!="null") line+=" • "+StringSubstr(decision,0,14);
+      }
+      SetLabel(Obj("INFO"+IntegerToString(i+2)),line,20,381+i*15,7,C'205,215,230');
+   }
+   SetLabel(Obj("INFO6"),"Pendentes: "+(pending==""?"0":pending)+" • historico operacional, nao extrato do broker",20,441,7,C'255,209,102');
+}
+void RefreshAuditView(){
+   string r; int code=0;
+   if(!Http("GET","/api/security/audit?limit=50","",r,code)){
+      SetLabel(Obj("INFO1"),"Auditoria: acesso indisponivel ou nao autorizado",20,361,8,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Acesso remoto exige identidade confiavel.",20,381,8,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Nenhum evento foi alterado.",20,401,8,C'205,215,230');
+      return;
+   }
+   string objects[];
+   if(!ExtractJsonArrayObjects(r,"events",objects)){
+      SetLabel(Obj("INFO1"),"Auditoria: resposta invalida",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Eventos nao foram interpretados.",20,381,8,C'205,215,230');
+      return;
+   }
+   string count=JsonValue(r,"count");
+   string returned=JsonValue(r,"returned");
+   string retention=JsonValue(r,"retention_limit");
+   string persistence=JsonValue(r,"persistence");
+   SetLabel(Obj("INFO1"),"Eventos: "+(count==""?"?":count)+" • exibidos: "+(returned==""?"?":returned)+" • limite: "+(retention==""?"?":retention),20,361,8,C'205,215,230');
+   for(int i=0;i<4;i++){
+      string line="";
+      if(i<ArraySize(objects)){
+         string method=JsonValue(objects[i],"method");
+         string path=JsonValue(objects[i],"path");
+         string status=JsonValue(objects[i],"status");
+         string request=JsonValue(objects[i],"request_id");
+         line=(method==""?"?":method)+" "+(path==""?"?":StringSubstr(path,0,24))+" "+(status==""?"?":status)+" "+(request==""?"":StringSubstr(request,0,10));
+      }else if(i==0 && ArraySize(objects)==0) line="Nenhum evento no historico retido.";
+      SetLabel(Obj("INFO"+IntegerToString(i+2)),line,20,381+i*20,7,C'205,215,230');
+   }
+   SetLabel(Obj("INFO5"),"Persistencia: "+(persistence==""?"nao informada":persistence)+" • consulta somente leitura",20,461,7,persistence=="DURABLE"?C'88,214,141':C'255,209,102');
+}
 void ClearCockpitFields(){
-   string names[]={"SYM","TF","SYML","TFL","MARKET","SIGNAL","SCORE","REASON","MODE","RECOVERY_TITLE","RECOVERY_ITEM","REC_REFRESH","REC_PREV","REC_NEXT","REC_RECONCILE","REC_CLOSE","RECOVERY_STATUS"};
+   string names[]={"SYM","TF","SYML","TFL","MARKET","SIGNAL","SCORE","REASON","MODE","CYCLEID","EXTID","PRICE","SAFE","RECOVERY_TITLE","RECOVERY_ITEM","REC_REFRESH","REC_PREV","REC_NEXT","REC_RECONCILE","REC_CLOSE","RECOVERY_STATUS","INFO6"};
    for(int i=0;i<ArraySize(names);i++)
       if(ObjectFind(0,Obj(names[i]))>=0) ObjectDelete(0,Obj(names[i]));
 }
 void ClearAssistantControls(){
-   string names[]={"ASSISTANT_PROMPT","ASSISTANT_INPUT","ASSISTANT_CONSENT","ASSISTANT_SEND"};
+   string names[]={"ASSISTANT_PROMPT","ASSISTANT_INPUT","ASSISTANT_CONSENT","ASSISTANT_SEND","ASSISTANT_PREV","ASSISTANT_NEXT","ASSISTANT_PAGE","MEMORY_PREV","MEMORY_NEXT","MEMORY_PAGE"};
    for(int i=0;i<ArraySize(names);i++)
       if(ObjectFind(0,Obj(names[i]))>=0) ObjectDelete(0,Obj(names[i]));
 }
@@ -667,6 +1317,26 @@ void RenderFiscal(){
    SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
    RefreshFiscal();
 }
+void RenderAssistantAnswer(){
+   int total_chars=StringLen(assistant_answer);
+   int page_size=330;
+   int page_count=(total_chars+page_size-1)/page_size;
+   if(page_count<1) page_count=1;
+   assistant_answer_page=MathMax(0,MathMin(assistant_answer_page,page_count-1));
+   int offset=assistant_answer_page*page_size;
+   SetLabel(Obj("INFO1"),StringSubstr(assistant_answer,offset,66),20,361,8,C'205,215,230');
+   SetLabel(Obj("INFO2"),StringSubstr(assistant_answer,offset+66,66),20,381,8,C'205,215,230');
+   SetLabel(Obj("INFO3"),StringSubstr(assistant_answer,offset+132,66),20,401,8,C'205,215,230');
+   SetLabel(Obj("INFO4"),StringSubstr(assistant_answer,offset+198,66),20,421,8,C'205,215,230');
+   SetLabel(Obj("INFO5"),StringSubstr(assistant_answer,offset+264,66),20,441,8,C'205,215,230');
+   SetButton(Obj("ASSISTANT_PREV"),"ANTERIOR",20,470,104,26);
+   SetLabel(Obj("ASSISTANT_PAGE"),"RESPOSTA "+IntegerToString(assistant_answer_page+1)+"/"+IntegerToString(page_count),138,476,8,C'150,165,185');
+   SetButton(Obj("ASSISTANT_NEXT"),"PROXIMA",296,470,114,26);
+   ObjectSetInteger(0,Obj("ASSISTANT_PREV"),OBJPROP_STATE,false);
+   ObjectSetInteger(0,Obj("ASSISTANT_NEXT"),OBJPROP_STATE,false);
+   ObjectSetInteger(0,Obj("ASSISTANT_PREV"),OBJPROP_BGCOLOR,assistant_answer_page>0?C'35,43,58':C'20,25,32');
+   ObjectSetInteger(0,Obj("ASSISTANT_NEXT"),OBJPROP_BGCOLOR,assistant_answer_page<page_count-1?C'35,43,58':C'20,25,32');
+}
 void RenderAssistant(){
    ClearCockpitFields();
    SetLabel(Obj("SUB"),"ASSISTENTE DO ECOSSISTEMA • leitura e orientacao",20,47,9,C'150,165,185');
@@ -681,12 +1351,16 @@ void RenderAssistant(){
    SetChatEdit(Obj("ASSISTANT_INPUT"),"",20,266,390,34);
    SetButton(Obj("ASSISTANT_CONSENT"),assistant_consent_armed?"CONSENTIMENTO OPENAI: SIM":"CONSENTIMENTO OPENAI: NAO",20,307,220,28);
    SetButton(Obj("ASSISTANT_SEND"),"ENVIAR",248,307,162,28);
-   SetLabel(Obj("INFO1"),"A pergunta e o contexto filtrado serao enviados a OpenAI.",20,361,8,C'205,215,230');
-   SetLabel(Obj("INFO2"),"O assistente nao executa ordens nem movimenta dinheiro.",20,381,8,C'205,215,230');
-   SetLabel(Obj("INFO3"),"REAL: BLOQUEADO",20,401,8,C'255,155,155');
-   SetLabel(Obj("INFO4"),"Resposta aparecera apos o envio.",20,421,8,C'205,215,230');
-   SetLabel(Obj("INFO5"),"Historico completo permanece no servidor.",20,441,8,C'145,160,180');
-   RefreshAssistantStatus();
+   if(assistant_answer==""){
+      SetLabel(Obj("INFO1"),"A pergunta e o contexto filtrado serao enviados a OpenAI.",20,361,8,C'205,215,230');
+      SetLabel(Obj("INFO2"),"O assistente nao executa ordens nem movimenta dinheiro.",20,381,8,C'205,215,230');
+      SetLabel(Obj("INFO3"),"REAL: BLOQUEADO",20,401,8,C'255,155,155');
+      SetLabel(Obj("INFO4"),"Resposta aparecera apos o envio.",20,421,8,C'205,215,230');
+      SetLabel(Obj("INFO5"),"Historico completo permanece no servidor.",20,441,8,C'145,160,180');
+      RefreshAssistantStatus();
+   }else{
+      RenderAssistantAnswer();
+   }
 }
 void SendAssistantMessage(){
    if(!assistant_consent_armed){
@@ -715,20 +1389,235 @@ void SendAssistantMessage(){
    }
    assistant_conversation_id=JsonValue(response,"conversation_id");
    PersistAssistantConversation();
-   string answer=JsonValue(response,"answer");
-   if(answer=="") answer="Resposta vazia ou formato inesperado.";
-   SetLabel(Obj("INFO1"),"Resposta: "+StringSubstr(answer,0,66),20,361,8,C'205,215,230');
-   SetLabel(Obj("INFO2"),StringSubstr(answer,66,66),20,381,8,C'205,215,230');
-   SetLabel(Obj("INFO3"),StringSubstr(answer,132,66),20,401,8,C'205,215,230');
-   SetLabel(Obj("INFO4"),"Conversa persistida no servidor do Ecossistema.",20,421,8,C'88,214,141');
-   SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • sem execucao ou movimentacao.",20,441,8,C'255,155,155');
+   assistant_answer=JsonValue(response,"answer");
+   if(assistant_answer=="") assistant_answer="Resposta vazia ou formato inesperado.";
+   assistant_answer_page=0;
+   RenderAssistantAnswer();
    ObjectSetString(0,Obj("ASSISTANT_INPUT"),OBJPROP_TEXT,"");
+}
+void RefreshDiscoveries(){
+   string resources="", observations=""; int resources_code=0, observations_code=0;
+   bool resources_ok=Http("GET","/api/learning/resources","",resources,resources_code);
+   bool observations_ok=Http("GET","/api/learning/observations","",observations,observations_code);
+   if(!resources_ok || !observations_ok){
+      SetLabel(Obj("INFO1"),"Descobertas indisponiveis • HTTP "+IntegerToString(!resources_ok?resources_code:observations_code),20,361,8,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Confira runtime e identidade autorizada.",20,381,8,C'205,215,230'); return;
+   }
+   string resource_items[], observation_items[];
+   bool resources_parsed=ExtractJsonArrayObjects(resources,"resources",resource_items);
+   bool observations_parsed=ExtractJsonArrayObjects(observations,"observations",observation_items);
+   if(!resources_parsed || !observations_parsed){
+      SetLabel(Obj("INFO1"),"Descobertas: resposta da API em formato invalido.",20,361,8,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Nenhum dado foi presumido; atualize ou confira o runtime.",20,381,8,C'205,215,230');
+      return;
+   }
+   string resource_id="", resource_title="", statement="";
+   if(ArraySize(resource_items)>0){
+      resource_id=JsonValue(resource_items[0],"resource_id");
+      resource_title=JsonValue(resource_items[0],"title");
+   }
+   if(ArraySize(observation_items)>0) statement=JsonValue(observation_items[ArraySize(observation_items)-1],"statement");
+   SetLabel(Obj("INFO1"),"Materiais cadastrados: "+IntegerToString(ArraySize(resource_items)),20,361,8,C'205,215,230');
+   SetLabel(Obj("INFO2"),"Material: "+(resource_title==""?"titulo nao informado":StringSubstr(resource_title,0,34)),20,381,8,C'205,215,230');
+   SetLabel(Obj("INFO3"),"ID: "+(resource_id==""?"cadastre material no Estudo":StringSubstr(resource_id,0,34)),20,401,8,C'145,160,180');
+   SetLabel(Obj("INFO4"),"Observacoes: "+IntegerToString(ArraySize(observation_items))+" • "+(statement==""?"sem registro":StringSubstr(statement,0,24)),20,421,8,C'205,215,230');
+   if(resource_id!="" && ObjectFind(0,Obj("DISC_RESOURCE"))>=0 && ObjectGetString(0,Obj("DISC_RESOURCE"),OBJPROP_TEXT)=="")
+      ObjectSetString(0,Obj("DISC_RESOURCE"),OBJPROP_TEXT,resource_id);
+   SetLabel(Obj("INFO5"),"Descobertas nao alteram sinais nem execucao.",20,441,8,C'255,155,155');
+}
+void SaveDiscovery(){
+   string resource_id=ObjectGetString(0,Obj("DISC_RESOURCE"),OBJPROP_TEXT);
+   string statement=ObjectGetString(0,Obj("DISC_STATEMENT"),OBJPROP_TEXT);
+   string concepts=ObjectGetString(0,Obj("DISC_CONCEPTS"),OBJPROP_TEXT);
+   string evidence=ObjectGetString(0,Obj("DISC_EVIDENCE"),OBJPROP_TEXT);
+   StringTrimLeft(resource_id); StringTrimRight(resource_id);
+   StringTrimLeft(statement); StringTrimRight(statement);
+   if(resource_id=="" || statement=="" || StringLen(statement)>3000 || StringLen(concepts)>300 || StringLen(evidence)>1000){
+      SetLabel(Obj("INFO1"),"Informe ID e observacao (ate 3000 caracteres); conceitos ate 300 e evidencia ate 1000.",20,361,8,C'255,118,118'); return;
+   }
+   string q=CharToString(34);
+   string concept_items[]; int concept_count=StringSplit(concepts,',',concept_items);
+   string concepts_json="[";
+   for(int i=0;i<concept_count;i++){
+      string concept=concept_items[i];
+      StringTrimLeft(concept); StringTrimRight(concept);
+      if(concept=="") continue;
+      if(StringLen(concepts_json)>1) concepts_json+=",";
+      concepts_json+=q+JsonEscape(concept)+q;
+   }
+   concepts_json+="]";
+   string body="{"+q+"resource_id"+q+":"+q+JsonEscape(resource_id)+q+","+
+      q+"statement"+q+":"+q+JsonEscape(statement)+q+","+
+      q+"concepts"+q+":"+concepts_json+","+
+      q+"evidence"+q+":"+(evidence==""?"null":q+JsonEscape(evidence)+q)+","+
+      q+"validated"+q+":false}";
+   string response=""; int code=0;
+   if(!Http("POST","/api/learning/observations",body,response,code)){
+      SetLabel(Obj("INFO1"),"Nao foi possivel guardar • HTTP "+IntegerToString(code),20,361,8,C'255,118,118'); return;
+   }
+   SetLabel(Obj("INFO1"),"Descoberta registrada como NAO VALIDADA.",20,361,8,C'88,214,141');
+   SetLabel(Obj("INFO2"),"ID: "+resource_id,20,381,8,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Sem efeito em sinais, filtros ou execucao.",20,401,8,C'255,155,155');
+   ObjectSetString(0,Obj("DISC_STATEMENT"),OBJPROP_TEXT,"");
+   ObjectSetString(0,Obj("DISC_CONCEPTS"),OBJPROP_TEXT,"");
+   ObjectSetString(0,Obj("DISC_EVIDENCE"),OBJPROP_TEXT,"");
+   RefreshDiscoveries();
+   SetLabel(Obj("INFO1"),"Descoberta registrada como NAO VALIDADA.",20,361,8,C'88,214,141');
+}
+void RunHistoricalReplay(){
+   string response=""; int code=0;
+   string symbol=_Symbol;
+   string timeframe=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
+   string q=CharToString(34);
+   string body="{"+q+"symbol"+q+":"+q+JsonEscape(symbol)+q+","+q+"timeframe"+q+":"+q+JsonEscape(timeframe)+q+","+q+"limit"+q+":100}";
+   if(!Http("POST","/api/replay/mt5",body,response,code)){
+      SetLabel(Obj("INFO1"),"Replay indisponivel • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Runtime sem resposta; nenhuma ordem foi enviada.",20,381,8,C'205,215,230'); return;
+   }
+   string source=JsonValue(response,"source"), symbol_out=JsonValue(response,"symbol");
+   string tf_out=JsonValue(response,"timeframe"), candles=JsonValue(response,"candles_replayed");
+   string buys=JsonValue(response,"buy_signals"), sells=JsonValue(response,"sell_signals");
+   string waiting=JsonValue(response,"waiting"), orders=JsonValue(response,"orders_sent");
+   SetLabel(Obj("INFO1"),"Replay: "+(candles==""?"nao informado":candles)+" candles",20,361,9,C'88,214,141');
+   SetLabel(Obj("INFO2"),"Ativo/periodo: "+(symbol_out==""?symbol:symbol_out)+" / "+(tf_out==""?timeframe:tf_out),20,381,8,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Compra: "+(buys==""?"—":buys)+" • Venda: "+(sells==""?"—":sells),20,401,8,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Aguardar: "+(waiting==""?"—":waiting)+" • Fonte: "+(source==""?"nao informada":source),20,421,8,C'205,215,230');
+   SetLabel(Obj("INFO5"),"Ordens enviadas: "+(orders==""?"nao confirmado":orders)+" • Execucao: NAO",20,441,8,C'255,155,155');
+}
+void RunHistoricalSimulator(){
+   string stop_text=ObjectGetString(0,Obj("SIM_STOP"),OBJPROP_TEXT);
+   string target_text=ObjectGetString(0,Obj("SIM_TARGET"),OBJPROP_TEXT);
+   string quantity_text=ObjectGetString(0,Obj("SIM_QTY"),OBJPROP_TEXT);
+   string multiplier_text=ObjectGetString(0,Obj("SIM_MULT"),OBJPROP_TEXT);
+   string spread_text=ObjectGetString(0,Obj("SIM_SPREAD"),OBJPROP_TEXT);
+   string slippage_text=ObjectGetString(0,Obj("SIM_SLIP"),OBJPROP_TEXT);
+   string commission_text=ObjectGetString(0,Obj("SIM_COMM"),OBJPROP_TEXT);
+   if(stop_text=="" || target_text=="" || quantity_text=="" || multiplier_text=="" || spread_text=="" || slippage_text=="" || commission_text==""){
+      SetLabel(Obj("INFO1"),"Preencha todos os parametros; custo zero = digite 0.",20,361,8,C'255,209,102'); return;
+   }
+   double stop=StringToDouble(stop_text), target=StringToDouble(target_text);
+   double quantity=StringToDouble(quantity_text), multiplier=StringToDouble(multiplier_text);
+   double spread=StringToDouble(spread_text), slippage=StringToDouble(slippage_text), commission=StringToDouble(commission_text);
+   if(stop<=0 || target<=0 || quantity<=0 || multiplier<=0 || spread<0 || slippage<0 || commission<0){
+      SetLabel(Obj("INFO1"),"Stop, alvo, quantidade e multiplicador > 0; custos >= 0.",20,361,8,C'255,118,118'); return;
+   }
+   string symbol=_Symbol, timeframe=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
+   string q=CharToString(34);
+   string body="{"+q+"symbol"+q+":"+q+JsonEscape(symbol)+q+","+q+"timeframe"+q+":"+q+JsonEscape(timeframe)+q+
+      ","+q+"limit"+q+":200,"+q+"minimum_directional_score"+q+":80,"+
+      q+"stop_distance"+q+":"+DoubleToString(stop,8)+","+
+      q+"take_profit_distance"+q+":"+DoubleToString(target,8)+","+
+      q+"quantity_units"+q+":"+DoubleToString(quantity,8)+","+
+      q+"contract_multiplier"+q+":"+DoubleToString(multiplier,8)+","+
+      q+"spread_price_units"+q+":"+DoubleToString(spread,8)+","+
+      q+"slippage_price_units_per_side"+q+":"+DoubleToString(slippage,8)+","+
+      q+"commission_quote_per_unit_round_turn"+q+":"+DoubleToString(commission,8)+"}";
+   string response=""; int code=0;
+   if(!Http("POST","/api/simulator/mt5/backtest",body,response,code)){
+      SetLabel(Obj("INFO1"),"Backtest indisponivel • HTTP "+IntegerToString(code),20,361,8,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Nenhuma ordem foi enviada.",20,381,8,C'205,215,230'); return;
+   }
+   string trades=JsonValue(response,"trade_count"), win=JsonValue(response,"win_rate");
+   string factor=JsonValue(response,"profit_factor"), pnl=JsonValue(response,"net_pnl_quote");
+   string costs=JsonValue(response,"total_costs_quote"), candles=JsonValue(response,"candles_processed");
+   string drawdown=JsonValue(response,"max_drawdown_quote"), losses=JsonValue(response,"max_consecutive_losses");
+   SetLabel(Obj("INFO1"),"Operacoes: "+(trades==""?"?":trades)+" • Acerto: "+(win==""?"?":win)+"%",20,361,8,C'88,214,141');
+   SetLabel(Obj("INFO2"),"Fator lucro: "+(factor==""?"nao informado":factor)+" • Liquido: "+(pnl==""?"?":pnl),20,381,8,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Custos: "+(costs==""?"?":costs)+" • Candles: "+(candles==""?"?":candles),20,401,8,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Drawdown: "+(drawdown==""?"?":drawdown)+" • Seq. perdas: "+(losses==""?"?":losses),20,421,8,C'205,215,230');
+   SetLabel(Obj("INFO5"),"Historico hipotetico • ordens: NAO • REAL: BLOQUEADO",20,441,8,C'255,155,155');
 }
 void RenderView(){
    ClearAssistantControls();
+   // Non-operational modules must never retain visible cockpit/recovery controls.
+   if(active_view!="COCKPIT") ClearCockpitFields();
+   string simulator_controls[]={"SIM_STOP","SIM_TARGET","SIM_QTY","SIM_MULT","SIM_SPREAD","SIM_SLIP","SIM_COMM","SIM_RUN","SIM_L1","SIM_L2","SIM_L3","SIM_L4"};
+   string discovery_controls[]={"DISC_RESOURCE","DISC_STATEMENT","DISC_CONCEPTS","DISC_EVIDENCE","DISC_SAVE","DISC_REFRESH","DISC_L1","DISC_L2","DISC_L3","DISC_L4"};
+   for(int k=0;k<ArraySize(discovery_controls);k++) if(ObjectFind(0,Obj(discovery_controls[k]))>=0) ObjectDelete(0,Obj(discovery_controls[k]));
+   for(int k=0;k<ArraySize(simulator_controls);k++) if(ObjectFind(0,Obj(simulator_controls[k]))>=0) ObjectDelete(0,Obj(simulator_controls[k]));
+   string replay_controls[]={"REPLAY_RUN"};
+   for(int k=0;k<ArraySize(replay_controls);k++) if(ObjectFind(0,Obj(replay_controls[k]))>=0) ObjectDelete(0,Obj(replay_controls[k]));
+   string kill_controls[]={"KILL_REASON","KILL_CONFIRM","KILL_ACTIVATE"};
+   for(int k=0;k<ArraySize(kill_controls);k++) if(ObjectFind(0,Obj(kill_controls[k]))>=0) ObjectDelete(0,Obj(kill_controls[k]));
+   string action_buttons[]={"ANALYZE","CYCLE","SAVE","CLOSE","ONBOARD_PREV","ONBOARD_NEXT","ONBOARD_PAGE"};
+   for(int i=0;i<ArraySize(action_buttons);i++)
+      if(ObjectFind(0,Obj(action_buttons[i]))>=0) ObjectDelete(0,Obj(action_buttons[i]));
+   if(active_view=="UNAVAILABLE"){
+      ClearCockpitFields();
+      string stale[]={"ANALYZE","CYCLE","SAVE","CLOSE","CYCLEID","EXTID","PRICE","SAFE","RECOVERY_TITLE","RECOVERY_ITEM","REC_REFRESH","REC_PREV","REC_NEXT","REC_RECONCILE","REC_CLOSE","MODE_TOGGLE","LEVERAGE_TOGGLE","KILL_REASON","KILL_CONFIRM","KILL_ACTIVATE"};
+      for(int i=0;i<ArraySize(stale);i++) if(ObjectFind(0,Obj(stale[i]))>=0) ObjectDelete(0,Obj(stale[i]));
+      SetLabel(Obj("SUB"),active_area+" • "+active_module,20,47,9,C'150,165,185');
+      SetLabel(Obj("INFO1"),"Modulo visivel; integracao operacional em desenvolvimento.",20,361,8,C'255,209,102');
+      SetLabel(Obj("INFO2"),"Nenhuma acao sera simulada ou apresentada como concluida.",20,381,8,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Esta area sera habilitada apos integracao e validacao.",20,401,8,C'205,215,230');
+      SetLabel(Obj("INFO4"),"REAL: BLOQUEADO",20,421,8,C'255,155,155');
+      SetLabel(Obj("INFO5"),"Runtime compartilhado com o painel Streamlit.",20,441,8,C'145,160,180');
+      return;
+   }
    if(active_view=="RESERVA") { RenderFiscal(); return; }
    if(active_view=="ASSISTENTE") { RenderAssistant(); return; }
-   if(active_view=="COCKPIT"){
+   if(active_view=="DISCOVERIES"){
+      ClearCockpitFields();
+      SetLabel(Obj("SUB"),"DESCOBERTAS • observacoes vinculadas a materiais de estudo",20,47,9,C'150,165,185');
+      SetLabel(Obj("INFO1"),"Informe o ID do material cadastrado no Estudo.",20,361,8,C'205,215,230');
+      SetLabel(Obj("INFO2"),"A observacao sera salva como NAO VALIDADA.",20,381,8,C'255,209,102');
+      SetLabel(Obj("INFO3"),"Conceitos: separados por virgula (opcional).",20,401,8,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Nao influencia sinais, filtros ou parametros.",20,421,8,C'205,215,230');
+      SetLabel(Obj("INFO5"),"Execucao permitida: NAO • REAL bloqueado",20,441,8,C'255,155,155');
+      SetLabel(Obj("DISC_L1"),"ID do material",20,135,8,C'205,215,230');
+      SetChatEdit(Obj("DISC_RESOURCE"),"",120,130,180,24);
+      SetLabel(Obj("DISC_L2"),"Observacao",20,170,8,C'205,215,230');
+      SetChatEdit(Obj("DISC_STATEMENT"),"",120,165,180,24);
+      SetLabel(Obj("DISC_L3"),"Conceitos",20,205,8,C'205,215,230');
+      SetChatEdit(Obj("DISC_CONCEPTS"),"",120,200,180,24);
+      SetLabel(Obj("DISC_L4"),"Evidencia",20,240,8,C'205,215,230');
+      SetChatEdit(Obj("DISC_EVIDENCE"),"",120,235,180,24);
+      SetButton(Obj("DISC_SAVE"),"GUARDAR DESCOBERTA",20,275,170,28);
+      SetButton(Obj("DISC_REFRESH"),"ATUALIZAR",200,275,100,28);
+      RefreshDiscoveries(); return;
+   }
+   if(active_view=="REPLAY"){
+      ClearCockpitFields();
+      SetLabel(Obj("SUB"),"REPLAY HISTORICO • candles fechados do grafico MT5",20,47,9,C'150,165,185');
+      SetButton(Obj("REPLAY_RUN"),"REPRODUZIR 100 CANDLES",20,284,220,30);
+      SetLabel(Obj("INFO1"),"Ativo e periodo seguem o grafico atual.",20,361,9,C'205,215,230');
+      SetLabel(Obj("INFO2"),"A reproducao usa somente candles historicos fechados.",20,381,8,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Nao cria ordens nem altera memoria operacional.",20,401,8,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Historico depende da disponibilidade no runtime.",20,421,8,C'205,215,230');
+      SetLabel(Obj("INFO5"),"REAL bloqueado • execucao permitida: NAO",20,441,8,C'255,155,155'); return;
+   }
+   if(active_view=="SIMULATOR"){
+      ClearCockpitFields();
+      SetLabel(Obj("SUB"),"SIMULADOR HISTORICO • backtest sem ordens",20,47,9,C'150,165,185');
+      SetLabel(Obj("INFO1"),"Preencha todos os campos; custos zero = digite 0.",20,361,8,C'205,215,230');
+      SetLabel(Obj("INFO2"),"P&L na moeda cotada; sem conversao cambial.",20,381,8,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Nao integra margem, swap ou Risk Manager.",20,401,8,C'255,209,102');
+      SetLabel(Obj("INFO4"),"Ativo/timeframe seguem o grafico • 200 candles • score 80.",20,421,8,C'205,215,230');
+      SetLabel(Obj("INFO5"),"Ordens enviadas: NAO • REAL: BLOQUEADO",20,441,8,C'255,155,155');
+      SetLabel(Obj("SIM_L1"),"Stop / Alvo",20,145,8,C'205,215,230');
+      SetChatEdit(Obj("SIM_STOP"),"",100,140,95,24); SetChatEdit(Obj("SIM_TARGET"),"",205,140,95,24);
+      SetLabel(Obj("SIM_L2"),"Qtd / Mult.",20,180,8,C'205,215,230');
+      SetChatEdit(Obj("SIM_QTY"),"",100,175,95,24); SetChatEdit(Obj("SIM_MULT"),"",205,175,95,24);
+      SetLabel(Obj("SIM_L3"),"Spread / Slip",20,215,8,C'205,215,230');
+      SetChatEdit(Obj("SIM_SPREAD"),"",100,210,95,24); SetChatEdit(Obj("SIM_SLIP"),"",205,210,95,24);
+      SetLabel(Obj("SIM_L4"),"Comissao",20,250,8,C'205,215,230');
+      SetChatEdit(Obj("SIM_COMM"),"",100,245,200,24);
+      SetButton(Obj("SIM_RUN"),"EXECUTAR BACKTEST HISTORICO",20,285,280,30); return;
+   }
+   if(active_view=="KILL_SWITCH"){
+      ClearCockpitFields();
+      SetLabel(Obj("SUB"),"KILL SWITCH • bloqueio protegido de novas execucoes",20,47,9,C'150,165,185');
+      SetLabel(Obj("INFO1"),"Consultando estado do Kill Switch...",20,361,9,C'255,209,102');
+      SetChatEdit(Obj("KILL_REASON"),"",20,284,340,25);
+      SetButton(Obj("KILL_CONFIRM"),"CONFIRMAR BLOQUEIO",20,320,172,30);
+      SetButton(Obj("KILL_ACTIVATE"),"ATIVAR KILL SWITCH",202,320,177,30);
+      RefreshKillSwitchStatus();
+   }else if(active_view=="DECISION"){
+      ClearCockpitFields();
+      SetLabel(Obj("SUB"),"MOTOR DE DECISAO • ultima leitura, somente leitura",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR MOTOR",20,284,172,30);
+      RefreshDecisionView();
+   }else if(active_view=="COCKPIT"){
       SetLabel(Obj("SUB"),"COCKPIT • motor, decisao, risco, execucao",20,47,9,C'150,165,185');
       SetLabel(Obj("INFO1"),"Análise do ecossistema",20,361,9,C'205,215,230');
       SetLabel(Obj("INFO2"),"Risco: atualizando...",20,381,9,C'255,209,102');
@@ -747,52 +1636,81 @@ void RenderView(){
    }else if(active_view=="ANALISE"){
       SetLabel(Obj("SUB"),"ANALISE • leitura atual do ecossistema",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR LEITURA",20,284,172,30);
-      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
-      SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
-      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
       Analyze();
       SetLabel(Obj("INFO2"),"Risco: "+(runtime_ok?"atualizado":"sistema indisponivel"),20,381,9,runtime_ok?C'205,215,230':C'255,118,118');
       SetLabel(Obj("INFO3"),"Fonte: analise atual do ecossistema",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Candle fechado + filtros: exigidos pelo payload",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Sem acao automatica a partir de notificacoes",20,441,9,C'205,215,230');
+   }else if(active_view=="RISK"){
+      ClearCockpitFields();
+      SetLabel(Obj("SUB"),"GESTAO DE RISCO • consulta somente leitura",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR RISCO",20,284,172,30);
+      RefreshRiskView();
+   }else if(active_view=="STATS"){
+      ClearCockpitFields();
+      SetLabel(Obj("SUB"),"ESTATISTICAS • historico consolidado do runtime",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR ESTAT.",20,284,172,30);
+      RefreshStatistics();
+   }else if(active_view=="CONNECTIONS"){
+      ClearCockpitFields();
+      SetLabel(Obj("SUB"),active_module=="Multi-Broker"?"MULTI-BROKER • conectores somente leitura; roteamento nao implementado":"CONEXOES • estado reportado pelos provedores",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR CONEXOES",20,284,172,30);
+      RefreshConnections();
+   }else if(active_view=="ENVIRONMENT"){
+      ClearCockpitFields();
+      SetLabel(Obj("SUB"),"AMBIENTE MT5 DEMO / SIMULACAO • consulta somente leitura",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR AMBIENTE",20,284,172,30);
+      RefreshEnvironmentView();
+   }else if(active_view=="SECURITY"){
+      ClearCockpitFields();
+      SetLabel(Obj("SUB"),"SEGURANCA • postura reportada pelo runtime",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR SEGURANCA",20,284,172,30);
+      RefreshSecurityView();
+   }else if(active_view=="FINANCE"){
+      ClearCockpitFields();
+      SetLabel(Obj("SUB"),"FINANCEIRO • visao geral fiscal; nao representa saldo bancario",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR FINANCEIRO",20,284,172,30);
+      RefreshFinanceOverview();
+   }else if(active_view=="REPORTS"){
+      ClearCockpitFields();
+      SetLabel(Obj("SUB"),"RELATORIOS • resumo historico do runtime, somente leitura",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR RELATORIO",20,284,172,30);
+      RefreshReports();
+   }else if(active_view=="JOURNAL"){
+      ClearCockpitFields();
+      SetLabel(Obj("SUB"),"DIARIO OPERACIONAL • registros persistidos do runtime, somente leitura",20,47,8,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR DIARIO",20,284,172,30);
+      RefreshJournal();
+   }else if(active_view=="AUDIT"){
+      ClearCockpitFields();
+      SetLabel(Obj("SUB"),"AUDITORIA • trilha de seguranca e requisicoes",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR AUDITORIA",20,284,172,30);
+      RefreshAuditView();
    }else if(active_view=="MEMORIA"){
-      SetLabel(Obj("SUB"),"MEMORIA • historico, WIN/LOSS, estatisticas e auditoria",20,47,9,C'150,165,185');
+      SetLabel(Obj("SUB"),"MEMORIA • historico de decisoes e resultados registrados",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR MEMORIA",20,284,172,30);
-      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
-      SetButton(Obj("SAVE"),"ATUALIZAR ESTAT.",20,320,172,28);
-      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
-      RefreshSecondary();
-      SetLabel(Obj("INFO1"),"Memoria: registros disponiveis",20,361,9,C'205,215,230');
-      SetLabel(Obj("INFO2"),"Risco: situacao atual",20,381,9,C'205,215,230');
-      SetLabel(Obj("INFO3"),"Historico operacional atualizado",20,401,9,C'205,215,230');
-      SetLabel(Obj("INFO4"),"Estatisticas atualizadas",20,421,9,C'205,215,230');
-      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
+      RefreshMemory();
    }else if(active_view=="LAB"){
-      SetLabel(Obj("SUB"),"LAB • simulacao, replay e validacao isolados da operacao REAL",20,47,9,C'150,165,185');
+      SetLabel(Obj("SUB"),"LAB • laboratorio e validacao isolados da operacao REAL",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"VALIDAR AMBIENTE",20,284,172,30);
-      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
-      SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
-      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
       RefreshHealth();
       RefreshSecondary();
-      SetLabel(Obj("INFO1"),"Ambiente: DEMO / SIMULACAO",20,361,9,C'88,214,141');
+      SetLabel(Obj("INFO1"),"Runtime: "+(runtime_ok?"conectado":"indisponivel")+"; DEMO nao confirmado",20,361,9,runtime_ok?C'88,214,141':C'255,118,118');
       SetLabel(Obj("INFO2"),"Risco: avaliacao atual",20,381,9,C'205,215,230');
-      SetLabel(Obj("INFO3"),"Replay: disponivel no laboratorio",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Replay: abra o modulo proprio",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Protecao operacional ativa",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Aprendizado separado da operacao",20,441,9,C'205,215,230');
    }else if(active_view=="ENSINO"){
       SetLabel(Obj("SUB"),"ENSINO • estudo separado da autorizacao operacional",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR ENSINO",20,284,172,30);
-      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
-      SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
-      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
       RefreshLearning();
+   }else if(active_view=="ONBOARDING"){
+      SetLabel(Obj("SUB"),"ESCOLA / ONBOARDING • roteiro guiado somente leitura",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR ROTEIRO",20,284,172,30);
+      RefreshOnboarding();
    }else if(active_view=="NOTIF"){
       SetLabel(Obj("SUB"),"NOTIFICACOES • alertas e avisos do sistema",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR NOTIF.",20,284,172,30);
-      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
-      SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
-      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
       RefreshNotifications();
    }else if(active_view=="CONFIG"){
       SetLabel(Obj("SUB"),"CONFIG • preferencias e seguranca",20,47,9,C'150,165,185');
@@ -814,25 +1732,26 @@ void RenderView(){
 
 }
 void RefreshHealth(){
+   if(active_view=="UNAVAILABLE") return;
    string r; int code=0;
    if(!Http("GET","/api/health","",r,code)){
       runtime_ok=false;
       health_ok=false;
       UpdateCompactSignal("INDISPONIVEL","",false);
-      SetLabel(Obj("RUNTIME"),"Sistema: indisponivel",20,104,10,C'255,118,118');
+      SetLabel(Obj("RUNTIME"),"API OFF",350,27,8,C'255,118,118');
       if(active_view=="CONFIG") SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • sistema indisponivel",20,441,9,C'255,155,155');
-      else SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • sistema indisponivel",20,520,8,C'255,155,155');
+      else if(active_view=="COCKPIT") SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • sistema indisponivel",20,520,8,C'255,155,155');
       return;
    }
    runtime_ok=true;
    health_ok=true;
    string mode=JsonValue(r,"mode");
-   string mt5=JsonValue(r,"mt5_demo");
    string engine=JsonValue(r,"decision_engine");
-   SetLabel(Obj("RUNTIME"),"Sistema: online",20,104,10,C'88,214,141');
-   SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),20,124,10,C'88,214,141');
+   SetLabel(Obj("RUNTIME"),"API OK",350,27,8,C'88,214,141');
+   string mode_label=(mode=="DEMO" || mode=="SIMULACAO")?"DEMO":(mode==""?"MODO ?":StringSubstr(mode,0,8));
+   if(active_view=="COCKPIT") SetLabel(Obj("MODE"),mode_label,350,47,8,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • autorizacao separada",20,441,9,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
-   if(active_view=="RESERVA" || active_view=="ASSISTENTE") return;
+   if(active_view!="COCKPIT" && active_view!="ANALISE") return;
    SetLabel(Obj("INFO1"),"Analise do ecossistema: "+(engine==""?"online":engine),20,361,9,C'205,215,230');
 }
 void RefreshMarketAssets(){
@@ -1048,6 +1967,8 @@ void CloseCycle(){
 }
 int OnInit(){
    active_view="COCKPIT";
+   active_area="COCKPIT";
+   active_module="Operação";
    LoadCycleIdentity();
    LoadAssistantConversation();
    LoadPanelVisibility();
@@ -1086,44 +2007,74 @@ void OnTimer(){
    datetime current_bar=iTime(_Symbol,_Period,0);
    bool new_bar=(current_bar>0 && current_bar!=last_analysis_bar);
    if(new_bar) last_analysis_bar=current_bar;
-   // Keep the compact signal fresh on every timer tick; render the larger
-   // panel details only when a new bar arrives in the analysis views.
-   Analyze(new_bar && (active_view=="COCKPIT" || active_view=="ANALISE"));
+   // Poll and refresh analysis only while a view that displays analysis is active.
+   // Other modules must not trigger background analysis requests or rewrite compact signals.
+   if(active_view=="COCKPIT" || active_view=="ANALISE")
+      Analyze(new_bar);
    double bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
-   if(bid>0) SetLabel(Obj("PRICE"),"Preco atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
+   if(active_view=="COCKPIT" && bid>0) SetLabel(Obj("PRICE"),"Preco atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
 }
 void OnChartEvent(const int id,const long &lparam,const double &dparam,const string &sparam){
    if(id!=CHARTEVENT_OBJECT_CLICK) return;
    if(sparam==Obj("PANEL_TOGGLE") || sparam==Obj("PANEL_TOGGLE_BG")) { TogglePanel(); return; }
-   if(sparam==Obj("V1")) { active_view="COCKPIT"; Panel(); RenderView(); }
-   else if(sparam==Obj("V2")) { active_view="ANALISE"; Panel(); RenderView(); }
-   else if(sparam==Obj("V3")) { active_view="MEMORIA"; Panel(); RenderView(); }
-   else if(sparam==Obj("V4")) { active_view="LAB"; Panel(); RenderView(); }
-   else if(sparam==Obj("V5")) { active_view="ENSINO"; Panel(); RenderView(); }
-   else if(sparam==Obj("V6")) { active_view="NOTIF"; Panel(); RenderView(); }
-   else if(sparam==Obj("V7")) { active_view="CONFIG"; Panel(); RenderView(); }
-   else if(sparam==Obj("V8")) { active_view="RESERVA"; Panel(); RenderView(); }
-   else if(sparam==Obj("V9")) { active_view="ASSISTENTE"; Panel(); RenderView(); }
-   else if(sparam==Obj("ASSISTANT_CONSENT")) { assistant_consent_armed=!assistant_consent_armed; SetButton(Obj("ASSISTANT_CONSENT"),assistant_consent_armed?"CONSENTIMENTO OPENAI: SIM":"CONSENTIMENTO OPENAI: NAO",20,307,220,28); }
-   else if(sparam==Obj("ASSISTANT_SEND")) SendAssistantMessage();
+   if(sparam==Obj("A1")) { SelectArea("COCKPIT"); return; }
+   else if(sparam==Obj("A2")) { SelectArea("ANÁLISE"); return; }
+   else if(sparam==Obj("A3")) { SelectArea("ESTUDO"); return; }
+   else if(sparam==Obj("A4")) { SelectArea("RESERVA FISCAL"); return; }
+   else if(sparam==Obj("A5")) { SelectArea("ASSISTENTE DO ECOSSISTEMA"); return; }
+   else if(sparam==Obj("A6")) { SelectArea("CENTRAL"); return; }
+   else if(sparam==Obj("M1")) { SelectModule(0); return; }
+   else if(sparam==Obj("M2")) { SelectModule(1); return; }
+   else if(sparam==Obj("M3")) { SelectModule(2); return; }
+   else if(sparam==Obj("M4")) { SelectModule(3); return; }
+   else if(sparam==Obj("M5")) { SelectModule(4); return; }
+   else if(sparam==Obj("M6")) { SelectModule(5); return; }
+   else if(sparam==Obj("M7")) { SelectModule(6); return; }
+   else if(sparam==Obj("ASSISTANT_CONSENT") && active_view=="ASSISTENTE") { assistant_consent_armed=!assistant_consent_armed; SetButton(Obj("ASSISTANT_CONSENT"),assistant_consent_armed?"CONSENTIMENTO OPENAI: SIM":"CONSENTIMENTO OPENAI: NAO",20,307,220,28); }
+   else if(sparam==Obj("ASSISTANT_SEND") && active_view=="ASSISTENTE") SendAssistantMessage();
+   else if(sparam==Obj("KILL_CONFIRM") && active_view=="KILL_SWITCH") { kill_switch_confirm_armed=!kill_switch_confirm_armed; SetButton(Obj("KILL_CONFIRM"),kill_switch_confirm_armed?"CONFIRMACAO ARMADA":"CONFIRMAR BLOQUEIO",20,320,172,30); }
+   else if(sparam==Obj("KILL_ACTIVATE") && active_view=="KILL_SWITCH") ActivateKillSwitch();
+   else if(sparam==Obj("MEMORY_PREV")) { if(active_view=="MEMORIA" && memory_page>0) { memory_page--; RenderMemoryPage(); } }
+   else if(sparam==Obj("MEMORY_NEXT")) { if(active_view=="MEMORIA" && (memory_page+1)*5<ArraySize(memory_records)) { memory_page++; RenderMemoryPage(); } }
+   else if(sparam==Obj("ASSISTANT_PREV")) { if(active_view=="ASSISTENTE" && assistant_answer_page>0) { assistant_answer_page--; RenderAssistantAnswer(); } }
+   else if(sparam==Obj("ASSISTANT_NEXT")) { if(active_view=="ASSISTENTE" && (assistant_answer_page+1)*330<StringLen(assistant_answer)) { assistant_answer_page++; RenderAssistantAnswer(); } }
+   else if(sparam==Obj("REPLAY_RUN") && active_view=="REPLAY") RunHistoricalReplay();
+   else if(sparam==Obj("SIM_RUN") && active_view=="SIMULATOR") RunHistoricalSimulator();
+   else if(sparam==Obj("DISC_SAVE") && active_view=="DISCOVERIES") SaveDiscovery();
+   else if(sparam==Obj("DISC_REFRESH") && active_view=="DISCOVERIES") RefreshDiscoveries();
+   else if(sparam==Obj("ONBOARD_PREV")) { if(active_view=="ONBOARDING" && onboarding_valid && onboarding_page>0) { onboarding_page--; RenderOnboardingPage(); } }
+   else if(sparam==Obj("ONBOARD_NEXT")) { if(active_view=="ONBOARDING" && onboarding_valid && (onboarding_page+1)<ArraySize(onboarding_steps)) { onboarding_page++; RenderOnboardingPage(); } }
    else if(sparam==Obj("ANALYZE")) {
-      if(active_view=="ANALISE") Analyze();
+      if(active_view=="DECISION") RefreshDecisionView();
+      else if(active_view=="KILL_SWITCH") RefreshKillSwitchStatus();
+      else if(active_view=="ANALISE") Analyze();
       else if(active_view=="CONFIG") RefreshPreferences();
-      else if(active_view=="MEMORIA") RefreshSecondary();
+      else if(active_view=="MEMORIA") RefreshMemory();
+      else if(active_view=="RISK") RefreshRiskView();
+      else if(active_view=="STATS") RefreshStatistics();
+      else if(active_view=="CONNECTIONS") RefreshConnections();
+      else if(active_view=="SECURITY") RefreshSecurityView();
+      else if(active_view=="ENVIRONMENT") RefreshEnvironmentView();
+      else if(active_view=="FINANCE") RefreshFinanceOverview();
+      else if(active_view=="REPORTS") RefreshReports();
+      else if(active_view=="JOURNAL") RefreshJournal();
+      else if(active_view=="AUDIT") RefreshAuditView();
       else if(active_view=="LAB") { RefreshHealth(); RefreshSecondary(); }
       else if(active_view=="ENSINO") RefreshLearning();
+      else if(active_view=="ONBOARDING") RefreshOnboarding();
+      else if(active_view=="DISCOVERIES") RefreshDiscoveries();
       else if(active_view=="NOTIF") RefreshNotifications();
       else if(active_view=="RESERVA") RefreshFiscal();
       else if(active_view=="ASSISTENTE") RefreshAssistantStatus();
-      else Analyze();
+      else if(active_view=="COCKPIT") Analyze();
    }
-   else if(sparam==Obj("CYCLE")) RunCycle();
-   else if(sparam==Obj("SAVE")) SaveConfig();
-   else if(sparam==Obj("LEVERAGE_TOGGLE")) { leverage_enabled=!leverage_enabled; SaveConfig(); }
-   else if(sparam==Obj("CLOSE")) CloseCycle();
-   else if(sparam==Obj("REC_REFRESH")) RefreshRecoveryInventory();
-   else if(sparam==Obj("REC_PREV")){ recovery_selected=MathMax(0,recovery_selected-1); recovery_close_armed=false; RenderRecoverySelection(); }
-   else if(sparam==Obj("REC_NEXT")){ recovery_selected=MathMin(ArraySize(recovery_items)-1,recovery_selected+1); recovery_close_armed=false; RenderRecoverySelection(); }
-   else if(sparam==Obj("REC_RECONCILE")) ReconcileSelectedRecovery();
-   else if(sparam==Obj("REC_CLOSE")) CloseSelectedRecovery();
+   else if(sparam==Obj("CYCLE")) { if(active_view=="COCKPIT") RunCycle(); }
+   else if(sparam==Obj("SAVE")) { if(active_view=="CONFIG") SaveConfig(); }
+   else if(sparam==Obj("LEVERAGE_TOGGLE")) { if(active_view=="CONFIG") { leverage_enabled=!leverage_enabled; SaveConfig(); } }
+   else if(sparam==Obj("CLOSE")) { if(active_view=="COCKPIT") CloseCycle(); }
+   else if(sparam==Obj("REC_REFRESH")) { if(active_view=="COCKPIT") RefreshRecoveryInventory(); }
+   else if(sparam==Obj("REC_PREV")){ if(active_view=="COCKPIT"){ recovery_selected=MathMax(0,recovery_selected-1); recovery_close_armed=false; RenderRecoverySelection(); } }
+   else if(sparam==Obj("REC_NEXT")){ if(active_view=="COCKPIT"){ recovery_selected=MathMin(ArraySize(recovery_items)-1,recovery_selected+1); recovery_close_armed=false; RenderRecoverySelection(); } }
+   else if(sparam==Obj("REC_RECONCILE")) { if(active_view=="COCKPIT") ReconcileSelectedRecovery(); }
+   else if(sparam==Obj("REC_CLOSE")) { if(active_view=="COCKPIT") CloseSelectedRecovery(); }
 }

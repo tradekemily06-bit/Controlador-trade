@@ -6,7 +6,8 @@ import ipaddress
 import io
 import json
 import os
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 from math import isfinite
 import urllib.error
 import urllib.parse
@@ -1222,13 +1223,13 @@ def show_fiscal() -> None:
     fx_method_options = {"NOT_INFORMED": "Não informado", "NOT_CONVERTED": "Ainda não convertido", "PTAX_SELL": "PTAX venda", "PTAX_BUY": "PTAX compra", "BROKER_STATEMENT": "Extrato da corretora", "BANK_RECEIPT": "Comprovante bancário", "OTHER_DOCUMENTED": "Outro método documentado"}
     with st.form("foreign_pending_form"):
         col1, col2 = st.columns(2)
-        reference = col1.text_input("Referência / comprovante", max_chars=160)
+        reference = col1.text_input("Referência / comprovante", max_chars=160, key="foreign_pending_reference")
         amount = col2.number_input("Valor original", min_value=0.00000001, max_value=1_000_000_000_000.0, step=1.0, format="%.8f")
         col3, col4 = st.columns(2)
         currency = col3.text_input("Código da moeda (3 letras)", value="USD", max_chars=3).strip().upper()
-        instrument = col4.text_input("Instrumento", placeholder="ETF, ação, Forex, CFD, cripto", max_chars=80)
+        instrument = col4.text_input("Instrumento", placeholder="ETF, ação, Forex, CFD, cripto", max_chars=80, key="foreign_pending_instrument")
         col5, col6 = st.columns(2)
-        jurisdiction = col5.text_input("Jurisdição", placeholder="EUA, Brasil, outro", max_chars=80)
+        jurisdiction = col5.text_input("Jurisdição", placeholder="EUA, Brasil, outro", max_chars=80, key="foreign_pending_jurisdiction")
         occurred_on = col6.date_input("Data da operação", key="foreign_date")
         tax_residency = st.selectbox("Residência fiscal declarada na data", list(residency_options), format_func=lambda value: residency_options[value], key="foreign_tax_residency")
         income_nature = st.selectbox("Natureza do rendimento / valor", list(income_options), format_func=lambda value: income_options[value], key="foreign_income_nature")
@@ -1267,11 +1268,11 @@ def show_fiscal() -> None:
     st.markdown("#### Resultado realizado no exterior")
     st.caption("Informe lucro positivo ou prejuízo negativo. O valor original fica pendente e não entra na reserva.")
     with st.form("foreign_signed_result"):
-        ref_signed = st.text_input("Referência do extrato", max_chars=160)
+        ref_signed = st.text_input("Referência do extrato", max_chars=160, key="foreign_signed_reference")
         amount_signed = st.number_input("Resultado original (+ lucro / - prejuízo)", min_value=-1000000000000.0, max_value=1000000000000.0, value=0.0, format="%.8f")
         currency_signed = st.text_input("Código da moeda original (3 letras)", value="USD", max_chars=3).strip().upper()
-        instrument_signed = st.text_input("Instrumento", max_chars=80)
-        jurisdiction_signed = st.text_input("Jurisdição", max_chars=80)
+        instrument_signed = st.text_input("Instrumento", max_chars=80, key="foreign_signed_instrument")
+        jurisdiction_signed = st.text_input("Jurisdição", max_chars=80, key="foreign_signed_jurisdiction")
         date_signed = st.date_input("Data do resultado", key="signed_foreign_date")
         residency_signed = st.selectbox("Residência fiscal declarada na data", list(residency_options), format_func=lambda value: residency_options[value], key="signed_tax_residency")
         income_signed = st.selectbox("Natureza do resultado", list(income_options), format_func=lambda value: income_options[value], key="signed_income_nature")
@@ -1514,6 +1515,18 @@ def show_fiscal() -> None:
 def show_market_analysis() -> None:
     st.subheader("Análise de Mercado")
     st.caption("Disponibilidade de ativos e sessões consultada no MT5 DEMO. Capacidade de negociar no fim de semana não significa mercado aberto agora. Esta tela não envia ordens.")
+    try:
+        market_status = api("/api/market/status")
+        st.markdown("#### Integridade dos dados de mercado")
+        status_cols = st.columns(4)
+        status_cols[0].metric("Estado", str(market_status.get("health") or "NOT_CONNECTED"))
+        status_cols[1].metric("Seguro para análise", "SIM" if market_status.get("safe_for_analysis") is True else "NÃO")
+        status_cols[2].metric("Candles", str(market_status.get("candle_count") if market_status.get("candle_count") is not None else "—"))
+        status_cols[3].metric("Lacunas", str(market_status.get("gap_count") if market_status.get("gap_count") is not None else "—"))
+        st.caption(str(market_status.get("message") or "Estado de integridade sem mensagem adicional."))
+        st.caption("Este estado descreve a qualidade/frescor do último snapshot recebido; não autoriza execução nem confirma mercado aberto.")
+    except Exception:
+        st.warning("Estado de integridade do mercado indisponível. Trate os dados como não confirmados.")
     try:
         assets_payload = api("/api/market/assets")
         raw_assets = assets_payload.get("assets", [])
@@ -1815,6 +1828,68 @@ def show_kill_switch() -> None:
             "pela confirmação do servidor; confira a conectividade antes de prosseguir."
         )
 
+    st.markdown("#### Reconciliação de fechamento · consulta protegida")
+    try:
+        real_status = api("/api/runtime/real/status")
+        st.caption(
+            "Estado REAL reportado: "
+            + str(real_status.get("real_execution_allowed", False))
+            + " · autorização ativa: "
+            + str(real_status.get("authorization_active", False))
+            + " · despacho: "
+            + str(real_status.get("real_dispatch", "não informado"))
+        )
+        recovery_items = real_status.get("position_close_recovery_items", [])
+        recovery_items = [
+            item for item in recovery_items
+            if isinstance(item, dict)
+            and isinstance(item.get("request_id"), str)
+            and item.get("request_id").strip()
+            and isinstance(item.get("external_id"), str)
+            and item.get("external_id").strip()
+        ] if isinstance(recovery_items, list) else []
+        if recovery_items:
+            item_by_request = {item["request_id"]: item for item in recovery_items}
+            selected_request = st.selectbox(
+                "Fechamento pendente/desconhecido",
+                options=list(item_by_request),
+                format_func=lambda request_id: (
+                    request_id + " · " + str(item_by_request[request_id].get("state") or "UNKNOWN")
+                    + " · " + str(item_by_request[request_id].get("external_id") or "sem referência")
+                ),
+                key="real_close_reconcile_request",
+            )
+            selected_item = item_by_request[selected_request]
+            st.caption("A reconciliação consulta evidência do broker e atualiza o estado persistido. Não envia ordem de abertura ou fechamento.")
+            with st.form("real_close_reconcile_form"):
+                confirm_read = st.checkbox(
+                    "Confirmo consultar o broker e reconciliar somente este fechamento já registrado."
+                )
+                reconcile_submit = st.form_submit_button("CONSULTAR E RECONCILIAR")
+            if reconcile_submit:
+                if confirm_read is not True:
+                    st.error("Confirme explicitamente a consulta antes de reconciliar.")
+                else:
+                    try:
+                        result = api(
+                            "/api/runtime/real/close/reconcile",
+                            "POST",
+                            {
+                                "request_id": selected_request,
+                                "external_id": selected_item["external_id"],
+                            },
+                        )
+                        reconciliation = result.get("close_reconciliation", {})
+                        st.success("Estado consultado: " + str(reconciliation.get("state") or "NÃO CONFIRMADO"))
+                        st.caption(str(reconciliation.get("message") or "Sem mensagem adicional do adaptador."))
+                        st.rerun()
+                    except Exception:
+                        st.error("Não foi possível reconciliar. Nenhuma ordem de abertura/fechamento foi enviada.")
+        else:
+            st.info("Nenhum fechamento REAL pendente/desconhecido foi reportado pelo runtime.")
+    except Exception:
+        st.warning("Status REAL e reconciliação indisponíveis ou não autorizados. Não interprete ausência de dados como ausência de pendências.")
+
     with st.form("guarded_kill_switch_activation_form"):
         reason = st.text_input("Motivo obrigatório da ativação", max_chars=240)
         confirmed = st.checkbox(
@@ -1857,16 +1932,17 @@ def show_readonly_module(module_name: str) -> None:
         "Notificações": ("Central de Notificações", "/api/notifications"),
         "Ambiente MT5 DEMO": ("Conexões e ambiente", "/api/connections"),
         "Memória": ("Memória de decisões", "/api/memory?limit=50"),
+        "Diário Operacional": ("Diário operacional · registros persistidos", "/api/journal"),
         "Estatísticas": ("Estatísticas operacionais", "/api/statistics"),
-        "Relatórios": ("Resumo operacional", "/api/statistics"),
+        "Relatórios": ("Resumo operacional", "/api/reports"),
         "Laboratório": ("Laboratório de aprendizado", "/api/learning"),
         "Aprendizado": ("Aprendizado validado", "/api/learning"),
         "Descobertas": ("Descobertas registradas", "/api/learning"),
         "Escola / Tutorial / Onboarding": ("Primeiros passos", "/api/onboarding"),
         "Configurações": ("Preferências do Ecossistema", "/api/preferences"),
-        "Segurança": ("Segurança do Ecossistema", "/api/health"),
         "Conexões": ("Conexões disponíveis", "/api/connections"),
-        "Multi-Broker": ("Disponibilidade de conexões", "/api/connections"),
+        "Multi-Broker": ("Visão de provedores · somente leitura", "/api/connections"),
+        "Segurança": ("Postura de segurança do runtime", "/api/health"),
         "Auditoria": ("Auditoria operacional", "/api/security/audit"),
     }
     if module_name == "Kill Switch":
@@ -1891,6 +1967,39 @@ def show_readonly_module(module_name: str) -> None:
         st.subheader(heading)
 
     try:
+        if module_name == "Diário Operacional":
+            selected_day = st.date_input(
+                "Data do diário",
+                value=datetime.now(ZoneInfo("America/Sao_Paulo")).date(),
+                key="operational_journal_day",
+            )
+            data = api(f"/api/journal?date={selected_day.isoformat()}&limit=100")
+            summary = data.get("today_summary", {}) if isinstance(data, dict) else {}
+            entries = data.get("entries", []) if isinstance(data, dict) else []
+            entries = [item for item in entries if isinstance(item, dict)] if isinstance(entries, list) else []
+            st.caption("Registros da memória operacional persistente do runtime, filtrados pelo dia de São Paulo. Não é extrato bancário nem confirmação independente de execução pela corretora.")
+            metrics = st.columns(5)
+            metrics[0].metric("Registros", int(summary.get("total", 0) or 0))
+            metrics[1].metric("WIN", int(summary.get("win", 0) or 0))
+            metrics[2].metric("LOSS", int(summary.get("loss", 0) or 0))
+            metrics[3].metric("AMBOS", int(summary.get("ambos", 0) or 0))
+            metrics[4].metric("Pendentes", int(summary.get("pending", 0) or 0))
+            if entries:
+                rows = [{
+                    "Data/hora": item.get("timestamp", "—"),
+                    "Ativo": item.get("symbol") or "—",
+                    "Timeframe": item.get("timeframe") or "—",
+                    "Sinal": item.get("signal") or "—",
+                    "Decisão": item.get("decision") or "—",
+                    "Score": item.get("score", "—"),
+                    "Resultado": item.get("result") or "—",
+                    "Motivo": item.get("reason") or "—",
+                } for item in entries]
+                st.dataframe(rows, use_container_width=True, hide_index=True)
+            else:
+                st.info("Nenhum registro operacional persistido para esta data.")
+            st.caption("Somente leitura · autoridade de execução: NÃO · execução permitida por esta tela: NÃO · REAL: DESABILITADO")
+            return
         data = api(endpoint)
         if module_name == "Configurações":
             prefs = data.get("preferences", {}) if isinstance(data, dict) else {}
@@ -2500,6 +2609,7 @@ def show_readonly_module(module_name: str) -> None:
             st.metric("Integração MT5 DEMO", str(data.get("ic_markets_mt5_demo", "NÃO CONFIRMADO")))
             st.metric("cTrader", str(data.get("cTrader", "FUTURO_NAO_BLOQUEANTE")))
             st.warning("Não há evidência nesta resposta de uma segunda corretora conectada e validada. Não trate a arquitetura multi-broker como integração concluída.")
+            st.caption("Execução multi-broker: NÃO IMPLEMENTADA · nenhum roteamento de ordens foi ativado.")
             st.caption("A conexão com outras corretoras exige adaptador próprio, credenciais configuradas com segurança e testes DEMO por corretora.")
             st.caption("Nenhuma ordem é enviada por esta tela. REAL permanece DESABILITADO.")
             return
@@ -2957,19 +3067,25 @@ def show_readonly_module(module_name: str) -> None:
             return
 
         if module_name == "Relatórios":
-            periods = data.get("periods", {})
-            breakdowns = data.get("breakdowns", {})
-            st.caption("Relatório consolidado dos registros disponíveis no runtime. Não representa extrato financeiro, apuração fiscal ou garantia de resultado.")
+            report_summary = data.get("summary", {}) if isinstance(data, dict) else {}
+            if not isinstance(report_summary, dict):
+                report_summary = {}
+            periods = report_summary.get("periods", {})
+            breakdowns = report_summary.get("breakdowns", {})
+            records = data.get("records", []) if isinstance(data, dict) else []
+            records = [item for item in records if isinstance(item, dict)] if isinstance(records, list) else []
+            st.caption("Relatório consolidado da memória de decisões do runtime. Não representa extrato financeiro, apuração fiscal ou garantia de resultado.")
+            st.caption("Gerado em: " + str(data.get("generated_at") or "data não informada") + " · Fonte: " + str(data.get("source") or "não informada") + " · Registros detalhados: " + str(data.get("record_count", len(records))))
             st.markdown("#### Resumo executivo")
             st.write(
-                f"Base analisada: {data.get('total', 0)} registro(s), "
-                f"{data.get('actionable', 0)} acionável(is), "
-                f"{data.get('wins', 0)} vitória(s), {data.get('losses', 0)} derrota(s) "
-                f"e {data.get('draws', 0)} empate(s)."
+                f"Base analisada: {report_summary.get('total', 0)} registro(s), "
+                f"{report_summary.get('actionable', 0)} acionável(is), "
+                f"{report_summary.get('wins', 0)} vitória(s), {report_summary.get('losses', 0)} derrota(s) "
+                f"e {report_summary.get('draws', 0)} empate(s)."
             )
-            st.metric("Taxa de vitória · operações encerradas", f"{float(data.get('win_rate', 0.0)):.1f}%")
+            st.metric("Taxa de vitória · operações encerradas", f"{float(report_summary.get('win_rate', 0.0)):.1f}%")
             report_rows = []
-            for key, label in (("daily", "Hoje · UTC"), ("weekly", "Semana · UTC"), ("monthly", "Mês · UTC")):
+            for key, label in (("daily", "Hoje"), ("weekly", "Semana"), ("monthly", "Mês")):
                 item = periods.get(key, {})
                 report_rows.append({
                     "Seção": "Período",
@@ -3015,8 +3131,12 @@ def show_readonly_module(module_name: str) -> None:
                 )
             else:
                 st.info("Ainda não há dados para compor o relatório.")
+            if records:
+                st.markdown("#### Registros recentes")
+                detail_rows = [{"Data/hora": item.get("created_at") or "—", "Ativo": item.get("symbol") or "—", "Período": item.get("timeframe") or "—", "Sinal": item.get("signal") or "—", "Pontuação": item.get("score", "—"), "Resultado": item.get("outcome") or "EM ABERTO / NÃO INFORMADO"} for item in records]
+                st.dataframe(detail_rows, use_container_width=True, hide_index=True)
             st.caption("O relatório usa somente estatísticas agregadas; não inclui credenciais, dados bancários ou ordens.")
-            st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
+            st.caption("Somente leitura · execução permitida: NÃO · REAL: DESABILITADO")
             return
 
     except Exception:
@@ -3079,9 +3199,9 @@ AREAS = {
 }
 AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]
 AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]
-AREAS["MAIS / ADMIN"] = list(_REFERENCE_TABS["MAIS / ADMIN"])
-if "Kill Switch" not in AREAS["MAIS / ADMIN"]:
-    AREAS["MAIS / ADMIN"].append("Kill Switch")
+# CENTRAL is the final main area. Financeiro belongs inside it, not as a
+# seventh top-level area. Keep the original Figma JSON unchanged.
+AREAS["CENTRAL"] = ["Financeiro", "Diário Operacional", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]
 if "panel_open" not in st.session_state:
     st.session_state.panel_open = True
 
@@ -3101,7 +3221,7 @@ with st.container(key="control-hub-shell"):
     with header_left:
         st.markdown('<div class="hub-title">Controlador-Trader</div>', unsafe_allow_html=True)
     with header_right:
-        st.markdown('<div class="demo-pill-wrap"><span class="demo-pill">DEMO</span></div>', unsafe_allow_html=True)
+        st.markdown('<div class="demo-pill-wrap"><span class="demo-pill">NÃO CONFIRMADO</span></div>', unsafe_allow_html=True)
 
     # The same periodically refreshed signal and score appear in both panel states.
     with st.container(key="open-signal-strip"):
@@ -3109,14 +3229,11 @@ with st.container(key="control-hub-shell"):
 
     area = st.radio("Áreas principais", list(AREAS), horizontal=True, key="main_area_navigation", label_visibility="collapsed")
     st.divider()
-    if area in {"RESERVA FISCAL", "ASSISTENTE DO ECOSSISTEMA"}:
-        module = AREAS[area][0]
-    else:
-        # The previous Financeiro selector may remain in Streamlit session state
-        # after navigation changes; normalize it before rendering the new options.
-        if st.session_state.get("module_navigation") not in AREAS[area]:
-            st.session_state["module_navigation"] = AREAS[area][0]
-        module = st.radio("Módulos", AREAS[area], horizontal=False, key="module_navigation", label_visibility="collapsed")
+    # Every one of the six main areas uses the same module-navigation
+    # contract. Single-module areas remain visible and selectable too.
+    if st.session_state.get("module_navigation") not in AREAS[area]:
+        st.session_state["module_navigation"] = AREAS[area][0]
+    module = st.radio("Módulos", AREAS[area], horizontal=False, key="module_navigation", label_visibility="collapsed")
 
     if module == "Reserva Fiscal":
         show_fiscal()

@@ -61,6 +61,32 @@ class ApiContractTests(unittest.TestCase):
                 "single:test-owner", None,
             )
 
+    def test_reports_endpoint_returns_read_only_decision_summary_and_bounded_records(self):
+        import app as app_module
+        sample_records = [
+            {"decision_id": "decision-1", "signal": "COMPRA", "outcome": None},
+            {"decision_id": "decision-2", "signal": "VENDA", "outcome": "WIN"},
+        ]
+        summary = {"total": 2, "wins": 1, "losses": 0, "win_rate": 100.0}
+        with patch.object(app_module.SERVICE, "memory_view", return_value=sample_records) as memory_view, \
+             patch.object(app_module.SERVICE, "statistics", return_value=summary), \
+             patch.object(app_module.SERVICE, "memory", sample_records):
+            status, _, payload = self.request("/api/reports", query="limit=2")
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(payload["summary"], summary)
+        self.assertEqual(payload["records"], sample_records)
+        self.assertEqual(payload["record_count"], 2)
+        self.assertEqual(payload["source"], "decision_memory")
+        self.assertTrue(payload["read_only"])
+        self.assertFalse(payload["execution_allowed"])
+        self.assertIn("generated_at", payload)
+        memory_view.assert_called_once_with(2)
+
+    def test_reports_endpoint_rejects_out_of_range_limit(self):
+        status, _, payload = self.request("/api/reports", query="limit=201")
+        self.assertEqual(status, "400 Bad Request")
+        self.assertEqual(payload["error"], "Entrada inválida")
+
     def test_security_audit_endpoint_is_read_only_redacted_and_limited(self):
         import app as app_module
         sample = [{
@@ -267,6 +293,59 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(status, "200 OK")
         self.assertEqual(updated["decision_id"], decision["decision_id"])
         self.assertEqual(updated["outcome"], "WIN")
+
+    def test_mt5_replay_runtime_failure_returns_safe_unavailable_response(self):
+        with patch.object(
+            __import__("app").SERVICE,
+            "replay_mt5_history",
+            side_effect=RuntimeError("provider indisponível"),
+        ):
+            status, _, payload = self.request(
+                "/api/replay/mt5", method="POST",
+                payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+            )
+        self.assertEqual(status, "503 Service Unavailable")
+        self.assertEqual(payload["error"], "Replay histórico indisponível")
+        self.assertFalse(payload["orders_sent"])
+        self.assertFalse(payload["execution_allowed"])
+        self.assertNotIn("provider indisponível", str(payload))
+
+    def test_mt5_signal_simulator_runtime_failure_returns_safe_unavailable_response(self):
+        with patch.object(
+            __import__("app").SERVICE,
+            "simulate_mt5_signal_scenario",
+            side_effect=RuntimeError("provider indisponível"),
+        ):
+            status, _, payload = self.request(
+                "/api/simulator/mt5", method="POST",
+                payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+            )
+        self.assertEqual(status, "503 Service Unavailable")
+        self.assertEqual(payload["error"], "simulação histórica indisponível")
+        self.assertFalse(payload["orders_sent"])
+        self.assertFalse(payload["execution_allowed"])
+        self.assertNotIn("provider indisponível", str(payload))
+
+    def test_mt5_backtest_runtime_failure_returns_safe_unavailable_response(self):
+        with patch.object(
+            __import__("app").SERVICE,
+            "run_mt5_historical_backtest",
+            side_effect=RuntimeError("provider indisponível"),
+        ):
+            status, _, payload = self.request(
+                "/api/simulator/mt5/backtest", method="POST",
+                payload={
+                    "symbol": "EURUSD", "timeframe": "5m", "limit": 200,
+                    "stop_distance": 1, "take_profit_distance": 2,
+                    "quantity_units": 1, "spread_price_units": 0,
+                    "slippage_price_units_per_side": 0,
+                },
+            )
+        self.assertEqual(status, "503 Service Unavailable")
+        self.assertEqual(payload["error"], "backtest histórico indisponível")
+        self.assertFalse(payload["orders_sent"])
+        self.assertFalse(payload["execution_allowed"])
+        self.assertNotIn("provider indisponível", str(payload))
 
     def test_invalid_replay_payload_fails_closed(self):
         status, _, payload = self.request("/api/replay", method="POST", payload={"cases": "invalid"})

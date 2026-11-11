@@ -21,6 +21,40 @@ def test_runtime_launchers_resolve_python_and_fail_closed():
         assert "Test-Path -LiteralPath $PythonExe -PathType Leaf" in text
 
 
+def test_all_windows_launchers_pin_python_executable_before_starting_child_processes():
+    for path in (
+        "deployment/start_controlador_runtime.ps1",
+        "deployment/start_mt5_runtime.ps1",
+        "deployment/start_streamlit_panel.ps1",
+        "deployment/bootstrap_windows_runtime.ps1",
+    ):
+        text = _read(path)
+        assert "[System.IO.Path]::GetFullPath($PythonExe)" in text
+        assert "Python não encontrado" in text
+        assert "Test-Path -LiteralPath $PythonExe -PathType Leaf" in text
+        if "Set-Location $ProjectRoot" in text:
+            assert text.index("[System.IO.Path]::GetFullPath($PythonExe)") < text.index("Set-Location $ProjectRoot")
+
+
+def test_backup_and_restore_resolve_relative_python_executables_before_changing_directory():
+    for path in ("deployment/backup_runtime.ps1", "deployment/restore_runtime.ps1"):
+        text = _read(path)
+        assert "if(-not [System.IO.Path]::IsPathRooted($PythonExe))" in text
+        assert "$projectPython=Join-Path $ProjectRoot $PythonExe" in text
+        assert "$PythonExe=[System.IO.Path]::GetFullPath($PythonExe)" in text
+        assert text.index("$PythonExe=[System.IO.Path]::GetFullPath($PythonExe)") < text.index("Set-Location $ProjectRoot")
+
+
+def test_backup_launcher_resolves_relative_paths_against_project_root_before_creating_output():
+    text = _read("deployment/backup_runtime.ps1")
+    assert "$ProjectRoot = [System.IO.Path]::GetFullPath($ProjectRoot)" in text
+    assert "$RuntimeDir=Join-Path $ProjectRoot $RuntimeDir" in text
+    assert "$OutputDir=Join-Path $ProjectRoot $OutputDir" in text
+    assert "$RuntimeDir=[System.IO.Path]::GetFullPath($RuntimeDir)" in text
+    assert "$OutputDir=[System.IO.Path]::GetFullPath($OutputDir)" in text
+    assert text.index("$OutputDir=[System.IO.Path]::GetFullPath($OutputDir)") < text.index("New-Item -ItemType Directory -Force -Path $OutputDir")
+
+
 def test_bootstrap_stops_after_dependency_install_failure():
     text = _read("deployment/bootstrap_windows_runtime.ps1")
     assert "$LASTEXITCODE -ne 0" in text
@@ -101,7 +135,6 @@ def test_controller_supervisor_pins_runtime_paths_and_demo_safety_environment():
         assert required in text
 
 
-
 def test_controller_supervisor_pins_remote_identity_and_local_ea_boundary():
     text = _read("deployment/start_controlador_runtime.ps1")
     required = (
@@ -153,8 +186,9 @@ def test_controller_supervisor_and_installer_share_configured_mt5_terminal():
     bootstrap = _read("deployment/bootstrap_windows_runtime.ps1")
     assert "CONTROLADOR_MT5_TERMINAL_PATH = $Mt5TerminalPath" in bootstrap
     assert "run_preflight(mt5)" in controller
-    assert "-Mt5TerminalPath $Mt5TerminalPath" in controller
-    assert "-Mt5TerminalPath \"' + $Mt5TerminalPath + '\"" in installer
+    assert "Test-Mt5Demo -WaitSeconds $Mt5WaitSeconds" in controller
+    assert '-Mt5TerminalPath "' in installer
+    assert "$Mt5TerminalPath + " + "'" + '"' + "'" in installer
 
 
 def test_market_data_adapter_and_preflight_honor_configured_terminal():
@@ -165,15 +199,17 @@ def test_market_data_adapter_and_preflight_honor_configured_terminal():
     assert "CONTROLADOR_MT5_TERMINAL_PATH" in preflight
     assert "mt5.initialize(path=configured_path)" in preflight
 
-def test_controller_supervisor_preserves_mql5_sync_failure_details():
-    text = _read("deployment/start_controlador_runtime.ps1")
-    assert "$syncOutput = & powershell.exe" in text
-    assert " -Mt5TerminalPath $Mt5TerminalPath 2>&1" in text
-    assert "$syncExitCode = $LASTEXITCODE" in text
-    assert 'Write-StartupLog "Sincronização MQL5: $message"' in text
-    assert "terminou com código $syncExitCode" in text
 
-
+def test_windows_installer_and_supervisor_never_sync_ea_automatically():
+    installer = _read("deployment/install_windows_autostart.ps1")
+    startup = _read("deployment/start_controlador_runtime.ps1")
+    assert "$syncScript" not in installer
+    assert "sync_mql5_panel.ps1" not in installer
+    assert "A inicialização não copia nem compila o EA" in installer
+    assert "ação manual separada" in installer
+    assert "Sync-Mt5Panel" not in startup
+    assert "sync_mql5_panel.ps1" not in startup
+    assert "sem alterar os arquivos do EA" in startup
 
 
 def test_controller_supervisor_separates_liveness_and_safety_and_uses_repair_policy():
@@ -220,7 +256,6 @@ def test_controller_skips_mt5_preflight_while_maintenance_lock_is_active():
     assert "run_preflight(mt5)" in function
 
 
-
 def test_controller_health_probes_use_bounded_direct_urllib_not_invoke_webrequest():
     text = _read("deployment/start_controlador_runtime.ps1")
     for required in (
@@ -234,7 +269,6 @@ def test_controller_health_probes_use_bounded_direct_urllib_not_invoke_webreques
     ):
         assert required in text
     assert "Invoke-WebRequest" not in text
-
 
 
 def test_supervisor_recovery_authorization_requires_live_quiescence_evidence():
@@ -251,10 +285,14 @@ def test_supervisor_recovery_authorization_requires_live_quiescence_evidence():
     assert "$env:CONTROLADOR_EXECUTION_PROVIDER = 'ic_markets_mt5_demo'" in mt5
     assert "$env:CONTROLADOR_REAL_EXECUTION_ALLOWED = 'false'" in mt5
 
+
 def test_mt5_preview_compiles_isolated_source_without_touching_installed_ea():
     text = _read("deployment/prepare_mt5_preview.ps1")
-    assert "fetch origin main" in text
-    assert "origin/main:$sourceRelative" in text
+    assert "$sourcePath = Join-Path $ProjectRoot $sourceRelative" in text
+    assert "ReadAllText($sourcePath" in text
+    assert "$sourceHash = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash" in text
+    assert "fetch origin main" not in text
+    assert "origin/main:" not in text
     assert 'string P="CTPREVIEW_"' in text
     assert "MQL5\\Experts\\ControladorTradingPreview" in text
     assert "installedSourceHashAfter" in text
@@ -264,6 +302,7 @@ def test_mt5_preview_compiles_isolated_source_without_touching_installed_ea():
     assert "Controlador-Trading-Preview.ex5" in text
     assert "git checkout" not in text.lower()
     assert "git reset" not in text.lower()
+
 
 def test_supervisors_fail_closed_when_restart_history_is_corrupt():
     for path in (
@@ -278,12 +317,11 @@ def test_supervisors_fail_closed_when_restart_history_is_corrupt():
         assert "timestamp inválido no histórico de reinícios" in text
 
 
-
 def test_container_healthcheck_uses_lightweight_liveness_endpoint():
     text = _read("Dockerfile")
     assert "/api/health/live" in text
     assert "'/api/health'" not in text
- 
+
 
 def test_controller_runtime_requires_single_user_identity_before_startup():
     text = _read("deployment/start_controlador_runtime.ps1")
@@ -297,6 +335,7 @@ def test_controller_runtime_requires_single_user_identity_before_startup():
     assert "OPENAI_API_KEY detectada no ambiente; conexão com o provedor permanece não testada" in text
     assert "Write-StartupLog $env:OPENAI_API_KEY" not in text
     assert "Write-StartupLog ([string]$env:OPENAI_API_KEY)" not in text
+
 
 def test_fiscal_assistant_runtime_validator_is_read_only_and_checks_safe_contracts():
     text = _read("deployment/validate_fiscal_assistant_runtime.ps1")
@@ -342,6 +381,7 @@ def test_fiscal_assistant_runtime_validator_is_read_only_and_checks_safe_contrac
     assert text.count("function Get-LocalJson") == 1
     assert text.count("function Add-Check") == 1
 
+
 def test_controller_restart_budget_limits_rate_not_runtime_uptime():
     text = _read("deployment/start_controlador_runtime.ps1")
     assert "[int]$MaxRestartsPerHour = 6" in text
@@ -351,6 +391,7 @@ def test_controller_restart_budget_limits_rate_not_runtime_uptime():
     assert "while ((Get-Date) -lt $retryAt)" in text
     assert "continue" in text.split("if ($restartTimes.Count -ge $MaxRestartsPerHour)", 1)[1].split("$restartTimes.Add($now)", 1)[0]
     assert "while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf))" in text
+
 
 def test_streamlit_restart_budget_pauses_and_resumes_without_ending_supervisor():
     text = _read("deployment/start_streamlit_panel.ps1")
@@ -385,3 +426,52 @@ def test_remote_runtime_docs_distinguish_windows_supervisors_from_cloudflare_tun
     assert "não instala nem registra o serviço Windows `cloudflared`" in text
     assert "porta 8000" in text
     assert "AtStartupS4U" in text
+
+
+def test_runtime_backup_uses_collision_resistant_archive_names():
+    script = _read("deployment/backup_runtime.ps1")
+    assert "yyyyMMdd-HHmmss-fff" in script
+    assert "[guid]::NewGuid().ToString('N')" in script
+
+
+def test_windows_ci_parses_and_exercises_runtime_backup_and_restore_scripts():
+    workflow = _read(".github/workflows/ci.yml")
+    assert "'backup_runtime.ps1'" in workflow
+    assert "'restore_runtime.ps1'" in workflow
+    assert "Exercise runtime backup and restore without live services" in workflow
+    assert "backup_runtime.ps1" in workflow
+    assert "restore_runtime.ps1" in workflow
+    assert "Runtime backup restore content mismatch" in workflow
+    assert "Runtime restore did not reject overwriting existing state" in workflow
+    assert "$global:LASTEXITCODE = 0" in workflow
+
+
+def test_restore_launcher_resolves_project_relative_paths_and_validates_backup_before_restore():
+    text = _read("deployment/restore_runtime.ps1")
+    assert "$ProjectRoot = [System.IO.Path]::GetFullPath($ProjectRoot)" in text
+    assert "if(-not [System.IO.Path]::IsPathRooted($BackupFile))" in text
+    assert "$BackupFile=[System.IO.Path]::GetFullPath($BackupFile)" in text
+    assert "Backup não encontrado" in text
+    assert "$RuntimeDir=Join-Path $ProjectRoot '.runtime'" in text
+    assert "$RuntimeDir=Join-Path $ProjectRoot $RuntimeDir" in text
+    assert "$RuntimeDir=[System.IO.Path]::GetFullPath($RuntimeDir)" in text
+    assert text.index("Backup não encontrado") < text.index("restore_backup")
+    assert "CONTROLADOR_RESTORE_BACKUP_FILE" in text
+    assert "CONTROLADOR_RESTORE_RUNTIME_DIR" in text
+
+
+def test_backup_and_restore_pass_paths_as_environment_data_not_python_source():
+    backup = _read("deployment/backup_runtime.ps1")
+    restore = _read("deployment/restore_runtime.ps1")
+    assert "$env:CONTROLADOR_BACKUP_RUNTIME_DIR = $RuntimeDir" in backup
+    assert "$env:CONTROLADOR_BACKUP_OUTPUT_FILE = $backup" in backup
+    assert "os.environ['CONTROLADOR_BACKUP_RUNTIME_DIR']" in backup
+    assert "os.environ['CONTROLADOR_BACKUP_OUTPUT_FILE']" in backup
+    assert "r'$RuntimeDir'" not in backup
+    assert "r'$backup'" not in backup
+    assert "$env:CONTROLADOR_RESTORE_BACKUP_FILE = $BackupFile" in restore
+    assert "$env:CONTROLADOR_RESTORE_RUNTIME_DIR = $RuntimeDir" in restore
+    assert "os.environ['CONTROLADOR_RESTORE_BACKUP_FILE']" in restore
+    assert "os.environ['CONTROLADOR_RESTORE_RUNTIME_DIR']" in restore
+    assert "r'$BackupFile'" not in restore
+    assert "r'$RuntimeDir'" not in restore

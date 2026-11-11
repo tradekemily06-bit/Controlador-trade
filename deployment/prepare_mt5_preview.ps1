@@ -1,13 +1,71 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$ProjectRoot = 'C:\Users\Jose\Controlador-trade',
     [string]$TerminalDataPath = (Join-Path $env:APPDATA 'MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075'),
-    [string]$MetaEditorPath = 'C:\Program Files\MetaTrader 5\MetaEditor64.exe'
+    [string]$MetaEditorPath = 'C:\Program Files\MetaTrader 5\MetaEditor64.exe',
+    [string]$ExpectedBranch = 'fix/mt5-order-state-reconciliation-20261110'
 )
 
 $ErrorActionPreference = 'Stop'
 $ProjectRoot = [System.IO.Path]::GetFullPath($ProjectRoot)
 $TerminalDataPath = [System.IO.Path]::GetFullPath($TerminalDataPath)
+
+# Refuse to preview an arbitrary or stale worktree. The source must come from
+# the reviewed project repository, on the expected branch, with no local edits.
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    throw 'Git não está disponível no PATH; prévia cancelada para evitar compilar uma cópia não verificada.'
+}
+$gitRoot = (& git -C $ProjectRoot rev-parse --show-toplevel 2>$null)
+$gitRootExitCode = $LASTEXITCODE
+if ($gitRootExitCode -ne 0 -or -not $gitRoot) {
+    throw 'A pasta selecionada não é uma cópia Git válida; prévia cancelada.'
+}
+$gitRoot = [System.IO.Path]::GetFullPath($gitRoot.Trim())
+if ($gitRoot.TrimEnd([char]'\') -ne $ProjectRoot.TrimEnd([char]'\')) {
+    throw "A raiz Git ($gitRoot) não corresponde à pasta selecionada ($ProjectRoot)."
+}
+$actualBranch = (& git -C $ProjectRoot branch --show-current 2>$null)
+$actualBranchExitCode = $LASTEXITCODE
+if ($actualBranchExitCode -ne 0 -or -not $actualBranch -or $actualBranch.Trim() -ne $ExpectedBranch) {
+    throw "Branch incorreta para prévia. Esperada: $ExpectedBranch; encontrada: $actualBranch"
+}
+$actualCommit = (& git -C $ProjectRoot rev-parse HEAD 2>$null)
+$actualCommitExitCode = $LASTEXITCODE
+if ($actualCommitExitCode -ne 0 -or $actualCommit -notmatch '^[0-9a-f]{40}$') {
+    throw 'Não foi possível identificar o commit exato da cópia de trabalho.'
+}
+$workingTree = (& git -C $ProjectRoot status --porcelain 2>$null)
+if ($LASTEXITCODE -ne 0) {
+    throw 'Não foi possível verificar o estado da cópia de trabalho.'
+}
+if ($workingTree) {
+    throw 'A cópia de trabalho contém alterações locais ou arquivos não rastreados. Faça commit ou limpe a cópia antes da prévia.'
+}
+$origin = (& git -C $ProjectRoot remote get-url origin 2>$null)
+$originExitCode = $LASTEXITCODE
+if ($originExitCode -ne 0) {
+    throw 'Não foi possível validar o repositório remoto origin.'
+}
+$normalizedOrigin = $origin.Trim().TrimEnd('/') -replace '\.git$', ''
+$allowedOrigins = @(
+    'https://github.com/tradekemily06-bit/Controlador-trade',
+    'http://github.com/tradekemily06-bit/Controlador-trade',
+    'git@github.com:tradekemily06-bit/Controlador-trade'
+)
+if ($normalizedOrigin -notin $allowedOrigins) {
+    throw "Repositório remoto inesperado: $origin"
+}
+# A branch local limpa ainda pode estar desatualizada. Compare com o HEAD remoto
+# antes de compilar para impedir uma prévia baseada em código antigo.
+$remoteLine = (& git -C $ProjectRoot ls-remote origin "refs/heads/$ExpectedBranch" 2>$null)
+$remoteExitCode = $LASTEXITCODE
+if ($remoteExitCode -ne 0 -or -not $remoteLine) {
+    throw 'Não foi possível confirmar a versão atual da branch no GitHub; prévia cancelada.'
+}
+$remoteCommit = ($remoteLine -split '\s+')[0]
+if ($remoteCommit -notmatch '^[0-9a-f]{40}$' -or $actualCommit -ne $remoteCommit) {
+    throw "A cópia local não corresponde ao último commit remoto. Local: $actualCommit; remoto: $remoteCommit. Atualize a cópia antes da prévia."
+}
 
 if (-not (Test-Path -LiteralPath $ProjectRoot -PathType Container)) {
     throw "Pasta do projeto não encontrada: $ProjectRoot"
@@ -19,28 +77,59 @@ if (-not (Test-Path -LiteralPath $TerminalDataPath -PathType Container) -or
 if (-not (Test-Path -LiteralPath $MetaEditorPath -PathType Leaf)) {
     throw "MetaEditor não encontrado: $MetaEditorPath"
 }
-$git = Get-Command git -ErrorAction SilentlyContinue
-if ($null -eq $git) { throw 'Git não encontrado no PATH.' }
-
-# Fetch only the remote reference. Do not checkout, merge, reset, or alter the user's worktree.
-& $git.Source -C $ProjectRoot fetch origin main
-if ($LASTEXITCODE -ne 0) { throw 'Não foi possível atualizar origin/main; nenhum EA foi alterado.' }
-
-$sourceRelative = 'mql5/Experts/ControladorTrading/Controlador-Trading.mq5'
-$sourceLines = & $git.Source -C $ProjectRoot show "origin/main:$sourceRelative"
-if ($LASTEXITCODE -ne 0 -or $null -eq $sourceLines) {
-    throw 'Não foi possível ler a fonte aprovada de origin/main.'
+# Compile the exact source in the selected worktree (including the current PR branch).
+# Never fetch or silently substitute a different branch: that could preview an older EA.
+$sourceRelative = 'mql5\Experts\ControladorTrading\Controlador-Trading.mq5'
+$sourcePath = Join-Path $ProjectRoot $sourceRelative
+if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+    throw "Fonte MQL5 não encontrada na cópia de trabalho: $sourcePath"
 }
-$nl = [System.Environment]::NewLine
-$sourceText = ($sourceLines -join $nl) + $nl
+$sourceHash = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash
+$sourceText = [System.IO.File]::ReadAllText($sourcePath, [System.Text.Encoding]::UTF8)
 if (-not $sourceText.Contains('string P="CTP_";')) {
-    throw 'A fonte não corresponde à versão esperada; compilação de prévia cancelada.'
+    throw 'A fonte MQL5 não contém o identificador esperado; compilação de prévia cancelada.'
 }
 
 # A prefixo isolado impede que os objetos do preview colidam com o EA já instalado.
 $sourceText = $sourceText.Replace('string P="CTP_";', 'string P="CTPREVIEW_";')
 if ($sourceText.Contains('string P="CTP_";')) {
     throw 'Não foi possível isolar os objetos do preview.'
+}
+
+# A prévia desta etapa é somente visual: bloqueie ciclo e fechamento no EA
+# compilado para impedir operações acidentais durante a aprovação da interface.
+$runStart = $sourceText.IndexOf('void RunCycle(){')
+$closeStart = $sourceText.IndexOf('void CloseCycle(){')
+$onInitStart = $sourceText.IndexOf('int OnInit(){')
+if ($runStart -lt 0 -or $closeStart -le $runStart -or $onInitStart -le $closeStart) {
+    throw 'Não foi possível localizar os limites das rotinas de execução; prévia visual cancelada.'
+}
+$runStub = 'void RunCycle(){ SetLabel(Obj("INFO1"),"PREVIA VISUAL: execucao desabilitada.",20,361,9,C''255,209,102''); }' + "`n"
+$sourceText = $sourceText.Substring(0, $runStart) + $runStub + $sourceText.Substring($closeStart)
+$closeStart = $sourceText.IndexOf('void CloseCycle(){')
+$onInitStart = $sourceText.IndexOf('int OnInit(){')
+if ($closeStart -lt 0 -or $onInitStart -le $closeStart) {
+    throw 'Não foi possível isolar a rotina de fechamento; prévia visual cancelada.'
+}
+$closeStub = 'void CloseCycle(){ SetLabel(Obj("INFO1"),"PREVIA VISUAL: fechamento desabilitado.",20,361,9,C''255,209,102''); }' + "`n"
+$sourceText = $sourceText.Substring(0, $closeStart) + $closeStub + $sourceText.Substring($onInitStart)
+if ($sourceText.Contains('if(!Http("POST","/api/runtime/cycle/local"')) {
+    throw 'A chamada de execução permaneceu na fonte da prévia; compilação cancelada.'
+}
+if ($sourceText.Contains('if(Http("POST","/api/runtime/close/local"')) {
+    throw 'A chamada de fechamento permaneceu na fonte da prévia; compilação cancelada.'
+}
+
+# Na prévia visual, permita somente consultas GET. Bloqueia também assistente,
+# preferências, kill switch, replay, simulador e qualquer outra mutação via POST.
+$httpSignature = 'bool Http(string method,string path,string body,string &response,int &code){'
+if ([regex]::Matches($sourceText, [regex]::Escape($httpSignature)).Count -ne 1) {
+    throw 'Assinatura HTTP inesperada; prévia visual cancelada.'
+}
+$httpGuard = $httpSignature + ' if(method!="GET"){ response="PREVIA VISUAL: acoes desabilitadas."; code=0; return false; }'
+$sourceText = $sourceText.Replace($httpSignature, $httpGuard)
+if (-not $sourceText.Contains('if(method!="GET"){ response="PREVIA VISUAL: acoes desabilitadas."')) {
+    throw 'O bloqueio de mutações HTTP não foi aplicado à prévia.'
 }
 
 $installedFolder = Join-Path $TerminalDataPath 'MQL5\Experts\ControladorTrading'
@@ -53,8 +142,15 @@ $installedBinaryHash = if (Test-Path -LiteralPath $installedBinary -PathType Lea
     (Get-FileHash -LiteralPath $installedBinary -Algorithm SHA256).Hash
 } else { 'ABSENT' }
 
-$previewFolder = Join-Path $TerminalDataPath 'MQL5\Experts\ControladorTradingPreview'
-New-Item -ItemType Directory -Force -Path $previewFolder | Out-Null
+$previewCommit = $actualCommit.Substring(0, 12)
+# Cada tentativa recebe uma pasta própria. Uma compilação interrompida mantém
+# seu log para diagnóstico sem bloquear uma nova tentativa nem sobrescrever artefatos.
+$previewAttempt = [guid]::NewGuid().ToString('N').Substring(0, 8)
+$previewFolder = Join-Path $TerminalDataPath ("MQL5\Experts\ControladorTradingPreview_" + $previewCommit + "_" + $previewAttempt)
+if (Test-Path -LiteralPath $previewFolder) {
+    throw "A pasta desta prévia já existe e não será sobrescrita: $previewFolder. Preserve os arquivos existentes e solicite uma nova revisão antes de reutilizar."
+}
+New-Item -ItemType Directory -Path $previewFolder | Out-Null
 $previewSource = Join-Path $previewFolder 'Controlador-Trading-Preview.mq5'
 $previewBinary = Join-Path $previewFolder 'Controlador-Trading-Preview.ex5'
 $compileLog = Join-Path $previewFolder 'Controlador-Trading-Preview.compile.log'
@@ -91,6 +187,9 @@ if ($installedSourceHash -ne $installedSourceHashAfter -or $installedBinaryHash 
 }
 
 Write-Output 'PREVIEW_COMPILE=OK'
+Write-Output "SOURCE_SHA256=$sourceHash"
+Write-Output "SOURCE_BRANCH=$actualBranch"
+Write-Output "SOURCE_COMMIT=$actualCommit"
 Write-Output "PREVIEW_SOURCE=$previewSource"
 Write-Output "PREVIEW_EX5=$previewBinary"
 Write-Output "COMPILE_LOG=$compileLog"

@@ -571,8 +571,15 @@ class ICMarketsMT5DemoAdapter:
     @serialized_mt5_session
     def query_order(self, external_id: str) -> ExternalOrderObservation:
         """Read external DEMO order/deal status for P121; never resubmits."""
-        if not isinstance(external_id, str) or not external_id.strip():
-            raise ValueError("external_id inválido")
+        if (
+            not isinstance(external_id, str)
+            or not external_id
+            or len(external_id) > 20
+            or not external_id.isascii()
+            or not external_id.isdecimal()
+            or int(external_id) <= 0
+        ):
+            raise ValueError("external_id deve ser um ticket MT5 decimal positivo")
         mt5 = self._module()
         if not self._initialize(mt5):
             raise MT5AdapterError(f"MT5 indisponível: {self._last_error(mt5)}")
@@ -585,20 +592,102 @@ class ICMarketsMT5DemoAdapter:
             except (TypeError, ValueError) as exc:
                 raise ValueError("external_id deve ser um ticket MT5 numérico") from exc
             deal_fn = getattr(mt5, "history_deals_get", None)
-            if callable(deal_fn):
-                deals = deal_fn(ticket=ticket)
-                if deals:
-                    return ExternalOrderObservation(external_id, ExternalOrderStatus.EXECUTED, "deal externo encontrado no histórico MT5")
             order_fn = getattr(mt5, "history_orders_get", None)
-            if callable(order_fn):
-                orders = order_fn(ticket=ticket)
-                if orders:
-                    order = tuple(orders)[-1]
-                    state = getattr(order, "state", None)
-                    canceled = {getattr(mt5, "ORDER_STATE_CANCELED", object()), getattr(mt5, "ORDER_STATE_REJECTED", object()), getattr(mt5, "ORDER_STATE_EXPIRED", object())}
-                    if state in canceled:
-                        return ExternalOrderObservation(external_id, ExternalOrderStatus.NOT_EXECUTED, f"ordem externa não executada; state={state}")
-                    return ExternalOrderObservation(external_id, ExternalOrderStatus.PENDING, f"ordem externa encontrada; state={state}")
+            if not callable(deal_fn) or not callable(order_fn):
+                return ExternalOrderObservation(
+                    external_id,
+                    ExternalOrderStatus.UNKNOWN,
+                    "consulta de histórico de ordens/negócios indisponível",
+                )
+            deals = deal_fn(ticket=ticket)
+            orders = order_fn(ticket=ticket)
+            if deals is None or orders is None:
+                return ExternalOrderObservation(
+                    external_id,
+                    ExternalOrderStatus.UNKNOWN,
+                    "falha ao consultar histórico MT5; reconciliação bloqueada",
+                )
+
+            if orders:
+                order = tuple(orders)[-1]
+                state = getattr(order, "state", None)
+                filled = getattr(mt5, "ORDER_STATE_FILLED", object())
+                partial = getattr(mt5, "ORDER_STATE_PARTIAL", object())
+                if state == filled:
+                    return ExternalOrderObservation(
+                        external_id,
+                        ExternalOrderStatus.EXECUTED,
+                        "ordem externa preenchida no histórico MT5",
+                    )
+                if state == partial:
+                    return ExternalOrderObservation(
+                        external_id,
+                        ExternalOrderStatus.UNKNOWN,
+                        "ordem externa parcialmente preenchida; reconciliação binária bloqueada",
+                    )
+
+                canceled = {
+                    getattr(mt5, "ORDER_STATE_CANCELED", object()),
+                    getattr(mt5, "ORDER_STATE_REJECTED", object()),
+                    getattr(mt5, "ORDER_STATE_EXPIRED", object()),
+                }
+                if state in canceled:
+                    initial = getattr(order, "volume_initial", None)
+                    remaining = getattr(order, "volume_current", None)
+                    if (
+                        not deals
+                        and isinstance(initial, (int, float))
+                        and not isinstance(initial, bool)
+                        and isinstance(remaining, (int, float))
+                        and not isinstance(remaining, bool)
+                        and math.isfinite(float(initial))
+                        and math.isfinite(float(remaining))
+                        and initial > 0
+                        and remaining >= 0
+                        and math.isclose(float(initial), float(remaining), rel_tol=0.0, abs_tol=1e-9)
+                    ):
+                        return ExternalOrderObservation(
+                            external_id,
+                            ExternalOrderStatus.NOT_EXECUTED,
+                            f"ordem externa cancelada sem volume executado; state={state}",
+                        )
+                    return ExternalOrderObservation(
+                        external_id,
+                        ExternalOrderStatus.UNKNOWN,
+                        "ordem externa cancelada/rejeitada com negócio associado ou metadados insuficientes",
+                    )
+
+                pending_states = {
+                    getattr(mt5, "ORDER_STATE_STARTED", object()),
+                    getattr(mt5, "ORDER_STATE_PLACED", object()),
+                    getattr(mt5, "ORDER_STATE_REQUEST_ADD", object()),
+                    getattr(mt5, "ORDER_STATE_REQUEST_MODIFY", object()),
+                    getattr(mt5, "ORDER_STATE_REQUEST_CANCEL", object()),
+                }
+                if state in pending_states:
+                    if deals:
+                        return ExternalOrderObservation(
+                            external_id,
+                            ExternalOrderStatus.UNKNOWN,
+                            "ordem ainda em andamento, mas já há negócio associado; reconciliação bloqueada",
+                        )
+                    return ExternalOrderObservation(
+                        external_id,
+                        ExternalOrderStatus.PENDING,
+                        f"ordem externa ainda em andamento; state={state}",
+                    )
+                return ExternalOrderObservation(
+                    external_id,
+                    ExternalOrderStatus.UNKNOWN,
+                    f"estado externo MT5 não reconhecido; state={state}",
+                )
+
+            if deals:
+                return ExternalOrderObservation(
+                    external_id,
+                    ExternalOrderStatus.EXECUTED,
+                    "negócio associado à ordem encontrado no histórico MT5",
+                )
             return ExternalOrderObservation(external_id, ExternalOrderStatus.UNKNOWN, "ticket externo não encontrado no histórico MT5")
         finally:
             mt5.shutdown()

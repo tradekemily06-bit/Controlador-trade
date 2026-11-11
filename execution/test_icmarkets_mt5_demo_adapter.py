@@ -17,9 +17,16 @@ class FakeMT5:
     DEAL_ENTRY_IN = 0
     DEAL_ENTRY_OUT = 1
     DEAL_ENTRY_OUT_BY = 2
-    ORDER_STATE_CANCELED = 4
+    ORDER_STATE_STARTED = 0
+    ORDER_STATE_PLACED = 1
+    ORDER_STATE_CANCELED = 2
+    ORDER_STATE_PARTIAL = 3
+    ORDER_STATE_FILLED = 4
     ORDER_STATE_REJECTED = 5
     ORDER_STATE_EXPIRED = 6
+    ORDER_STATE_REQUEST_ADD = 7
+    ORDER_STATE_REQUEST_MODIFY = 8
+    ORDER_STATE_REQUEST_CANCEL = 9
     POSITION_TYPE_BUY = 0
 
     def __init__(self, check_code=0, send_result=True):
@@ -61,7 +68,12 @@ class FakeMT5:
     def history_orders_get(self, *args, **kwargs):
         self.calls.append(("history_orders_get", args, kwargs))
         if kwargs.get("ticket") == 456:
-            return (SimpleNamespace(ticket=456, state=self.ORDER_STATE_CANCELED),)
+            return (SimpleNamespace(
+                ticket=456,
+                state=self.ORDER_STATE_CANCELED,
+                volume_initial=0.01,
+                volume_current=0.01,
+            ),)
         return ()
 
     def positions_get(self):
@@ -242,11 +254,134 @@ def test_query_order_reconciles_external_deal_as_executed():
     assert observation.status.value == "EXECUTED"
 
 
+def test_query_order_rejects_non_positive_or_non_decimal_tickets_before_mt5_access():
+    mt5 = FakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
+
+    for ticket in ("0", "-1", "+1", "１２３", "12x", "1" * 21):
+        try:
+            adapter.query_order(ticket)
+        except ValueError as exc:
+            assert "ticket MT5 decimal positivo" in str(exc)
+        else:
+            raise AssertionError(f"ticket inválido aceito: {ticket!r}")
+
+    assert mt5.calls == []
+
+
 def test_query_order_reconciles_canceled_external_order_as_not_executed():
     mt5 = FakeMT5()
     adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
     observation = adapter.query_order("456")
     assert observation.status.value == "NOT_EXECUTED"
+
+
+def test_query_order_accepts_filled_order_with_its_associated_deal_history():
+    class FilledOrderWithDealHistoryMT5(FakeMT5):
+        def history_deals_get(self, *args, **kwargs):
+            if kwargs.get("ticket") == 123456:
+                return (SimpleNamespace(ticket=123456, profit=1.0),)
+            return ()
+
+        def history_orders_get(self, *args, **kwargs):
+            if kwargs.get("ticket") == 123456:
+                return (SimpleNamespace(
+                    ticket=123456,
+                    state=self.ORDER_STATE_FILLED,
+                    volume_initial=0.01,
+                    volume_current=0.0,
+                ),)
+            return ()
+
+    observation = ICMarketsMT5DemoAdapter(
+        mt5_module=FilledOrderWithDealHistoryMT5()
+    ).query_order("123456")
+
+    assert observation.status.value == "EXECUTED"
+
+
+def test_query_order_keeps_unknown_when_mt5_history_query_fails():
+    class HistoryFailureMT5(FakeMT5):
+        def history_deals_get(self, *args, **kwargs):
+            return None
+
+    observation = ICMarketsMT5DemoAdapter(
+        mt5_module=HistoryFailureMT5()
+    ).query_order("123456")
+
+    assert observation.status.value == "UNKNOWN"
+
+
+def test_query_order_reconciles_filled_order_ticket_as_executed():
+    class FilledOrderMT5(FakeMT5):
+        def history_deals_get(self, *args, **kwargs):
+            if kwargs.get("ticket") is not None:
+                return ()
+            return super().history_deals_get(*args, **kwargs)
+
+        def history_orders_get(self, *args, **kwargs):
+            if kwargs.get("ticket") == 123456:
+                return (SimpleNamespace(
+                    ticket=123456,
+                    state=self.ORDER_STATE_FILLED,
+                    volume_initial=0.01,
+                    volume_current=0.0,
+                ),)
+            return ()
+
+    observation = ICMarketsMT5DemoAdapter(
+        mt5_module=FilledOrderMT5()
+    ).query_order("123456")
+
+    assert observation.status.value == "EXECUTED"
+
+
+def test_query_order_keeps_partially_filled_order_unknown():
+    class PartialOrderMT5(FakeMT5):
+        def history_deals_get(self, *args, **kwargs):
+            if kwargs.get("ticket") is not None:
+                return ()
+            return super().history_deals_get(*args, **kwargs)
+
+        def history_orders_get(self, *args, **kwargs):
+            if kwargs.get("ticket") == 123456:
+                return (SimpleNamespace(
+                    ticket=123456,
+                    state=self.ORDER_STATE_PARTIAL,
+                    volume_initial=0.01,
+                    volume_current=0.005,
+                ),)
+            return ()
+
+    observation = ICMarketsMT5DemoAdapter(
+        mt5_module=PartialOrderMT5()
+    ).query_order("123456")
+
+    assert observation.status.value == "UNKNOWN"
+
+
+def test_query_order_keeps_canceled_order_with_partial_fill_unknown():
+    class CanceledPartialOrderMT5(FakeMT5):
+        def history_deals_get(self, *args, **kwargs):
+            if kwargs.get("ticket") is not None:
+                return ()
+            return super().history_deals_get(*args, **kwargs)
+
+        def history_orders_get(self, *args, **kwargs):
+            if kwargs.get("ticket") == 123456:
+                return (SimpleNamespace(
+                    ticket=123456,
+                    state=self.ORDER_STATE_CANCELED,
+                    volume_initial=0.01,
+                    volume_current=0.005,
+                ),)
+            return ()
+
+    observation = ICMarketsMT5DemoAdapter(
+        mt5_module=CanceledPartialOrderMT5()
+    ).query_order("123456")
+
+    assert observation.status.value == "UNKNOWN"
 
 
 def test_risk_day_timezone_is_explicit_and_converted_to_utc():

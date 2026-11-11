@@ -1008,11 +1008,165 @@ def test_fiscal_api_to_assistant_context_flow_preserves_evidence_and_privacy(tmp
     assert pending["evidence_completeness"]["missing_core_evidence"] == 0
     assert pending["included_in_totals"] is False
     assert pending["reserve_calculated"] is False
+    serialized_context = json.dumps(context, ensure_ascii=False)
     for private_value in (
         "PRIVATE-E2E-REFERENCE",
         "PRIVATE-E2E-BROKER",
         "PRIVATE-E2E-NOTE",
-        "250",
-        "200",
     ):
-        assert private_value not in json.dumps(context, ensure_ascii=False)
+        assert private_value not in serialized_context
+
+    # Compare numeric JSON leaves, not substrings: ISO timestamps may contain
+    # digit sequences such as ".250" that are unrelated to private amounts.
+    def numeric_leaves(value):
+        if isinstance(value, dict):
+            for child in value.values():
+                yield from numeric_leaves(child)
+        elif isinstance(value, (list, tuple)):
+            for child in value:
+                yield from numeric_leaves(child)
+        elif isinstance(value, (int, float)) and not isinstance(value, bool):
+            yield value
+
+    assert 250 not in list(numeric_leaves(context))
+    assert 200 not in list(numeric_leaves(context))
+    assert "original_amount" not in pending
+    assert "original_result" not in pending
+
+
+def test_assistant_chat_without_explicit_consent_fails_before_fiscal_context_or_provider_access(
+    tmp_path, monkeypatch
+):
+    database = tmp_path / "assistant-consent.sqlite3"
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "X-Auth-User")
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", database)
+    monkeypatch.setattr(app_module.SECURITY, "allow", lambda environ: True)
+    monkeypatch.setattr(app_module.SECURITY, "headers", lambda request_id, **kwargs: [])
+    monkeypatch.setattr(app_module, "_audit", lambda *args, **kwargs: None)
+
+    def forbidden_context_access(*args, **kwargs):
+        raise AssertionError("fiscal context must not be assembled without explicit consent")
+
+    monkeypatch.setattr(app_module, "migrate_fiscal_schema", forbidden_context_access)
+
+    status, body = _request(
+        "/api/assistant/chat",
+        method="POST",
+        payload={
+            "message": "Resuma minha conta",
+            "consent_to_openai": False,
+        },
+    )
+
+    assert status.startswith("400")
+    assert body["error"] == "Consentimento explícito para envio do contexto à OpenAI é obrigatório."
+    assert not database.exists()
+
+
+def test_assistant_conversation_store_blocks_cross_owner_history_append_and_delete(tmp_path):
+    store = AssistantConversationStore(tmp_path / "assistant-owner-isolation.sqlite3")
+    owner_a = "owner-a@example.com"
+    owner_b = "owner-b@example.com"
+
+    conversation_id = store.append(owner_a, None, "user", "mensagem privada do titular A")
+    store.append(owner_a, conversation_id, "assistant", "resposta privada do titular A")
+
+    with pytest.raises(PermissionError, match="conversa não encontrada"):
+        store.history(owner_b, conversation_id)
+
+    with pytest.raises(PermissionError, match="conversa não encontrada"):
+        store.append(owner_b, conversation_id, "user", "tentativa de inserir mensagem")
+
+    with pytest.raises(PermissionError, match="conversa não encontrada"):
+        store.delete(owner_b, conversation_id)
+
+    owner_history = store.history(owner_a, conversation_id)
+    assert [message["role"] for message in owner_history] == ["user", "assistant"]
+    assert [message["content"] for message in owner_history] == [
+        "mensagem privada do titular A",
+        "resposta privada do titular A",
+    ]
+    assert len(store.list(owner_a)) == 1
+    assert store.list(owner_b) == []
+
+
+def test_assistant_conversation_owner_identity_is_case_insensitive(tmp_path):
+    store = AssistantConversationStore(tmp_path / "assistant-owner-normalization.sqlite3")
+    conversation_id = store.append(
+        "Owner@Example.com", None, "user", "mensagem do mesmo titular"
+    )
+
+    assert store.history("owner@example.com", conversation_id)[0]["content"] == "mensagem do mesmo titular"
+
+
+def test_assistant_history_and_delete_routes_hide_foreign_conversation_ids(tmp_path, monkeypatch):
+    database = tmp_path / "assistant-route-owner-isolation.sqlite3"
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "X-Auth-User")
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", database)
+    monkeypatch.setattr(app_module.SECURITY, "allow", lambda environ: True)
+    monkeypatch.setattr(app_module.SECURITY, "headers", lambda request_id, **kwargs: [])
+    monkeypatch.setattr(app_module, "_audit", lambda *args, **kwargs: None)
+
+    owner_id = migrate_fiscal_schema(str(database))
+    store = AssistantConversationStore(tmp_path / "assistant-route-owner-isolation.sqlite3")
+    owner_conversation = store.append(owner_id, None, "user", "histórico privado do titular")
+    foreign_conversation = store.append(
+        "single:other-owner", None, "user", "histórico de outro titular"
+    )
+
+    class Assistant:
+        def conversations(self, identity):
+            return store.list(identity)
+
+        def history(self, identity, conversation_id):
+            return store.history(identity, conversation_id)
+
+        def delete_conversation(self, identity, conversation_id):
+            return store.delete(identity, conversation_id)
+
+    monkeypatch.setattr(app_module, "ASSISTANT", Assistant())
+
+    status, body = _request(
+        "/api/assistant/history",
+        query=f"conversation_id={foreign_conversation}",
+    )
+    assert status.startswith("404")
+    assert body["error"] == "conversa não encontrada"
+
+    status, body = _request(
+        "/api/assistant/conversations",
+        method="DELETE",
+        query=f"conversation_id={foreign_conversation}",
+    )
+    assert status.startswith("404")
+    assert body["error"] == "conversa não encontrada"
+
+    assert store.history(owner_id, owner_conversation)[0]["content"] == (
+        "histórico privado do titular"
+    )
+    assert store.history("single:other-owner", foreign_conversation)[0]["content"] == (
+        "histórico de outro titular"
+    )
+
+    status, body = _request(
+        "/api/assistant/history",
+        query=f"conversation_id={owner_conversation}",
+    )
+    assert status.startswith("200")
+    assert body["messages"][0]["content"] == "histórico privado do titular"
+
+    status, body = _request(
+        "/api/assistant/conversations",
+        method="DELETE",
+        query=f"conversation_id={owner_conversation}",
+    )
+    assert status.startswith("200")
+    assert body["deleted"] is True
+    assert store.list(owner_id) == []
+    remaining_foreign = store.list("single:other-owner")
+    assert len(remaining_foreign) == 1
+    assert remaining_foreign[0]["title"] == "histórico de outro titular"
