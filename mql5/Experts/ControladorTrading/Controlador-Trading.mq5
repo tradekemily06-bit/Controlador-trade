@@ -786,7 +786,7 @@ void RefreshOnboarding(){
          SetLabel(Obj("INFO1"),"Etapa inconsistente; roteiro bloqueado.",20,361,8,C'255,118,118');
          return;
       }
-      string line=IntegerToString(i+1)+". "+title+" ["+location+"]";
+      string line=IntegerToString(i+1)+". "+title+" ["+location+"]: "+purpose;
       if(StringLen(line)>66) line=StringSubstr(line,0,63)+"...";
       int n=ArraySize(onboarding_steps);
       if(ArrayResize(onboarding_steps,n+1)!=n+1){ onboarding_valid=false; return; }
