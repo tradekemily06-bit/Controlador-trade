@@ -2008,9 +2008,10 @@ void OnTimer(){
    datetime current_bar=iTime(_Symbol,_Period,0);
    bool new_bar=(current_bar>0 && current_bar!=last_analysis_bar);
    if(new_bar) last_analysis_bar=current_bar;
-   // Keep the compact signal fresh on every timer tick; render the larger
-   // panel details only when a new bar arrives in the analysis views.
-   Analyze(new_bar && (active_view=="COCKPIT" || active_view=="ANALISE"));
+   // Poll and refresh analysis only while a view that displays analysis is active.
+   // Other modules must not trigger background analysis requests or rewrite compact signals.
+   if(active_view=="COCKPIT" || active_view=="ANALISE")
+      Analyze(new_bar);
    double bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
    if(active_view=="COCKPIT" && bid>0) SetLabel(Obj("PRICE"),"Preco atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
 }
