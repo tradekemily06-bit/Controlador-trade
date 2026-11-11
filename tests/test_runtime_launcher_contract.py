@@ -21,6 +21,15 @@ def test_runtime_launchers_resolve_python_and_fail_closed():
         assert "Test-Path -LiteralPath $PythonExe -PathType Leaf" in text
 
 
+def test_backup_and_restore_resolve_relative_python_executables_before_changing_directory():
+    for path in ("deployment/backup_runtime.ps1", "deployment/restore_runtime.ps1"):
+        text = _read(path)
+        assert "if(-not [System.IO.Path]::IsPathRooted($PythonExe))" in text
+        assert "$projectPython=Join-Path $ProjectRoot $PythonExe" in text
+        assert "$PythonExe=[System.IO.Path]::GetFullPath($PythonExe)" in text
+        assert text.index("$PythonExe=[System.IO.Path]::GetFullPath($PythonExe)") < text.index("Set-Location $ProjectRoot")
+
+
 def test_backup_launcher_resolves_relative_paths_against_project_root_before_creating_output():
     text = _read("deployment/backup_runtime.ps1")
     assert "$ProjectRoot = [System.IO.Path]::GetFullPath($ProjectRoot)" in text
