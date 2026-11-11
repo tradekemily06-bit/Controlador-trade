@@ -51,6 +51,102 @@ $allowedOrigins = @(
 if ($normalizedOrigin -notin $allowedOrigins) {
     throw "Repositório remoto inesperado: $origin"
 }
+# A branch local limpa ainda pode estar desatualizada. Compare com o HEAD remoto
+# antes de compilar para impedir uma prévia baseada em código antigo.
+$remoteLine = (& git -C $ProjectRoot ls-remote origin "refs/heads/$ExpectedBranch" 2>$null | Select-Object -First 1)
+if ($LASTEXITCODE -ne 0 -or -not $remoteLine) {
+    throw 'Não foi possível confirmar a versão atual da branch no GitHub; prévia cancelada.'
+}
+$remoteCommit = ($remoteLine -split '\s+')[0]
+if ($remoteCommit -notmatch '^[0-9a-f]{40}if (-not (Test-Path -LiteralPath $ProjectRoot -PathType Container)) {
+    throw "Pasta do projeto não encontrada: $ProjectRoot"
+}
+if (-not (Test-Path -LiteralPath $TerminalDataPath -PathType Container) -or
+    -not (Test-Path -LiteralPath (Join-Path $TerminalDataPath 'MQL5') -PathType Container)) {
+    throw "Pasta de dados do MT5 não encontrada; prévia cancelada: $TerminalDataPath"
+}
+if (-not (Test-Path -LiteralPath $MetaEditorPath -PathType Leaf)) {
+    throw "MetaEditor não encontrado: $MetaEditorPath"
+}
+# Compile the exact source in the selected worktree (including the current PR branch).
+# Never fetch or silently substitute a different branch: that could preview an older EA.
+$sourceRelative = 'mql5\Experts\ControladorTrading\Controlador-Trading.mq5'
+$sourcePath = Join-Path $ProjectRoot $sourceRelative
+if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+    throw "Fonte MQL5 não encontrada na cópia de trabalho: $sourcePath"
+}
+$sourceHash = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash
+$sourceText = [System.IO.File]::ReadAllText($sourcePath, [System.Text.Encoding]::UTF8)
+if (-not $sourceText.Contains('string P="CTP_";')) {
+    throw 'A fonte MQL5 não contém o identificador esperado; compilação de prévia cancelada.'
+}
+
+# A prefixo isolado impede que os objetos do preview colidam com o EA já instalado.
+$sourceText = $sourceText.Replace('string P="CTP_";', 'string P="CTPREVIEW_";')
+if ($sourceText.Contains('string P="CTP_";')) {
+    throw 'Não foi possível isolar os objetos do preview.'
+}
+
+$installedFolder = Join-Path $TerminalDataPath 'MQL5\Experts\ControladorTrading'
+$installedSource = Join-Path $installedFolder 'Controlador-Trading.mq5'
+$installedBinary = Join-Path $installedFolder 'Controlador-Trading.ex5'
+$installedSourceHash = if (Test-Path -LiteralPath $installedSource -PathType Leaf) {
+    (Get-FileHash -LiteralPath $installedSource -Algorithm SHA256).Hash
+} else { 'ABSENT' }
+$installedBinaryHash = if (Test-Path -LiteralPath $installedBinary -PathType Leaf) {
+    (Get-FileHash -LiteralPath $installedBinary -Algorithm SHA256).Hash
+} else { 'ABSENT' }
+
+$previewFolder = Join-Path $TerminalDataPath 'MQL5\Experts\ControladorTradingPreview'
+New-Item -ItemType Directory -Force -Path $previewFolder | Out-Null
+$previewSource = Join-Path $previewFolder 'Controlador-Trading-Preview.mq5'
+$previewBinary = Join-Path $previewFolder 'Controlador-Trading-Preview.ex5'
+$compileLog = Join-Path $previewFolder 'Controlador-Trading-Preview.compile.log'
+
+[System.IO.File]::WriteAllText($previewSource, $sourceText, ([System.Text.UTF8Encoding]::new($false)))
+if (Test-Path -LiteralPath $previewBinary -PathType Leaf) {
+    Remove-Item -LiteralPath $previewBinary -Force
+}
+if (Test-Path -LiteralPath $compileLog -PathType Leaf) {
+    Remove-Item -LiteralPath $compileLog -Force
+}
+
+$arguments = '/compile:"{0}" /log:"{1}"' -f $previewSource, $compileLog
+$compiler = Start-Process -FilePath $MetaEditorPath -ArgumentList $arguments -Wait -PassThru
+if (-not (Test-Path -LiteralPath $compileLog -PathType Leaf)) {
+    throw "MetaEditor não gerou o log de compilação. Código de saída: $($compiler.ExitCode)"
+}
+$logText = Get-Content -LiteralPath $compileLog -Raw
+if ($logText -match '(?im)\b[1-9]\d*\s+errors?\b') {
+    throw "A prévia MQL5 não compilou. Consulte: $compileLog"
+}
+if ($logText -notmatch '(?im)\b0\s+errors?\b' -or -not (Test-Path -LiteralPath $previewBinary -PathType Leaf)) {
+    throw "Não foi possível confirmar compilação sem erros. Consulte: $compileLog"
+}
+
+$installedSourceHashAfter = if (Test-Path -LiteralPath $installedSource -PathType Leaf) {
+    (Get-FileHash -LiteralPath $installedSource -Algorithm SHA256).Hash
+} else { 'ABSENT' }
+$installedBinaryHashAfter = if (Test-Path -LiteralPath $installedBinary -PathType Leaf) {
+    (Get-FileHash -LiteralPath $installedBinary -Algorithm SHA256).Hash
+} else { 'ABSENT' }
+if ($installedSourceHash -ne $installedSourceHashAfter -or $installedBinaryHash -ne $installedBinaryHashAfter) {
+    throw 'A verificação detectou mudança na fonte/binário instalado. Não abra o preview até investigar.'
+}
+
+Write-Output 'PREVIEW_COMPILE=OK'
+Write-Output "SOURCE_SHA256=$sourceHash"
+Write-Output "SOURCE_BRANCH=$actualBranch"
+Write-Output "SOURCE_COMMIT=$actualCommit"
+Write-Output "PREVIEW_SOURCE=$previewSource"
+Write-Output "PREVIEW_EX5=$previewBinary"
+Write-Output "COMPILE_LOG=$compileLog"
+Write-Output 'INSTALLED_EA_UNCHANGED=TRUE'
+Write-Output 'REAL_EXECUTION=BLOCKED'
+Write-Output 'Próximo passo: no MT5, atualize o Navegador e anexe Controlador-Trading-Preview a um gráfico DEMO separado. Não clique em RODAR CICLO DEMO durante a conferência visual.'
+ -or $actualCommit -ne $remoteCommit) {
+    throw "A cópia local não corresponde ao último commit remoto. Local: $actualCommit; remoto: $remoteCommit. Atualize a cópia antes da prévia."
+}
 
 if (-not (Test-Path -LiteralPath $ProjectRoot -PathType Container)) {
     throw "Pasta do projeto não encontrada: $ProjectRoot"
