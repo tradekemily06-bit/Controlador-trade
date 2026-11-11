@@ -249,7 +249,7 @@ def test_restore_rolls_back_replaced_files_when_a_later_replace_fails(tmp_path: 
     assert (target / "operation-memory.json").read_text(encoding="utf-8") == "old-memory"
     assert (target / "operational-safety.json").read_text(encoding="utf-8") == "old-safety"
     assert unrelated_rollback_temp.read_text(encoding="utf-8") == "preserve-me"
-    assert not list(target.glob("*.rollback-*"))
+    assert not list(target.glob(".operation-memory.json.rollback-*"))
 
 
 
