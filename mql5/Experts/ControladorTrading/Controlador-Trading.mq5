@@ -758,6 +758,16 @@ void RefreshLearning(){
    }
 }
 
+string CompactOnboardingText(string value,int max_chars=62){
+   StringTrimLeft(value);
+   StringTrimRight(value);
+   if(StringLen(value)<=max_chars) return value;
+   int cut=max_chars-3;
+   for(int i=cut;i>max_chars/2;i--){
+      if(StringGetCharacter(value,i)==' '){ cut=i; break; }
+   }
+   return StringSubstr(value,0,cut)+"...";
+}
 void RenderOnboardingPage(){
    int count=ArraySize(onboarding_steps);
    int page_size=1;
@@ -766,9 +776,9 @@ void RenderOnboardingPage(){
    onboarding_page=MathMax(0,MathMin(onboarding_page,page_count-1));
    int idx=onboarding_page;
    SetLabel(Obj("INFO1"),idx<count?onboarding_steps[idx]:"",20,361,8,C'205,215,230');
-   SetLabel(Obj("INFO2"),idx<count?"OBJETIVO: "+onboarding_purposes[idx]:"",20,381,7,C'205,215,230');
-   SetLabel(Obj("INFO3"),idx<count?"PROXIMO: "+onboarding_actions[idx]:"",20,401,7,C'205,215,230');
-   SetLabel(Obj("INFO4"),StringSubstr(onboarding_completion,0,76),20,421,7,C'150,165,185');
+   SetLabel(Obj("INFO2"),idx<count?"OBJETIVO: "+CompactOnboardingText(onboarding_purposes[idx],62):"",20,381,7,C'205,215,230');
+   SetLabel(Obj("INFO3"),idx<count?"PROXIMO: "+CompactOnboardingText(onboarding_actions[idx],62):"",20,401,7,C'205,215,230');
+   SetLabel(Obj("INFO4"),CompactOnboardingText(onboarding_completion,70),20,421,7,C'150,165,185');
    SetLabel(Obj("INFO5"),"Execucao: NAO • REAL: BLOQUEADO",20,441,8,C'255,155,155');
    SetButton(Obj("ONBOARD_PREV"),"ANTERIOR",20,470,104,26);
    SetLabel(Obj("ONBOARD_PAGE"),"ETAPAS "+IntegerToString(onboarding_page+1)+"/"+IntegerToString(page_count),138,476,8,C'150,165,185');
