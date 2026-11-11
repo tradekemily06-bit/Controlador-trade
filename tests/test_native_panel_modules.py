@@ -576,3 +576,12 @@ def test_native_shared_analyze_button_only_runs_generic_analysis_in_cockpit():
         ("ASSISTENTE", "RefreshAssistantStatus"),
     ):
         assert f'active_view=="{view}") {action}();' in analyze
+
+def test_native_timer_only_polls_analysis_in_cockpit_or_analysis_views():
+    source = EA.read_text(encoding="utf-8")
+    timer = source.split("void OnTimer()", 1)[1].split("void OnChartEvent", 1)[0]
+
+    assert 'if(active_view=="COCKPIT" || active_view=="ANALISE")' in timer
+    assert 'Analyze(new_bar);' in timer
+    assert 'Analyze(new_bar && (active_view=="COCKPIT" || active_view=="ANALISE"));' not in timer
+    assert timer.index('if(active_view=="COCKPIT" || active_view=="ANALISE")') < timer.index('Analyze(new_bar);')
