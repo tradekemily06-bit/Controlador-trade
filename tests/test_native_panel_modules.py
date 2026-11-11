@@ -585,3 +585,12 @@ def test_native_timer_only_polls_analysis_in_cockpit_or_analysis_views():
     assert 'Analyze(new_bar);' in timer
     assert 'Analyze(new_bar && (active_view=="COCKPIT" || active_view=="ANALISE"));' not in timer
     assert timer.index('if(active_view=="COCKPIT" || active_view=="ANALISE")') < timer.index('Analyze(new_bar);')
+
+def test_native_fiscal_view_does_not_reuse_cockpit_safe_status_object():
+    source = EA.read_text(encoding="utf-8")
+    fiscal = source.split("void RefreshFiscal()", 1)[1].split("void RefreshAssistantStatus()", 1)[0]
+    renderer = source.split("void RenderFiscal()", 1)[1].split("void RenderAssistantAnswer()", 1)[0]
+
+    assert 'SetLabel(Obj("SAFE")' not in fiscal
+    assert 'SetLabel(Obj("INFO5"),"Estimativa de planejamento; nao e imposto apurado."' in fiscal
+    assert 'ClearCockpitFields();' in renderer
