@@ -481,7 +481,7 @@ class ConfiguredEcosystemService(EcosystemService):
             for index in range(1, len(candles))
         ):
             raise RuntimeError(
-                "histórico MT5 fora de ordem ou com timestamps duplicados; replay bloqueado"
+                "histórico MT5 fora de ordem cronológica ou com timestamps duplicados; replay bloqueado"
             )
         if any(not candle.is_valid() for candle in candles):
             raise RuntimeError("histórico MT5 contém candle OHLC inválido; replay bloqueado")
@@ -557,7 +557,7 @@ class ConfiguredEcosystemService(EcosystemService):
             for index in range(1, len(candles))
         ):
             raise RuntimeError(
-                "histórico MT5 fora de ordem ou com timestamps duplicados; simulação bloqueada"
+                "histórico MT5 fora de ordem cronológica ou com timestamps duplicados; simulação bloqueada"
             )
         if any(not candle.is_valid() for candle in candles):
             raise RuntimeError("histórico MT5 contém candle inválido; simulação bloqueada")
