@@ -479,7 +479,11 @@ def application(environ, start_response):
             remote_required = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "").strip().lower() in {"1", "true", "yes"}
             client = str(environ.get("REMOTE_ADDR") or "").strip()
             if remote_required:
-                authorized, reason = _authorize_remote_mutation(environ)
+                authorized, reason = (
+                    _authorize_local_runtime(environ)
+                    if path in native_ea_local_get_paths
+                    else _authorize_remote_mutation(environ)
+                )
                 if not authorized:
                     auth_status = _remote_identity_http_status(reason)
                     return _json_response(start_response, auth_status, {"error": "Identidade autenticada necessária para consultar a auditoria."}, request_id, environ)
@@ -696,7 +700,11 @@ def application(environ, start_response):
                     entry["classification_status"] = "PENDING_CLASSIFICATION"
             return _json_response(start_response, HTTPStatus.OK, fiscal_summary, request_id, environ)
         if path.startswith("/api/fiscal-reserve"):
-            authorized, reason = _authorize_remote_mutation(environ)
+            authorized, reason = (
+                _authorize_local_runtime(environ)
+                if method == "GET" and path in native_ea_local_get_paths
+                else _authorize_remote_mutation(environ)
+            )
             if not authorized:
                 return _json_response(start_response, _remote_identity_http_status(reason), {"error": reason, "request_id": request_id}, request_id, environ)
             try:
@@ -1619,7 +1627,11 @@ def application(environ, start_response):
                 environ,
             )
         if path == "/api/runtime/analysis/latest" and method == "GET":
-            authorized, reason = _authorize_remote_mutation(environ)
+            authorized, reason = (
+                _authorize_local_runtime(environ)
+                if path in native_ea_local_get_paths
+                else _authorize_remote_mutation(environ)
+            )
             if not authorized:
                 status = HTTPStatus.UNAUTHORIZED if reason == "trusted identity is required" else HTTPStatus.SERVICE_UNAVAILABLE
                 return _json_response(
