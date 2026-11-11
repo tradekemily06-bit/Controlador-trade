@@ -1243,8 +1243,11 @@ void RefreshDiscoveries(){
    }
    if(ArraySize(observation_items)>0) statement=JsonValue(observation_items[0],"statement");
    SetLabel(Obj("INFO1"),"Materiais cadastrados: "+IntegerToString(ArraySize(resource_items)),20,361,8,C'205,215,230');
-   SetLabel(Obj("INFO2"),"ID disponivel: "+(resource_id==""?"consulte no Estudo":resource_id),20,381,8,C'145,160,180');
-   SetLabel(Obj("INFO3"),"Observacoes: "+IntegerToString(ArraySize(observation_items))+" • "+(statement==""?"sem registro":StringSubstr(statement,0,34)),20,401,8,C'205,215,230');
+   SetLabel(Obj("INFO2"),"Material: "+(resource_title==""?"titulo nao informado":StringSubstr(resource_title,0,34)),20,381,8,C'205,215,230');
+   SetLabel(Obj("INFO3"),"ID: "+(resource_id==""?"cadastre material no Estudo":StringSubstr(resource_id,0,34)),20,401,8,C'145,160,180');
+   SetLabel(Obj("INFO4"),"Observacoes: "+IntegerToString(ArraySize(observation_items))+" • "+(statement==""?"sem registro":StringSubstr(statement,0,24)),20,421,8,C'205,215,230');
+   if(resource_id!="" && ObjectFind(0,Obj("DISC_RESOURCE"))>=0 && ObjectGetString(0,Obj("DISC_RESOURCE"),OBJPROP_TEXT)=="")
+      ObjectSetString(0,Obj("DISC_RESOURCE"),OBJPROP_TEXT,resource_id);
    SetLabel(Obj("INFO4"),"Registros continuam NAO VALIDADOS.",20,421,8,C'255,209,102');
    SetLabel(Obj("INFO5"),"Descobertas nao alteram sinais nem execucao.",20,441,8,C'255,155,155');
 }
