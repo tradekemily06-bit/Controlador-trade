@@ -64,7 +64,8 @@ def test_native_mt5_module_navigation_recreates_base_controls_without_background
     assert 'SelectArea("CENTRAL")' in events
     assert 'else if(active_view=="RESERVA") RefreshFiscal();' not in timer
     assert 'else if(active_view=="ASSISTENTE") RefreshAssistantStatus();' not in timer
-    assert 'if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="DECISION" || active_view=="KILL_SWITCH" || active_view=="UNAVAILABLE" || active_view=="MEMORIA" || active_view=="RISK" || active_view=="STATS" || active_view=="CONNECTIONS" || active_view=="ENVIRONMENT" || active_view=="SECURITY" || active_view=="REPORTS" || active_view=="AUDIT" || active_view=="FINANCE") return;' in health
+    for view in ("RESERVA", "ASSISTENTE", "DECISION", "KILL_SWITCH", "UNAVAILABLE", "MEMORIA", "RISK", "STATS", "CONNECTIONS", "ENVIRONMENT", "SECURITY", "REPORTS", "AUDIT", "FINANCE", "REPLAY", "SIMULATOR", "DISCOVERIES"):
+        assert f'active_view=="{view}"' in health
     assert '"REC_REFRESH"' in clear_fields and '"REC_CLOSE"' in clear_fields
 
 
@@ -385,7 +386,8 @@ def test_native_mt5_discoveries_reads_resources_and_saves_unvalidated_observatio
     renderer = source.split('if(active_view=="DISCOVERIES"){', 1)[1].split('if(active_view=="REPLAY"){', 1)[0]
     events = source.split("void OnChartEvent", 1)[1]
 
-    assert 'if(module=="Descobertas") return "DISCOVERIES";' in source
+    routing = source.split("string ViewForModule(", 1)[1].split("void RenderNavigation()", 1)[0]
+    assert 'if(module=="Descobertas") return "DISCOVERIES";' in routing
     assert 'Http("GET","/api/learning/resources","",resources,resources_code)' in refresh
     assert 'Http("GET","/api/learning/observations","",observations,observations_code)' in refresh
     assert 'Http("POST","/api/learning/observations",body,response,code)' in save
