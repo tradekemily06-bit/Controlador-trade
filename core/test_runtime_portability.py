@@ -265,3 +265,23 @@ def test_backup_preserves_unrelated_fixed_tmp_file(tmp_path: Path):
 
     assert unrelated_temporary.read_text(encoding="utf-8") == "do not overwrite"
     assert verify_backup(archive)["format"] == "controlador-runtime-portable"
+
+
+
+def test_backup_does_not_replace_destination_created_during_publication(tmp_path: Path, monkeypatch):
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / "operation-memory.json").write_text('{"safe":true}', encoding="utf-8")
+    archive = tmp_path / "state.zip"
+    real_link = os.link
+
+    def create_racing_destination(source, destination):
+        Path(destination).write_bytes(b"concurrent-owner-file")
+        return real_link(source, destination)
+
+    monkeypatch.setattr("core.runtime_portability.os.link", create_racing_destination)
+    with pytest.raises(FileExistsError):
+        create_backup(runtime, archive)
+
+    assert archive.read_bytes() == b"concurrent-owner-file"
+    assert not list(tmp_path.glob(".state.zip.*.tmp"))
