@@ -1242,8 +1242,53 @@ void RunHistoricalReplay(){
    SetLabel(Obj("INFO4"),"Aguardar: "+(waiting==""?"—":waiting)+" • Fonte: "+(source==""?"nao informada":source),20,421,8,C'205,215,230');
    SetLabel(Obj("INFO5"),"Ordens enviadas: "+(orders==""?"nao confirmado":orders)+" • Execucao: NAO",20,441,8,C'255,155,155');
 }
+void RunHistoricalSimulator(){
+   string stop_text=ObjectGetString(0,Obj("SIM_STOP"),OBJPROP_TEXT);
+   string target_text=ObjectGetString(0,Obj("SIM_TARGET"),OBJPROP_TEXT);
+   string quantity_text=ObjectGetString(0,Obj("SIM_QTY"),OBJPROP_TEXT);
+   string multiplier_text=ObjectGetString(0,Obj("SIM_MULT"),OBJPROP_TEXT);
+   string spread_text=ObjectGetString(0,Obj("SIM_SPREAD"),OBJPROP_TEXT);
+   string slippage_text=ObjectGetString(0,Obj("SIM_SLIP"),OBJPROP_TEXT);
+   string commission_text=ObjectGetString(0,Obj("SIM_COMM"),OBJPROP_TEXT);
+   if(stop_text=="" || target_text=="" || quantity_text=="" || multiplier_text=="" || spread_text=="" || slippage_text=="" || commission_text==""){
+      SetLabel(Obj("INFO1"),"Preencha todos os parametros; custo zero = digite 0.",20,361,8,C'255,209,102'); return;
+   }
+   double stop=StringToDouble(stop_text), target=StringToDouble(target_text);
+   double quantity=StringToDouble(quantity_text), multiplier=StringToDouble(multiplier_text);
+   double spread=StringToDouble(spread_text), slippage=StringToDouble(slippage_text), commission=StringToDouble(commission_text);
+   if(stop<=0 || target<=0 || quantity<=0 || multiplier<=0 || spread<0 || slippage<0 || commission<0){
+      SetLabel(Obj("INFO1"),"Stop, alvo, quantidade e multiplicador > 0; custos >= 0.",20,361,8,C'255,118,118'); return;
+   }
+   string symbol=_Symbol, timeframe=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
+   string q=CharToString(34);
+   string body="{"+q+"symbol"+q+":"+q+JsonEscape(symbol)+q+","+q+"timeframe"+q+":"+q+JsonEscape(timeframe)+q+
+      ","+q+"limit"+q+":200,"+q+"minimum_directional_score"+q+":80,"+
+      q+"stop_distance"+q+":"+DoubleToString(stop,8)+","+
+      q+"take_profit_distance"+q+":"+DoubleToString(target,8)+","+
+      q+"quantity_units"+q+":"+DoubleToString(quantity,8)+","+
+      q+"contract_multiplier"+q+":"+DoubleToString(multiplier,8)+","+
+      q+"spread_price_units"+q+":"+DoubleToString(spread,8)+","+
+      q+"slippage_price_units_per_side"+q+":"+DoubleToString(slippage,8)+","+
+      q+"commission_quote_per_unit_round_turn"+q+":"+DoubleToString(commission,8)+"}";
+   string response=""; int code=0;
+   if(!Http("POST","/api/simulator/mt5/backtest",body,response,code)){
+      SetLabel(Obj("INFO1"),"Backtest indisponivel • HTTP "+IntegerToString(code),20,361,8,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Nenhuma ordem foi enviada.",20,381,8,C'205,215,230'); return;
+   }
+   string trades=JsonValue(response,"trade_count"), win=JsonValue(response,"win_rate");
+   string factor=JsonValue(response,"profit_factor"), pnl=JsonValue(response,"net_pnl_quote");
+   string costs=JsonValue(response,"total_costs_quote"), candles=JsonValue(response,"candles_processed");
+   string drawdown=JsonValue(response,"max_drawdown_quote"), losses=JsonValue(response,"max_consecutive_losses");
+   SetLabel(Obj("INFO1"),"Operacoes: "+(trades==""?"?":trades)+" • Acerto: "+(win==""?"?":win)+"%",20,361,8,C'88,214,141');
+   SetLabel(Obj("INFO2"),"Fator lucro: "+(factor==""?"nao informado":factor)+" • Liquido: "+(pnl==""?"?":pnl),20,381,8,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Custos: "+(costs==""?"?":costs)+" • Candles: "+(candles==""?"?":candles),20,401,8,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Drawdown: "+(drawdown==""?"?":drawdown)+" • Seq. perdas: "+(losses==""?"?":losses),20,421,8,C'205,215,230');
+   SetLabel(Obj("INFO5"),"Historico hipotetico • ordens: NAO • REAL: BLOQUEADO",20,441,8,C'255,155,155');
+}
 void RenderView(){
    ClearAssistantControls();
+   string simulator_controls[]={"SIM_STOP","SIM_TARGET","SIM_QTY","SIM_MULT","SIM_SPREAD","SIM_SLIP","SIM_COMM","SIM_RUN"};
+   for(int k=0;k<ArraySize(simulator_controls);k++) if(ObjectFind(0,Obj(simulator_controls[k]))>=0) ObjectDelete(0,Obj(simulator_controls[k]));
    string replay_controls[]={"REPLAY_RUN"};
    for(int k=0;k<ArraySize(replay_controls);k++) if(ObjectFind(0,Obj(replay_controls[k]))>=0) ObjectDelete(0,Obj(replay_controls[k]));
    string kill_controls[]={"KILL_REASON","KILL_CONFIRM","KILL_ACTIVATE"};
@@ -1277,12 +1322,21 @@ void RenderView(){
    }
    if(active_view=="SIMULATOR"){
       ClearCockpitFields();
-      SetLabel(Obj("SUB"),"SIMULADOR HISTORICO • configuracao",20,47,9,C'150,165,185');
-      SetLabel(Obj("INFO1"),"Backtest disponivel no painel Streamlit.",20,361,9,C'205,215,230');
-      SetLabel(Obj("INFO2"),"Interface MT5 ainda precisa de campos para stop,",20,381,8,C'255,209,102');
-      SetLabel(Obj("INFO3"),"alvo, quantidade, multiplicador e custos.",20,401,8,C'255,209,102');
-      SetLabel(Obj("INFO4"),"Nenhum parametro sera presumido.",20,421,8,C'205,215,230');
-      SetLabel(Obj("INFO5"),"Execucao permitida: NAO • REAL bloqueado",20,441,8,C'255,155,155'); return;
+      SetLabel(Obj("SUB"),"SIMULADOR HISTORICO • backtest sem ordens",20,47,9,C'150,165,185');
+      SetLabel(Obj("INFO1"),"Preencha todos os campos; custos zero = digite 0.",20,361,8,C'205,215,230');
+      SetLabel(Obj("INFO2"),"P&L na moeda cotada; sem conversao cambial.",20,381,8,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Nao integra margem, swap ou Risk Manager.",20,401,8,C'255,209,102');
+      SetLabel(Obj("INFO4"),"Ativo/timeframe seguem o grafico • 200 candles • score 80.",20,421,8,C'205,215,230');
+      SetLabel(Obj("INFO5"),"Ordens enviadas: NAO • REAL: BLOQUEADO",20,441,8,C'255,155,155');
+      SetLabel(Obj("SIM_L1"),"Stop / Alvo",20,145,8,C'205,215,230');
+      SetChatEdit(Obj("SIM_STOP"),"",100,140,95,24); SetChatEdit(Obj("SIM_TARGET"),"",205,140,95,24);
+      SetLabel(Obj("SIM_L2"),"Qtd / Mult.",20,180,8,C'205,215,230');
+      SetChatEdit(Obj("SIM_QTY"),"",100,175,95,24); SetChatEdit(Obj("SIM_MULT"),"",205,175,95,24);
+      SetLabel(Obj("SIM_L3"),"Spread / Slip",20,215,8,C'205,215,230');
+      SetChatEdit(Obj("SIM_SPREAD"),"",100,210,95,24); SetChatEdit(Obj("SIM_SLIP"),"",205,210,95,24);
+      SetLabel(Obj("SIM_L4"),"Comissao",20,250,8,C'205,215,230');
+      SetChatEdit(Obj("SIM_COMM"),"",100,245,200,24);
+      SetButton(Obj("SIM_RUN"),"EXECUTAR BACKTEST HISTORICO",20,285,280,30); return;
    }
    if(active_view=="KILL_SWITCH"){
       ClearCockpitFields();
@@ -1708,6 +1762,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("ASSISTANT_PREV")) { if(active_view=="ASSISTENTE" && assistant_answer_page>0) { assistant_answer_page--; RenderAssistantAnswer(); } }
    else if(sparam==Obj("ASSISTANT_NEXT")) { if(active_view=="ASSISTENTE" && (assistant_answer_page+1)*330<StringLen(assistant_answer)) { assistant_answer_page++; RenderAssistantAnswer(); } }
    else if(sparam==Obj("REPLAY_RUN") && active_view=="REPLAY") RunHistoricalReplay();
+   else if(sparam==Obj("SIM_RUN") && active_view=="SIMULATOR") RunHistoricalSimulator();
    else if(sparam==Obj("ANALYZE")) {
       if(active_view=="DECISION") RefreshDecisionView();
       else if(active_view=="KILL_SWITCH") RefreshKillSwitchStatus();
