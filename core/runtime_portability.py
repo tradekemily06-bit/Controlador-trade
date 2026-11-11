@@ -56,6 +56,10 @@ def create_backup(runtime_dir: str|Path, output_file: str|Path) -> dict[str,Any]
             with zipfile.ZipFile(temporary,"w",compression=zipfile.ZIP_DEFLATED) as archive:
                 archive.write(stage/"manifest.json","manifest.json")
                 for name,path in staged: archive.write(path,name)
+            # Validate the completed staging archive before publication. This
+            # avoids inspecting or deleting the final path after another
+            # process may have legitimately replaced it.
+            verify_backup(temporary)
             # Create the final name without replacement. ``exists()`` above
             # is only an early diagnostic; another process could create the
             # destination before publication. A same-volume hard link is an
@@ -63,11 +67,6 @@ def create_backup(runtime_dir: str|Path, output_file: str|Path) -> dict[str,Any]
             os.link(temporary, output)
         finally:
             temporary.unlink(missing_ok=True)
-    try:
-        verify_backup(output)
-    except Exception:
-        output.unlink(missing_ok=True)
-        raise
     return manifest|{"backup":str(output)}
 
 def _safe_member(name:str)->str:
