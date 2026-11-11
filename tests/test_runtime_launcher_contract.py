@@ -257,8 +257,11 @@ def test_supervisor_recovery_authorization_requires_live_quiescence_evidence():
 
 def test_mt5_preview_compiles_isolated_source_without_touching_installed_ea():
     text = _read("deployment/prepare_mt5_preview.ps1")
-    assert "fetch origin main" in text
-    assert "origin/main:$sourceRelative" in text
+    assert "$sourcePath = Join-Path $ProjectRoot $sourceRelative" in text
+    assert "ReadAllText($sourcePath" in text
+    assert "$sourceHash = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash" in text
+    assert "fetch origin main" not in text
+    assert "origin/main:" not in text
     assert 'string P="CTPREVIEW_"' in text
     assert "MQL5\\Experts\\ControladorTradingPreview" in text
     assert "installedSourceHashAfter" in text
