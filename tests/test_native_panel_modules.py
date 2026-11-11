@@ -35,7 +35,9 @@ def test_native_mt5_fiscal_view_uses_local_read_only_summary_and_preserves_separ
     assert 'JsonObjectValue(r,"domestic_pending","total")' in fiscal
     assert "fora dos totais" in fiscal
     assert "sem calculo" in fiscal
-    assert "REAL: BLOQUEADO" in fiscal
+    renderer = source.split("void RenderFiscal()", 1)[1].split("void RenderAssistantAnswer()", 1)[0]
+    assert "REAL: BLOQUEADO" in renderer
+    assert 'SetLabel(Obj("SAFE")' not in fiscal
 
 
 def test_native_mt5_assistant_requires_per_message_consent_and_persists_conversation():
