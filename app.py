@@ -330,17 +330,46 @@ def application(environ, start_response):
     if not is_local_health_probe and not SECURITY.allow(environ):
         return _json_response(start_response, HTTPStatus.TOO_MANY_REQUESTS, {"error": "Limite de requisições excedido", "request_id": request_id}, request_id, environ)
 
-    # Remote deployments must authenticate every private API read as well as
-    # writes. Keep only the minimal liveness probe public; /api/health and
-    # /api/status expose operational details and therefore require identity.
+    # Remote deployments authenticate private reads by default. The native
+    # MT5 EA has no browser/proxy identity and must never carry a reusable
+    # identity secret. Permit only its exact read-only/local API allowlist via
+    # the same loopback + Host + local-mutations gate used by native routes.
+    # All other private reads still require the trusted remote identity.
     remote_access_required = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "").strip().lower() in {"1", "true", "yes"}
+    native_ea_local_get_paths = {
+        "/api/health",
+        "/api/preferences",
+        "/api/notifications",
+        "/api/learning",
+        "/api/onboarding",
+        "/api/fiscal-reserve/local",
+        "/api/assistant/local/status",
+        "/api/memory",
+        "/api/statistics",
+        "/api/runtime/analysis/latest",
+        "/api/risk",
+        "/api/connections",
+        "/api/fiscal-reserve",
+        "/api/fiscal-reserve/domestic-pending/summary",
+        "/api/reports",
+        "/api/journal",
+        "/api/security/audit",
+        "/api/runtime/positions/recovery/local",
+        "/api/learning/resources",
+        "/api/learning/observations",
+        "/api/market/assets",
+        "/api/news",
+    }
     if (
         remote_access_required
         and method == "GET"
         and path.startswith("/api/")
         and path != "/api/health/live"
     ):
-        authorized, reason = _authorize_remote_mutation(environ)
+        if path in native_ea_local_get_paths:
+            authorized, reason = _authorize_local_runtime(environ)
+        else:
+            authorized, reason = _authorize_remote_mutation(environ)
         if not authorized:
             return _json_response(
                 start_response,
