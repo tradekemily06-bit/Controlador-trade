@@ -1244,8 +1244,10 @@ void SaveDiscovery(){
    string statement=ObjectGetString(0,Obj("DISC_STATEMENT"),OBJPROP_TEXT);
    string concepts=ObjectGetString(0,Obj("DISC_CONCEPTS"),OBJPROP_TEXT);
    string evidence=ObjectGetString(0,Obj("DISC_EVIDENCE"),OBJPROP_TEXT);
-   if(resource_id=="" || statement==""){
-      SetLabel(Obj("INFO1"),"Informe ID do material e observacao.",20,361,8,C'255,118,118'); return;
+   StringTrimLeft(resource_id); StringTrimRight(resource_id);
+   StringTrimLeft(statement); StringTrimRight(statement);
+   if(resource_id=="" || statement=="" || StringLen(statement)>3000 || StringLen(concepts)>300 || StringLen(evidence)>1000){
+      SetLabel(Obj("INFO1"),"Informe ID e observacao (ate 3000 caracteres); conceitos ate 300 e evidencia ate 1000.",20,361,8,C'255,118,118'); return;
    }
    string q=CharToString(34);
    string concept_items[]; int concept_count=StringSplit(concepts,',',concept_items);
@@ -1551,7 +1553,7 @@ void RefreshHealth(){
    SetLabel(Obj("RUNTIME"),"Sistema: online",20,104,10,C'88,214,141');
    SetLabel(Obj("MODE"),"Modo: "+(mode==""?"nao informado":mode)+" • MT5: "+(mt5==""?"nao confirmado":mt5),20,124,10,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • autorizacao separada",20,441,9,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
-   if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="DECISION" || active_view=="REPLAY" || active_view=="SIMULATOR" || active_view=="KILL_SWITCH" || active_view=="UNAVAILABLE" || active_view=="MEMORIA" || active_view=="RISK" || active_view=="STATS" || active_view=="CONNECTIONS" || active_view=="ENVIRONMENT" || active_view=="SECURITY" || active_view=="REPORTS" || active_view=="AUDIT" || active_view=="FINANCE") return;
+   if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="DECISION" || active_view=="REPLAY" || active_view=="SIMULATOR" || active_view=="KILL_SWITCH" || active_view=="UNAVAILABLE" || active_view=="MEMORIA" || active_view=="RISK" || active_view=="STATS" || active_view=="CONNECTIONS" || active_view=="ENVIRONMENT" || active_view=="SECURITY" || active_view=="REPORTS" || active_view=="AUDIT" || active_view=="FINANCE" || active_view=="DISCOVERIES") return;
    SetLabel(Obj("INFO1"),"Analise do ecossistema: "+(engine==""?"online":engine),20,361,9,C'205,215,230');
 }
 void RefreshMarketAssets(){
