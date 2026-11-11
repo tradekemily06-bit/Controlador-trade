@@ -885,7 +885,6 @@ void RefreshFiscal(){
    SetLabel(Obj("INFO3"),"Pendencias exterior: "+(foreign_total==""?"indisponivel":foreign_total)+" • sem calculo",20,401,9,C'205,215,230');
    SetLabel(Obj("INFO4"),"Brasil/exterior permanecem em filas separadas.",20,421,9,C'205,215,230');
    SetLabel(Obj("INFO5"),"Estimativa de planejamento; nao e imposto apurado.",20,441,9,C'255,209,102');
-   SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • Reserva Fiscal somente leitura",20,520,8,C'255,155,155');
 }
 void RefreshAssistantStatus(){
    string r; int code=0;
