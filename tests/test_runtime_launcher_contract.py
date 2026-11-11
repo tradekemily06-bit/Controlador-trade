@@ -21,6 +21,21 @@ def test_runtime_launchers_resolve_python_and_fail_closed():
         assert "Test-Path -LiteralPath $PythonExe -PathType Leaf" in text
 
 
+def test_all_windows_launchers_pin_python_executable_before_starting_child_processes():
+    for path in (
+        "deployment/start_controlador_runtime.ps1",
+        "deployment/start_mt5_runtime.ps1",
+        "deployment/start_streamlit_panel.ps1",
+        "deployment/bootstrap_windows_runtime.ps1",
+    ):
+        text = _read(path)
+        assert "[System.IO.Path]::GetFullPath($PythonExe)" in text
+        assert "Python não encontrado" in text
+        assert "Test-Path -LiteralPath $PythonExe -PathType Leaf" in text
+        if "Set-Location $ProjectRoot" in text:
+            assert text.index("[System.IO.Path]::GetFullPath($PythonExe)") < text.index("Set-Location $ProjectRoot")
+
+
 def test_backup_and_restore_resolve_relative_python_executables_before_changing_directory():
     for path in ("deployment/backup_runtime.ps1", "deployment/restore_runtime.ps1"):
         text = _read(path)
