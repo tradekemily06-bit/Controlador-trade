@@ -1252,7 +1252,7 @@ void RefreshDiscoveries(){
    SetLabel(Obj("INFO4"),"Observacoes: "+IntegerToString(ArraySize(observation_items))+" • "+(statement==""?"sem registro":StringSubstr(statement,0,24)),20,421,8,C'205,215,230');
    if(resource_id!="" && ObjectFind(0,Obj("DISC_RESOURCE"))>=0 && ObjectGetString(0,Obj("DISC_RESOURCE"),OBJPROP_TEXT)=="")
       ObjectSetString(0,Obj("DISC_RESOURCE"),OBJPROP_TEXT,resource_id);
-   SetLabel(Obj("INFO4"),"Registros continuam NAO VALIDADOS.",20,421,8,C'255,209,102');
+   SetLabel(Obj("INFO5"),"NAO VALIDADO • sem efeito em sinais ou execucao.",20,441,8,C'255,155,155');
    SetLabel(Obj("INFO5"),"Descobertas nao alteram sinais nem execucao.",20,441,8,C'255,155,155');
 }
 void SaveDiscovery(){
