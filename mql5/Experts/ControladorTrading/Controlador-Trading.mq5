@@ -2052,6 +2052,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
       else if(active_view=="ENVIRONMENT") RefreshEnvironmentView();
       else if(active_view=="FINANCE") RefreshFinanceOverview();
       else if(active_view=="REPORTS") RefreshReports();
+      else if(active_view=="JOURNAL") RefreshJournal();
       else if(active_view=="AUDIT") RefreshAuditView();
       else if(active_view=="LAB") { RefreshHealth(); RefreshSecondary(); }
       else if(active_view=="ENSINO") RefreshLearning();
