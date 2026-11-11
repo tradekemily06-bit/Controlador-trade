@@ -363,7 +363,7 @@ def test_native_mt5_simulator_submits_explicit_historical_backtest_parameters_wi
         "contract_multiplier", "spread_price_units",
         "slippage_price_units_per_side", "commission_quote_per_unit_round_turn",
     ):
-        assert f'"{field}"' in runner
+        assert f'q+"{field}"+q' in runner
     assert 'if(stop_text=="" || target_text=="" || quantity_text=="" || multiplier_text=="" || spread_text=="" || slippage_text=="" || commission_text=="")' in runner
     assert 'if(stop<=0 || target<=0 || quantity<=0 || multiplier<=0 || spread<0 || slippage<0 || commission<0)' in runner
     assert 'SetChatEdit(Obj("SIM_STOP")' in renderer
