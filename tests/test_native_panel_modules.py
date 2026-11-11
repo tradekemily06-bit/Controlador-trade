@@ -177,6 +177,18 @@ def test_native_mt5_operational_actions_are_not_reused_by_non_operational_module
         assert 'SetButton(Obj("SAVE")' not in section
 
 
+
+def test_native_mt5_recovery_actions_are_scoped_to_cockpit():
+    source = EA.read_text(encoding="utf-8")
+    events = source.split("void OnChartEvent", 1)[1]
+
+    assert 'if(active_view=="COCKPIT") RefreshRecoveryInventory();' in events
+    assert 'if(active_view=="COCKPIT"){ recovery_selected=MathMax(0,recovery_selected-1);' in events
+    assert 'if(active_view=="COCKPIT"){ recovery_selected=MathMin(ArraySize(recovery_items)-1,recovery_selected+1);' in events
+    assert 'if(active_view=="COCKPIT") ReconcileSelectedRecovery();' in events
+    assert 'if(active_view=="COCKPIT") CloseSelectedRecovery();' in events
+
+
 def test_native_mt5_cockpit_retains_controls_after_module_action_reset():
     source = EA.read_text(encoding="utf-8")
     cockpit = source.split('if(active_view=="COCKPIT"){', 1)[1].split('}else if(active_view=="ANALISE"){', 1)[0]
