@@ -20,7 +20,7 @@ if (-not (Test-Path -LiteralPath $MetaEditorPath -PathType Leaf)) {
     throw "MetaEditor não encontrado: $MetaEditorPath"
 }
 # Compile the exact source in the selected worktree (including the current PR branch).
-# Never fetch or silently substitute origin/main: that could preview an older EA.
+# Never fetch or silently substitute a different branch: that could preview an older EA.
 $sourceRelative = 'mql5\Experts\ControladorTrading\Controlador-Trading.mq5'
 $sourcePath = Join-Path $ProjectRoot $sourceRelative
 if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
