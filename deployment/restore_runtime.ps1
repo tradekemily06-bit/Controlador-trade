@@ -4,7 +4,8 @@ $ProjectRoot = [System.IO.Path]::GetFullPath($ProjectRoot)
 if(-not [System.IO.Path]::IsPathRooted($BackupFile)){$BackupFile=Join-Path $ProjectRoot $BackupFile}
 $BackupFile=[System.IO.Path]::GetFullPath($BackupFile)
 if(-not (Test-Path -LiteralPath $BackupFile -PathType Leaf)){throw "Backup não encontrado: $BackupFile"}
-if($PythonExe -eq 'python' -or $PythonExe -eq 'python.exe'){$resolvedPython=Get-Command $PythonExe -ErrorAction SilentlyContinue;if($null -eq $resolvedPython -or [string]::IsNullOrWhiteSpace($resolvedPython.Source)){throw "Python não foi encontrado no PATH. Informe -PythonExe com o caminho completo do python.exe."};$PythonExe=$resolvedPython.Source}elseif(-not [System.IO.Path]::IsPathRooted($PythonExe)){$projectPython=Join-Path $ProjectRoot $PythonExe;if(Test-Path -LiteralPath $projectPython -PathType Leaf){$PythonExe=$projectPython}}
+if($PythonExe -eq 'python' -or $PythonExe -eq 'python.exe'){$resolvedPython=Get-Command $PythonExe -ErrorAction SilentlyContinue;if($null -eq $resolvedPython -or [string]::IsNullOrWhiteSpace($resolvedPython.Source)){throw "Python não foi encontrado no PATH. Informe -PythonExe com o caminho completo do python.exe."};$PythonExe=$resolvedPython.Source}elseif(-not [System.IO.Path]::IsPathRooted($PythonExe)){$projectPython=Join-Path $ProjectRoot $PythonExe;if(Test-Path -LiteralPath $projectPython -PathType Leaf){$PythonExe=$projectPython}else{$PythonExe=[System.IO.Path]::GetFullPath($PythonExe)}}
+$PythonExe=[System.IO.Path]::GetFullPath($PythonExe)
 if(-not (Test-Path -LiteralPath $PythonExe -PathType Leaf)){throw "Python não encontrado: $PythonExe"}
 if([string]::IsNullOrWhiteSpace($RuntimeDir)){$RuntimeDir=Join-Path $ProjectRoot '.runtime'}elseif(-not [System.IO.Path]::IsPathRooted($RuntimeDir)){$RuntimeDir=Join-Path $ProjectRoot $RuntimeDir}
 $RuntimeDir=[System.IO.Path]::GetFullPath($RuntimeDir)
