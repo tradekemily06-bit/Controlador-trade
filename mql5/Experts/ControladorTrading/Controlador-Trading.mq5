@@ -338,6 +338,7 @@ void RenderNavigation(){
 }
 void SelectArea(string area){
    kill_switch_confirm_armed=false;
+   assistant_consent_armed=false;
    active_area=area;
    active_module=AreaModuleName(active_area,0);
    active_view=ViewForModule(active_area,active_module);
@@ -347,6 +348,7 @@ void SelectArea(string area){
 void SelectModule(int index){
    if(index<0 || index>=AreaModuleCount(active_area)) return;
    kill_switch_confirm_armed=false;
+   assistant_consent_armed=false;
    active_module=AreaModuleName(active_area,index);
    active_view=ViewForModule(active_area,active_module);
    Panel();
