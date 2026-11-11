@@ -498,6 +498,10 @@ def test_native_mt5_operational_journal_is_read_only_and_uses_persisted_runtime_
     assert 'Http("GET","/api/journal?limit=5"' in journal
     assert 'JsonObjectValue(r,"today_summary","total")' in journal
     assert 'ExtractJsonArrayObjects(r,"entries",objects)' in journal
+    invalid_response = journal.split('if(!ExtractJsonArrayObjects(r,"entries",objects)){', 1)[1].split('return;', 1)[0]
+    assert 'Obj("INFO3")' in invalid_response
+    assert 'Obj("INFO4")' in invalid_response
+    assert 'Obj("INFO5")' in invalid_response
     assert 'execution_allowed' not in journal
     assert 'orders_sent' not in journal
     assert 'active_view=="JOURNAL"' in renderer
