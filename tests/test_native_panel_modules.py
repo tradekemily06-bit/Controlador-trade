@@ -503,3 +503,5 @@ def test_native_mt5_operational_journal_is_read_only_and_uses_persisted_runtime_
     assert 'active_view=="JOURNAL"' in renderer
     assert 'sparam==Obj("M7")' in events
     assert 'if(active_view=="JOURNAL") return;' in source
+    assert 'for(int i=0;i<4;i++){' in journal
+    assert 'Obj("INFO6")' in journal
