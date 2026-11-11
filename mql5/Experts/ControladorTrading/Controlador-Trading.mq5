@@ -22,6 +22,8 @@ string memory_records[];
 int memory_page=0;
 bool memory_loaded=false;
 string onboarding_steps[];
+string onboarding_purposes[];
+string onboarding_actions[];
 string onboarding_title="Primeiros passos no Ecossistema";
 string onboarding_completion="Roteiro educativo concluido.";
 int onboarding_page=0;
@@ -764,9 +766,9 @@ void RenderOnboardingPage(){
    onboarding_page=MathMax(0,MathMin(onboarding_page,page_count-1));
    int idx=onboarding_page;
    SetLabel(Obj("INFO1"),idx<count?onboarding_steps[idx]:"",20,361,8,C'205,215,230');
-   SetLabel(Obj("INFO2"),"Objetivo:",20,381,8,C'150,165,185');
-   SetLabel(Obj("INFO3"),"Orientacao detalhada carregada no roteiro.",20,401,8,C'205,215,230');
-   SetLabel(Obj("INFO4"),"Consulta somente leitura; sem conclusao persistida.",20,421,8,C'205,215,230');
+   SetLabel(Obj("INFO2"),idx<count?"OBJETIVO: "+onboarding_purposes[idx]:"",20,381,7,C'205,215,230');
+   SetLabel(Obj("INFO3"),idx<count?"PROXIMO: "+onboarding_actions[idx]:"",20,401,7,C'205,215,230');
+   SetLabel(Obj("INFO4"),StringSubstr(onboarding_completion,0,76),20,421,7,C'150,165,185');
    SetLabel(Obj("INFO5"),"Execucao: NAO • REAL: BLOQUEADO",20,441,8,C'255,155,155');
    SetButton(Obj("ONBOARD_PREV"),"ANTERIOR",20,470,104,26);
    SetLabel(Obj("ONBOARD_PAGE"),"ETAPAS "+IntegerToString(onboarding_page+1)+"/"+IntegerToString(page_count),138,476,8,C'150,165,185');
@@ -781,6 +783,8 @@ void RefreshOnboarding(){
    if(!Http("GET","/api/onboarding","",response,code)){
       onboarding_valid=false;
       ArrayResize(onboarding_steps,0);
+      ArrayResize(onboarding_purposes,0);
+      ArrayResize(onboarding_actions,0);
       SetLabel(Obj("INFO1"),"Onboarding indisponivel no runtime.",20,361,8,C'255,118,118');
       SetLabel(Obj("INFO2"),"Nenhuma etapa foi marcada ou alterada.",20,381,8,C'205,215,230');
       return;
@@ -794,11 +798,15 @@ void RefreshOnboarding(){
    if(guide_json=="" || guide=="" || authorized!="false" || !ExtractJsonArrayObjects(guide_json,"steps",objects)){
       onboarding_valid=false;
       ArrayResize(onboarding_steps,0);
+      ArrayResize(onboarding_purposes,0);
+      ArrayResize(onboarding_actions,0);
       SetLabel(Obj("INFO1"),"Roteiro invalido ou sem bloqueio explicito.",20,361,8,C'255,118,118');
       SetLabel(Obj("INFO2"),"Execucao permanece nao autorizada.",20,381,8,C'255,155,155');
       return;
    }
    ArrayResize(onboarding_steps,0);
+   ArrayResize(onboarding_purposes,0);
+   ArrayResize(onboarding_actions,0);
    for(int i=0;i<ArraySize(objects);i++){
       string step_id=JsonValue(objects[i],"step_id");
       string title=JsonValue(objects[i],"title");
@@ -806,6 +814,8 @@ void RefreshOnboarding(){
       string purpose=JsonValue(objects[i],"purpose");
       if(step_id=="" || title=="" || purpose==""){
          ArrayResize(onboarding_steps,0);
+         ArrayResize(onboarding_purposes,0);
+         ArrayResize(onboarding_actions,0);
          onboarding_valid=false;
          SetLabel(Obj("INFO1"),"Etapa inconsistente; roteiro bloqueado.",20,361,8,C'255,118,118');
          return;
@@ -814,7 +824,11 @@ void RefreshOnboarding(){
       if(StringLen(line)>66) line=StringSubstr(line,0,63)+"...";
       int n=ArraySize(onboarding_steps);
       if(ArrayResize(onboarding_steps,n+1)!=n+1){ onboarding_valid=false; return; }
+      if(ArrayResize(onboarding_purposes,n+1)!=n+1){ onboarding_valid=false; return; }
+      if(ArrayResize(onboarding_actions,n+1)!=n+1){ onboarding_valid=false; return; }
       onboarding_steps[n]=line;
+      onboarding_purposes[n]=purpose;
+      onboarding_actions[n]=JsonValue(objects[i],"action_hint");
    }
    if(ArraySize(onboarding_steps)==0){
       onboarding_valid=false;
@@ -822,10 +836,6 @@ void RefreshOnboarding(){
       return;
    }
    onboarding_valid=true;
-   SetLabel(Obj("INFO2"),"OBJETIVO: "+JsonValue(objects[onboarding_page],"purpose"),20,381,7,C'205,215,230');
-   SetLabel(Obj("INFO3"),"PROXIMO: "+JsonValue(objects[onboarding_page],"action_hint"),20,401,7,C'205,215,230');
-   SetLabel(Obj("INFO4"),"Conclusao apenas nesta orientacao; nao altera runtime.",20,421,7,C'205,215,230');
-   SetLabel(Obj("INFO5"),"Execucao: NAO • REAL: BLOQUEADO",20,441,8,C'255,155,155');
    RenderOnboardingPage();
 }
 
