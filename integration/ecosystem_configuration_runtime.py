@@ -486,7 +486,7 @@ class ConfiguredEcosystemService(EcosystemService):
         if any(not candle.is_valid() for candle in candles):
             raise RuntimeError("histórico MT5 contém candle OHLC inválido; replay bloqueado")
 
-        records: list[dict[str, Any]] = [];
+        records: list[dict[str, Any]] = []
         for index in range(1, len(candles)):
             prefix = candles[: index + 1]
             snapshot = BrokerMarketDataSnapshot(
