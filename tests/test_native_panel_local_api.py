@@ -265,3 +265,56 @@ def test_unlisted_private_reads_still_require_trusted_remote_identity(monkeypatc
 
     assert status.startswith("401")
     assert "Identidade autenticada necessária" in payload["error"]
+
+def _enable_remote_required_native_ea(monkeypatch):
+    _allow_native_local(monkeypatch)
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "X-Auth-User")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+
+
+def test_native_finance_summary_uses_loopback_gate_without_remote_identity(tmp_path, monkeypatch):
+    class Fiscal:
+        def summary(self, owner_id, history_limit=100, history_offset=0):
+            assert owner_id == "single:native-owner"
+            return {"categories": {}, "history": [], "total_reserved_brl": 0.0}
+
+    class Queue:
+        def summary(self, owner_id):
+            assert owner_id == "single:native-owner"
+            return {"total": 0, "included_in_totals": False, "reserve_calculated": False}
+
+    _enable_remote_required_native_ea(monkeypatch)
+    monkeypatch.setattr(app_module, "migrate_fiscal_schema", lambda _path: "single:native-owner")
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE", Fiscal())
+    monkeypatch.setattr(app_module, "FISCAL_PENDING_QUEUE", Queue())
+    monkeypatch.setattr(app_module, "fiscal_classification_catalog", lambda: {})
+    monkeypatch.setattr(app_module, "FISCAL_RESERVE_DB", tmp_path / "fiscal.sqlite3")
+
+    status, payload = _request("/api/fiscal-reserve?limit=50&offset=0")
+
+    assert status.startswith("200")
+    assert payload["total_reserved_brl"] == 0.0
+    assert payload["foreign_pending"]["included_in_totals"] is False
+
+
+def test_native_audit_read_uses_loopback_gate_without_remote_identity(monkeypatch):
+    _enable_remote_required_native_ea(monkeypatch)
+    monkeypatch.setattr(app_module.AUDIT, "snapshot", lambda: [])
+
+    status, payload = _request("/api/security/audit?limit=50")
+
+    assert status.startswith("200")
+    assert payload["events"] == []
+    assert payload["execution_allowed"] is False
+
+
+def test_native_latest_analysis_read_uses_loopback_gate_without_remote_identity(monkeypatch):
+    _enable_remote_required_native_ea(monkeypatch)
+    monkeypatch.setattr(app_module.LATEST_MARKET_ANALYSIS, "latest_record", lambda *_args: None)
+
+    status, payload = _request("/api/runtime/analysis/latest")
+
+    assert status.startswith("200")
+    assert payload["available"] is False
+    assert payload["execution_allowed"] is False
