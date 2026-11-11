@@ -1720,36 +1720,57 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {**record.to_dict(), **serialize_decision_record(record), "execution_allowed": False}, request_id, environ)
         if path == "/api/simulator/mt5/backtest" and method == "POST":
             data = _read_json(environ)
-            result = SERVICE.run_mt5_historical_backtest(
-                symbol=str(data.get("symbol", "")),
-                timeframe=str(data.get("timeframe", "5m")),
-                limit=data.get("limit", 200),
-                stop_distance=data.get("stop_distance"),
-                take_profit_distance=data.get("take_profit_distance"),
-                quantity_units=data.get("quantity_units"),
-                contract_multiplier=data.get("contract_multiplier", 1.0),
-                spread_price_units=data.get("spread_price_units"),
-                slippage_price_units_per_side=data.get("slippage_price_units_per_side"),
-                commission_quote_per_unit_round_turn=data.get("commission_quote_per_unit_round_turn", 0.0),
-                minimum_directional_score=data.get("minimum_directional_score", 80),
-            )
+            try:
+                result = SERVICE.run_mt5_historical_backtest(
+                    symbol=str(data.get("symbol", "")),
+                    timeframe=str(data.get("timeframe", "5m")),
+                    limit=data.get("limit", 200),
+                    stop_distance=data.get("stop_distance"),
+                    take_profit_distance=data.get("take_profit_distance"),
+                    quantity_units=data.get("quantity_units"),
+                    contract_multiplier=data.get("contract_multiplier", 1.0),
+                    spread_price_units=data.get("spread_price_units"),
+                    slippage_price_units_per_side=data.get("slippage_price_units_per_side"),
+                    commission_quote_per_unit_round_turn=data.get("commission_quote_per_unit_round_turn", 0.0),
+                    minimum_directional_score=data.get("minimum_directional_score", 80),
+                )
+            except RuntimeError:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "backtest histórico indisponível", "orders_sent": False, "execution_allowed": False},
+                    request_id, environ,
+                )
             return _json_response(start_response, HTTPStatus.OK, result, request_id, environ)
         if path == "/api/simulator/mt5" and method == "POST":
             data = _read_json(environ)
-            result = SERVICE.simulate_mt5_signal_scenario(
-                symbol=str(data.get("symbol", "")),
-                timeframe=str(data.get("timeframe", "5m")),
-                limit=data.get("limit", 100),
-                minimum_directional_score=data.get("minimum_directional_score", 70),
-            )
+            try:
+                result = SERVICE.simulate_mt5_signal_scenario(
+                    symbol=str(data.get("symbol", "")),
+                    timeframe=str(data.get("timeframe", "5m")),
+                    limit=data.get("limit", 100),
+                    minimum_directional_score=data.get("minimum_directional_score", 70),
+                )
+            except RuntimeError:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "simulação histórica indisponível", "orders_sent": False, "execution_allowed": False},
+                    request_id, environ,
+                )
             return _json_response(start_response, HTTPStatus.OK, result, request_id, environ)
         if path == "/api/replay/mt5" and method == "POST":
             data = _read_json(environ)
-            result = SERVICE.replay_mt5_history(
-                symbol=str(data.get("symbol", "")),
-                timeframe=str(data.get("timeframe", "5m")),
-                limit=data.get("limit", 100),
-            )
+            try:
+                result = SERVICE.replay_mt5_history(
+                    symbol=str(data.get("symbol", "")),
+                    timeframe=str(data.get("timeframe", "5m")),
+                    limit=data.get("limit", 100),
+                )
+            except RuntimeError:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "Replay histórico indisponível", "orders_sent": False, "execution_allowed": False},
+                    request_id, environ,
+                )
             return _json_response(start_response, HTTPStatus.OK, result, request_id, environ)
         if path == "/api/replay" and method == "POST":
             cases = _read_json(environ).get("cases")
