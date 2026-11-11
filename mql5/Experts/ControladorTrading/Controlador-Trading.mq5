@@ -274,7 +274,6 @@ string AreaModuleLabel(string module){
    if(module=="Relatórios") return "RELAT.";
    if(module=="Laboratório") return "LAB";
    if(module=="Replay") return "REPLAY";
-      if(module=="Simulador") return "SIMULATOR";
    if(module=="Simulador") return "SIMUL.";
    if(module=="Aprendizado") return "APREND.";
    if(module=="Descobertas") return "DESCOB.";
