@@ -149,7 +149,7 @@ def test_native_mt5_environment_and_statistics_are_not_misrepresented_as_other_m
     assert 'else if(active_view=="ENVIRONMENT") RefreshEnvironmentView();' in source
     assert 'if(module=="Memória" || module=="Estatísticas") return "MEMORIA";' not in routing
     assert 'if(module=="Memória") return "MEMORIA";' in routing
-    assert "Replay: indisponivel nesta interface" in lab
+    assert "Replay: abra o modulo proprio" in lab
     assert "Replay: disponivel no laboratorio" not in lab
     assert "DEMO nao confirmado" in lab
     assert "Ambiente: DEMO / SIMULACAO" not in lab
