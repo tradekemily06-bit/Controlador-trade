@@ -159,22 +159,21 @@ def restore_backup(backup_file:str|Path,runtime_dir:str|Path,*,replace:bool=Fals
                     rollback_path = runtime / f".{destination.stem}.rollback-{uuid.uuid4().hex}{destination.suffix}"
                     _copy_state(destination, rollback_path)
                     rollback_copies[name] = rollback_path
-                temporary = destination.with_name(f".{destination.name}.restore.tmp")
-                try:
-                    os.replace(staged[name], temporary)
-                    os.replace(temporary, destination)
-                except Exception:
-                    temporary.unlink(missing_ok=True)
-                    raise
+                # The staged file already lives under ``runtime`` on the
+                # destination volume, so publish it directly. Avoid a fixed
+                # sibling .restore.tmp name that could clobber unrelated data.
+                os.replace(staged[name], destination)
                 replaced.append(name)
         except Exception as restore_error:
             rollback_failures: dict[str, str] = {}
             for name in reversed(replaced):
                 destination = runtime / name
                 if name in rollback_copies:
-                    rollback_temporary = destination.with_name(
-                        f".{destination.stem}.rollback-tmp{destination.suffix}"
+                    descriptor, rollback_name = tempfile.mkstemp(
+                        prefix=f".{destination.name}.rollback-", dir=runtime
                     )
+                    os.close(descriptor)
+                    rollback_temporary = Path(rollback_name)
                     try:
                         _copy_state(rollback_copies[name], rollback_temporary)
                         os.replace(rollback_temporary, destination)
