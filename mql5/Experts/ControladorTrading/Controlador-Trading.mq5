@@ -1230,12 +1230,18 @@ void RefreshDiscoveries(){
       SetLabel(Obj("INFO1"),"Descobertas indisponiveis • HTTP "+IntegerToString(!resources_ok?resources_code:observations_code),20,361,8,C'255,118,118');
       SetLabel(Obj("INFO2"),"Confira runtime e identidade autorizada.",20,381,8,C'205,215,230'); return;
    }
-   string resource_id=JsonValue(resources,"resource_id");
-   string resource_title=JsonValue(resources,"title");
-   string statement=JsonValue(observations,"statement");
-   SetLabel(Obj("INFO1"),"Materiais: "+(resource_id==""?"consulte IDs no Streamlit":resource_title),20,361,8,C'205,215,230');
-   SetLabel(Obj("INFO2"),"ID encontrado: "+(resource_id==""?"nao informado":resource_id),20,381,8,C'145,160,180');
-   SetLabel(Obj("INFO3"),"Ultima observacao: "+(statement==""?"nenhuma ou nao retornada":StringSubstr(statement,0,42)),20,401,8,C'205,215,230');
+   string resource_items[], observation_items[];
+   ExtractJsonArrayObjects(resources,"resources",resource_items);
+   ExtractJsonArrayObjects(observations,"observations",observation_items);
+   string resource_id="", resource_title="", statement="";
+   if(ArraySize(resource_items)>0){
+      resource_id=JsonValue(resource_items[0],"resource_id");
+      resource_title=JsonValue(resource_items[0],"title");
+   }
+   if(ArraySize(observation_items)>0) statement=JsonValue(observation_items[0],"statement");
+   SetLabel(Obj("INFO1"),"Materiais cadastrados: "+IntegerToString(ArraySize(resource_items)),20,361,8,C'205,215,230');
+   SetLabel(Obj("INFO2"),"ID disponivel: "+(resource_id==""?"consulte no Estudo":resource_id),20,381,8,C'145,160,180');
+   SetLabel(Obj("INFO3"),"Observacoes: "+IntegerToString(ArraySize(observation_items))+" • "+(statement==""?"sem registro":StringSubstr(statement,0,34)),20,401,8,C'205,215,230');
    SetLabel(Obj("INFO4"),"Registros continuam NAO VALIDADOS.",20,421,8,C'255,209,102');
    SetLabel(Obj("INFO5"),"Descobertas nao alteram sinais nem execucao.",20,441,8,C'255,155,155');
 }
@@ -1276,6 +1282,7 @@ void SaveDiscovery(){
    ObjectSetString(0,Obj("DISC_CONCEPTS"),OBJPROP_TEXT,"");
    ObjectSetString(0,Obj("DISC_EVIDENCE"),OBJPROP_TEXT,"");
    RefreshDiscoveries();
+   SetLabel(Obj("INFO1"),"Descoberta registrada como NAO VALIDADA.",20,361,8,C'88,214,141');
 }
 void RunHistoricalReplay(){
    string response=""; int code=0;
