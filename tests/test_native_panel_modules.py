@@ -538,3 +538,11 @@ def test_native_health_refresh_only_updates_content_in_cockpit_and_analysis():
 
     assert 'if(active_view!="COCKPIT" && active_view!="ANALISE") return;' in health
     assert health.index('if(active_view!="COCKPIT" && active_view!="ANALISE") return;') < health.index('SetLabel(Obj("INFO1")')
+
+
+def test_native_assistant_consent_and_send_events_require_assistant_view():
+    source = EA.read_text(encoding="utf-8")
+    events = source.split("void OnChartEvent", 1)[1]
+
+    assert 'sparam==Obj("ASSISTANT_CONSENT") && active_view=="ASSISTENTE"' in events
+    assert 'sparam==Obj("ASSISTANT_SEND") && active_view=="ASSISTENTE"' in events
