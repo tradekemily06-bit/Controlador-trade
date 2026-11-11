@@ -1779,6 +1779,86 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {"results": SERVICE.replay(cases), "execution_allowed": False}, request_id, environ)
         if path == "/api/memory" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, {"records": SERVICE.memory_view(_query_limit(environ, 50))}, request_id, environ)
+        if path == "/api/journal" and method == "GET":
+            runtime = getattr(SERVICE, "operational_runtime", None)
+            recorder = getattr(runtime, "operational_recorder", None) if runtime is not None else None
+            operational_memory = getattr(recorder, "memory", None) if recorder is not None else None
+            if operational_memory is None or not callable(getattr(operational_memory, "records", None)):
+                return _json_response(
+                    start_response,
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    {
+                        "error": "Diário operacional indisponível: memória persistente do runtime não conectada.",
+                        "entries": [],
+                        "execution_allowed": False,
+                    },
+                    request_id,
+                    environ,
+                )
+            query = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
+            selected_date_text = str(query.get("date", [datetime.now(ZoneInfo("America/Sao_Paulo")).date().isoformat()])[-1]).strip()
+            try:
+                selected_date = datetime.fromisoformat(selected_date_text).date()
+            except ValueError as exc:
+                raise ValueError("date deve usar o formato YYYY-MM-DD") from exc
+            timezone = ZoneInfo("America/Sao_Paulo")
+            day_start = datetime(selected_date.year, selected_date.month, selected_date.day, tzinfo=timezone)
+            next_date = selected_date.fromordinal(selected_date.toordinal() + 1)
+            day_end = datetime(next_date.year, next_date.month, next_date.day, tzinfo=timezone)
+            limit = _query_limit(environ, 100, maximum=500)
+            selected_records = []
+            for record in operational_memory.records():
+                timestamp = record.timestamp
+                if timestamp.tzinfo is None:
+                    timestamp = timestamp.replace(tzinfo=timezone)
+                else:
+                    timestamp = timestamp.astimezone(timezone)
+                if day_start <= timestamp < day_end:
+                    selected_records.append((timestamp, record))
+            selected_records.sort(key=lambda item: item[0], reverse=True)
+            entries = []
+            for timestamp, record in selected_records[:limit]:
+                signal = getattr(record.signal, "value", str(record.signal))
+                entries.append({
+                    "timestamp": timestamp.isoformat(),
+                    "signal": signal,
+                    "score": record.score,
+                    "decision": record.decision,
+                    "reason": record.reason,
+                    "result": record.result,
+                    "symbol": record.symbol,
+                    "timeframe": record.timeframe,
+                    "quality_score": record.quality_score,
+                    "quality_level": record.quality_level,
+                    "entry_conditions": list(record.entry_conditions),
+                })
+            all_day = [record for _, record in selected_records]
+            summary = {
+                "date": selected_date.isoformat(),
+                "total": len(all_day),
+                "win": sum(record.result == "WIN" for record in all_day),
+                "loss": sum(record.result == "LOSS" for record in all_day),
+                "ambos": sum(record.result == "AMBOS" for record in all_day),
+                "pending": sum(record.result == "PENDENTE" for record in all_day),
+            }
+            return _json_response(
+                start_response,
+                HTTPStatus.OK,
+                {
+                    "entries": entries,
+                    "today_summary": summary,
+                    "date": selected_date.isoformat(),
+                    "timezone": "America/Sao_Paulo",
+                    "source": "persistent_operational_runtime_memory",
+                    "automatic": True,
+                    "execution_authority": False,
+                    "read_only": True,
+                    "execution_allowed": False,
+                    "count": len(entries),
+                },
+                request_id,
+                environ,
+            )
         if path == "/api/reports" and method == "GET":
             limit = _query_limit(environ, 50, maximum=200)
             report = {
