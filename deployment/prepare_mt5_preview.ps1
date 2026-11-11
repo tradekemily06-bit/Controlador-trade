@@ -137,8 +137,12 @@ $installedBinaryHash = if (Test-Path -LiteralPath $installedBinary -PathType Lea
     (Get-FileHash -LiteralPath $installedBinary -Algorithm SHA256).Hash
 } else { 'ABSENT' }
 
-$previewFolder = Join-Path $TerminalDataPath 'MQL5\Experts\ControladorTradingPreview'
-New-Item -ItemType Directory -Force -Path $previewFolder | Out-Null
+$previewCommit = $actualCommit.Substring(0, 12)
+$previewFolder = Join-Path $TerminalDataPath ("MQL5\Experts\ControladorTradingPreview_" + $previewCommit)
+if (Test-Path -LiteralPath $previewFolder) {
+    throw "A pasta desta prévia já existe e não será sobrescrita: $previewFolder. Preserve os arquivos existentes e solicite uma nova revisão antes de reutilizar."
+}
+New-Item -ItemType Directory -Path $previewFolder | Out-Null
 $previewSource = Join-Path $previewFolder 'Controlador-Trading-Preview.mq5'
 $previewBinary = Join-Path $previewFolder 'Controlador-Trading-Preview.ex5'
 $compileLog = Join-Path $previewFolder 'Controlador-Trading-Preview.compile.log'
