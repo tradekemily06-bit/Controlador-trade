@@ -228,3 +228,18 @@ def test_restore_rolls_back_replaced_files_when_a_later_replace_fails(tmp_path: 
     assert (target / "operation-memory.json").read_text(encoding="utf-8") == "old-memory"
     assert (target / "operational-safety.json").read_text(encoding="utf-8") == "old-safety"
     assert not list(target.glob("*.rollback-*"))
+
+
+
+def test_backup_preserves_unrelated_fixed_tmp_file(tmp_path: Path):
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / "operation-memory.json").write_text('{"safe":true}', encoding="utf-8")
+    archive = tmp_path / "state.zip"
+    unrelated_temporary = tmp_path / "state.zip.tmp"
+    unrelated_temporary.write_text("do not overwrite", encoding="utf-8")
+
+    create_backup(runtime, archive)
+
+    assert unrelated_temporary.read_text(encoding="utf-8") == "do not overwrite"
+    assert verify_backup(archive)["format"] == "controlador-runtime-portable"
