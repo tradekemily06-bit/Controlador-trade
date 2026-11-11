@@ -20,7 +20,7 @@ def test_streamlit_operational_navigation_has_six_areas_and_central_last():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert 'AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]' in source
     assert 'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]' in source
-    assert 'AREAS["CENTRAL"] = ["Financeiro", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]' in source
+    assert 'AREAS["CENTRAL"] = ["Financeiro", "Diário Operacional", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]' in source
     area_order = source.split("area = st.radio(\"Áreas principais\", list(AREAS)", 1)[0]
     assert 'for name in ("COCKPIT", "ANÁLISE", "ESTUDO")' in area_order
     assert "NÃO CONFIRMADO" in source
@@ -484,13 +484,13 @@ def test_streamlit_uses_exactly_six_main_areas_in_the_approved_order():
     assert config["open_state"]["tabs"]["MAIS / ADMIN"][0] == "Financeiro"
     assert 'AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]' in source
     assert 'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]' in source
-    assert 'AREAS["CENTRAL"] = ["Financeiro", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]' in source
+    assert 'AREAS["CENTRAL"] = ["Financeiro", "Diário Operacional", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]' in source
     assert "list(AREAS)" in source
     ordered_area_markers = [
         'for name in ("COCKPIT", "ANÁLISE", "ESTUDO")',
         'AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]',
         'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]',
-        'AREAS["CENTRAL"] = ["Financeiro", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]',
+        'AREAS["CENTRAL"] = ["Financeiro", "Diário Operacional", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]',
     ]
     positions = [source.index(marker) for marker in ordered_area_markers]
     assert positions == sorted(positions)
@@ -2080,7 +2080,7 @@ def test_every_reference_navigation_module_has_a_real_panel_handler_or_view():
         for module in values
     }
     modules.discard("MT5 DEMO / Simulação")
-    modules.update({"Ambiente MT5 DEMO", "Reserva Fiscal", "Assistente do Ecossistema"})
+    modules.update({"Ambiente MT5 DEMO", "Reserva Fiscal", "Assistente do Ecossistema", "Diário Operacional"})
     handlers = set(re.findall(r'module_name == "([^"]+)"', source))
     views_start = source.index("def show_readonly_module")
     views_end = source.index('    if module_name == "Análise de Mercado":', views_start)
