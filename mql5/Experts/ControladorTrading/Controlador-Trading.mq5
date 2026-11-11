@@ -1988,7 +1988,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("DISC_SAVE") && active_view=="DISCOVERIES") SaveDiscovery();
    else if(sparam==Obj("DISC_REFRESH") && active_view=="DISCOVERIES") RefreshDiscoveries();
    else if(sparam==Obj("ONBOARD_PREV")) { if(active_view=="ONBOARDING" && onboarding_valid && onboarding_page>0) { onboarding_page--; RenderOnboardingPage(); } }
-   else if(sparam==Obj("ONBOARD_NEXT")) { if(active_view=="ONBOARDING" && onboarding_valid && (onboarding_page+1)*5<ArraySize(onboarding_steps)) { onboarding_page++; RenderOnboardingPage(); } }
+   else if(sparam==Obj("ONBOARD_NEXT")) { if(active_view=="ONBOARDING" && onboarding_valid && (onboarding_page+1)<ArraySize(onboarding_steps)) { onboarding_page++; RenderOnboardingPage(); } }
    else if(sparam==Obj("ANALYZE")) {
       if(active_view=="DECISION") RefreshDecisionView();
       else if(active_view=="KILL_SWITCH") RefreshKillSwitchStatus();
