@@ -449,6 +449,10 @@ def test_mql5_preview_compile_requires_exact_clean_reviewed_worktree():
     assert 'Write-Output "SOURCE_BRANCH=$actualBranch"' in preview
     assert 'Write-Output "SOURCE_COMMIT=$actualCommit"' in preview
     assert "ControladorTradingPreview" in preview
+    assert '$previewCommit = $actualCommit.Substring(0, 12)' in preview
+    assert 'if (Test-Path -LiteralPath $previewFolder)' in preview
+    assert 'New-Item -ItemType Directory -Path $previewFolder' in preview
+    assert 'New-Item -ItemType Directory -Force -Path $previewFolder' not in preview
     assert "INSTALLED_EA_UNCHANGED=TRUE" in preview
 
 
