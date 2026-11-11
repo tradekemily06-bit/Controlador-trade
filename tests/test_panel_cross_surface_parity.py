@@ -24,7 +24,15 @@ def test_streamlit_and_native_mt5_share_the_six_area_and_module_contract():
     ]
     assert 'AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]' in streamlit
     assert 'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]' in streamlit
-    assert 'AREAS["CENTRAL"] = ["Financeiro", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]' in streamlit
+    assert 'AREAS["CENTRAL"] = ["Financeiro", "Diário Operacional", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]' in streamlit
+    assert '"Diário Operacional": ("Diário operacional · registros persistidos", "/api/journal")' in streamlit
+    assert 'api(f"/api/journal?date={selected_day.isoformat()}&limit=100")' in streamlit
+    assert 'st.session_state' not in streamlit.split('if module_name == "Diário Operacional":', 1)[1].split('data = api(endpoint)', 1)[0] or 'operational_journal_day' in streamlit
+    journal_route = (ROOT / "app.py").read_text(encoding="utf-8").split('if path == "/api/journal" and method == "GET":', 1)[1].split('if path == "/api/reports" and method == "GET":', 1)[0]
+    assert 'persistent_operational_runtime_memory' in journal_route
+    assert '"America/Sao_Paulo"' in journal_route
+    assert '"execution_allowed": False' in journal_route
+    assert '"execution_authority": False' in journal_route
     area_definition = streamlit.split("AREAS = {", 1)[1].split('if "panel_open"', 1)[0]
     assert 'for name in ("COCKPIT", "ANÁLISE", "ESTUDO")' in area_definition
     assert expected_areas[-1] == "CENTRAL"
