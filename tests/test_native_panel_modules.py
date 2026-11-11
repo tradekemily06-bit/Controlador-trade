@@ -530,3 +530,11 @@ def test_native_health_refresh_does_not_recreate_cockpit_labels_outside_cockpit(
     assert 'if(active_view=="COCKPIT") SetLabel(Obj("MODE")' in health
     assert 'else SetLabel(Obj("SAFE")' not in health
     assert 'SetLabel(Obj("MODE"),mode_label' not in health.replace('if(active_view=="COCKPIT") SetLabel(Obj("MODE"),mode_label', '')
+
+
+def test_native_health_refresh_only_updates_content_in_cockpit_and_analysis():
+    source = EA.read_text(encoding="utf-8")
+    health = source.split("void RefreshHealth()", 1)[1].split("void RefreshMarketAssets()", 1)[0]
+
+    assert 'if(active_view!="COCKPIT" && active_view!="ANALISE") return;' in health
+    assert health.index('if(active_view!="COCKPIT" && active_view!="ANALISE") return;') < health.index('SetLabel(Obj("INFO1")')
