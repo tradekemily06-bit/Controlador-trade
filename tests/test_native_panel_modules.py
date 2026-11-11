@@ -474,6 +474,9 @@ def test_native_onboarding_is_a_dedicated_read_only_paginated_guide():
     assert 'page_size=1;' in renderer
     assert 'onboarding_purposes[idx]' in renderer
     assert 'onboarding_actions[idx]' in renderer
+    assert 'CompactOnboardingText(onboarding_purposes[idx],62)' in renderer
+    assert 'CompactOnboardingText(onboarding_actions[idx],62)' in renderer
+    assert 'string CompactOnboardingText(string value,int max_chars=62)' in source
     assert 'Obj("ONBOARD_PREV")' in renderer
     assert 'Obj("ONBOARD_NEXT")' in renderer
     assert 'active_view=="ONBOARDING"' in events
