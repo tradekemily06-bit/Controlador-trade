@@ -221,3 +221,47 @@ def test_native_fiscal_summary_uses_server_owner_and_keeps_foreign_pending_separ
     assert "rate" not in payload["categories"]["FOREIGN_FINANCIAL_ASSET"]
     assert "reserve_amount_brl" not in payload["history"][0]
     assert payload["domestic_pending"]["total"] == 3
+
+def test_native_assistant_status_works_with_remote_access_required_via_loopback_gate(monkeypatch):
+    class Assistant:
+        def readiness(self):
+            return {"available": True}
+
+    _allow_native_local(monkeypatch)
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "X-Auth-User")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    monkeypatch.setattr(app_module, "ASSISTANT", Assistant())
+    monkeypatch.setattr(app_module, "configured_fiscal_owner_id", lambda: "single:native-owner")
+
+    status, payload = _request("/api/assistant/local/status")
+
+    assert status.startswith("200")
+    assert payload["available"] is True
+
+
+def test_native_assistant_status_remains_loopback_only_when_remote_access_is_required(monkeypatch):
+    _allow_native_local(monkeypatch)
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "X-Auth-User")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+
+    status, payload = _request(
+        "/api/assistant/local/status",
+        remote_addr="203.0.113.8",
+    )
+
+    assert status.startswith("403")
+    assert "error" in payload
+
+
+def test_unlisted_private_reads_still_require_trusted_remote_identity(monkeypatch):
+    _allow_native_local(monkeypatch)
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "X-Auth-User")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+
+    status, payload = _request("/api/risk")
+
+    assert status.startswith("401")
+    assert "Identidade autenticada necessária" in payload["error"]
