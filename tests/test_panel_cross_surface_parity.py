@@ -27,7 +27,7 @@ def test_streamlit_and_native_mt5_share_the_six_area_and_module_contract():
     assert 'AREAS["CENTRAL"] = ["Financeiro", "Diário Operacional", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]' in streamlit
     assert '"Diário Operacional": ("Diário operacional · registros persistidos", "/api/journal")' in streamlit
     assert 'api(f"/api/journal?date={selected_day.isoformat()}&limit=100")' in streamlit
-    assert 'st.session_state' not in streamlit.split('if module_name == "Diário Operacional":', 1)[1].split('data = api(endpoint)', 1)[0] or 'operational_journal_day' in streamlit
+    assert 'key="operational_journal_day"' in streamlit.split('if module_name == "Diário Operacional":', 1)[1].split('data = api(endpoint)', 1)[0]
     journal_route = (ROOT / "app.py").read_text(encoding="utf-8").split('if path == "/api/journal" and method == "GET":', 1)[1].split('if path == "/api/reports" and method == "GET":', 1)[0]
     assert 'persistent_operational_runtime_memory' in journal_route
     assert '"America/Sao_Paulo"' in journal_route
