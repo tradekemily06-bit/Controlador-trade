@@ -232,7 +232,8 @@ void LoadPanelVisibility(){
 }
 
 int AreaModuleCount(string area){
-   if(area=="COCKPIT" || area=="ESTUDO" || area=="CENTRAL") return 6;
+   if(area=="COCKPIT" || area=="ESTUDO") return 6;
+   if(area=="CENTRAL") return 7;
    if(area=="ANÁLISE") return 4;
    return 1;
 }
@@ -260,11 +261,12 @@ string AreaModuleName(string area,int index){
    else if(area=="ASSISTENTE DO ECOSSISTEMA") return "Assistente do Ecossistema";
    else if(area=="CENTRAL"){
       if(index==0) return "Financeiro";
-      if(index==1) return "Configurações";
-      if(index==2) return "Auditoria";
-      if(index==3) return "Segurança";
-      if(index==4) return "Conexões";
-      if(index==5) return "Multi-Broker";
+      if(index==1) return "Diário Operacional";
+      if(index==2) return "Configurações";
+      if(index==3) return "Auditoria";
+      if(index==4) return "Segurança";
+      if(index==5) return "Conexões";
+      if(index==6) return "Multi-Broker";
    }
    return "";
 }
@@ -288,6 +290,7 @@ string AreaModuleLabel(string module){
    if(module=="Reserva Fiscal") return "RESERVA";
    if(module=="Assistente do Ecossistema") return "ASSIST.";
    if(module=="Financeiro") return "FINANC.";
+   if(module=="Diário Operacional") return "DIARIO";
    if(module=="Configurações") return "CONFIG";
    if(module=="Auditoria") return "AUDIT.";
    if(module=="Segurança") return "SEGUR.";
@@ -319,6 +322,7 @@ string ViewForModule(string area,string module){
    else if(area=="ASSISTENTE DO ECOSSISTEMA") return "ASSISTENTE";
    else if(area=="CENTRAL"){
       if(module=="Financeiro") return "FINANCE";
+      if(module=="Diário Operacional") return "JOURNAL";
       if(module=="Configurações") return "CONFIG";
       if(module=="Conexões") return "CONNECTIONS";
       if(module=="Multi-Broker") return "CONNECTIONS";
@@ -335,7 +339,7 @@ void RenderNavigation(){
       bool selected=(i==0 && active_area=="COCKPIT") || (i==1 && active_area=="ANÁLISE") || (i==2 && active_area=="ESTUDO") || (i==3 && active_area=="RESERVA FISCAL") || (i==4 && active_area=="ASSISTENTE DO ECOSSISTEMA") || (i==5 && active_area=="CENTRAL");
       ObjectSetInteger(0,area_button,OBJPROP_BGCOLOR,selected?C'24,86,72':C'35,43,58');
    }
-   for(int i=0;i<6;i++){
+   for(int i=0;i<7;i++){
       string name=AreaModuleName(active_area,i);
       string button=Obj("M"+IntegerToString(i+1));
       if(i<AreaModuleCount(active_area) && name!="")
@@ -1212,6 +1216,46 @@ void RefreshReports(){
    SetLabel(Obj("INFO4"),"Gerado: "+(generated==""?"nao informado":StringSubstr(generated,0,19)),20,421,8,C'145,160,180');
    SetLabel(Obj("INFO5"),"Fonte: "+(source==""?"nao informada":source)+" • somente leitura; REAL bloqueado",20,441,8,C'255,209,102');
 }
+void RefreshJournal(){
+   string r; int code=0;
+   if(!Http("GET","/api/journal?limit=5","",r,code)){
+      SetLabel(Obj("INFO1"),"Diario: runtime indisponivel",20,361,8,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Nao foi possivel consultar registros persistidos.",20,381,8,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Nenhum dado foi alterado.",20,401,8,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Somente leitura; sem confirmacao de execucao no broker.",20,421,7,C'255,209,102');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,8,C'255,155,155');
+      return;
+   }
+   string total=JsonObjectValue(r,"today_summary","total");
+   string wins=JsonObjectValue(r,"today_summary","win");
+   string losses=JsonObjectValue(r,"today_summary","loss");
+   string pending=JsonObjectValue(r,"today_summary","pending");
+   string objects[];
+   if(!ExtractJsonArrayObjects(r,"entries",objects)){
+      SetLabel(Obj("INFO1"),"Diario: resposta invalida",20,361,8,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Formato de registros nao reconhecido.",20,381,8,C'205,215,230');
+      return;
+   }
+   SetLabel(Obj("INFO1"),"Hoje: "+(total==""?"0":total)+" • WIN "+(wins==""?"0":wins)+" • LOSS "+(losses==""?"0":losses),20,361,8,C'205,215,230');
+   for(int i=0;i<5;i++){
+      string line="";
+      if(i<ArraySize(objects)){
+         string stamp=JsonValue(objects[i],"timestamp");
+         string symbol=JsonValue(objects[i],"symbol");
+         string signal=JsonValue(objects[i],"signal");
+         string decision=JsonValue(objects[i],"decision");
+         string result=JsonValue(objects[i],"result");
+         string score=JsonValue(objects[i],"score");
+         if(stamp=="null") stamp="";
+         if(symbol=="null") symbol="";
+         if(result=="null" || result=="") result="PENDENTE";
+         line=StringSubstr(stamp,11,5)+" "+(symbol==""?"—":symbol)+" "+signal+" "+(score==""?"—":score)+" "+result;
+         if(decision!="" && decision!="null") line+=" • "+StringSubstr(decision,0,14);
+      }
+      SetLabel(Obj("INFO"+IntegerToString(i+2)),line,20,361+i*20,7,C'205,215,230');
+   }
+   SetLabel(Obj("INFO5"),"Pendentes: "+(pending==""?"0":pending)+" • historico operacional, nao extrato do broker",20,441,7,C'255,209,102');
+}
 void RefreshAuditView(){
    string r; int code=0;
    if(!Http("GET","/api/security/audit?limit=50","",r,code)){
@@ -1628,6 +1672,11 @@ void RenderView(){
       SetLabel(Obj("SUB"),"RELATORIOS • resumo historico do runtime, somente leitura",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR RELATORIO",20,284,172,30);
       RefreshReports();
+   }else if(active_view=="JOURNAL"){
+      ClearCockpitFields();
+      SetLabel(Obj("SUB"),"DIARIO OPERACIONAL • registros persistidos do runtime, somente leitura",20,47,8,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR DIARIO",20,284,172,30);
+      RefreshJournal();
    }else if(active_view=="AUDIT"){
       ClearCockpitFields();
       SetLabel(Obj("SUB"),"AUDITORIA • trilha de seguranca e requisicoes",20,47,9,C'150,165,185');
@@ -1698,7 +1747,7 @@ void RefreshHealth(){
    string mode_label=(mode=="DEMO" || mode=="SIMULACAO")?"DEMO":(mode==""?"MODO ?":StringSubstr(mode,0,8));
    SetLabel(Obj("MODE"),mode_label,350,47,8,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • autorizacao separada",20,441,9,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
-   if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="DECISION" || active_view=="REPLAY" || active_view=="SIMULATOR" || active_view=="KILL_SWITCH" || active_view=="UNAVAILABLE" || active_view=="MEMORIA" || active_view=="RISK" || active_view=="STATS" || active_view=="CONNECTIONS" || active_view=="ENVIRONMENT" || active_view=="SECURITY" || active_view=="REPORTS" || active_view=="AUDIT" || active_view=="FINANCE" || active_view=="DISCOVERIES") return;
+   if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="DECISION" || active_view=="REPLAY" || active_view=="SIMULATOR" || active_view=="KILL_SWITCH" || active_view=="UNAVAILABLE" || active_view=="MEMORIA" || active_view=="RISK" || active_view=="STATS" || active_view=="CONNECTIONS" || active_view=="ENVIRONMENT" || active_view=="SECURITY" || active_view=="REPORTS" || active_view=="JOURNAL" || active_view=="AUDIT" || active_view=="FINANCE" || active_view=="DISCOVERIES") return;
    SetLabel(Obj("INFO1"),"Analise do ecossistema: "+(engine==""?"online":engine),20,361,9,C'205,215,230');
 }
 void RefreshMarketAssets(){
@@ -1975,6 +2024,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("M4")) { SelectModule(3); return; }
    else if(sparam==Obj("M5")) { SelectModule(4); return; }
    else if(sparam==Obj("M6")) { SelectModule(5); return; }
+   else if(sparam==Obj("M7")) { SelectModule(6); return; }
    else if(sparam==Obj("ASSISTANT_CONSENT")) { assistant_consent_armed=!assistant_consent_armed; SetButton(Obj("ASSISTANT_CONSENT"),assistant_consent_armed?"CONSENTIMENTO OPENAI: SIM":"CONSENTIMENTO OPENAI: NAO",20,307,220,28); }
    else if(sparam==Obj("ASSISTANT_SEND")) SendAssistantMessage();
    else if(sparam==Obj("KILL_CONFIRM") && active_view=="KILL_SWITCH") { kill_switch_confirm_armed=!kill_switch_confirm_armed; SetButton(Obj("KILL_CONFIRM"),kill_switch_confirm_armed?"CONFIRMACAO ARMADA":"CONFIRMAR BLOQUEIO",20,320,172,30); }
