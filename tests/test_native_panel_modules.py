@@ -454,3 +454,24 @@ def test_native_mt5_header_status_does_not_overlap_area_or_module_navigation():
     assert 'SetLabel(Obj("MODE"),mode_label,350,47,8' in health
     assert 'SetButton(area_button,area_labels[i],18+i*54,67,52,25)' in navigation
     assert 'SetButton(button,AreaModuleLabel(name),18+i*54,98,52,25)' in navigation
+
+
+def test_native_onboarding_is_a_dedicated_read_only_paginated_guide():
+    source = EA.read_text(encoding="utf-8")
+    routing = source.split("string ViewForModule(", 1)[1].split("void RenderNavigation()", 1)[0]
+    reader = source.split("void RefreshOnboarding()", 1)[1].split("string AssistantConversationFileName()", 1)[0]
+    renderer = source.split("void RenderOnboardingPage()", 1)[1].split("void RefreshOnboarding()", 1)[0]
+    events = source.split("void OnChartEvent", 1)[1]
+
+    assert 'if(module=="Aprendizado") return "ENSINO";' in routing
+    assert 'if(module=="Escola / Tutorial / Onboarding") return "ONBOARDING";' in routing
+    assert 'Http("GET","/api/onboarding","",response,code)' in reader
+    assert 'authorized!="false"' in reader
+    assert 'ExtractJsonArrayObjects(response,"steps",objects)' in reader
+    assert 'page_size=5;' in renderer
+    assert 'Obj("ONBOARD_PREV")' in renderer
+    assert 'Obj("ONBOARD_NEXT")' in renderer
+    assert 'active_view=="ONBOARDING"' in events
+    assert 'Http("POST","/api/onboarding"' not in source
+    assert 'Http("PUT","/api/onboarding"' not in source
+    assert 'Http("DELETE","/api/onboarding"' not in source
