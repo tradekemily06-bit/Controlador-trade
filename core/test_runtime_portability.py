@@ -285,3 +285,26 @@ def test_backup_does_not_replace_destination_created_during_publication(tmp_path
 
     assert archive.read_bytes() == b"concurrent-owner-file"
     assert not list(tmp_path.glob(".state.zip.*.tmp"))
+
+def test_backup_is_not_published_when_staged_archive_verification_fails(tmp_path: Path, monkeypatch):
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / "operation-memory.json").write_text('{"safe":true}', encoding="utf-8")
+    archive = tmp_path / "state.zip"
+    verification_targets = []
+
+    def reject_staged_archive(path):
+        verification_targets.append(Path(path))
+        raise ValueError("simulated staged archive verification failure")
+
+    monkeypatch.setattr("core.runtime_portability.verify_backup", reject_staged_archive)
+    with pytest.raises(ValueError, match="simulated staged archive verification failure"):
+        create_backup(runtime, archive)
+
+    assert len(verification_targets) == 1
+    assert verification_targets[0] != archive
+    assert verification_targets[0].parent == archive.parent
+    assert not archive.exists()
+    assert not verification_targets[0].exists()
+    assert not list(tmp_path.glob(".state.zip.*.tmp"))
+
