@@ -318,3 +318,19 @@ def test_native_latest_analysis_read_uses_loopback_gate_without_remote_identity(
     assert status.startswith("200")
     assert payload["available"] is False
     assert payload["execution_allowed"] is False
+
+def test_shared_native_read_gate_preserves_trusted_remote_identity(monkeypatch):
+    _allow_native_local(monkeypatch)
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "true")
+    monkeypatch.setenv("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "X-Auth-User")
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "owner@example.com")
+    environ = {
+        "REMOTE_ADDR": "127.0.0.1",
+        "HTTP_HOST": "control.example.com",
+        "HTTP_X_AUTH_USER": "owner@example.com",
+    }
+
+    authorized, reason = app_module._authorize_native_ea_read(environ)
+
+    assert authorized is True
+    assert reason == "trusted"
