@@ -472,6 +472,7 @@ def test_native_onboarding_is_a_dedicated_read_only_paginated_guide():
     assert 'onboarding_purposes[n]=purpose;' in reader
     assert 'onboarding_actions[n]=JsonValue(objects[i],"action_hint");' in reader
     assert 'page_size=1;' in renderer
+    assert '(onboarding_page+1)<ArraySize(onboarding_steps)' in events
     assert 'onboarding_purposes[idx]' in renderer
     assert 'onboarding_actions[idx]' in renderer
     assert 'CompactOnboardingText(onboarding_purposes[idx],62)' in renderer
