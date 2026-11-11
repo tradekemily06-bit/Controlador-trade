@@ -2030,8 +2030,8 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("M5")) { SelectModule(4); return; }
    else if(sparam==Obj("M6")) { SelectModule(5); return; }
    else if(sparam==Obj("M7")) { SelectModule(6); return; }
-   else if(sparam==Obj("ASSISTANT_CONSENT")) { assistant_consent_armed=!assistant_consent_armed; SetButton(Obj("ASSISTANT_CONSENT"),assistant_consent_armed?"CONSENTIMENTO OPENAI: SIM":"CONSENTIMENTO OPENAI: NAO",20,307,220,28); }
-   else if(sparam==Obj("ASSISTANT_SEND")) SendAssistantMessage();
+   else if(sparam==Obj("ASSISTANT_CONSENT") && active_view=="ASSISTENTE") { assistant_consent_armed=!assistant_consent_armed; SetButton(Obj("ASSISTANT_CONSENT"),assistant_consent_armed?"CONSENTIMENTO OPENAI: SIM":"CONSENTIMENTO OPENAI: NAO",20,307,220,28); }
+   else if(sparam==Obj("ASSISTANT_SEND") && active_view=="ASSISTENTE") SendAssistantMessage();
    else if(sparam==Obj("KILL_CONFIRM") && active_view=="KILL_SWITCH") { kill_switch_confirm_armed=!kill_switch_confirm_armed; SetButton(Obj("KILL_CONFIRM"),kill_switch_confirm_armed?"CONFIRMACAO ARMADA":"CONFIRMAR BLOQUEIO",20,320,172,30); }
    else if(sparam==Obj("KILL_ACTIVATE") && active_view=="KILL_SWITCH") ActivateKillSwitch();
    else if(sparam==Obj("MEMORY_PREV")) { if(active_view=="MEMORIA" && memory_page>0) { memory_page--; RenderMemoryPage(); } }
