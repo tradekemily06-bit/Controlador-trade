@@ -509,3 +509,14 @@ def test_native_mt5_operational_journal_is_read_only_and_uses_persisted_runtime_
     assert '|| active_view=="JOURNAL"' in source
     assert 'for(int i=0;i<4;i++){' in journal
     assert 'Obj("INFO6")' in journal
+
+
+def test_native_mt5_non_cockpit_views_clear_stale_operational_controls():
+    source = EA.read_text(encoding="utf-8")
+    clear = source.split("void ClearCockpitFields()", 1)[1].split("void ClearAssistantControls()", 1)[0]
+    render = source.split("void RenderView()", 1)[1].split("void RefreshHealth()", 1)[0]
+
+    for control in ("CYCLEID", "EXTID", "PRICE", "SAFE", "REC_REFRESH", "REC_RECONCILE", "REC_CLOSE"):
+        assert f'"{control}"' in clear
+    assert 'if(active_view!="COCKPIT") ClearCockpitFields();' in render
+    assert render.index('if(active_view!="COCKPIT") ClearCockpitFields();') < render.index('if(active_view=="UNAVAILABLE")')
