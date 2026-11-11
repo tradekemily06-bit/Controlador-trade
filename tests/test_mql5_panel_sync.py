@@ -432,3 +432,19 @@ def test_mql5_sync_whatif_never_initializes_python_terminal_bridge_without_resol
     terminal_process_query = terminal_resolver.index("Get-CimInstance Win32_Process")
     assert terminal_whatif < terminal_process_query
     assert "a simulação não consulta processos do MT5" in terminal_resolver
+
+
+def test_mql5_preview_compile_requires_exact_clean_reviewed_worktree():
+    preview = (ROOT / "deployment" / "prepare_mt5_preview.ps1").read_text(encoding="utf-8")
+    assert "[string]$ExpectedBranch = 'fix/mt5-order-state-reconciliation-20261110'" in preview
+    assert "git -C $ProjectRoot rev-parse --show-toplevel" in preview
+    assert "git -C $ProjectRoot branch --show-current" in preview
+    assert "git -C $ProjectRoot rev-parse HEAD" in preview
+    assert "git -C $ProjectRoot status --porcelain" in preview
+    assert "git -C $ProjectRoot remote get-url origin" in preview
+    assert "A cópia de trabalho contém alterações locais ou arquivos não rastreados" in preview
+    assert "Repositório remoto inesperado" in preview
+    assert 'Write-Output "SOURCE_BRANCH=$actualBranch"' in preview
+    assert 'Write-Output "SOURCE_COMMIT=$actualCommit"' in preview
+    assert "ControladorTradingPreview" in preview
+    assert "INSTALLED_EA_UNCHANGED=TRUE" in preview
