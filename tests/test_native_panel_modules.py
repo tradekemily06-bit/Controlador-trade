@@ -467,8 +467,13 @@ def test_native_onboarding_is_a_dedicated_read_only_paginated_guide():
     assert 'if(module=="Escola / Tutorial / Onboarding") return "ONBOARDING";' in routing
     assert 'Http("GET","/api/onboarding","",response,code)' in reader
     assert 'authorized!="false"' in reader
-    assert 'ExtractJsonArrayObjects(response,"steps",objects)' in reader
-    assert 'page_size=5;' in renderer
+    assert 'string guide_json=JsonRawObject(response,"guide");' in reader
+    assert 'ExtractJsonArrayObjects(guide_json,"steps",objects)' in reader
+    assert 'onboarding_purposes[n]=purpose;' in reader
+    assert 'onboarding_actions[n]=JsonValue(objects[i],"action_hint");' in reader
+    assert 'page_size=1;' in renderer
+    assert 'onboarding_purposes[idx]' in renderer
+    assert 'onboarding_actions[idx]' in renderer
     assert 'Obj("ONBOARD_PREV")' in renderer
     assert 'Obj("ONBOARD_NEXT")' in renderer
     assert 'active_view=="ONBOARDING"' in events
