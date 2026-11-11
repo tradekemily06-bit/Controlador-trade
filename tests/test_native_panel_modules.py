@@ -484,3 +484,22 @@ def test_native_onboarding_is_a_dedicated_read_only_paginated_guide():
     assert 'Http("POST","/api/onboarding"' not in source
     assert 'Http("PUT","/api/onboarding"' not in source
     assert 'Http("DELETE","/api/onboarding"' not in source
+
+
+
+def test_native_mt5_operational_journal_is_read_only_and_uses_persisted_runtime_endpoint():
+    source = EA.read_text(encoding="utf-8")
+    routing = source.split("string ViewForModule(", 1)[1].split("void RenderNavigation()", 1)[0]
+    journal = source.split("void RefreshJournal()", 1)[1].split("void RefreshAuditView()", 1)[0]
+    renderer = source.split("void RenderView()", 1)[1].split("void RefreshHealth()", 1)[0]
+    events = source.split("void OnChartEvent", 1)[1]
+
+    assert 'if(module=="Diário Operacional") return "JOURNAL";' in routing
+    assert 'Http("GET","/api/journal?limit=5"' in journal
+    assert 'JsonObjectValue(r,"today_summary","total")' in journal
+    assert 'ExtractJsonArrayObjects(r,"entries",objects)' in journal
+    assert 'execution_allowed' not in journal
+    assert 'orders_sent' not in journal
+    assert 'active_view=="JOURNAL"' in renderer
+    assert 'sparam==Obj("M7")' in events
+    assert 'if(active_view=="JOURNAL") return;' in source
