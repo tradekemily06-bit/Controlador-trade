@@ -1,4 +1,4 @@
-param([string]$ProjectRoot='C:\\Controlador-trade',[string]$PythonExe='python',[string]$RuntimeDir='',[string]$OutputDir='')
+param([string]$ProjectRoot='C:\Controlador-trade',[string]$PythonExe='python',[string]$RuntimeDir='',[string]$OutputDir='')
 $ErrorActionPreference='Stop'
 $ProjectRoot = [System.IO.Path]::GetFullPath($ProjectRoot)
 if($PythonExe -eq 'python' -or $PythonExe -eq 'python.exe'){$resolvedPython=Get-Command $PythonExe -ErrorAction SilentlyContinue;if($null -eq $resolvedPython -or [string]::IsNullOrWhiteSpace($resolvedPython.Source)){throw "Python não foi encontrado no PATH. Informe -PythonExe com o caminho completo do python.exe."};$PythonExe=$resolvedPython.Source}
