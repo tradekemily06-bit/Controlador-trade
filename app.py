@@ -1552,6 +1552,30 @@ def application(environ, start_response):
                 "execution": {"accepted": execution.accepted, "status": execution.status.value, "message": execution.message, "external_id": execution.external_id} if execution else None,
             }
             return _json_response(start_response, HTTPStatus.OK, {"runtime": payload, "execution_allowed": bool(execution and execution.accepted)}, request_id, environ)
+        if path == "/api/market/status" and method == "GET":
+            trading_runtime = getattr(SERVICE, "trading_runtime", None)
+            market_state = getattr(trading_runtime, "market_data_state", None) if trading_runtime is not None else None
+            if market_state is None:
+                status = {
+                    "health": "NOT_CONNECTED",
+                    "safe_for_analysis": False,
+                    "source": None,
+                    "symbol": None,
+                    "timeframe": None,
+                    "candle_count": None,
+                    "gap_count": None,
+                    "stale": None,
+                    "message": "integridade dos dados de mercado não conectada",
+                }
+            else:
+                status = market_state.status()
+            return _json_response(
+                start_response,
+                HTTPStatus.OK,
+                {**status, "read_only": True, "execution_allowed": False},
+                request_id,
+                environ,
+            )
         if path == "/api/market/assets" and method == "GET":
             query = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
             # The ecosystem's default catalog must include every broker-listed symbol,
