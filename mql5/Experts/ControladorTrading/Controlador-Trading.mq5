@@ -1289,7 +1289,7 @@ void RefreshAuditView(){
    SetLabel(Obj("INFO5"),"Persistencia: "+(persistence==""?"nao informada":persistence)+" • consulta somente leitura",20,461,7,persistence=="DURABLE"?C'88,214,141':C'255,209,102');
 }
 void ClearCockpitFields(){
-   string names[]={"SYM","TF","SYML","TFL","MARKET","SIGNAL","SCORE","REASON","MODE","RECOVERY_TITLE","RECOVERY_ITEM","REC_REFRESH","REC_PREV","REC_NEXT","REC_RECONCILE","REC_CLOSE","RECOVERY_STATUS"};
+   string names[]={"SYM","TF","SYML","TFL","MARKET","SIGNAL","SCORE","REASON","MODE","RECOVERY_TITLE","RECOVERY_ITEM","REC_REFRESH","REC_PREV","REC_NEXT","REC_RECONCILE","REC_CLOSE","RECOVERY_STATUS","INFO6"};
    for(int i=0;i<ArraySize(names);i++)
       if(ObjectFind(0,Obj(names[i]))>=0) ObjectDelete(0,Obj(names[i]));
 }
