@@ -1981,8 +1981,8 @@ int OnInit(){
    EventSetTimer(MathMax(1,InpRefreshSeconds));
    RefreshHealth();
    if(panel_visible){ RefreshSecondary(); RefreshMarketAssets(); }
-   // Prime runtime market-data state immediately, even when the native panel is hidden.
-   Analyze(panel_visible);
+   // Only request market analysis when the native panel is visible.
+   if(panel_visible) Analyze(true);
    last_analysis_bar=iTime(_Symbol,_Period,0);
    return(INIT_SUCCEEDED);
 }
@@ -1993,9 +1993,8 @@ void OnDeinit(const int reason){
 void OnTimer(){
    if(!panel_visible){
       RefreshPanelToggle();
+      // Keep the compact health indicator current without polling market analysis.
       RefreshHealth();
-      Analyze(false);
-      last_analysis_bar=iTime(_Symbol,_Period,0);
       return;
    }
    RefreshPanelLayout();
