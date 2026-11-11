@@ -393,6 +393,8 @@ def test_native_mt5_discoveries_reads_resources_and_saves_unvalidated_observatio
     assert 'ObjectSetString(0,Obj("DISC_RESOURCE"),OBJPROP_TEXT,resource_id);' in refresh
     assert 'Http("GET","/api/learning/resources","",resources,resources_code)' in refresh
     assert 'Http("GET","/api/learning/observations","",observations,observations_code)' in refresh
+    assert 'if(!resources_parsed || !observations_parsed)' in refresh
+    assert 'observation_items[ArraySize(observation_items)-1]' in refresh
     assert 'Http("POST","/api/learning/observations",body,response,code)' in save
     assert 'q+"validated"+q+":false"' in save
     assert 'q+"concepts"+q+":"+concepts_json' in save
