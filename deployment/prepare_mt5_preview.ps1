@@ -58,7 +58,11 @@ if ($LASTEXITCODE -ne 0 -or -not $remoteLine) {
     throw 'Não foi possível confirmar a versão atual da branch no GitHub; prévia cancelada.'
 }
 $remoteCommit = ($remoteLine -split '\s+')[0]
-if ($remoteCommit -notmatch '^[0-9a-f]{40}if (-not (Test-Path -LiteralPath $ProjectRoot -PathType Container)) {
+if ($remoteCommit -notmatch '^[0-9a-f]{40}$' -or $actualCommit -ne $remoteCommit) {
+    throw "A cópia local não corresponde ao último commit remoto. Local: $actualCommit; remoto: $remoteCommit. Atualize a cópia antes da prévia."
+}
+
+if (-not (Test-Path -LiteralPath $ProjectRoot -PathType Container)) {
     throw "Pasta do projeto não encontrada: $ProjectRoot"
 }
 if (-not (Test-Path -LiteralPath $TerminalDataPath -PathType Container) -or
