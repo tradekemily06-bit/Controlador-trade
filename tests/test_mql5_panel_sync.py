@@ -450,3 +450,15 @@ def test_mql5_preview_compile_requires_exact_clean_reviewed_worktree():
     assert 'Write-Output "SOURCE_COMMIT=$actualCommit"' in preview
     assert "ControladorTradingPreview" in preview
     assert "INSTALLED_EA_UNCHANGED=TRUE" in preview
+
+
+def test_mt5_preview_rejects_invalid_or_stale_remote_commit_before_touching_terminal():
+    preview = (ROOT / "deployment" / "prepare_mt5_preview.ps1").read_text(encoding="utf-8")
+    remote_check = (
+        "if ($remoteCommit -notmatch '^[0-9a-f]{40}$' -or $actualCommit -ne $remoteCommit) {"
+    )
+    assert remote_check in preview
+    assert preview.index(remote_check) < preview.index("$previewFolder =")
+    assert preview.count("$sourceRelative =") == 1
+    assert preview.count("$previewFolder =") == 1
+    assert "if ($remoteCommit -notmatch '^[0-9a-f]{40}if (" not in preview
