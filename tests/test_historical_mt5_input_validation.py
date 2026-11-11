@@ -54,3 +54,15 @@ def test_historical_tools_reject_invalid_ohlc_candles(method_name):
             method(symbol="EURUSD", timeframe="5m", limit=100)
         else:
             method(symbol="EURUSD", timeframe="5m", limit=100)
+
+@pytest.mark.parametrize("method_name", ["replay_mt5_history", "simulate_mt5_signal_scenario"])
+def test_historical_tools_reject_zero_price_ohlc_candles(method_name):
+    candles = _valid_candles()
+    candles[1] = Candle(
+        candles[1].timestamp, 0.0, 103.0, 0.0, 102.0, 12.0
+    )
+    service = _service_with_history(candles)
+    method = getattr(service, method_name)
+
+    with pytest.raises(RuntimeError, match="OHLC inválido"):
+        method(symbol="EURUSD", timeframe="5m", limit=100)
