@@ -26,6 +26,25 @@ def test_backup_round_trip(tmp_path:Path):
     for filename, (table, value) in module_databases.items():
         with sqlite3.connect(restored / filename) as con:
             assert con.execute(f"select id from {table}").fetchone() == (value,)
+
+def test_restore_preserves_unrelated_fixed_staging_file(tmp_path: Path):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "operation-memory.json").write_text("new-state", encoding="utf-8")
+    backup = tmp_path / "state.zip"
+    create_backup(source, backup)
+
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "operation-memory.json").write_text("old-state", encoding="utf-8")
+    unrelated_temporary = target / ".operation-memory.json.restore.tmp"
+    unrelated_temporary.write_text("preserve-me", encoding="utf-8")
+
+    restore_backup(backup, target, replace=True)
+
+    assert (target / "operation-memory.json").read_text(encoding="utf-8") == "new-state"
+    assert unrelated_temporary.read_text(encoding="utf-8") == "preserve-me"
+
 def test_restore_refuses_overwrite(tmp_path:Path):
     runtime=tmp_path/"runtime"; runtime.mkdir(); (runtime/"operation-memory.json").write_text("1")
     backup=tmp_path/"state.zip"; create_backup(runtime,backup); (runtime/"operation-memory.json").write_text("2")
@@ -214,6 +233,8 @@ def test_restore_rolls_back_replaced_files_when_a_later_replace_fails(tmp_path: 
     target.mkdir()
     (target / "operation-memory.json").write_text("old-memory", encoding="utf-8")
     (target / "operational-safety.json").write_text("old-safety", encoding="utf-8")
+    unrelated_rollback_temp = target / ".operation-memory.rollback-tmp.json"
+    unrelated_rollback_temp.write_text("preserve-me", encoding="utf-8")
     real_replace = os.replace
 
     def fail_second_destination(source_path, destination_path):
@@ -227,6 +248,7 @@ def test_restore_rolls_back_replaced_files_when_a_later_replace_fails(tmp_path: 
 
     assert (target / "operation-memory.json").read_text(encoding="utf-8") == "old-memory"
     assert (target / "operational-safety.json").read_text(encoding="utf-8") == "old-safety"
+    assert unrelated_rollback_temp.read_text(encoding="utf-8") == "preserve-me"
     assert not list(target.glob("*.rollback-*"))
 
 
