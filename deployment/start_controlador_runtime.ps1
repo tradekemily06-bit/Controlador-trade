@@ -24,7 +24,12 @@ if ($PythonExe -eq 'python' -or $PythonExe -eq 'python.exe') {
     $projectPython = Join-Path $ProjectRoot $PythonExe
     if (Test-Path -LiteralPath $projectPython -PathType Leaf) {
         $PythonExe = [System.IO.Path]::GetFullPath($projectPython)
+    } else {
+        $PythonExe = [System.IO.Path]::GetFullPath($PythonExe)
     }
+}
+if (-not [System.IO.Path]::IsPathRooted($PythonExe)) {
+    $PythonExe = [System.IO.Path]::GetFullPath($PythonExe)
 }
 if (-not (Test-Path -LiteralPath $PythonExe -PathType Leaf)) {
     throw "Python não encontrado: $PythonExe"
