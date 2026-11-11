@@ -312,7 +312,8 @@ string ViewForModule(string area,string module){
    else if(area=="CENTRAL"){
       if(module=="Financeiro") return "FINANCE";
       if(module=="Configurações") return "CONFIG";
-      if(module=="Conexões" || module=="Multi-Broker") return "CONNECTIONS";
+      if(module=="Conexões") return "CONNECTIONS";
+      if(module=="Multi-Broker") return "CONNECTIONS";
       if(module=="Segurança") return "SECURITY";
       if(module=="Auditoria") return "AUDIT";
    }
