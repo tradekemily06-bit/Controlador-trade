@@ -1884,9 +1884,9 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("SAVE")) { if(active_view=="CONFIG") SaveConfig(); }
    else if(sparam==Obj("LEVERAGE_TOGGLE")) { if(active_view=="CONFIG") { leverage_enabled=!leverage_enabled; SaveConfig(); } }
    else if(sparam==Obj("CLOSE")) { if(active_view=="COCKPIT") CloseCycle(); }
-   else if(sparam==Obj("REC_REFRESH")) RefreshRecoveryInventory();
-   else if(sparam==Obj("REC_PREV")){ recovery_selected=MathMax(0,recovery_selected-1); recovery_close_armed=false; RenderRecoverySelection(); }
-   else if(sparam==Obj("REC_NEXT")){ recovery_selected=MathMin(ArraySize(recovery_items)-1,recovery_selected+1); recovery_close_armed=false; RenderRecoverySelection(); }
-   else if(sparam==Obj("REC_RECONCILE")) ReconcileSelectedRecovery();
-   else if(sparam==Obj("REC_CLOSE")) CloseSelectedRecovery();
+   else if(sparam==Obj("REC_REFRESH")) { if(active_view=="COCKPIT") RefreshRecoveryInventory(); }
+   else if(sparam==Obj("REC_PREV")){ if(active_view=="COCKPIT"){ recovery_selected=MathMax(0,recovery_selected-1); recovery_close_armed=false; RenderRecoverySelection(); } }
+   else if(sparam==Obj("REC_NEXT")){ if(active_view=="COCKPIT"){ recovery_selected=MathMin(ArraySize(recovery_items)-1,recovery_selected+1); recovery_close_armed=false; RenderRecoverySelection(); } }
+   else if(sparam==Obj("REC_RECONCILE")) { if(active_view=="COCKPIT") ReconcileSelectedRecovery(); }
+   else if(sparam==Obj("REC_CLOSE")) { if(active_view=="COCKPIT") CloseSelectedRecovery(); }
 }
