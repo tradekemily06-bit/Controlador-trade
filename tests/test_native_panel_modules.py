@@ -349,3 +349,30 @@ def test_native_finance_overview_uses_fiscal_api_without_claiming_cash_balance()
     assert "nao representa saldo bancario ou equity" in finance
     assert "Pendencias fora dos totais" in finance
     assert 'else if(active_view=="FINANCE") RefreshFinanceOverview();' in events
+
+
+def test_native_mt5_simulator_submits_explicit_historical_backtest_parameters_without_orders():
+    source = EA.read_text(encoding="utf-8")
+    runner = source.split("void RunHistoricalSimulator()", 1)[1].split("void RenderView()", 1)[0]
+    renderer = source.split('if(active_view=="SIMULATOR"){', 1)[1].split('if(active_view=="KILL_SWITCH"){', 1)[0]
+    events = source.split("void OnChartEvent", 1)[1]
+
+    assert 'Http("POST","/api/simulator/mt5/backtest",body,response,code)' in runner
+    for field in (
+        "stop_distance", "take_profit_distance", "quantity_units",
+        "contract_multiplier", "spread_price_units",
+        "slippage_price_units_per_side", "commission_quote_per_unit_round_turn",
+    ):
+        assert f'"{field}"' in runner
+    assert 'if(stop_text=="" || target_text=="" || quantity_text=="" || multiplier_text=="" || spread_text=="" || slippage_text=="" || commission_text=="")' in runner
+    assert 'if(stop<=0 || target<=0 || quantity<=0 || multiplier<=0 || spread<0 || slippage<0 || commission<0)' in runner
+    assert 'SetChatEdit(Obj("SIM_STOP")' in renderer
+    assert 'SetChatEdit(Obj("SIM_TARGET")' in renderer
+    assert 'SetChatEdit(Obj("SIM_QTY")' in renderer
+    assert 'SetChatEdit(Obj("SIM_MULT")' in renderer
+    assert 'SetChatEdit(Obj("SIM_SPREAD")' in renderer
+    assert 'SetChatEdit(Obj("SIM_SLIP")' in renderer
+    assert 'SetChatEdit(Obj("SIM_COMM")' in renderer
+    assert 'sparam==Obj("SIM_RUN") && active_view=="SIMULATOR"' in events
+    assert "Ordens enviadas: NAO" in renderer
+    assert "REAL: BLOQUEADO" in renderer
