@@ -6,7 +6,8 @@ import ipaddress
 import io
 import json
 import os
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 from math import isfinite
 import urllib.error
 import urllib.parse
@@ -1919,6 +1920,7 @@ def show_readonly_module(module_name: str) -> None:
         "Notificações": ("Central de Notificações", "/api/notifications"),
         "Ambiente MT5 DEMO": ("Conexões e ambiente", "/api/connections"),
         "Memória": ("Memória de decisões", "/api/memory?limit=50"),
+        "Diário Operacional": ("Diário operacional · registros persistidos", "/api/journal"),
         "Estatísticas": ("Estatísticas operacionais", "/api/statistics"),
         "Relatórios": ("Resumo operacional", "/api/reports"),
         "Laboratório": ("Laboratório de aprendizado", "/api/learning"),
@@ -1953,6 +1955,39 @@ def show_readonly_module(module_name: str) -> None:
         st.subheader(heading)
 
     try:
+        if module_name == "Diário Operacional":
+            selected_day = st.date_input(
+                "Data do diário",
+                value=datetime.now(ZoneInfo("America/Sao_Paulo")).date(),
+                key="operational_journal_day",
+            )
+            data = api(f"/api/journal?date={selected_day.isoformat()}&limit=100")
+            summary = data.get("today_summary", {}) if isinstance(data, dict) else {}
+            entries = data.get("entries", []) if isinstance(data, dict) else []
+            entries = [item for item in entries if isinstance(item, dict)] if isinstance(entries, list) else []
+            st.caption("Registros da memória operacional persistente do runtime, filtrados pelo dia de São Paulo. Não é extrato bancário nem confirmação independente de execução pela corretora.")
+            metrics = st.columns(5)
+            metrics[0].metric("Registros", int(summary.get("total", 0) or 0))
+            metrics[1].metric("WIN", int(summary.get("win", 0) or 0))
+            metrics[2].metric("LOSS", int(summary.get("loss", 0) or 0))
+            metrics[3].metric("AMBOS", int(summary.get("ambos", 0) or 0))
+            metrics[4].metric("Pendentes", int(summary.get("pending", 0) or 0))
+            if entries:
+                rows = [{
+                    "Data/hora": item.get("timestamp", "—"),
+                    "Ativo": item.get("symbol") or "—",
+                    "Timeframe": item.get("timeframe") or "—",
+                    "Sinal": item.get("signal") or "—",
+                    "Decisão": item.get("decision") or "—",
+                    "Score": item.get("score", "—"),
+                    "Resultado": item.get("result") or "—",
+                    "Motivo": item.get("reason") or "—",
+                } for item in entries]
+                st.dataframe(rows, use_container_width=True, hide_index=True)
+            else:
+                st.info("Nenhum registro operacional persistido para esta data.")
+            st.caption("Somente leitura · autoridade de execução: NÃO · execução permitida por esta tela: NÃO · REAL: DESABILITADO")
+            return
         data = api(endpoint)
         if module_name == "Configurações":
             prefs = data.get("preferences", {}) if isinstance(data, dict) else {}
@@ -3154,7 +3189,7 @@ AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]
 AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]
 # CENTRAL is the final main area. Financeiro belongs inside it, not as a
 # seventh top-level area. Keep the original Figma JSON unchanged.
-AREAS["CENTRAL"] = ["Financeiro", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]
+AREAS["CENTRAL"] = ["Financeiro", "Diário Operacional", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]
 if "panel_open" not in st.session_state:
     st.session_state.panel_open = True
 
