@@ -304,7 +304,10 @@ string ViewForModule(string area,string module){
       if(module=="Relatórios") return "REPORTS";
    }else if(area=="ESTUDO"){
       if(module=="Laboratório") return "LAB";
+      if(module=="Replay") return "REPLAY";
+      if(module=="Simulador") return "SIMULATOR";
       if(module=="Aprendizado" || module=="Escola / Tutorial / Onboarding") return "ENSINO";
+      if(module=="Descobertas") return "DISCOVERIES";
    }else if(area=="RESERVA FISCAL") return "RESERVA";
    else if(area=="ASSISTENTE DO ECOSSISTEMA") return "ASSISTENTE";
    else if(area=="CENTRAL"){
