@@ -91,6 +91,30 @@ if ($sourceText.Contains('string P="CTP_";')) {
     throw 'Não foi possível isolar os objetos do preview.'
 }
 
+# A prévia desta etapa é somente visual: bloqueie ciclo e fechamento no EA
+# compilado para impedir operações acidentais durante a aprovação da interface.
+$runStart = $sourceText.IndexOf('void RunCycle(){')
+$closeStart = $sourceText.IndexOf('void CloseCycle(){')
+$onInitStart = $sourceText.IndexOf('int OnInit(){')
+if ($runStart -lt 0 -or $closeStart -le $runStart -or $onInitStart -le $closeStart) {
+    throw 'Não foi possível localizar os limites das rotinas de execução; prévia visual cancelada.'
+}
+$runStub = 'void RunCycle(){ SetLabel(Obj("INFO1"),"PREVIA VISUAL: execucao desabilitada.",20,361,9,C''255,209,102''); }' + "`n"
+$sourceText = $sourceText.Substring(0, $runStart) + $runStub + $sourceText.Substring($closeStart)
+$closeStart = $sourceText.IndexOf('void CloseCycle(){')
+$onInitStart = $sourceText.IndexOf('int OnInit(){')
+if ($closeStart -lt 0 -or $onInitStart -le $closeStart) {
+    throw 'Não foi possível isolar a rotina de fechamento; prévia visual cancelada.'
+}
+$closeStub = 'void CloseCycle(){ SetLabel(Obj("INFO1"),"PREVIA VISUAL: fechamento desabilitado.",20,361,9,C''255,209,102''); }' + "`n"
+$sourceText = $sourceText.Substring(0, $closeStart) + $closeStub + $sourceText.Substring($onInitStart)
+if ($sourceText.Contains('if(!Http("POST","/api/runtime/cycle/local"')) {
+    throw 'A chamada de execução permaneceu na fonte da prévia; compilação cancelada.'
+}
+if ($sourceText.Contains('if(Http("POST","/api/runtime/close/local"')) {
+    throw 'A chamada de fechamento permaneceu na fonte da prévia; compilação cancelada.'
+}
+
 $installedFolder = Join-Path $TerminalDataPath 'MQL5\Experts\ControladorTrading'
 $installedSource = Join-Path $installedFolder 'Controlador-Trading.mq5'
 $installedBinary = Join-Path $installedFolder 'Controlador-Trading.ex5'
