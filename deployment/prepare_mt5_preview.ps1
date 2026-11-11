@@ -115,6 +115,18 @@ if ($sourceText.Contains('if(Http("POST","/api/runtime/close/local"')) {
     throw 'A chamada de fechamento permaneceu na fonte da prévia; compilação cancelada.'
 }
 
+# Na prévia visual, permita somente consultas GET. Bloqueia também assistente,
+# preferências, kill switch, replay, simulador e qualquer outra mutação via POST.
+$httpSignature = 'bool Http(string method,string path,string body,string &response,int &code){'
+if (($sourceText.Split($httpSignature).Length - 1) -ne 1) {
+    throw 'Assinatura HTTP inesperada; prévia visual cancelada.'
+}
+$httpGuard = $httpSignature + ' if(method!="GET"){ response="PREVIA VISUAL: acoes desabilitadas."; code=0; return false; }'
+$sourceText = $sourceText.Replace($httpSignature, $httpGuard)
+if (-not $sourceText.Contains('if(method!="GET"){ response="PREVIA VISUAL: acoes desabilitadas."')) {
+    throw 'O bloqueio de mutações HTTP não foi aplicado à prévia.'
+}
+
 $installedFolder = Join-Path $TerminalDataPath 'MQL5\Experts\ControladorTrading'
 $installedSource = Join-Path $installedFolder 'Controlador-Trading.mq5'
 $installedBinary = Join-Path $installedFolder 'Controlador-Trading.ex5'
