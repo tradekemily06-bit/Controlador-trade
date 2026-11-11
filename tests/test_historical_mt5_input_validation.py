@@ -66,3 +66,56 @@ def test_historical_tools_reject_zero_price_ohlc_candles(method_name):
 
     with pytest.raises(RuntimeError, match="candle inválido|OHLC inválido"):
         method(symbol="EURUSD", timeframe="5m", limit=100)
+
+
+def _valid_backtest_history():
+    start = datetime(2026, 11, 10, 12, tzinfo=timezone.utc)
+    return [
+        Candle(
+            start + timedelta(minutes=5 * index),
+            100.0 + index * 0.1,
+            101.0 + index * 0.1,
+            99.0 + index * 0.1,
+            100.5 + index * 0.1,
+            10.0,
+        )
+        for index in range(20)
+    ]
+
+
+def _run_backtest(service):
+    return service.run_mt5_historical_backtest(
+        symbol="EURUSD",
+        timeframe="5m",
+        limit=20,
+        stop_distance=0.001,
+        take_profit_distance=0.002,
+        quantity_units=1000,
+        contract_multiplier=1,
+        spread_price_units=0.0001,
+        slippage_price_units_per_side=0.00005,
+        commission_quote_per_unit_round_turn=0.00001,
+        minimum_directional_score=80,
+    )
+
+
+def test_historical_backtest_rejects_duplicate_candle_timestamps():
+    candles = _valid_backtest_history()
+    candles[10] = Candle(
+        candles[9].timestamp, 101.0, 102.0, 100.0, 101.5, 10.0
+    )
+    service = _service_with_history(candles)
+
+    with pytest.raises(RuntimeError, match="timestamps repetidos"):
+        _run_backtest(service)
+
+
+def test_historical_backtest_rejects_zero_price_ohlc_candles():
+    candles = _valid_backtest_history()
+    candles[10] = Candle(
+        candles[10].timestamp, 0.0, 102.0, 0.0, 101.5, 10.0
+    )
+    service = _service_with_history(candles)
+
+    with pytest.raises(RuntimeError, match="candle inválido"):
+        _run_backtest(service)
