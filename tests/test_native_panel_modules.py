@@ -399,3 +399,6 @@ def test_native_mt5_discoveries_reads_resources_and_saves_unvalidated_observatio
     assert 'sparam==Obj("DISC_REFRESH") && active_view=="DISCOVERIES"' in events
     assert "Nao influencia sinais, filtros ou parametros." in renderer
     assert "Execucao permitida: NAO" in renderer
+    health = source.split("void RefreshHealth()", 1)[1].split("void RefreshMarketAssets()", 1)[0]
+    assert 'active_view=="DISCOVERIES"' in health
+    assert 'StringLen(statement)>3000' in save
