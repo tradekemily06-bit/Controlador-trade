@@ -1222,6 +1222,48 @@ void SendAssistantMessage(){
    RenderAssistantAnswer();
    ObjectSetString(0,Obj("ASSISTANT_INPUT"),OBJPROP_TEXT,"");
 }
+void RefreshDiscoveries(){
+   string resources="", observations=""; int resources_code=0, observations_code=0;
+   bool resources_ok=Http("GET","/api/learning/resources","",resources,resources_code);
+   bool observations_ok=Http("GET","/api/learning/observations","",observations,observations_code);
+   if(!resources_ok || !observations_ok){
+      SetLabel(Obj("INFO1"),"Descobertas indisponiveis • HTTP "+IntegerToString(!resources_ok?resources_code:observations_code),20,361,8,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Confira runtime e identidade autorizada.",20,381,8,C'205,215,230'); return;
+   }
+   string resource_id=JsonValue(resources,"resource_id");
+   string resource_title=JsonValue(resources,"title");
+   string statement=JsonValue(observations,"statement");
+   SetLabel(Obj("INFO1"),"Materiais: "+(resource_id==""?"consulte IDs no Streamlit":resource_title),20,361,8,C'205,215,230');
+   SetLabel(Obj("INFO2"),"ID encontrado: "+(resource_id==""?"nao informado":resource_id),20,381,8,C'145,160,180');
+   SetLabel(Obj("INFO3"),"Ultima observacao: "+(statement==""?"nenhuma ou nao retornada":StringSubstr(statement,0,42)),20,401,8,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Registros continuam NAO VALIDADOS.",20,421,8,C'255,209,102');
+   SetLabel(Obj("INFO5"),"Descobertas nao alteram sinais nem execucao.",20,441,8,C'255,155,155');
+}
+void SaveDiscovery(){
+   string resource_id=ObjectGetString(0,Obj("DISC_RESOURCE"),OBJPROP_TEXT);
+   string statement=ObjectGetString(0,Obj("DISC_STATEMENT"),OBJPROP_TEXT);
+   string concepts=ObjectGetString(0,Obj("DISC_CONCEPTS"),OBJPROP_TEXT);
+   string evidence=ObjectGetString(0,Obj("DISC_EVIDENCE"),OBJPROP_TEXT);
+   if(resource_id=="" || statement==""){
+      SetLabel(Obj("INFO1"),"Informe ID do material e observacao.",20,361,8,C'255,118,118'); return;
+   }
+   string q=CharToString(34);
+   string body="{"+q+"resource_id"+q+":"+q+JsonEscape(resource_id)+q+","+
+      q+"statement"+q+":"+q+JsonEscape(statement)+q+","+
+      q+"concepts"+q+":[], "+q+"evidence"+q+":"+(evidence==""?"null":q+JsonEscape(evidence)+q)+","+
+      q+"validated"+q+":false}";
+   string response=""; int code=0;
+   if(!Http("POST","/api/learning/observations",body,response,code)){
+      SetLabel(Obj("INFO1"),"Nao foi possivel guardar • HTTP "+IntegerToString(code),20,361,8,C'255,118,118'); return;
+   }
+   SetLabel(Obj("INFO1"),"Descoberta registrada como NAO VALIDADA.",20,361,8,C'88,214,141');
+   SetLabel(Obj("INFO2"),"ID: "+resource_id,20,381,8,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Sem efeito em sinais, filtros ou execucao.",20,401,8,C'255,155,155');
+   ObjectSetString(0,Obj("DISC_STATEMENT"),OBJPROP_TEXT,"");
+   ObjectSetString(0,Obj("DISC_CONCEPTS"),OBJPROP_TEXT,"");
+   ObjectSetString(0,Obj("DISC_EVIDENCE"),OBJPROP_TEXT,"");
+   RefreshDiscoveries();
+}
 void RunHistoricalReplay(){
    string response=""; int code=0;
    string symbol=_Symbol;
@@ -1288,6 +1330,8 @@ void RunHistoricalSimulator(){
 void RenderView(){
    ClearAssistantControls();
    string simulator_controls[]={"SIM_STOP","SIM_TARGET","SIM_QTY","SIM_MULT","SIM_SPREAD","SIM_SLIP","SIM_COMM","SIM_RUN","SIM_L1","SIM_L2","SIM_L3","SIM_L4"};
+   string discovery_controls[]={"DISC_RESOURCE","DISC_STATEMENT","DISC_CONCEPTS","DISC_EVIDENCE","DISC_SAVE","DISC_REFRESH","DISC_L1","DISC_L2","DISC_L3","DISC_L4"};
+   for(int k=0;k<ArraySize(discovery_controls);k++) if(ObjectFind(0,Obj(discovery_controls[k]))>=0) ObjectDelete(0,Obj(discovery_controls[k]));
    for(int k=0;k<ArraySize(simulator_controls);k++) if(ObjectFind(0,Obj(simulator_controls[k]))>=0) ObjectDelete(0,Obj(simulator_controls[k]));
    string replay_controls[]={"REPLAY_RUN"};
    for(int k=0;k<ArraySize(replay_controls);k++) if(ObjectFind(0,Obj(replay_controls[k]))>=0) ObjectDelete(0,Obj(replay_controls[k]));
@@ -1310,6 +1354,26 @@ void RenderView(){
    }
    if(active_view=="RESERVA") { RenderFiscal(); return; }
    if(active_view=="ASSISTENTE") { RenderAssistant(); return; }
+   if(active_view=="DISCOVERIES"){
+      ClearCockpitFields();
+      SetLabel(Obj("SUB"),"DESCOBERTAS • observacoes vinculadas a materiais de estudo",20,47,9,C'150,165,185');
+      SetLabel(Obj("INFO1"),"Informe o ID do material cadastrado no Estudo.",20,361,8,C'205,215,230');
+      SetLabel(Obj("INFO2"),"A observacao sera salva como NAO VALIDADA.",20,381,8,C'255,209,102');
+      SetLabel(Obj("INFO3"),"Conceitos: separados por virgula (opcional).",20,401,8,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Nao influencia sinais, filtros ou parametros.",20,421,8,C'205,215,230');
+      SetLabel(Obj("INFO5"),"Execucao permitida: NAO • REAL bloqueado",20,441,8,C'255,155,155');
+      SetLabel(Obj("DISC_L1"),"ID do material",20,135,8,C'205,215,230');
+      SetChatEdit(Obj("DISC_RESOURCE"),"",120,130,180,24);
+      SetLabel(Obj("DISC_L2"),"Observacao",20,170,8,C'205,215,230');
+      SetChatEdit(Obj("DISC_STATEMENT"),"",120,165,180,24);
+      SetLabel(Obj("DISC_L3"),"Conceitos",20,205,8,C'205,215,230');
+      SetChatEdit(Obj("DISC_CONCEPTS"),"",120,200,180,24);
+      SetLabel(Obj("DISC_L4"),"Evidencia",20,240,8,C'205,215,230');
+      SetChatEdit(Obj("DISC_EVIDENCE"),"",120,235,180,24);
+      SetButton(Obj("DISC_SAVE"),"GUARDAR DESCOBERTA",20,275,170,28);
+      SetButton(Obj("DISC_REFRESH"),"ATUALIZAR",200,275,100,28);
+      RefreshDiscoveries(); return;
+   }
    if(active_view=="REPLAY"){
       ClearCockpitFields();
       SetLabel(Obj("SUB"),"REPLAY HISTORICO • candles fechados do grafico MT5",20,47,9,C'150,165,185');
@@ -1763,6 +1827,8 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("ASSISTANT_NEXT")) { if(active_view=="ASSISTENTE" && (assistant_answer_page+1)*330<StringLen(assistant_answer)) { assistant_answer_page++; RenderAssistantAnswer(); } }
    else if(sparam==Obj("REPLAY_RUN") && active_view=="REPLAY") RunHistoricalReplay();
    else if(sparam==Obj("SIM_RUN") && active_view=="SIMULATOR") RunHistoricalSimulator();
+   else if(sparam==Obj("DISC_SAVE") && active_view=="DISCOVERIES") SaveDiscovery();
+   else if(sparam==Obj("DISC_REFRESH") && active_view=="DISCOVERIES") RefreshDiscoveries();
    else if(sparam==Obj("ANALYZE")) {
       if(active_view=="DECISION") RefreshDecisionView();
       else if(active_view=="KILL_SWITCH") RefreshKillSwitchStatus();
@@ -1779,6 +1845,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
       else if(active_view=="AUDIT") RefreshAuditView();
       else if(active_view=="LAB") { RefreshHealth(); RefreshSecondary(); }
       else if(active_view=="ENSINO") RefreshLearning();
+      else if(active_view=="DISCOVERIES") RefreshDiscoveries();
       else if(active_view=="NOTIF") RefreshNotifications();
       else if(active_view=="RESERVA") RefreshFiscal();
       else if(active_view=="ASSISTENTE") RefreshAssistantStatus();
