@@ -520,3 +520,13 @@ def test_native_mt5_non_cockpit_views_clear_stale_operational_controls():
         assert f'"{control}"' in clear
     assert 'if(active_view!="COCKPIT") ClearCockpitFields();' in render
     assert render.index('if(active_view!="COCKPIT") ClearCockpitFields();') < render.index('if(active_view=="UNAVAILABLE")')
+
+
+def test_native_health_refresh_does_not_recreate_cockpit_labels_outside_cockpit():
+    source = EA.read_text(encoding="utf-8")
+    health = source.split("void RefreshHealth()", 1)[1].split("void RefreshMarketAssets()", 1)[0]
+
+    assert 'else if(active_view=="COCKPIT") SetLabel(Obj("SAFE")' in health
+    assert 'if(active_view=="COCKPIT") SetLabel(Obj("MODE")' in health
+    assert 'else SetLabel(Obj("SAFE")' not in health
+    assert 'SetLabel(Obj("MODE"),mode_label' not in health.replace('if(active_view=="COCKPIT") SetLabel(Obj("MODE"),mode_label', '')
