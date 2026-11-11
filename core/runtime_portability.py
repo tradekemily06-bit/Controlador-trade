@@ -56,7 +56,11 @@ def create_backup(runtime_dir: str|Path, output_file: str|Path) -> dict[str,Any]
             with zipfile.ZipFile(temporary,"w",compression=zipfile.ZIP_DEFLATED) as archive:
                 archive.write(stage/"manifest.json","manifest.json")
                 for name,path in staged: archive.write(path,name)
-            os.replace(temporary,output)
+            # Create the final name without replacement. ``exists()`` above
+            # is only an early diagnostic; another process could create the
+            # destination before publication. A same-volume hard link is an
+            # atomic no-clobber operation and fails if the name already exists.
+            os.link(temporary, output)
         finally:
             temporary.unlink(missing_ok=True)
     try:
