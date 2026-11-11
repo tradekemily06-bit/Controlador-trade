@@ -462,3 +462,9 @@ def test_mt5_preview_rejects_invalid_or_stale_remote_commit_before_touching_term
     assert preview.count("$sourceRelative =") == 1
     assert preview.count("$previewFolder =") == 1
     assert "if ($remoteCommit -notmatch '^[0-9a-f]{40}if (" not in preview
+    assert "$runStart = $sourceText.IndexOf('void RunCycle(){')" in preview
+    assert "$closeStart = $sourceText.IndexOf('void CloseCycle(){')" in preview
+    assert "PREVIA VISUAL: execucao desabilitada." in preview
+    assert "PREVIA VISUAL: fechamento desabilitado." in preview
+    assert "A chamada de execução permaneceu na fonte da prévia" in preview
+    assert "A chamada de fechamento permaneceu na fonte da prévia" in preview
