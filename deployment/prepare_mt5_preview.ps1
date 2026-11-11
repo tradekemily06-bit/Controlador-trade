@@ -118,7 +118,7 @@ if ($sourceText.Contains('if(Http("POST","/api/runtime/close/local"')) {
 # Na prévia visual, permita somente consultas GET. Bloqueia também assistente,
 # preferências, kill switch, replay, simulador e qualquer outra mutação via POST.
 $httpSignature = 'bool Http(string method,string path,string body,string &response,int &code){'
-if (($sourceText.Split($httpSignature).Length - 1) -ne 1) {
+if ([regex]::Matches($sourceText, [regex]::Escape($httpSignature)).Count -ne 1) {
     throw 'Assinatura HTTP inesperada; prévia visual cancelada.'
 }
 $httpGuard = $httpSignature + ' if(method!="GET"){ response="PREVIA VISUAL: acoes desabilitadas."; code=0; return false; }'
