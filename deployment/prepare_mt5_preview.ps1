@@ -19,22 +19,17 @@ if (-not (Test-Path -LiteralPath $TerminalDataPath -PathType Container) -or
 if (-not (Test-Path -LiteralPath $MetaEditorPath -PathType Leaf)) {
     throw "MetaEditor não encontrado: $MetaEditorPath"
 }
-$git = Get-Command git -ErrorAction SilentlyContinue
-if ($null -eq $git) { throw 'Git não encontrado no PATH.' }
-
-# Fetch only the remote reference. Do not checkout, merge, reset, or alter the user's worktree.
-& $git.Source -C $ProjectRoot fetch origin main
-if ($LASTEXITCODE -ne 0) { throw 'Não foi possível atualizar origin/main; nenhum EA foi alterado.' }
-
-$sourceRelative = 'mql5/Experts/ControladorTrading/Controlador-Trading.mq5'
-$sourceLines = & $git.Source -C $ProjectRoot show "origin/main:$sourceRelative"
-if ($LASTEXITCODE -ne 0 -or $null -eq $sourceLines) {
-    throw 'Não foi possível ler a fonte aprovada de origin/main.'
+# Compile the exact source in the selected worktree (including the current PR branch).
+# Never fetch or silently substitute origin/main: that could preview an older EA.
+$sourceRelative = 'mql5\Experts\ControladorTrading\Controlador-Trading.mq5'
+$sourcePath = Join-Path $ProjectRoot $sourceRelative
+if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+    throw "Fonte MQL5 não encontrada na cópia de trabalho: $sourcePath"
 }
-$nl = [System.Environment]::NewLine
-$sourceText = ($sourceLines -join $nl) + $nl
+$sourceHash = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash
+$sourceText = [System.IO.File]::ReadAllText($sourcePath, [System.Text.Encoding]::UTF8)
 if (-not $sourceText.Contains('string P="CTP_";')) {
-    throw 'A fonte não corresponde à versão esperada; compilação de prévia cancelada.'
+    throw 'A fonte MQL5 não contém o identificador esperado; compilação de prévia cancelada.'
 }
 
 # A prefixo isolado impede que os objetos do preview colidam com o EA já instalado.
@@ -91,6 +86,7 @@ if ($installedSourceHash -ne $installedSourceHashAfter -or $installedBinaryHash 
 }
 
 Write-Output 'PREVIEW_COMPILE=OK'
+Write-Output "SOURCE_SHA256=$sourceHash"
 Write-Output "PREVIEW_SOURCE=$previewSource"
 Write-Output "PREVIEW_EX5=$previewBinary"
 Write-Output "COMPILE_LOG=$compileLog"
