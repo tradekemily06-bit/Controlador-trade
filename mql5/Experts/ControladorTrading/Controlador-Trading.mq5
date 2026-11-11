@@ -1233,14 +1233,19 @@ void RefreshDiscoveries(){
       SetLabel(Obj("INFO2"),"Confira runtime e identidade autorizada.",20,381,8,C'205,215,230'); return;
    }
    string resource_items[], observation_items[];
-   ExtractJsonArrayObjects(resources,"resources",resource_items);
-   ExtractJsonArrayObjects(observations,"observations",observation_items);
+   bool resources_parsed=ExtractJsonArrayObjects(resources,"resources",resource_items);
+   bool observations_parsed=ExtractJsonArrayObjects(observations,"observations",observation_items);
+   if(!resources_parsed || !observations_parsed){
+      SetLabel(Obj("INFO1"),"Descobertas: resposta da API em formato invalido.",20,361,8,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Nenhum dado foi presumido; atualize ou confira o runtime.",20,381,8,C'205,215,230');
+      return;
+   }
    string resource_id="", resource_title="", statement="";
    if(ArraySize(resource_items)>0){
       resource_id=JsonValue(resource_items[0],"resource_id");
       resource_title=JsonValue(resource_items[0],"title");
    }
-   if(ArraySize(observation_items)>0) statement=JsonValue(observation_items[0],"statement");
+   if(ArraySize(observation_items)>0) statement=JsonValue(observation_items[ArraySize(observation_items)-1],"statement");
    SetLabel(Obj("INFO1"),"Materiais cadastrados: "+IntegerToString(ArraySize(resource_items)),20,361,8,C'205,215,230');
    SetLabel(Obj("INFO2"),"Material: "+(resource_title==""?"titulo nao informado":StringSubstr(resource_title,0,34)),20,381,8,C'205,215,230');
    SetLabel(Obj("INFO3"),"ID: "+(resource_id==""?"cadastre material no Estudo":StringSubstr(resource_id,0,34)),20,401,8,C'145,160,180');
