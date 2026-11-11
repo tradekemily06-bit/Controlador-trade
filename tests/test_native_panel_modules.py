@@ -128,11 +128,11 @@ def test_native_replay_calls_the_historical_runtime_without_enabling_execution()
 
     assert 'if(module=="Replay") return "REPLAY";' in routing
     assert 'Http("POST","/api/replay/mt5",body,response,code)' in runner
-    assert '"limit"+q+":100"' in runner
+    assert '"limit"+q+":100}"' in runner
     assert 'JsonValue(response,"candles_replayed")' in runner
     assert 'JsonValue(response,"orders_sent")' in runner
     assert 'sparam==Obj("REPLAY_RUN") && active_view=="REPLAY"' in events
-    assert 'if(active_view=="REPLAY" || active_view=="SIMULATOR"' in source
+    assert 'active_view=="REPLAY" || active_view=="SIMULATOR" || active_view=="KILL_SWITCH"' in source
     assert "REAL bloqueado" in runner or "Execucao: NAO" in runner
 
 
