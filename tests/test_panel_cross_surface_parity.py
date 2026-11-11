@@ -66,7 +66,6 @@ def test_streamlit_and_native_mt5_share_the_six_area_and_module_contract():
         "Replay": "REPLAY",
         "Simulador": "SIMULATOR",
         "Descobertas": "DISCOVERIES",
-        "Escola / Tutorial / Onboarding": "ENSINO",
         "Financeiro": "FINANCE",
         "Configurações": "CONFIG",
         "Auditoria": "AUDIT",
@@ -76,7 +75,10 @@ def test_streamlit_and_native_mt5_share_the_six_area_and_module_contract():
     }.items():
         assert f'if(module=="{module}") return "{view}";' in routing, f"native route mismatch: {module}"
 
-    assert 'if(module=="Aprendizado" || module=="Escola / Tutorial / Onboarding") return "ENSINO";' in routing
+    assert 'if(module=="Aprendizado") return "ENSINO";' in routing
+    assert 'if(module=="Escola / Tutorial / Onboarding") return "ONBOARDING";' in routing
+    assert 'Http("GET","/api/onboarding","",response,code)' in native
+    assert 'authorized!="false"' in native
     assert 'else if(area=="RESERVA FISCAL") return "RESERVA";' in routing
     assert 'else if(area=="ASSISTENTE DO ECOSSISTEMA") return "ASSISTENTE";' in routing
     assert 'return "UNAVAILABLE";' in routing
