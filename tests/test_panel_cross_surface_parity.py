@@ -103,3 +103,13 @@ def test_streamlit_and_native_mt5_share_the_six_area_and_module_contract():
     assert 'else if(area=="RESERVA FISCAL") return "RESERVA";' in routing
     assert 'else if(area=="ASSISTENTE DO ECOSSISTEMA") return "ASSISTENTE";' in routing
     assert 'return "UNAVAILABLE";' in routing
+
+
+
+def test_operational_journal_is_available_in_native_mt5_and_streamlit():
+    streamlit = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    native = EA_PATH.read_text(encoding="utf-8")
+    assert '"Diário Operacional": ("Diário operacional · registros persistidos", "/api/journal")' in streamlit
+    assert 'if(module=="Diário Operacional") return "JOURNAL";' in native
+    assert 'Http("GET","/api/journal?limit=5"' in native
+    assert 'if(index==1) return "Diário Operacional";' in native
