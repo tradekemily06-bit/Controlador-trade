@@ -372,8 +372,8 @@ void Panel(){
    SetLabel(Obj("SUB"),"ECOSSISTEMA • MT5 • DEMO / SIMULACAO",20,47,9,C'150,165,185');
    RenderNavigation();
 
-   SetLabel(Obj("RUNTIME"),"Sistema: verificando...",20,104,10,C'255,209,102');
-   SetLabel(Obj("MODE"),"Modo: DEMO / SIMULACAO",20,124,10,C'88,214,141');
+   SetLabel(Obj("RUNTIME"),"API ...",350,27,8,C'255,209,102');
+   SetLabel(Obj("MODE"),"MODO ?",350,47,8,C'88,214,141');
    SetLabel(Obj("SIGNAL"),"AGUARDAR",20,154,22,C'255,209,102');
    SetLabel(Obj("SCORE"),"Qualidade: —%",20,184,10,clrWhite);
    SetLabel(Obj("REASON"),"Aguardando analise.",20,204,9,C'180,190,205');
@@ -1556,7 +1556,7 @@ void RefreshHealth(){
       runtime_ok=false;
       health_ok=false;
       UpdateCompactSignal("INDISPONIVEL","",false);
-      SetLabel(Obj("RUNTIME"),"Sistema: indisponivel",20,104,10,C'255,118,118');
+      SetLabel(Obj("RUNTIME"),"API OFF",350,27,8,C'255,118,118');
       if(active_view=="CONFIG") SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • sistema indisponivel",20,441,9,C'255,155,155');
       else SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • sistema indisponivel",20,520,8,C'255,155,155');
       return;
@@ -1566,8 +1566,9 @@ void RefreshHealth(){
    string mode=JsonValue(r,"mode");
    string mt5=JsonValue(r,"mt5_demo");
    string engine=JsonValue(r,"decision_engine");
-   SetLabel(Obj("RUNTIME"),"Sistema: online",20,104,10,C'88,214,141');
-   SetLabel(Obj("MODE"),"Modo: "+(mode==""?"nao informado":mode)+" • MT5: "+(mt5==""?"nao confirmado":mt5),20,124,10,C'88,214,141');
+   SetLabel(Obj("RUNTIME"),"API OK",350,27,8,C'88,214,141');
+   string mode_label=(mode=="DEMO" || mode=="SIMULACAO")?"DEMO":(mode==""?"MODO ?":StringSubstr(mode,0,8));
+   SetLabel(Obj("MODE"),mode_label,350,47,8,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • autorizacao separada",20,441,9,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
    if(active_view=="RESERVA" || active_view=="ASSISTENTE" || active_view=="DECISION" || active_view=="REPLAY" || active_view=="SIMULATOR" || active_view=="KILL_SWITCH" || active_view=="UNAVAILABLE" || active_view=="MEMORIA" || active_view=="RISK" || active_view=="STATS" || active_view=="CONNECTIONS" || active_view=="ENVIRONMENT" || active_view=="SECURITY" || active_view=="REPORTS" || active_view=="AUDIT" || active_view=="FINANCE" || active_view=="DISCOVERIES") return;
    SetLabel(Obj("INFO1"),"Analise do ecossistema: "+(engine==""?"online":engine),20,361,9,C'205,215,230');
