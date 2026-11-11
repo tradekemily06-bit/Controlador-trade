@@ -1237,7 +1237,7 @@ void RefreshJournal(){
       return;
    }
    SetLabel(Obj("INFO1"),"Hoje: "+(total==""?"0":total)+" • WIN "+(wins==""?"0":wins)+" • LOSS "+(losses==""?"0":losses),20,361,8,C'205,215,230');
-   for(int i=0;i<5;i++){
+   for(int i=0;i<4;i++){
       string line="";
       if(i<ArraySize(objects)){
          string stamp=JsonValue(objects[i],"timestamp");
@@ -1252,9 +1252,9 @@ void RefreshJournal(){
          line=StringSubstr(stamp,11,5)+" "+(symbol==""?"—":symbol)+" "+signal+" "+(score==""?"—":score)+" "+result;
          if(decision!="" && decision!="null") line+=" • "+StringSubstr(decision,0,14);
       }
-      SetLabel(Obj("INFO"+IntegerToString(i+2)),line,20,361+i*20,7,C'205,215,230');
+      SetLabel(Obj("INFO"+IntegerToString(i+2)),line,20,381+i*15,7,C'205,215,230');
    }
-   SetLabel(Obj("INFO5"),"Pendentes: "+(pending==""?"0":pending)+" • historico operacional, nao extrato do broker",20,441,7,C'255,209,102');
+   SetLabel(Obj("INFO6"),"Pendentes: "+(pending==""?"0":pending)+" • historico operacional, nao extrato do broker",20,441,7,C'255,209,102');
 }
 void RefreshAuditView(){
    string r; int code=0;
