@@ -279,6 +279,17 @@ def _authorize_local_runtime(environ) -> tuple[bool, str]:
         return False, "local Host is not allowed"
     return True, "local"
 
+
+def _authorize_native_ea_read(environ) -> tuple[bool, str]:
+    """Allow shared native-panel reads locally or through authenticated remote access."""
+    identity_header = os.environ.get("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "").strip()
+    if identity_header:
+        identity_key = "HTTP_" + identity_header.upper().replace("-", "_")
+        if str(environ.get(identity_key) or "").strip():
+            return _authorize_remote_mutation(environ)
+    return _authorize_local_runtime(environ)
+
+
 def _authorize_internal_update(environ) -> tuple[bool, str]:
     expected = os.environ.get("CONTROLADOR_UPDATE_TOKEN", "").strip()
     if not expected:
@@ -367,7 +378,7 @@ def application(environ, start_response):
         and path != "/api/health/live"
     ):
         if path in native_ea_local_get_paths:
-            authorized, reason = _authorize_local_runtime(environ)
+            authorized, reason = _authorize_native_ea_read(environ)
         else:
             authorized, reason = _authorize_remote_mutation(environ)
         if not authorized:
@@ -480,7 +491,7 @@ def application(environ, start_response):
             client = str(environ.get("REMOTE_ADDR") or "").strip()
             if remote_required:
                 authorized, reason = (
-                    _authorize_local_runtime(environ)
+                    _authorize_native_ea_read(environ)
                     if path in native_ea_local_get_paths
                     else _authorize_remote_mutation(environ)
                 )
@@ -701,7 +712,7 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, fiscal_summary, request_id, environ)
         if path.startswith("/api/fiscal-reserve"):
             authorized, reason = (
-                _authorize_local_runtime(environ)
+                _authorize_native_ea_read(environ)
                 if method == "GET" and path in native_ea_local_get_paths
                 else _authorize_remote_mutation(environ)
             )
@@ -1628,7 +1639,7 @@ def application(environ, start_response):
             )
         if path == "/api/runtime/analysis/latest" and method == "GET":
             authorized, reason = (
-                _authorize_local_runtime(environ)
+                _authorize_native_ea_read(environ)
                 if path in native_ea_local_get_paths
                 else _authorize_remote_mutation(environ)
             )
