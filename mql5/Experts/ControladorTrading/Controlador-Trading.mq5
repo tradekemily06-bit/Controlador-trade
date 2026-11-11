@@ -21,6 +21,11 @@ int assistant_answer_page=0;
 string memory_records[];
 int memory_page=0;
 bool memory_loaded=false;
+string onboarding_steps[];
+string onboarding_title="Primeiros passos no Ecossistema";
+string onboarding_completion="Roteiro educativo concluido.";
+int onboarding_page=0;
+bool onboarding_valid=false;
 bool assistant_consent_armed=false;
 string selected_mode="DEMO";
 bool leverage_enabled=false;
@@ -305,7 +310,8 @@ string ViewForModule(string area,string module){
       if(module=="Laboratório") return "LAB";
       if(module=="Replay") return "REPLAY";
       if(module=="Simulador") return "SIMULATOR";
-      if(module=="Aprendizado" || module=="Escola / Tutorial / Onboarding") return "ENSINO";
+      if(module=="Aprendizado") return "ENSINO";
+      if(module=="Escola / Tutorial / Onboarding") return "ONBOARDING";
       if(module=="Descobertas") return "DISCOVERIES";
    }else if(area=="RESERVA FISCAL") return "RESERVA";
    else if(area=="ASSISTENTE DO ECOSSISTEMA") return "ASSISTENTE";
@@ -727,6 +733,79 @@ void RefreshLearning(){
       SetLabel(Obj("INFO1"),"Ensino indisponivel",20,361,9,C'255,118,118');
    }
 }
+
+void RenderOnboardingPage(){
+   int count=ArraySize(onboarding_steps);
+   int page_size=5;
+   int page_count=(count+page_size-1)/page_size;
+   if(page_count<1) page_count=1;
+   onboarding_page=MathMax(0,MathMin(onboarding_page,page_count-1));
+   for(int row=0;row<5;row++){
+      int idx=onboarding_page*page_size+row;
+      string line=(idx<count?onboarding_steps[idx]:"");
+      SetLabel(Obj("INFO"+IntegerToString(row+1)),line,20,361+row*20,7,line==""?C'100,110,125':C'205,215,230');
+   }
+   SetButton(Obj("ONBOARD_PREV"),"ANTERIOR",20,470,104,26);
+   SetLabel(Obj("ONBOARD_PAGE"),"ETAPAS "+IntegerToString(onboarding_page+1)+"/"+IntegerToString(page_count),138,476,8,C'150,165,185');
+   SetButton(Obj("ONBOARD_NEXT"),"PROXIMA",296,470,114,26);
+   ObjectSetInteger(0,Obj("ONBOARD_PREV"),OBJPROP_STATE,false);
+   ObjectSetInteger(0,Obj("ONBOARD_NEXT"),OBJPROP_STATE,false);
+   ObjectSetInteger(0,Obj("ONBOARD_PREV"),OBJPROP_BGCOLOR,onboarding_page>0?C'35,43,58':C'20,25,32');
+   ObjectSetInteger(0,Obj("ONBOARD_NEXT"),OBJPROP_BGCOLOR,onboarding_page<page_count-1?C'35,43,58':C'20,25,32');
+}
+void RefreshOnboarding(){
+   string response; int code=0;
+   if(!Http("GET","/api/onboarding","",response,code)){
+      onboarding_valid=false;
+      ArrayResize(onboarding_steps,0);
+      SetLabel(Obj("INFO1"),"Onboarding indisponivel no runtime.",20,361,8,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Nenhuma etapa foi marcada ou alterada.",20,381,8,C'205,215,230');
+      return;
+   }
+   string guide=JsonObjectValue(response,"guide","guide_id");
+   string authorized=JsonObjectValue(response,"guide","execution_authorized");
+   onboarding_title=JsonObjectValue(response,"guide","title");
+   onboarding_completion=JsonObjectValue(response,"guide","completion_message");
+   string objects[];
+   if(guide=="" || authorized!="false" || !ExtractJsonArrayObjects(response,"steps",objects)){
+      onboarding_valid=false;
+      ArrayResize(onboarding_steps,0);
+      SetLabel(Obj("INFO1"),"Roteiro invalido ou sem bloqueio explicito.",20,361,8,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Execucao permanece nao autorizada.",20,381,8,C'255,155,155');
+      return;
+   }
+   ArrayResize(onboarding_steps,0);
+   for(int i=0;i<ArraySize(objects);i++){
+      string step_id=JsonValue(objects[i],"step_id");
+      string title=JsonValue(objects[i],"title");
+      string location=JsonValue(objects[i],"location");
+      string purpose=JsonValue(objects[i],"purpose");
+      if(step_id=="" || title=="" || purpose==""){
+         ArrayResize(onboarding_steps,0);
+         onboarding_valid=false;
+         SetLabel(Obj("INFO1"),"Etapa inconsistente; roteiro bloqueado.",20,361,8,C'255,118,118');
+         return;
+      }
+      string line=IntegerToString(i+1)+". "+title+" ["+location+"]";
+      if(StringLen(line)>66) line=StringSubstr(line,0,63)+"...";
+      int n=ArraySize(onboarding_steps);
+      if(ArrayResize(onboarding_steps,n+1)!=n+1){ onboarding_valid=false; return; }
+      onboarding_steps[n]=line;
+   }
+   if(ArraySize(onboarding_steps)==0){
+      onboarding_valid=false;
+      SetLabel(Obj("INFO1"),"Nenhuma etapa de onboarding disponivel.",20,361,8,C'255,118,118');
+      return;
+   }
+   onboarding_valid=true;
+   SetLabel(Obj("INFO1"),onboarding_title,20,361,8,C'205,215,230');
+   SetLabel(Obj("INFO2"),onboarding_completion,20,381,8,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Roteiro educativo; consulta somente leitura.",20,401,8,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Nenhuma etapa e salva como concluida.",20,421,8,C'205,215,230');
+   SetLabel(Obj("INFO5"),"Execucao: NAO • REAL: BLOQUEADO",20,441,8,C'255,155,155');
+   RenderOnboardingPage();
+}
+
 string AssistantConversationFileName(){
    return P+"assistant-"+IntegerToString(ChartID())+".txt";
 }
@@ -1369,7 +1448,7 @@ void RenderView(){
    for(int k=0;k<ArraySize(replay_controls);k++) if(ObjectFind(0,Obj(replay_controls[k]))>=0) ObjectDelete(0,Obj(replay_controls[k]));
    string kill_controls[]={"KILL_REASON","KILL_CONFIRM","KILL_ACTIVATE"};
    for(int k=0;k<ArraySize(kill_controls);k++) if(ObjectFind(0,Obj(kill_controls[k]))>=0) ObjectDelete(0,Obj(kill_controls[k]));
-   string action_buttons[]={"ANALYZE","CYCLE","SAVE","CLOSE"};
+   string action_buttons[]={"ANALYZE","CYCLE","SAVE","CLOSE","ONBOARD_PREV","ONBOARD_NEXT","ONBOARD_PAGE"};
    for(int i=0;i<ArraySize(action_buttons);i++)
       if(ObjectFind(0,Obj(action_buttons[i]))>=0) ObjectDelete(0,Obj(action_buttons[i]));
    if(active_view=="UNAVAILABLE"){
@@ -1529,6 +1608,10 @@ void RenderView(){
       SetLabel(Obj("SUB"),"ENSINO • estudo separado da autorizacao operacional",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR ENSINO",20,284,172,30);
       RefreshLearning();
+   }else if(active_view=="ONBOARDING"){
+      SetLabel(Obj("SUB"),"ESCOLA / ONBOARDING • roteiro guiado somente leitura",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR ROTEIRO",20,284,172,30);
+      RefreshOnboarding();
    }else if(active_view=="NOTIF"){
       SetLabel(Obj("SUB"),"NOTIFICACOES • alertas e avisos do sistema",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR NOTIF.",20,284,172,30);
@@ -1861,6 +1944,8 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("SIM_RUN") && active_view=="SIMULATOR") RunHistoricalSimulator();
    else if(sparam==Obj("DISC_SAVE") && active_view=="DISCOVERIES") SaveDiscovery();
    else if(sparam==Obj("DISC_REFRESH") && active_view=="DISCOVERIES") RefreshDiscoveries();
+   else if(sparam==Obj("ONBOARD_PREV")) { if(active_view=="ONBOARDING" && onboarding_valid && onboarding_page>0) { onboarding_page--; RenderOnboardingPage(); } }
+   else if(sparam==Obj("ONBOARD_NEXT")) { if(active_view=="ONBOARDING" && onboarding_valid && (onboarding_page+1)*5<ArraySize(onboarding_steps)) { onboarding_page++; RenderOnboardingPage(); } }
    else if(sparam==Obj("ANALYZE")) {
       if(active_view=="DECISION") RefreshDecisionView();
       else if(active_view=="KILL_SWITCH") RefreshKillSwitchStatus();
@@ -1877,6 +1962,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
       else if(active_view=="AUDIT") RefreshAuditView();
       else if(active_view=="LAB") { RefreshHealth(); RefreshSecondary(); }
       else if(active_view=="ENSINO") RefreshLearning();
+      else if(active_view=="ONBOARDING") RefreshOnboarding();
       else if(active_view=="DISCOVERIES") RefreshDiscoveries();
       else if(active_view=="NOTIF") RefreshNotifications();
       else if(active_view=="RESERVA") RefreshFiscal();
