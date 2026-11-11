@@ -1234,6 +1234,9 @@ void RefreshJournal(){
    if(!ExtractJsonArrayObjects(r,"entries",objects)){
       SetLabel(Obj("INFO1"),"Diario: resposta invalida",20,361,8,C'255,118,118');
       SetLabel(Obj("INFO2"),"Formato de registros nao reconhecido.",20,381,8,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Registros indisponiveis; tente atualizar.",20,401,8,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Sem confirmacao independente de execucao.",20,421,8,C'205,215,230');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,8,C'255,155,155');
       return;
    }
    SetLabel(Obj("INFO1"),"Hoje: "+(total==""?"0":total)+" • WIN "+(wins==""?"0":wins)+" • LOSS "+(losses==""?"0":losses),20,361,8,C'205,215,230');
