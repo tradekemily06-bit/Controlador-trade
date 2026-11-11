@@ -5,6 +5,8 @@ import pytest
 
 from data.models import Candle
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
+from core.historical_trade_simulator import HistoricalBacktestConfig, HistoricalSignal, HistoricalTradeSimulator
+from core.models import Signal
 
 
 def _service_with_history(candles):
@@ -119,3 +121,43 @@ def test_historical_backtest_rejects_zero_price_ohlc_candles():
 
     with pytest.raises(RuntimeError, match="candle inválido"):
         _run_backtest(service)
+
+
+def test_historical_backtest_reports_friction_once_and_reconciles_net_pnl():
+    start = datetime(2026, 11, 10, 12, tzinfo=timezone.utc)
+    candles = [
+        Candle(start, 100.0, 100.5, 99.5, 100.2, 10.0),
+        Candle(start + timedelta(minutes=5), 100.0, 100.5, 99.5, 100.2, 10.0),
+        Candle(start + timedelta(minutes=10), 100.2, 102.0, 100.0, 101.5, 10.0),
+    ]
+    signals = [
+        HistoricalSignal(Signal.COMPRA, 80.0, "compra confirmada"),
+        HistoricalSignal(Signal.AGUARDAR, 0.0, "aguardar"),
+        HistoricalSignal(Signal.AGUARDAR, 0.0, "aguardar"),
+    ]
+    config = HistoricalBacktestConfig(
+        stop_distance=1.0,
+        take_profit_distance=1.0,
+        quantity_units=1.0,
+        contract_multiplier=1.0,
+        spread_price_units=0.1,
+        slippage_price_units_per_side=0.05,
+        commission_quote_per_unit_round_turn=0.05,
+        minimum_directional_score=80.0,
+    )
+
+    result = HistoricalTradeSimulator().run(
+        candles=candles,
+        signals=signals,
+        config=config,
+    )
+
+    assert len(result.trades) == 1
+    trade = result.trades[0]
+    assert trade.exit_reason == "TAKE_PROFIT"
+    assert trade.gross_pnl_quote == pytest.approx(1.1)
+    assert trade.spread_cost_quote == pytest.approx(0.1)
+    assert trade.slippage_cost_quote == pytest.approx(0.1)
+    assert trade.commission_quote == pytest.approx(0.05)
+    assert trade.net_pnl_quote == pytest.approx(0.85)
+    assert result.gross_pnl_quote - result.total_costs_quote == pytest.approx(result.net_pnl_quote)
