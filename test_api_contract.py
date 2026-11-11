@@ -294,6 +294,59 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(updated["decision_id"], decision["decision_id"])
         self.assertEqual(updated["outcome"], "WIN")
 
+    def test_mt5_replay_runtime_failure_returns_safe_unavailable_response(self):
+        with patch.object(
+            __import__("app").SERVICE,
+            "replay_mt5_history",
+            side_effect=RuntimeError("provider indisponível"),
+        ):
+            status, _, payload = self.request(
+                "/api/replay/mt5", method="POST",
+                payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+            )
+        self.assertEqual(status, "503 Service Unavailable")
+        self.assertEqual(payload["error"], "Replay histórico indisponível")
+        self.assertFalse(payload["orders_sent"])
+        self.assertFalse(payload["execution_allowed"])
+        self.assertNotIn("provider indisponível", str(payload))
+
+    def test_mt5_signal_simulator_runtime_failure_returns_safe_unavailable_response(self):
+        with patch.object(
+            __import__("app").SERVICE,
+            "simulate_mt5_signal_scenario",
+            side_effect=RuntimeError("provider indisponível"),
+        ):
+            status, _, payload = self.request(
+                "/api/simulator/mt5", method="POST",
+                payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+            )
+        self.assertEqual(status, "503 Service Unavailable")
+        self.assertEqual(payload["error"], "simulação histórica indisponível")
+        self.assertFalse(payload["orders_sent"])
+        self.assertFalse(payload["execution_allowed"])
+        self.assertNotIn("provider indisponível", str(payload))
+
+    def test_mt5_backtest_runtime_failure_returns_safe_unavailable_response(self):
+        with patch.object(
+            __import__("app").SERVICE,
+            "run_mt5_historical_backtest",
+            side_effect=RuntimeError("provider indisponível"),
+        ):
+            status, _, payload = self.request(
+                "/api/simulator/mt5/backtest", method="POST",
+                payload={
+                    "symbol": "EURUSD", "timeframe": "5m", "limit": 200,
+                    "stop_distance": 1, "take_profit_distance": 2,
+                    "quantity_units": 1, "spread_price_units": 0,
+                    "slippage_price_units_per_side": 0,
+                },
+            )
+        self.assertEqual(status, "503 Service Unavailable")
+        self.assertEqual(payload["error"], "backtest histórico indisponível")
+        self.assertFalse(payload["orders_sent"])
+        self.assertFalse(payload["execution_allowed"])
+        self.assertNotIn("provider indisponível", str(payload))
+
     def test_invalid_replay_payload_fails_closed(self):
         status, _, payload = self.request("/api/replay", method="POST", payload={"cases": "invalid"})
         self.assertEqual(status, "400 Bad Request")
