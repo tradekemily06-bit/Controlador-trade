@@ -430,7 +430,8 @@ def test_native_multi_broker_opens_read_only_connection_status_without_claiming_
     connections = source.split("void RefreshConnections()", 1)[1].split("void RefreshEnvironmentView()", 1)[0]
     renderer = source.split('}else if(active_view=="CONNECTIONS"){', 1)[1].split('}else if(active_view=="ENVIRONMENT"){', 1)[0]
 
-    assert 'if(module=="Conexões" || module=="Multi-Broker") return "CONNECTIONS";' in routing
+    assert 'if(module=="Conexões") return "CONNECTIONS";' in routing
+    assert 'if(module=="Multi-Broker") return "CONNECTIONS";' in routing
     assert 'active_module=="Multi-Broker"?"MULTI-BROKER • conectores somente leitura; roteamento nao implementado"' in renderer
     assert 'active_module=="Multi-Broker"?"Execucao multi-broker: NAO IMPLEMENTADA"' in connections
     assert 'Http("GET","/api/connections","",r,code)' in connections
