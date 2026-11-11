@@ -15,6 +15,10 @@ def test_native_mt5_panel_exposes_reserva_fiscal_and_assistant_navigation():
     assert 'SelectArea("RESERVA FISCAL")' in events
     assert 'SelectArea("ASSISTENTE DO ECOSSISTEMA")' in events
     assert 'SelectArea("CENTRAL")' in events
+    select_area = source.split("void SelectArea(", 1)[1].split("void SelectModule(", 1)[0]
+    select_module = source.split("void SelectModule(", 1)[1].split("void Panel(", 1)[0]
+    assert "assistant_consent_armed=false;" in select_area
+    assert "assistant_consent_armed=false;" in select_module
     assert "void RenderFiscal()" in source
     assert "void RenderAssistant()" in source
     assert "void RefreshFiscal()" in source
