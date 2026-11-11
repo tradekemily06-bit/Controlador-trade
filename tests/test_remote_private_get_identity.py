@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import io
 import json
+from datetime import datetime
+from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 import pytest
 
+import app as app_module
 from app import application
 
 
-def request(path: str, *, identity: str | None = None):
+def request(path: str, *, identity: str | None = None, query: str = ""):
     captured = {}
 
     def start_response(status, headers):
@@ -18,7 +22,7 @@ def request(path: str, *, identity: str | None = None):
     environ = {
         "REQUEST_METHOD": "GET",
         "PATH_INFO": path,
-        "QUERY_STRING": "",
+        "QUERY_STRING": query,
         "CONTENT_LENGTH": "0",
         "wsgi.input": io.BytesIO(b""),
         "REMOTE_ADDR": "198.51.100.25",
@@ -44,6 +48,7 @@ def remote_identity_required(monkeypatch):
         "/api/health",
         "/api/status",
         "/api/memory",
+        "/api/journal",
         "/api/statistics",
         "/api/preferences",
         "/api/notifications",
@@ -104,3 +109,82 @@ def test_remote_liveness_probe_remains_public(remote_identity_required):
 
     assert status == "200 OK"
     assert payload == {"ok": True, "live": True, "service": "controlador"}
+
+
+
+def test_journal_returns_persistent_operational_records_for_sao_paulo_day(monkeypatch, remote_identity_required):
+    timezone = ZoneInfo("America/Sao_Paulo")
+    current = datetime(2026, 11, 11, 10, 30, tzinfo=timezone)
+    previous_day = datetime(2026, 11, 10, 23, 59, tzinfo=timezone)
+    current_record = SimpleNamespace(
+        timestamp=current,
+        signal=SimpleNamespace(value="COMPRA"),
+        score=86.0,
+        decision="EXECUTAR",
+        reason="Condições confirmadas",
+        result="WIN",
+        symbol="WINZ26",
+        timeframe="M5",
+        quality_score=91.0,
+        quality_level="FORTE",
+        entry_conditions=("estrutura confirmada",),
+    )
+    previous_record = SimpleNamespace(
+        timestamp=previous_day,
+        signal=SimpleNamespace(value="VENDA"),
+        score=72.0,
+        decision="AGUARDAR",
+        reason="Fora do contexto",
+        result="PENDENTE",
+        symbol="WINZ26",
+        timeframe="M5",
+        quality_score=70.0,
+        quality_level="MODERADA",
+        entry_conditions=(),
+    )
+    memory = SimpleNamespace(records=lambda: (previous_record, current_record))
+    runtime = SimpleNamespace(operational_recorder=SimpleNamespace(memory=memory))
+    monkeypatch.setattr(app_module.SERVICE, "operational_runtime", runtime)
+
+    status, _, payload = request(
+        "/api/journal",
+        identity="owner@example.test",
+        query="date=2026-11-11&limit=10",
+    )
+
+    assert status == "200 OK"
+    assert payload["source"] == "persistent_operational_runtime_memory"
+    assert payload["timezone"] == "America/Sao_Paulo"
+    assert payload["read_only"] is True
+    assert payload["execution_allowed"] is False
+    assert payload["count"] == 1
+    assert payload["entries"][0]["signal"] == "COMPRA"
+    assert payload["today_summary"] == {
+        "date": "2026-11-11",
+        "total": 1,
+        "win": 1,
+        "loss": 0,
+        "ambos": 0,
+        "pending": 0,
+    }
+
+
+def test_journal_fails_closed_when_operational_memory_is_unavailable(monkeypatch, remote_identity_required):
+    monkeypatch.setattr(app_module.SERVICE, "operational_runtime", None)
+
+    status, _, payload = request("/api/journal", identity="owner@example.test")
+
+    assert status == "503 Service Unavailable"
+    assert payload["entries"] == []
+    assert payload["execution_allowed"] is False
+
+
+def test_journal_rejects_invalid_date(remote_identity_required):
+    status, _, payload = request(
+        "/api/journal",
+        identity="owner@example.test",
+        query="date=not-a-date",
+    )
+
+    assert status == "400 Bad Request"
+    assert "YYYY-MM-DD" in payload["error"]
