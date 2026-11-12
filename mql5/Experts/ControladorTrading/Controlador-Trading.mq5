@@ -5,7 +5,7 @@
 
 input string InpRuntimeUrl = "http://127.0.0.1:8000";
 input int    InpRefreshSeconds = 3;
-input int    InpPanelWidth = 360;
+input int    InpPanelWidth = 430;
 input int    InpPanelHeight = 500;
 
 string P="CTP_";
@@ -282,24 +282,24 @@ string AreaModuleLabel(string module){
    if(module=="Operação") return "Operação";
    if(module=="Motor de Decisão") return "Motor de\nDecisão";
    if(module=="Gestão de Risco") return "Gestão de\nRisco";
-   if(module=="Notificações") return "Notifica-\nções";
-   if(module=="Ambiente MT5 DEMO / Simulação") return "Ambiente\nMT5 DEMO /\nSimulação";
+   if(module=="Notificações") return "Notifica\nções";
+   if(module=="Ambiente MT5 DEMO / Simulação") return "Ambiente\nMT5 DEMO\nSimulação";
    if(module=="Kill Switch") return "Kill Switch";
    if(module=="Análise de Mercado") return "Análise de\nMercado";
    if(module=="Memória") return "Memória";
-   if(module=="Estatísticas") return "Estatís-\nticas";
+   if(module=="Estatísticas") return "Estatís\nticas";
    if(module=="Relatórios") return "Relatórios";
-   if(module=="Laboratório") return "Laborató-\nrio";
+   if(module=="Laboratório") return "Laborató\nrio";
    if(module=="Replay") return "Replay";
    if(module=="Simulador") return "Simulador";
-   if(module=="Aprendizado") return "Aprendi-\nzado";
-   if(module=="Descobertas") return "Descober-\ntas";
+   if(module=="Aprendizado") return "Aprendi\nzado";
+   if(module=="Descobertas") return "Descober\ntas";
    if(module=="Escola / Tutorial / Onboarding") return "Escola /\nTutorial /\nOnboarding";
    if(module=="Reserva Fiscal") return "Reserva\nFiscal";
    if(module=="Assistente do Ecossistema") return "Assistente do\nEcossistema";
    if(module=="Financeiro") return "Financeiro";
    if(module=="Diário Operacional") return "Diário\nOperacional";
-   if(module=="Configurações") return "Configu-\nrações";
+   if(module=="Configurações") return "Configu\nrações";
    if(module=="Auditoria") return "Auditoria";
    if(module=="Segurança") return "Segurança";
    if(module=="Conexões") return "Conexões";
@@ -343,10 +343,10 @@ void SetNavigationButton(string name,string text,int x,int y,int w,int h){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0);
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,SX(x));
-   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,SY(y));
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,18+(int)MathRound(y*panel_sy));
    ObjectSetInteger(0,name,OBJPROP_XSIZE,SW(w));
    ObjectSetInteger(0,name,OBJPROP_YSIZE,SH(h));
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,MathMax(7,(int)MathRound(8*MathMin(panel_sx,panel_sy))));
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,MathMax(8,(int)MathRound(8*MathMin(panel_sx,panel_sy))));
    ObjectSetInteger(0,name,OBJPROP_COLOR,clrWhite);
    ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'35,43,58');
    ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'65,78,100');
@@ -360,17 +360,23 @@ void RenderNavigation(){
    string area_labels[6]={"COCKPIT","ANÁLISE","ESTUDO","RESERVA\nFISCAL","ASSISTENTE DO\nECOSSISTEMA","CENTRAL"};
    for(int i=0;i<6;i++){
       string area_button=Obj("A"+IntegerToString(i+1));
-      SetNavigationButton(area_button,area_labels[i],18+i*65,67,63,34);
+      int column=i%3;
+      int row=i/3;
+      SetNavigationButton(area_button,area_labels[i],18+column*134,67+row*34,126,30);
       bool selected=(i==0 && active_area=="COCKPIT") || (i==1 && active_area=="ANÁLISE") || (i==2 && active_area=="ESTUDO") || (i==3 && active_area=="RESERVA FISCAL") || (i==4 && active_area=="ASSISTENTE DO ECOSSISTEMA") || (i==5 && active_area=="CENTRAL");
       ObjectSetInteger(0,area_button,OBJPROP_BGCOLOR,selected?C'24,86,72':C'35,43,58');
    }
+   int count=AreaModuleCount(active_area);
+   int gap=6;
+   int available_width=394;
+   int module_width=(available_width-gap*(count-1))/count;
    for(int i=0;i<7;i++){
       string name=AreaModuleName(active_area,i);
       string button=Obj("M"+IntegerToString(i+1));
-      if(i<AreaModuleCount(active_area) && name!="")
-         SetNavigationButton(button,AreaModuleLabel(name),18+i*54,103,52,42);
-      if(i<AreaModuleCount(active_area) && name!="") ObjectSetInteger(0,button,OBJPROP_BGCOLOR,(name==active_module)?C'24,86,72':C'35,43,58');
-      else if(ObjectFind(0,button)>=0) ObjectDelete(0,button);
+      if(i<count && name!=""){
+         SetNavigationButton(button,AreaModuleLabel(name),18+i*(module_width+gap),137,module_width,42);
+         ObjectSetInteger(0,button,OBJPROP_BGCOLOR,(name==active_module)?C'24,86,72':C'35,43,58');
+      }else if(ObjectFind(0,button)>=0) ObjectDelete(0,button);
    }
 }
 void SelectArea(string area){
