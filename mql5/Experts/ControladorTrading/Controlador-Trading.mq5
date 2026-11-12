@@ -980,7 +980,7 @@ void RefreshFiscal(){
    SetLabel(Obj("INFO3"),"Pendencias Brasil: "+(domestic_total==""?"indisponivel":domestic_total)+" | Exterior no periodo: "+(foreign_total==""?"indisponivel":foreign_total),20,401,8,C'205,215,230');
    string records[];
    if(ExtractJsonArrayObjects(r,"history",records)){
-      for(int i=0;i<2;i++){
+      for(int i=0;i<4;i++){
          string line="";
          if(i<ArraySize(records)){
             string date=JsonValue(records[i],"occurred_on");
@@ -989,10 +989,10 @@ void RefreshFiscal(){
             if(category=="FOREIGN_FINANCIAL_ASSET") line=(date==""?"—":date)+" | EXTERIOR: classificacao pendente";
             else line=(date==""?"—":date)+" | "+(category==""?"registro fiscal":category)+" | "+StringSubstr(reference,0,18);
          }
-         SetLabel(Obj("INFO"+IntegerToString(i+4)),line,20,421+i*20,7,C'205,215,230');
+         SetLabel(Obj("INFO"+IntegerToString(i+4)),line,20,421+i*16,7,C'205,215,230');
       }
    }else SetLabel(Obj("INFO4"),"Historico indisponivel nesta resposta.",20,421,8,C'255,209,102');
-   SetLabel(Obj("INFO6"),"Historico "+IntegerToString((int)MathMin(fiscal_history_offset+4,fiscal_history_total))+"/"+IntegerToString(fiscal_history_total)+" | somente leitura • estimativa",20,461,7,C'255,209,102');
+   SetLabel(Obj("INFO6"),"REAL: BLOQUEADO • Historico "+IntegerToString((int)MathMin(fiscal_history_offset+4,fiscal_history_total))+"/"+IntegerToString(fiscal_history_total)+" • estimativa",20,489,7,C'255,209,102');
 }
 void RefreshFiscalDomesticPending(){
    string response=""; int code=0;
