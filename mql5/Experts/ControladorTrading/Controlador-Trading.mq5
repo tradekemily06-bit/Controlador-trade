@@ -927,7 +927,10 @@ void TestAssistantConnection(){
    SetLabel(Obj("INFO2"),"Teste sem envio de contexto ou historico.",20,381,8,C'205,215,230');
 }
 void RenderAssistantConversations(){
+   for(int row=1;row<=5;row++)
+      if(ObjectFind(0,Obj("INFO"+IntegerToString(row)))>=0) ObjectDelete(0,Obj("INFO"+IntegerToString(row)));
    int count=ArraySize(assistant_conversation_ids);
+   if(count==0) SetLabel(Obj("INFO1"),"Nenhuma conversa salva para esta identidade.",20,361,8,C'205,215,230');
    for(int i=0;i<5;i++){
       string button=Obj("ASSISTANT_CONV_"+IntegerToString(i));
       if(i<count){
@@ -990,6 +993,7 @@ void OpenAssistantConversation(int index){
    assistant_conversation_id=cid;
    PersistAssistantConversation();
    assistant_answer_page=0;
+   assistant_delete_armed=false;
    assistant_conversations_visible=false;
    RenderAssistantAnswer();
 }
@@ -1428,7 +1432,7 @@ void ClearCockpitFields(){
       if(ObjectFind(0,Obj(names[i]))>=0) ObjectDelete(0,Obj(names[i]));
 }
 void ClearAssistantControls(){
-   string names[]={"ASSISTANT_PROMPT","ASSISTANT_INPUT","ASSISTANT_CONSENT","ASSISTANT_SEND","ASSISTANT_PREV","ASSISTANT_NEXT","ASSISTANT_PAGE","MEMORY_PREV","MEMORY_NEXT","MEMORY_PAGE"};
+   string names[]={"ASSISTANT_PROMPT","ASSISTANT_INPUT","ASSISTANT_CONSENT","ASSISTANT_SEND","ASSISTANT_PREV","ASSISTANT_NEXT","ASSISTANT_PAGE","ASSISTANT_TEST","ASSISTANT_LIST","ASSISTANT_NEW","ASSISTANT_DELETE","ASSISTANT_CONV_0","ASSISTANT_CONV_1","ASSISTANT_CONV_2","ASSISTANT_CONV_3","ASSISTANT_CONV_4","MEMORY_PREV","MEMORY_NEXT","MEMORY_PAGE"};
    for(int i=0;i<ArraySize(names);i++)
       if(ObjectFind(0,Obj(names[i]))>=0) ObjectDelete(0,Obj(names[i]));
 }
