@@ -269,12 +269,12 @@ string AreaModuleName(string area,int index){
 }
 string AreaModuleLabel(string module){
    if(module=="Operação") return "Operação";
-   if(module=="Motor de Decisão") return "Motor de\\nDecisão";
-   if(module=="Gestão de Risco") return "Gestão de\\nRisco";
+   if(module=="Motor de Decisão") return "Motor de\nDecisão";
+   if(module=="Gestão de Risco") return "Gestão de\nRisco";
    if(module=="Notificações") return "Notificações";
-   if(module=="Ambiente MT5 DEMO / Simulação") return "Ambiente\\nMT5 DEMO /\\nSimulação";
+   if(module=="Ambiente MT5 DEMO / Simulação") return "Ambiente\nMT5 DEMO /\nSimulação";
    if(module=="Kill Switch") return "Kill Switch";
-   if(module=="Análise de Mercado") return "Análise de\\nMercado";
+   if(module=="Análise de Mercado") return "Análise de\nMercado";
    if(module=="Memória") return "Memória";
    if(module=="Estatísticas") return "Estatísticas";
    if(module=="Relatórios") return "Relatórios";
@@ -283,16 +283,16 @@ string AreaModuleLabel(string module){
    if(module=="Simulador") return "Simulador";
    if(module=="Aprendizado") return "Aprendizado";
    if(module=="Descobertas") return "Descobertas";
-   if(module=="Escola / Tutorial / Onboarding") return "Escola /\\nTutorial /\\nOnboarding";
-   if(module=="Reserva Fiscal") return "Reserva\\nFiscal";
-   if(module=="Assistente do Ecossistema") return "Assistente do\\nEcossistema";
+   if(module=="Escola / Tutorial / Onboarding") return "Escola /\nTutorial /\nOnboarding";
+   if(module=="Reserva Fiscal") return "Reserva\nFiscal";
+   if(module=="Assistente do Ecossistema") return "Assistente do\nEcossistema";
    if(module=="Financeiro") return "Financeiro";
-   if(module=="Diário Operacional") return "Diário\\nOperacional";
+   if(module=="Diário Operacional") return "Diário\nOperacional";
    if(module=="Configurações") return "Configurações";
    if(module=="Auditoria") return "Auditoria";
    if(module=="Segurança") return "Segurança";
    if(module=="Conexões") return "Conexões";
-   if(module=="Multi-Broker") return "Multi-\\nBroker";
+   if(module=="Multi-Broker") return "Multi-\nBroker";
    return "—";
 }
 string ViewForModule(string area,string module){
@@ -346,7 +346,7 @@ void SetNavigationButton(string name,string text,int x,int y,int w,int h){
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
 }
 void RenderNavigation(){
-   string area_labels[6]={"COCKPIT","ANÁLISE","ESTUDO","RESERVA\\nFISCAL","ASSISTENTE DO\\nECOSSISTEMA","CENTRAL"};
+   string area_labels[6]={"COCKPIT","ANÁLISE","ESTUDO","RESERVA\nFISCAL","ASSISTENTE DO\nECOSSISTEMA","CENTRAL"};
    for(int i=0;i<6;i++){
       string area_button=Obj("A"+IntegerToString(i+1));
       SetNavigationButton(area_button,area_labels[i],18+i*65,67,63,28);
