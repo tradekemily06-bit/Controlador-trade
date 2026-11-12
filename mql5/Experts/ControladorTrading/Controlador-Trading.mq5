@@ -1769,6 +1769,19 @@ void RunHistoricalReplay(){
    SetLabel(Obj("INFO4"),"Aguardar: "+(waiting==""?"—":waiting)+" • Fonte: "+(source==""?"nao informada":source),20,421,8,C'205,215,230');
    SetLabel(Obj("INFO5"),"Ordens enviadas: "+(orders==""?"nao confirmado":orders)+" • Execucao: NAO",20,441,8,C'255,155,155');
 }
+bool IsPlainDecimalInput(string value){
+   StringTrimLeft(value); StringTrimRight(value);
+   if(value=="") return false;
+   int digits=0, dots=0;
+   for(int i=0;i<StringLen(value);i++){
+      ushort ch=StringGetCharacter(value,i);
+      if(ch>='0' && ch<='9'){ digits++; continue; }
+      if(ch=='.' && dots==0){ dots++; continue; }
+      if((ch=='-' || ch=='+') && i==0) continue;
+      return false;
+   }
+   return digits>0;
+}
 void RunHistoricalSimulator(){
    string stop_text=ObjectGetString(0,Obj("SIM_STOP"),OBJPROP_TEXT);
    string target_text=ObjectGetString(0,Obj("SIM_TARGET"),OBJPROP_TEXT);
@@ -1777,13 +1790,26 @@ void RunHistoricalSimulator(){
    string spread_text=ObjectGetString(0,Obj("SIM_SPREAD"),OBJPROP_TEXT);
    string slippage_text=ObjectGetString(0,Obj("SIM_SLIP"),OBJPROP_TEXT);
    string commission_text=ObjectGetString(0,Obj("SIM_COMM"),OBJPROP_TEXT);
-   if(stop_text=="" || target_text=="" || quantity_text=="" || multiplier_text=="" || spread_text=="" || slippage_text=="" || commission_text==""){
-      SetLabel(Obj("INFO1"),"Preencha todos os parametros; custo zero = digite 0.",20,361,8,C'255,209,102'); return;
+   StringTrimLeft(stop_text); StringTrimRight(stop_text);
+   StringTrimLeft(target_text); StringTrimRight(target_text);
+   StringTrimLeft(quantity_text); StringTrimRight(quantity_text);
+   StringTrimLeft(multiplier_text); StringTrimRight(multiplier_text);
+   StringTrimLeft(spread_text); StringTrimRight(spread_text);
+   StringTrimLeft(slippage_text); StringTrimRight(slippage_text);
+   StringTrimLeft(commission_text); StringTrimRight(commission_text);
+   if(!IsPlainDecimalInput(stop_text) || !IsPlainDecimalInput(target_text) ||
+      !IsPlainDecimalInput(quantity_text) || !IsPlainDecimalInput(multiplier_text) ||
+      !IsPlainDecimalInput(spread_text) || !IsPlainDecimalInput(slippage_text) ||
+      !IsPlainDecimalInput(commission_text)){
+      SetLabel(Obj("INFO1"),"Use numeros validos; custos zero = digite 0. Decimais com ponto.",20,361,8,C'255,118,118'); return;
    }
    double stop=StringToDouble(stop_text), target=StringToDouble(target_text);
    double quantity=StringToDouble(quantity_text), multiplier=StringToDouble(multiplier_text);
    double spread=StringToDouble(spread_text), slippage=StringToDouble(slippage_text), commission=StringToDouble(commission_text);
-   if(stop<=0 || target<=0 || quantity<=0 || multiplier<=0 || spread<0 || slippage<0 || commission<0){
+   if(!MathIsValidNumber(stop) || !MathIsValidNumber(target) || !MathIsValidNumber(quantity) ||
+      !MathIsValidNumber(multiplier) || !MathIsValidNumber(spread) || !MathIsValidNumber(slippage) ||
+      !MathIsValidNumber(commission) || stop<=0 || target<=0 || quantity<=0 || multiplier<=0 ||
+      spread<0 || slippage<0 || commission<0){
       SetLabel(Obj("INFO1"),"Stop, alvo, quantidade e multiplicador > 0; custos >= 0.",20,361,8,C'255,118,118'); return;
    }
    string symbol=_Symbol, timeframe=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
