@@ -354,6 +354,7 @@ def application(environ, start_response):
         "/api/learning",
         "/api/onboarding",
         "/api/fiscal-reserve/local",
+        "/api/fiscal-reserve/local/domestic-pending",
         "/api/assistant/local/status",
         "/api/assistant/local/conversations",
         "/api/assistant/local/history",
@@ -758,6 +759,31 @@ def application(environ, start_response):
                     entry.pop("reserve_amount_brl", None)
                     entry["classification_status"] = "PENDING_CLASSIFICATION"
             return _json_response(start_response, HTTPStatus.OK, fiscal_summary, request_id, environ)
+        if path == "/api/fiscal-reserve/local/domestic-pending" and method == "GET":
+            authorized, reason = _authorize_local_runtime(environ)
+            if not authorized:
+                return _json_response(
+                    start_response, _remote_identity_http_status(reason),
+                    {"error": "Acesso local do terminal não autorizado."}, request_id, environ
+                )
+            try:
+                local_fiscal_owner_id = migrate_fiscal_schema(str(FISCAL_RESERVE_DB))
+            except (FiscalOwnerIdentityError, RuntimeError):
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "Reserva Fiscal indisponível até validar a identidade proprietária e a migração."},
+                    request_id, environ
+                )
+            query = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
+            try:
+                limit = int(query.get("limit", ["4"])[-1] or "4")
+                offset = int(query.get("offset", ["0"])[-1] or "0")
+            except (TypeError, ValueError) as exc:
+                raise ValueError("limit e offset devem ser inteiros") from exc
+            if not 1 <= limit <= 100 or not 0 <= offset <= MAX_FISCAL_HISTORY_OFFSET:
+                raise ValueError("paginação fiscal local inválida")
+            pending = FISCAL_DOMESTIC_PENDING_QUEUE.list_pending(local_fiscal_owner_id, limit, offset)
+            return _json_response(start_response, HTTPStatus.OK, pending, request_id, environ)
         if path.startswith("/api/fiscal-reserve"):
             authorized, reason = (
                 _authorize_native_ea_read(environ)
