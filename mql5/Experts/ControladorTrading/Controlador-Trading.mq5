@@ -172,6 +172,12 @@ bool RefreshPanelLayout(){
    return changed;
 }
 void SetLabel(string name,string text,int x,int y,int size=10,color clr=clrWhite){
+   // The module selector owns the subtitle row; legacy per-view subtitles
+   // are suppressed to prevent overlap with the selector.
+   if(name==Obj("SUB")){
+      if(ObjectFind(0,name)>=0) ObjectDelete(0,name);
+      return;
+   }
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,SX(x));
@@ -387,7 +393,7 @@ void RenderNavigation(){
       ObjectSetInteger(0,area_button,OBJPROP_BGCOLOR,selected?C'24,86,72':C'35,43,58');
    }
    int count=AreaModuleCount(active_area);
-   SetNavigationButton(Obj("MODULES"),(module_menu_open?"FECHAR MÓDULOS":"MÓDULO: "+active_module),18,137,394,30);
+   SetNavigationButton(Obj("MODULES"),(module_menu_open?"FECHAR MÓDULOS":"MÓDULO: "+active_module),18,45,320,20);
    ObjectSetInteger(0,Obj("MODULES"),OBJPROP_BGCOLOR,C'24,86,72');
    for(int i=0;i<7;i++){
       string name=AreaModuleName(active_area,i);
