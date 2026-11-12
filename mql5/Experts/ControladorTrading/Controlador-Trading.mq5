@@ -259,7 +259,7 @@ string AreaModuleName(string area,int index){
    else if(area=="CENTRAL"){
       if(index==0) return "Financeiro";
       if(index==1) return "Diário Operacional";
-      if(index==2) return "Configu-\\nrações";
+      if(index==2) return "Configurações";
       if(index==3) return "Auditoria";
       if(index==4) return "Segurança";
       if(index==5) return "Conexões";
