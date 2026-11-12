@@ -22,6 +22,9 @@ string fiscal_period_key="month";
 int fiscal_history_offset=0;
 int fiscal_history_total=0;
 bool fiscal_history_has_more=false;
+bool fiscal_pending_visible=false;
+int fiscal_pending_offset=0;
+bool fiscal_pending_has_more=false;
 string assistant_conversation_ids[];
 string assistant_conversation_titles[];
 bool assistant_conversations_visible=false;
@@ -941,6 +944,36 @@ void RefreshFiscal(){
    }else SetLabel(Obj("INFO4"),"Historico indisponivel nesta resposta.",20,421,8,C'255,209,102');
    SetLabel(Obj("INFO6"),"Historico "+IntegerToString((int)MathMin(fiscal_history_offset+4,fiscal_history_total))+"/"+IntegerToString(fiscal_history_total)+" | somente leitura • estimativa",20,461,7,C'255,209,102');
 }
+void RefreshFiscalDomesticPending(){
+   string response=""; int code=0;
+   string request_path="/api/fiscal-reserve/local/domestic-pending?limit=4&offset="+IntegerToString(fiscal_pending_offset);
+   if(!Http("GET",request_path,"",response,code)){
+      SetLabel(Obj("INFO1"),"Fila brasileira indisponivel • HTTP "+IntegerToString(code),20,361,8,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Nenhuma classificacao ou reserva foi alterada.",20,381,8,C'205,215,230');
+      return;
+   }
+   string objects[];
+   if(!ExtractJsonArrayObjects(response,"items",objects)){
+      SetLabel(Obj("INFO1"),"Formato da fila brasileira invalido.",20,361,8,C'255,118,118');
+      return;
+   }
+   int total=(int)StringToInteger(JsonValue(response,"total"));
+   fiscal_pending_has_more=(fiscal_pending_offset+ArraySize(objects)<total);
+   SetLabel(Obj("INFO1"),"PENDENCIAS BRASIL • "+IntegerToString(total)+" aguardando classificacao",20,361,8,C'255,209,102');
+   for(int i=0;i<4;i++){
+      string line="";
+      if(i<ArraySize(objects)){
+         string day=JsonValue(objects[i],"occurred_on");
+         string instrument=JsonValue(objects[i],"instrument");
+         string reference=JsonValue(objects[i],"reference");
+         string candidate=JsonValue(objects[i],"category_candidate");
+         line=(day==""?"—":day)+" | "+(instrument==""?"ativo":instrument)+" | "+StringSubstr(reference,0,16);
+         if(candidate!="") line+=" | sugestao: "+StringSubstr(candidate,0,12);
+      }
+      SetLabel(Obj("INFO"+IntegerToString(i+2)),line,20,381+i*20,7,C'205,215,230');
+   }
+   SetLabel(Obj("INFO6"),"Somente evidencias; fora dos totais e sem calculo fiscal.",20,461,7,C'255,209,102');
+}
 void RefreshAssistantStatus(){
    string r; int code=0;
    if(!Http("GET","/api/assistant/local/status","",r,code)){
@@ -1488,12 +1521,14 @@ void RenderFiscal(){
    SetButton(Obj("FISCAL_YEAR"),"ANO",286,338,78,24);
    SetButton(Obj("FISCAL_PREV"),"ANTERIOR",20,510,104,24);
    SetButton(Obj("FISCAL_NEXT"),"PROXIMOS",306,510,104,24);
+   SetButton(Obj("FISCAL_PENDING"),"PENDENCIAS BRASIL",20,538,188,24);
    if(ObjectFind(0,Obj("CYCLE"))>=0) ObjectDelete(0,Obj("CYCLE"));
    if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
    if(ObjectFind(0,Obj("CLOSE"))>=0) ObjectDelete(0,Obj("CLOSE"));
    if(ObjectFind(0,Obj("CYCLEID"))>=0) ObjectDelete(0,Obj("CYCLEID"));
    if(ObjectFind(0,Obj("EXTID"))>=0) ObjectDelete(0,Obj("EXTID"));
    if(ObjectFind(0,Obj("PRICE"))>=0) ObjectDelete(0,Obj("PRICE"));
+   fiscal_pending_visible=false;
    SetLabel(Obj("INFO1"),"Consultando Reserva Fiscal...",20,361,9,C'205,215,230');
    SetLabel(Obj("INFO2"),"Brasil e exterior permanecem separados.",20,381,9,C'205,215,230');
    SetLabel(Obj("INFO3"),"Pendencias nao entram nos totais.",20,401,9,C'205,215,230');
@@ -1733,7 +1768,7 @@ void RenderView(){
    for(int k=0;k<ArraySize(replay_controls);k++) if(ObjectFind(0,Obj(replay_controls[k]))>=0) ObjectDelete(0,Obj(replay_controls[k]));
    string kill_controls[]={"KILL_REASON","KILL_CONFIRM","KILL_ACTIVATE"};
    for(int k=0;k<ArraySize(kill_controls);k++) if(ObjectFind(0,Obj(kill_controls[k]))>=0) ObjectDelete(0,Obj(kill_controls[k]));
-   string action_buttons[]={"ANALYZE","CYCLE","SAVE","CLOSE","ONBOARD_PREV","ONBOARD_NEXT","ONBOARD_PAGE","FISCAL_DAY","FISCAL_WEEK","FISCAL_MONTH","FISCAL_YEAR","FISCAL_PREV","FISCAL_NEXT"};
+   string action_buttons[]={"ANALYZE","CYCLE","SAVE","CLOSE","ONBOARD_PREV","ONBOARD_NEXT","ONBOARD_PAGE","FISCAL_DAY","FISCAL_WEEK","FISCAL_MONTH","FISCAL_YEAR","FISCAL_PREV","FISCAL_NEXT","FISCAL_PENDING"};
    for(int i=0;i<ArraySize(action_buttons);i++)
       if(ObjectFind(0,Obj(action_buttons[i]))>=0) ObjectDelete(0,Obj(action_buttons[i]));
    if(active_view=="UNAVAILABLE"){
@@ -2234,12 +2269,15 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("ASSISTANT_CONV_2") && active_view=="ASSISTENTE") OpenAssistantConversation(2);
    else if(sparam==Obj("ASSISTANT_CONV_3") && active_view=="ASSISTENTE") OpenAssistantConversation(3);
    else if(sparam==Obj("ASSISTANT_CONV_4") && active_view=="ASSISTENTE") OpenAssistantConversation(4);
-   else if(sparam==Obj("FISCAL_DAY") && active_view=="RESERVA") { fiscal_period_key="day"; RefreshFiscal(); }
-   else if(sparam==Obj("FISCAL_WEEK") && active_view=="RESERVA") { fiscal_period_key="week"; RefreshFiscal(); }
-   else if(sparam==Obj("FISCAL_MONTH") && active_view=="RESERVA") { fiscal_period_key="month"; RefreshFiscal(); }
-   else if(sparam==Obj("FISCAL_YEAR") && active_view=="RESERVA") { fiscal_period_key="year"; RefreshFiscal(); }
+   else if(sparam==Obj("FISCAL_DAY") && active_view=="RESERVA") { fiscal_period_key="day"; fiscal_pending_visible=false; RefreshFiscal(); }
+   else if(sparam==Obj("FISCAL_WEEK") && active_view=="RESERVA") { fiscal_period_key="week"; fiscal_pending_visible=false; RefreshFiscal(); }
+   else if(sparam==Obj("FISCAL_MONTH") && active_view=="RESERVA") { fiscal_period_key="month"; fiscal_pending_visible=false; RefreshFiscal(); }
+   else if(sparam==Obj("FISCAL_YEAR") && active_view=="RESERVA") { fiscal_period_key="year"; fiscal_pending_visible=false; RefreshFiscal(); }
    else if(sparam==Obj("FISCAL_PREV") && active_view=="RESERVA") { fiscal_history_offset=MathMax(0,fiscal_history_offset-4); RefreshFiscal(); }
-   else if(sparam==Obj("FISCAL_NEXT") && active_view=="RESERVA" && fiscal_history_has_more) { fiscal_history_offset+=4; RefreshFiscal(); }
+   else if(sparam==Obj("FISCAL_NEXT") && active_view=="RESERVA" && fiscal_history_has_more) { fiscal_history_offset+=4; fiscal_pending_visible=false; RefreshFiscal(); }
+   else if(sparam==Obj("FISCAL_PENDING") && active_view=="RESERVA") { fiscal_pending_visible=true; fiscal_pending_offset=0; RefreshFiscalDomesticPending(); }
+   else if(sparam==Obj("FISCAL_PREV") && active_view=="RESERVA" && fiscal_pending_visible) { fiscal_pending_offset=MathMax(0,fiscal_pending_offset-4); RefreshFiscalDomesticPending(); }
+   else if(sparam==Obj("FISCAL_NEXT") && active_view=="RESERVA" && fiscal_pending_visible && fiscal_pending_has_more) { fiscal_pending_offset+=4; RefreshFiscalDomesticPending(); }
    else if(sparam==Obj("KILL_CONFIRM") && active_view=="KILL_SWITCH") { kill_switch_confirm_armed=!kill_switch_confirm_armed; SetButton(Obj("KILL_CONFIRM"),kill_switch_confirm_armed?"CONFIRMACAO ARMADA":"CONFIRMAR BLOQUEIO",20,320,172,30); }
    else if(sparam==Obj("KILL_ACTIVATE") && active_view=="KILL_SWITCH") ActivateKillSwitch();
    else if(sparam==Obj("MEMORY_PREV")) { if(active_view=="MEMORIA" && memory_page>0) { memory_page--; RenderMemoryPage(); } }
