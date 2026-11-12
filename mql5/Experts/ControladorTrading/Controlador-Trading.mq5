@@ -18,6 +18,10 @@ string active_module="Operação";
 string assistant_conversation_id="";
 string assistant_answer="";
 int assistant_answer_page=0;
+string assistant_conversation_ids[];
+string assistant_conversation_titles[];
+bool assistant_conversations_visible=false;
+bool assistant_delete_armed=false;
 string memory_records[];
 int memory_page=0;
 bool memory_loaded=false;
@@ -911,6 +915,120 @@ void RefreshAssistantStatus(){
    SetLabel(Obj("INFO1"),available=="true"?"Assistente: provedor configurado.":"Assistente: provedor indisponivel.",20,361,9,available=="true"?C'88,214,141':C'255,118,118');
    SetLabel(Obj("INFO2"),"Chat somente leitura; consentimento exigido a cada envio.",20,381,9,C'205,215,230');
 }
+void TestAssistantConnection(){
+   string response=""; int code=0;
+   if(!Http("POST","/api/assistant/local/test-connection","{}",response,code)){
+      SetLabel(Obj("INFO1"),"Teste de conexao falhou • HTTP "+IntegerToString(code),20,361,8,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Nenhum contexto ou historico foi enviado.",20,381,8,C'205,215,230');
+      return;
+   }
+   string success=JsonValue(response,"success");
+   SetLabel(Obj("INFO1"),success=="true"?"Conexao do provedor confirmada.":"Provedor respondeu, mas teste nao confirmou sucesso.",20,361,8,success=="true"?C'88,214,141':C'255,209,102');
+   SetLabel(Obj("INFO2"),"Teste sem envio de contexto ou historico.",20,381,8,C'205,215,230');
+}
+void RenderAssistantConversations(){
+   int count=ArraySize(assistant_conversation_ids);
+   for(int i=0;i<5;i++){
+      string button=Obj("ASSISTANT_CONV_"+IntegerToString(i));
+      if(i<count){
+         string title=assistant_conversation_titles[i];
+         if(StringLen(title)>54) title=StringSubstr(title,0,51)+"...";
+         SetButton(button,title,20,361+i*20,390,18);
+      }else if(ObjectFind(0,button)>=0) ObjectDelete(0,button);
+   }
+   SetLabel(Obj("INFO5"),"Conversas recentes: "+IntegerToString(count)+" • selecione para abrir",20,461,8,C'145,160,180');
+}
+void RefreshAssistantConversations(){
+   string response=""; int code=0;
+   if(!Http("GET","/api/assistant/local/conversations","",response,code)){
+      SetLabel(Obj("INFO1"),"Nao foi possivel listar conversas • HTTP "+IntegerToString(code),20,361,8,C'255,118,118');
+      assistant_conversations_visible=false;
+      return;
+   }
+   string objects[];
+   if(!ExtractJsonArrayObjects(response,"conversations",objects)){
+      SetLabel(Obj("INFO1"),"Lista de conversas retornou formato invalido.",20,361,8,C'255,118,118');
+      assistant_conversations_visible=false;
+      return;
+   }
+   ArrayResize(assistant_conversation_ids,0);
+   ArrayResize(assistant_conversation_titles,0);
+   for(int i=0;i<ArraySize(objects) && i<5;i++){
+      string cid=JsonValue(objects[i],"conversation_id");
+      string title=JsonValue(objects[i],"title");
+      if(cid=="") continue;
+      int n=ArraySize(assistant_conversation_ids);
+      ArrayResize(assistant_conversation_ids,n+1);
+      ArrayResize(assistant_conversation_titles,n+1);
+      assistant_conversation_ids[n]=cid;
+      assistant_conversation_titles[n]=title==""?"Conversa sem titulo":title;
+   }
+   assistant_conversations_visible=true;
+   RenderAssistantConversations();
+}
+void OpenAssistantConversation(int index){
+   if(index<0 || index>=ArraySize(assistant_conversation_ids)) return;
+   string cid=assistant_conversation_ids[index];
+   string response=""; int code=0;
+   if(!Http("GET","/api/assistant/local/history?conversation_id="+cid,"",response,code)){
+      SetLabel(Obj("INFO1"),"Nao foi possivel abrir conversa • HTTP "+IntegerToString(code),20,361,8,C'255,118,118');
+      return;
+   }
+   string objects[];
+   if(!ExtractJsonArrayObjects(response,"messages",objects)){
+      SetLabel(Obj("INFO1"),"Historico retornou formato invalido.",20,361,8,C'255,118,118');
+      return;
+   }
+   assistant_answer="";
+   for(int i=0;i<ArraySize(objects);i++){
+      string role=JsonValue(objects[i],"role");
+      string content=JsonValue(objects[i],"content");
+      if(content=="") continue;
+      if(assistant_answer!="") assistant_answer+="\n";
+      assistant_answer+=(role=="user"?"VOCE: ":"ASSISTENTE: ")+content+"\n";
+   }
+   assistant_conversation_id=cid;
+   PersistAssistantConversation();
+   assistant_answer_page=0;
+   assistant_conversations_visible=false;
+   RenderAssistantAnswer();
+}
+void StartNewAssistantConversation(){
+   assistant_conversation_id="";
+   assistant_answer="";
+   assistant_answer_page=0;
+   assistant_conversations_visible=false;
+   assistant_delete_armed=false;
+   FileDelete(AssistantConversationFileName());
+   RenderAssistant();
+}
+void DeleteCurrentAssistantConversation(){
+   if(assistant_conversation_id==""){
+      SetLabel(Obj("INFO1"),"Abra uma conversa antes de excluir.",20,361,8,C'255,209,102');
+      return;
+   }
+   if(!assistant_delete_armed){
+      assistant_delete_armed=true;
+      SetButton(Obj("ASSISTANT_DELETE"),"CONFIRMAR EXCLUSAO",300,338,110,26);
+      SetLabel(Obj("INFO1"),"Confirme novamente para excluir esta conversa.",20,361,8,C'255,209,102');
+      return;
+   }
+   string response=""; int code=0;
+   string path="/api/assistant/local/conversations?conversation_id="+assistant_conversation_id;
+   if(!Http("DELETE",path,"",response,code)){
+      assistant_delete_armed=false;
+      SetButton(Obj("ASSISTANT_DELETE"),"EXCLUIR",300,338,110,26);
+      SetLabel(Obj("INFO1"),"Exclusao nao confirmada • HTTP "+IntegerToString(code),20,361,8,C'255,118,118');
+      return;
+   }
+   assistant_conversation_id="";
+   assistant_answer="";
+   assistant_answer_page=0;
+   assistant_delete_armed=false;
+   FileDelete(AssistantConversationFileName());
+   SetButton(Obj("ASSISTANT_DELETE"),"EXCLUIR",300,338,110,26);
+   SetLabel(Obj("INFO1"),"Conversa excluida.",20,361,8,C'88,214,141');
+}
 void RenderMemoryPage(){
    int count=ArraySize(memory_records);
    int page_size=5;
@@ -1365,6 +1483,11 @@ void RenderAssistant(){
    SetChatEdit(Obj("ASSISTANT_INPUT"),"",20,266,390,34);
    SetButton(Obj("ASSISTANT_CONSENT"),assistant_consent_armed?"CONSENTIMENTO OPENAI: SIM":"CONSENTIMENTO OPENAI: NAO",20,307,220,28);
    SetButton(Obj("ASSISTANT_SEND"),"ENVIAR",248,307,162,28);
+   SetButton(Obj("ASSISTANT_TEST"),"TESTAR",20,338,82,26);
+   SetButton(Obj("ASSISTANT_LIST"),"CONVERSAS",108,338,92,26);
+   SetButton(Obj("ASSISTANT_NEW"),"NOVA",206,338,86,26);
+   SetButton(Obj("ASSISTANT_DELETE"),"EXCLUIR",300,338,110,26);
+   if(assistant_conversations_visible){ RenderAssistantConversations(); return; }
    if(assistant_answer==""){
       SetLabel(Obj("INFO1"),"A pergunta e o contexto filtrado serao enviados a OpenAI.",20,361,8,C'205,215,230');
       SetLabel(Obj("INFO2"),"O assistente nao executa ordens nem movimenta dinheiro.",20,381,8,C'205,215,230');
@@ -2045,6 +2168,15 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("M7")) { SelectModule(6); return; }
    else if(sparam==Obj("ASSISTANT_CONSENT") && active_view=="ASSISTENTE") { assistant_consent_armed=!assistant_consent_armed; SetButton(Obj("ASSISTANT_CONSENT"),assistant_consent_armed?"CONSENTIMENTO OPENAI: SIM":"CONSENTIMENTO OPENAI: NAO",20,307,220,28); }
    else if(sparam==Obj("ASSISTANT_SEND") && active_view=="ASSISTENTE") SendAssistantMessage();
+   else if(sparam==Obj("ASSISTANT_TEST") && active_view=="ASSISTENTE") TestAssistantConnection();
+   else if(sparam==Obj("ASSISTANT_LIST") && active_view=="ASSISTENTE") RefreshAssistantConversations();
+   else if(sparam==Obj("ASSISTANT_NEW") && active_view=="ASSISTENTE") StartNewAssistantConversation();
+   else if(sparam==Obj("ASSISTANT_DELETE") && active_view=="ASSISTENTE") DeleteCurrentAssistantConversation();
+   else if(sparam==Obj("ASSISTANT_CONV_0") && active_view=="ASSISTENTE") OpenAssistantConversation(0);
+   else if(sparam==Obj("ASSISTANT_CONV_1") && active_view=="ASSISTENTE") OpenAssistantConversation(1);
+   else if(sparam==Obj("ASSISTANT_CONV_2") && active_view=="ASSISTENTE") OpenAssistantConversation(2);
+   else if(sparam==Obj("ASSISTANT_CONV_3") && active_view=="ASSISTENTE") OpenAssistantConversation(3);
+   else if(sparam==Obj("ASSISTANT_CONV_4") && active_view=="ASSISTENTE") OpenAssistantConversation(4);
    else if(sparam==Obj("KILL_CONFIRM") && active_view=="KILL_SWITCH") { kill_switch_confirm_armed=!kill_switch_confirm_armed; SetButton(Obj("KILL_CONFIRM"),kill_switch_confirm_armed?"CONFIRMACAO ARMADA":"CONFIRMAR BLOQUEIO",20,320,172,30); }
    else if(sparam==Obj("KILL_ACTIVATE") && active_view=="KILL_SWITCH") ActivateKillSwitch();
    else if(sparam==Obj("MEMORY_PREV")) { if(active_view=="MEMORIA" && memory_page>0) { memory_page--; RenderMemoryPage(); } }
