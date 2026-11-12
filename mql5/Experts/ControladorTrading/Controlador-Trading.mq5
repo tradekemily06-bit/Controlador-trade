@@ -122,9 +122,11 @@ bool RefreshPanelLayout(){
    int old_x=panel_x;
    double old_sx=panel_sx;
    double old_sy=panel_sy;
-   int new_width=MathMin(InpPanelWidth,MathMax(280,(int)MathRound(cw*0.44)));
-   new_width=MathMin(new_width,MathMax(220,cw-24));
-   int new_height=MathMin(InpPanelHeight,MathMax(280,(int)MathRound(ch*0.50)));
+   // Expanded panel follows the user's reference size: about 32% of chart width.
+   // Do not force a 280px minimum that would make it cover an excessive chart area.
+   int new_width=MathMax(1,MathMin(InpPanelWidth,(int)MathRound(cw*0.32)));
+   // Height follows the reference proportions, capped by the configured panel height.
+   int new_height=MathMax(1,MathMin(InpPanelHeight,(int)MathRound(ch*0.70)));
    int new_x=MathMax(12,cw-new_width-12);
    double new_sx=(double)new_width/430.0;
    double new_sy=(double)new_height/670.0;
