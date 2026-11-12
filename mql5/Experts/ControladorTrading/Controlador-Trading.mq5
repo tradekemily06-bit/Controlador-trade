@@ -110,7 +110,7 @@ string Obj(string suffix){ return P+suffix; }
 string PanelVisibilityKey(){ return P+IntegerToString(ChartID())+"_PANEL_VISIBLE"; }
 
 int SX(int x){ return panel_x+(int)MathRound(x*panel_sx); }
-int SY(int y){ if(y>=104) y+=52; return (int)MathRound(18+y*panel_sy); }
+int SY(int y){ if(y>=104) y+=58; return (int)MathRound(18+y*panel_sy); }
 int SW(int w){ return MathMax(1,(int)MathRound(w*panel_sx)); }
 int SH(int h){ return MathMax(1,(int)MathRound(h*panel_sy)); }
 bool RefreshPanelLayout(){
@@ -413,7 +413,7 @@ void RenderNavigation(){
       if(i<count && name!=""){
          int column=i%columns;
          int row=i/columns;
-         SetNavigationButton(button,AreaModuleLabel(name),18+column*(module_width+gap),137+row*34,module_width,30);
+         SetNavigationButton(button,AreaModuleLabel(name),18+column*(module_width+gap),137+row*37,module_width,36);
          ObjectSetInteger(0,button,OBJPROP_BGCOLOR,(name==active_module)?C'24,86,72':C'35,43,58');
       }else if(ObjectFind(0,button)>=0) ObjectDelete(0,button);
    }
