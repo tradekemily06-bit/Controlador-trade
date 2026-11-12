@@ -355,6 +355,8 @@ def application(environ, start_response):
         "/api/onboarding",
         "/api/fiscal-reserve/local",
         "/api/assistant/local/status",
+        "/api/assistant/local/conversations",
+        "/api/assistant/local/history",
         "/api/memory",
         "/api/statistics",
         "/api/runtime/analysis/latest",
