@@ -528,7 +528,7 @@ def application(environ, start_response):
                 request_id,
                 environ,
             )
-        if path in {"/api/assistant/local/status", "/api/assistant/local/chat"}:
+        if path in {"/api/assistant/local/status", "/api/assistant/local/chat", "/api/assistant/local/test-connection", "/api/assistant/local/conversations", "/api/assistant/local/history"}:
             authorized, reason = _authorize_local_runtime(environ)
             if not authorized:
                 return _json_response(
@@ -546,6 +546,52 @@ def application(environ, start_response):
             if path == "/api/assistant/local/status" and method == "GET":
                 return _json_response(
                     start_response, HTTPStatus.OK, ASSISTANT.readiness(), request_id, environ
+                )
+            if path == "/api/assistant/local/test-connection" and method == "POST":
+                try:
+                    test_result = ASSISTANT.test_connection()
+                except AssistantUnavailableError as exc:
+                    return _json_response(
+                        start_response, HTTPStatus.BAD_GATEWAY,
+                        {"success": False, "connection_tested": False, "status": "CONNECTION_TEST_FAILED",
+                         "message": str(exc), "context_sent": False, "history_sent": False,
+                         "conversation_saved": False},
+                        request_id, environ,
+                    )
+                return _json_response(start_response, HTTPStatus.OK, test_result, request_id, environ)
+            if path == "/api/assistant/local/conversations" and method == "GET":
+                return _json_response(
+                    start_response, HTTPStatus.OK,
+                    {"conversations": ASSISTANT.conversations(local_owner_id)},
+                    request_id, environ,
+                )
+            if path == "/api/assistant/local/conversations" and method == "DELETE":
+                query = parse_qs(environ.get("QUERY_STRING") or "").get("conversation_id", [""])[-1]
+                if not query:
+                    raise ValueError("conversation_id obrigatório")
+                try:
+                    ASSISTANT.delete_conversation(local_owner_id, query)
+                except PermissionError:
+                    return _json_response(
+                        start_response, HTTPStatus.NOT_FOUND,
+                        {"error": "conversa não encontrada"}, request_id, environ,
+                    )
+                return _json_response(
+                    start_response, HTTPStatus.OK, {"deleted": True}, request_id, environ,
+                )
+            if path == "/api/assistant/local/history" and method == "GET":
+                query = parse_qs(environ.get("QUERY_STRING") or "").get("conversation_id", [""])[-1]
+                if not query:
+                    raise ValueError("conversation_id obrigatório")
+                try:
+                    messages = ASSISTANT.history(local_owner_id, query)
+                except PermissionError:
+                    return _json_response(
+                        start_response, HTTPStatus.NOT_FOUND,
+                        {"error": "conversa não encontrada"}, request_id, environ,
+                    )
+                return _json_response(
+                    start_response, HTTPStatus.OK, {"messages": messages}, request_id, environ,
                 )
             if path == "/api/assistant/local/chat" and method == "POST":
                 chat_data = _read_json(environ)
