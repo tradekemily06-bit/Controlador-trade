@@ -3203,7 +3203,8 @@ AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]
 # seventh top-level area. Keep the original Figma JSON unchanged.
 AREAS["CENTRAL"] = ["Financeiro", "Diário Operacional", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]
 if "panel_open" not in st.session_state:
-    st.session_state.panel_open = True
+    # Start collapsed; the user opens the hub explicitly with the C control.
+    st.session_state.panel_open = False
 
 if not st.session_state.panel_open:
     with st.container(key="panel-toggle"):
