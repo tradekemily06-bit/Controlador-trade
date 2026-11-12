@@ -110,7 +110,7 @@ string Obj(string suffix){ return P+suffix; }
 string PanelVisibilityKey(){ return P+IntegerToString(ChartID())+"_PANEL_VISIBLE"; }
 
 int SX(int x){ return panel_x+(int)MathRound(x*panel_sx); }
-int SY(int y){ if(y>=104) y+=58; return (int)MathRound(18+y*panel_sy); }
+int SY(int y){ if(y>=104) y+=46; return (int)MathRound(18+y*panel_sy); }
 int SW(int w){ return MathMax(1,(int)MathRound(w*panel_sx)); }
 int SH(int h){ return MathMax(1,(int)MathRound(h*panel_sy)); }
 bool RefreshPanelLayout(){
@@ -2294,10 +2294,8 @@ void OnTimer(){
 }
 void OnChartEvent(const int id,const long &lparam,const double &dparam,const string &sparam){
    if(id==CHARTEVENT_CHART_CHANGE){
-      if(panel_visible){
-         bool layout_changed=RefreshPanelLayout();
-         if(layout_changed){ Panel(); RenderView(); ChartRedraw(); }
-      }else RefreshPanelToggle();
+      // Resize is reconciled by OnTimer to avoid repeated redraws and runtime requests while dragging.
+      if(!panel_visible) RefreshPanelToggle();
       return;
    }
    if(id!=CHARTEVENT_OBJECT_CLICK) return;
