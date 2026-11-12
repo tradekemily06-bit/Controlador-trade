@@ -1875,6 +1875,25 @@ void RenderView(){
    string action_buttons[]={"ANALYZE","CYCLE","SAVE","CLOSE","ONBOARD_PREV","ONBOARD_NEXT","ONBOARD_PAGE","FISCAL_DAY","FISCAL_WEEK","FISCAL_MONTH","FISCAL_YEAR","FISCAL_PREV","FISCAL_NEXT","FISCAL_PENDING"};
    for(int i=0;i<ArraySize(action_buttons);i++)
       if(ObjectFind(0,Obj(action_buttons[i]))>=0) ObjectDelete(0,Obj(action_buttons[i]));
+   // The module picker is a dedicated screen: remove every view-specific object
+   // so its choices never cover cockpit fields, forms, or operational controls.
+   if(module_menu_open){
+      int total=ObjectsTotal(0,-1,-1);
+      for(int n=total-1;n>=0;n--){
+         string object_name=ObjectName(0,n,-1,-1);
+         if(StringFind(object_name,P)!=0) continue;
+         string suffix=StringSubstr(object_name,StringLen(P));
+         bool keep=(suffix=="BG" || suffix=="TITLE" || suffix=="SUB" ||
+                    suffix=="RUNTIME" || suffix=="MODE" || suffix=="MODULES" ||
+                    suffix=="PANEL_TOGGLE" || suffix=="PANEL_TOGGLE_BG" ||
+                    suffix=="COMPACT_SIGNAL" || suffix=="COMPACT_SCORE");
+         if(StringFind(suffix,"A")==0 && StringLen(suffix)==2) keep=true;
+         if(StringFind(suffix,"M")==0 && StringLen(suffix)==2) keep=true;
+         if(!keep) ObjectDelete(0,object_name);
+      }
+      SetLabel(Obj("SUB"),"ESCOLHA UM MÓDULO • "+active_area,20,47,9,C'150,165,185');
+      return;
+   }
    if(active_view=="UNAVAILABLE"){
       ClearCockpitFields();
       string stale[]={"ANALYZE","CYCLE","SAVE","CLOSE","CYCLEID","EXTID","PRICE","SAFE","RECOVERY_TITLE","RECOVERY_ITEM","REC_REFRESH","REC_PREV","REC_NEXT","REC_RECONCILE","REC_CLOSE","MODE_TOGGLE","LEVERAGE_TOGGLE","KILL_REASON","KILL_CONFIRM","KILL_ACTIVATE"};
