@@ -964,6 +964,9 @@ void TestAssistantConnection(){
    SetLabel(Obj("INFO2"),"Teste sem envio de contexto ou historico.",20,381,8,C'205,215,230');
 }
 void RenderAssistantConversations(){
+   string paging[]={"ASSISTANT_PREV","ASSISTANT_NEXT","ASSISTANT_PAGE"};
+   for(int p=0;p<ArraySize(paging);p++)
+      if(ObjectFind(0,Obj(paging[p]))>=0) ObjectDelete(0,Obj(paging[p]));
    for(int row=1;row<=5;row++)
       if(ObjectFind(0,Obj("INFO"+IntegerToString(row)))>=0) ObjectDelete(0,Obj("INFO"+IntegerToString(row)));
    int count=ArraySize(assistant_conversation_ids);
@@ -983,6 +986,8 @@ void RefreshAssistantConversations(){
    if(!Http("GET","/api/assistant/local/conversations","",response,code)){
       SetLabel(Obj("INFO1"),"Nao foi possivel listar conversas • HTTP "+IntegerToString(code),20,361,8,C'255,118,118');
       assistant_conversations_visible=false;
+      for(int i=0;i<5;i++)
+         if(ObjectFind(0,Obj("ASSISTANT_CONV_"+IntegerToString(i)))>=0) ObjectDelete(0,Obj("ASSISTANT_CONV_"+IntegerToString(i)));
       return;
    }
    string objects[];
@@ -1497,6 +1502,8 @@ void RenderFiscal(){
    RefreshFiscal();
 }
 void RenderAssistantAnswer(){
+   for(int i=0;i<5;i++)
+      if(ObjectFind(0,Obj("ASSISTANT_CONV_"+IntegerToString(i)))>=0) ObjectDelete(0,Obj("ASSISTANT_CONV_"+IntegerToString(i)));
    int total_chars=StringLen(assistant_answer);
    int page_size=330;
    int page_count=(total_chars+page_size-1)/page_size;
@@ -1536,6 +1543,9 @@ void RenderAssistant(){
    SetButton(Obj("ASSISTANT_DELETE"),"EXCLUIR",300,338,110,26);
    if(assistant_conversations_visible){ RenderAssistantConversations(); return; }
    if(assistant_answer==""){
+      string stale_paging[]={"ASSISTANT_PREV","ASSISTANT_NEXT","ASSISTANT_PAGE"};
+      for(int i=0;i<ArraySize(stale_paging);i++)
+         if(ObjectFind(0,Obj(stale_paging[i]))>=0) ObjectDelete(0,Obj(stale_paging[i]));
       SetLabel(Obj("INFO1"),"A pergunta e o contexto filtrado serao enviados a OpenAI.",20,361,8,C'205,215,230');
       SetLabel(Obj("INFO2"),"O assistente nao executa ordens nem movimenta dinheiro.",20,381,8,C'205,215,230');
       SetLabel(Obj("INFO3"),"REAL: BLOQUEADO",20,401,8,C'255,155,155');
