@@ -221,13 +221,10 @@ void TogglePanel(){
    ChartRedraw();
 }
 void LoadPanelVisibility(){
-   string key=PanelVisibilityKey();
-   if(GlobalVariableCheck(key))
-      panel_visible=(GlobalVariableGet(key)>0.5);
-   else{
-      panel_visible=false;
-      GlobalVariableSet(key,0.0);
-   }
+   // Every EA initialization must start collapsed. The saved state is never
+   // restored, so a previous expanded session cannot open the panel by itself.
+   panel_visible=false;
+   GlobalVariableSet(PanelVisibilityKey(),0.0);
    RefreshPanelToggle();
 }
 
