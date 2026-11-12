@@ -912,6 +912,15 @@ void RefreshFiscal(){
    string history_page=JsonRawObject(r,"history_page");
    fiscal_history_total=(int)StringToInteger(JsonValue(history_page,"total"));
    fiscal_history_has_more=(JsonValue(history_page,"has_more")=="true");
+   string period_buttons[]={"FISCAL_DAY","FISCAL_WEEK","FISCAL_MONTH","FISCAL_YEAR"};
+   string period_keys[]={"day","week","month","year"};
+   for(int i=0;i<ArraySize(period_buttons);i++)
+      if(ObjectFind(0,Obj(period_buttons[i]))>=0)
+         ObjectSetInteger(0,Obj(period_buttons[i]),OBJPROP_BGCOLOR,fiscal_period_key==period_keys[i]?C'24,86,72':C'35,43,58');
+   if(ObjectFind(0,Obj("FISCAL_PREV"))>=0)
+      ObjectSetInteger(0,Obj("FISCAL_PREV"),OBJPROP_BGCOLOR,fiscal_history_offset>0?C'35,43,58':C'20,25,32');
+   if(ObjectFind(0,Obj("FISCAL_NEXT"))>=0)
+      ObjectSetInteger(0,Obj("FISCAL_NEXT"),OBJPROP_BGCOLOR,fiscal_history_has_more?C'35,43,58':C'20,25,32');
    string period_label=(fiscal_period_key=="day"?"DIA":(fiscal_period_key=="week"?"SEMANA":(fiscal_period_key=="month"?"MES":"ANO")));
    SetLabel(Obj("INFO1"),"Brasil "+period_label+": reserva R$ "+(period_reserve==""?"—":DoubleToString(StringToDouble(period_reserve),2))+" | resultado R$ "+(period_result==""?"—":DoubleToString(StringToDouble(period_result),2)),20,361,8,C'88,214,141');
    SetLabel(Obj("INFO2"),"Acumulado Brasil: R$ "+(total==""?"—":DoubleToString(StringToDouble(total),2))+" | lancamentos: "+(period_entries==""?"—":period_entries),20,381,8,C'205,215,230');
