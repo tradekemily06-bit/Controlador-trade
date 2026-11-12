@@ -239,20 +239,20 @@ string AreaModuleName(string area,int index){
       if(index==0) return "Operação";
       if(index==1) return "Motor de Decisão";
       if(index==2) return "Gestão de Risco";
-      if(index==3) return "Notifica-\\nções";
+      if(index==3) return "Notificações";
       if(index==4) return "Ambiente MT5 DEMO / Simulação";
       if(index==5) return "Kill Switch";
    }else if(area=="ANÁLISE"){
       if(index==0) return "Análise de Mercado";
       if(index==1) return "Memória";
-      if(index==2) return "Estatís-\\nticas";
+      if(index==2) return "Estatísticas";
       if(index==3) return "Relatórios";
    }else if(area=="ESTUDO"){
-      if(index==0) return "Laborató-\\nrio";
+      if(index==0) return "Laboratório";
       if(index==1) return "Replay";
       if(index==2) return "Simulador";
-      if(index==3) return "Aprendi-\\nzado";
-      if(index==4) return "Descober-\\ntas";
+      if(index==3) return "Aprendizado";
+      if(index==4) return "Descobertas";
       if(index==5) return "Escola / Tutorial / Onboarding";
    }else if(area=="RESERVA FISCAL") return "Reserva Fiscal";
    else if(area=="ASSISTENTE DO ECOSSISTEMA") return "Assistente do Ecossistema";
