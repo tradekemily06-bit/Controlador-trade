@@ -959,6 +959,10 @@ void RefreshFiscalDomesticPending(){
    }
    int total=(int)StringToInteger(JsonValue(response,"total"));
    fiscal_pending_has_more=(fiscal_pending_offset+ArraySize(objects)<total);
+   if(ObjectFind(0,Obj("FISCAL_PREV"))>=0)
+      ObjectSetInteger(0,Obj("FISCAL_PREV"),OBJPROP_BGCOLOR,fiscal_pending_offset>0?C'35,43,58':C'20,25,32');
+   if(ObjectFind(0,Obj("FISCAL_NEXT"))>=0)
+      ObjectSetInteger(0,Obj("FISCAL_NEXT"),OBJPROP_BGCOLOR,fiscal_pending_has_more?C'35,43,58':C'20,25,32');
    SetLabel(Obj("INFO1"),"PENDENCIAS BRASIL • "+IntegerToString(total)+" aguardando classificacao",20,361,8,C'255,209,102');
    for(int i=0;i<4;i++){
       string line="";
@@ -2273,11 +2277,11 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("FISCAL_WEEK") && active_view=="RESERVA") { fiscal_period_key="week"; fiscal_pending_visible=false; RefreshFiscal(); }
    else if(sparam==Obj("FISCAL_MONTH") && active_view=="RESERVA") { fiscal_period_key="month"; fiscal_pending_visible=false; RefreshFiscal(); }
    else if(sparam==Obj("FISCAL_YEAR") && active_view=="RESERVA") { fiscal_period_key="year"; fiscal_pending_visible=false; RefreshFiscal(); }
-   else if(sparam==Obj("FISCAL_PREV") && active_view=="RESERVA") { fiscal_history_offset=MathMax(0,fiscal_history_offset-4); RefreshFiscal(); }
-   else if(sparam==Obj("FISCAL_NEXT") && active_view=="RESERVA" && fiscal_history_has_more) { fiscal_history_offset+=4; fiscal_pending_visible=false; RefreshFiscal(); }
    else if(sparam==Obj("FISCAL_PENDING") && active_view=="RESERVA") { fiscal_pending_visible=true; fiscal_pending_offset=0; RefreshFiscalDomesticPending(); }
    else if(sparam==Obj("FISCAL_PREV") && active_view=="RESERVA" && fiscal_pending_visible) { fiscal_pending_offset=MathMax(0,fiscal_pending_offset-4); RefreshFiscalDomesticPending(); }
    else if(sparam==Obj("FISCAL_NEXT") && active_view=="RESERVA" && fiscal_pending_visible && fiscal_pending_has_more) { fiscal_pending_offset+=4; RefreshFiscalDomesticPending(); }
+   else if(sparam==Obj("FISCAL_PREV") && active_view=="RESERVA") { fiscal_history_offset=MathMax(0,fiscal_history_offset-4); RefreshFiscal(); }
+   else if(sparam==Obj("FISCAL_NEXT") && active_view=="RESERVA" && fiscal_history_has_more) { fiscal_history_offset+=4; RefreshFiscal(); }
    else if(sparam==Obj("KILL_CONFIRM") && active_view=="KILL_SWITCH") { kill_switch_confirm_armed=!kill_switch_confirm_armed; SetButton(Obj("KILL_CONFIRM"),kill_switch_confirm_armed?"CONFIRMACAO ARMADA":"CONFIRMAR BLOQUEIO",20,320,172,30); }
    else if(sparam==Obj("KILL_ACTIVATE") && active_view=="KILL_SWITCH") ActivateKillSwitch();
    else if(sparam==Obj("MEMORY_PREV")) { if(active_view=="MEMORIA" && memory_page>0) { memory_page--; RenderMemoryPage(); } }
