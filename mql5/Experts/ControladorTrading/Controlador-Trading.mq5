@@ -2038,7 +2038,7 @@ void RefreshCompactCachedAnalysis(){
    string signal=JsonObjectValue(response,"analysis","signal");
    if(signal=="") signal=JsonObjectValue(response,"analysis","decision");
    if(signal=="") signal="AGUARDAR";
-   string quality=JsonObjectValue(response,"analysis","quality");
+   string quality=JsonValue(response,"quality");
    string score=JsonValue(quality,"score");
    UpdateCompactSignal(signal,score,true);
 }
