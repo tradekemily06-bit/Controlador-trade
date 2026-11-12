@@ -110,16 +110,16 @@ string Obj(string suffix){ return P+suffix; }
 string PanelVisibilityKey(){ return P+IntegerToString(ChartID())+"_PANEL_VISIBLE"; }
 
 int SX(int x){ return panel_x+(int)MathRound(x*panel_sx); }
-int SY(int y){ if(y>=104) y+=34; return (int)MathRound(18+y*panel_sy); }
+int SY(int y){ if(y>=104) y+=52; return (int)MathRound(18+y*panel_sy); }
 int SW(int w){ return MathMax(1,(int)MathRound(w*panel_sx)); }
 int SH(int h){ return MathMax(1,(int)MathRound(h*panel_sy)); }
-void RefreshPanelLayout(){
+bool RefreshPanelLayout(){
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
    int old_x=panel_x;
    double old_sx=panel_sx;
    double old_sy=panel_sy;
-   int new_width=MathMin(InpPanelWidth,MathMax(280,(int)MathRound(cw*0.34)));
+   int new_width=MathMin(InpPanelWidth,MathMax(280,(int)MathRound(cw*0.44)));
    new_width=MathMin(new_width,MathMax(220,cw-24));
    int new_height=MathMin(InpPanelHeight,MathMax(280,(int)MathRound(ch*0.50)));
    int new_x=MathMax(12,cw-new_width-12);
@@ -163,6 +163,7 @@ void RefreshPanelLayout(){
       ObjectSetInteger(0,bg,OBJPROP_XSIZE,panel_width);
       ObjectSetInteger(0,bg,OBJPROP_YSIZE,panel_height);
    }
+   return changed;
 }
 void SetLabel(string name,string text,int x,int y,int size=10,color clr=clrWhite){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
@@ -402,14 +403,17 @@ void RenderNavigation(){
       ObjectSetInteger(0,area_button,OBJPROP_BGCOLOR,selected?C'24,86,72':C'35,43,58');
    }
    int count=AreaModuleCount(active_area);
+   int columns=(active_area=="CENTRAL")?4:3;
    int gap=6;
    int available_width=394;
-   int module_width=(available_width-gap*(count-1))/count;
+   int module_width=(available_width-gap*(columns-1))/columns;
    for(int i=0;i<7;i++){
       string name=AreaModuleName(active_area,i);
       string button=Obj("M"+IntegerToString(i+1));
       if(i<count && name!=""){
-         SetNavigationButton(button,AreaModuleLabel(name),18+i*(module_width+gap),137,module_width,42);
+         int column=i%columns;
+         int row=i/columns;
+         SetNavigationButton(button,AreaModuleLabel(name),18+column*(module_width+gap),137+row*34,module_width,30);
          ObjectSetInteger(0,button,OBJPROP_BGCOLOR,(name==active_module)?C'24,86,72':C'35,43,58');
       }else if(ObjectFind(0,button)>=0) ObjectDelete(0,button);
    }
@@ -2271,7 +2275,8 @@ void OnTimer(){
       RefreshHealth();
       return;
    }
-   RefreshPanelLayout();
+   bool layout_changed=RefreshPanelLayout();
+   if(layout_changed){ Panel(); RenderView(); ChartRedraw(); }
    RefreshPanelToggle();
    RefreshHealth();
    if(active_view=="COCKPIT") { RefreshSecondary(); RefreshMarketAssets(); }
@@ -2288,6 +2293,13 @@ void OnTimer(){
    if(active_view=="COCKPIT" && bid>0) SetLabel(Obj("PRICE"),"Preco atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
 }
 void OnChartEvent(const int id,const long &lparam,const double &dparam,const string &sparam){
+   if(id==CHARTEVENT_CHART_CHANGE){
+      if(panel_visible){
+         bool layout_changed=RefreshPanelLayout();
+         if(layout_changed){ Panel(); RenderView(); ChartRedraw(); }
+      }else RefreshPanelToggle();
+      return;
+   }
    if(id!=CHARTEVENT_OBJECT_CLICK) return;
    if(sparam==Obj("PANEL_TOGGLE") || sparam==Obj("PANEL_TOGGLE_BG")) { TogglePanel(); return; }
    if(sparam==Obj("A1")) { SelectArea("COCKPIT"); return; }
