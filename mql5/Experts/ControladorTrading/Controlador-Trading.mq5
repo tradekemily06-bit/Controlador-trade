@@ -18,6 +18,10 @@ string active_module="Operação";
 string assistant_conversation_id="";
 string assistant_answer="";
 int assistant_answer_page=0;
+string fiscal_period_key="month";
+int fiscal_history_offset=0;
+int fiscal_history_total=0;
+bool fiscal_history_has_more=false;
 string assistant_conversation_ids[];
 string assistant_conversation_titles[];
 bool assistant_conversations_visible=false;
@@ -890,19 +894,42 @@ void PersistAssistantConversation(){
 }
 void RefreshFiscal(){
    string r; int code=0;
-   if(!Http("GET","/api/fiscal-reserve/local?limit=20","",r,code)){
+   string request_path="/api/fiscal-reserve/local?limit=4&offset="+IntegerToString(fiscal_history_offset);
+   if(!Http("GET",request_path,"",r,code)){
       SetLabel(Obj("INFO1"),"Reserva Fiscal: runtime local indisponivel",20,361,9,C'255,118,118');
       SetLabel(Obj("INFO2"),"Nenhum dado fiscal foi alterado.",20,381,9,C'205,215,230');
       return;
    }
    string total=JsonValue(r,"total_reserved_brl");
-   string foreign_total=JsonObjectValue(r,"foreign_pending","total");
+   string period=JsonObjectValue(r,"periods",fiscal_period_key);
+   string period_reserve=JsonValue(period,"reserve_amount_brl");
+   string period_result=JsonValue(period,"realized_result_brl");
+   string period_entries=JsonValue(period,"entries");
+   string foreign_periods=JsonObjectValue(r,"foreign_pending","periods");
+   string foreign_period=JsonObjectValue(foreign_periods,fiscal_period_key);
+   string foreign_total=JsonValue(foreign_period,"total");
    string domestic_total=JsonObjectValue(r,"domestic_pending","total");
-   SetLabel(Obj("INFO1"),"Reserva estimada Brasil: R$ "+(total==""?"—":DoubleToString(StringToDouble(total),2)),20,361,9,C'88,214,141');
-   SetLabel(Obj("INFO2"),"Pendencias Brasil: "+(domestic_total==""?"indisponivel":domestic_total)+" • fora dos totais",20,381,9,C'205,215,230');
-   SetLabel(Obj("INFO3"),"Pendencias exterior: "+(foreign_total==""?"indisponivel":foreign_total)+" • sem calculo",20,401,9,C'205,215,230');
-   SetLabel(Obj("INFO4"),"Brasil/exterior permanecem em filas separadas.",20,421,9,C'205,215,230');
-   SetLabel(Obj("INFO5"),"Estimativa de planejamento; nao e imposto apurado.",20,441,9,C'255,209,102');
+   string history_page=JsonRawObject(r,"history_page");
+   fiscal_history_total=(int)StringToInteger(JsonValue(history_page,"total"));
+   fiscal_history_has_more=(JsonValue(history_page,"has_more")=="true");
+   SetLabel(Obj("INFO1"),"Brasil "+StringToUpper(fiscal_period_key)+": reserva R$ "+(period_reserve==""?"—":DoubleToString(StringToDouble(period_reserve),2))+" | resultado R$ "+(period_result==""?"—":DoubleToString(StringToDouble(period_result),2)),20,361,8,C'88,214,141');
+   SetLabel(Obj("INFO2"),"Acumulado Brasil: R$ "+(total==""?"—":DoubleToString(StringToDouble(total),2))+" | lancamentos: "+(period_entries==""?"—":period_entries),20,381,8,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Pendencias Brasil: "+(domestic_total==""?"indisponivel":domestic_total)+" | Exterior no periodo: "+(foreign_total==""?"indisponivel":foreign_total),20,401,8,C'205,215,230');
+   string records[];
+   if(ExtractJsonArrayObjects(r,"history",records)){
+      for(int i=0;i<3;i++){
+         string line="";
+         if(i<ArraySize(records)){
+            string date=JsonValue(records[i],"occurred_on");
+            string category=JsonValue(records[i],"category");
+            string reference=JsonValue(records[i],"reference");
+            if(category=="FOREIGN_FINANCIAL_ASSET") line=(date==""?"—":date)+" | EXTERIOR: classificacao pendente";
+            else line=(date==""?"—":date)+" | "+(category==""?"registro fiscal":category)+" | "+StringSubstr(reference,0,18);
+         }
+         SetLabel(Obj("INFO"+IntegerToString(i+4)),line,20,421+i*20,7,C'205,215,230');
+      }
+   }else SetLabel(Obj("INFO4"),"Historico indisponivel nesta resposta.",20,421,8,C'255,209,102');
+   SetLabel(Obj("INFO5"),"Historico "+IntegerToString(MathMin(fiscal_history_offset+4,fiscal_history_total))+"/"+IntegerToString(fiscal_history_total)+" | somente leitura • estimativa",20,481,7,C'255,209,102');
 }
 void RefreshAssistantStatus(){
    string r; int code=0;
@@ -1440,6 +1467,12 @@ void RenderFiscal(){
    ClearCockpitFields();
    SetLabel(Obj("SUB"),"RESERVA FISCAL • resumo conectado ao runtime",20,47,9,C'150,165,185');
    SetButton(Obj("ANALYZE"),"ATUALIZAR RESERVA",20,294,172,30);
+   SetButton(Obj("FISCAL_DAY"),"DIA",20,338,78,24);
+   SetButton(Obj("FISCAL_WEEK"),"SEMANA",104,338,92,24);
+   SetButton(Obj("FISCAL_MONTH"),"MES",202,338,78,24);
+   SetButton(Obj("FISCAL_YEAR"),"ANO",286,338,78,24);
+   SetButton(Obj("FISCAL_PREV"),"ANTERIOR",20,510,104,24);
+   SetButton(Obj("FISCAL_NEXT"),"PROXIMOS",306,510,104,24);
    if(ObjectFind(0,Obj("CYCLE"))>=0) ObjectDelete(0,Obj("CYCLE"));
    if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
    if(ObjectFind(0,Obj("CLOSE"))>=0) ObjectDelete(0,Obj("CLOSE"));
@@ -2181,6 +2214,12 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("ASSISTANT_CONV_2") && active_view=="ASSISTENTE") OpenAssistantConversation(2);
    else if(sparam==Obj("ASSISTANT_CONV_3") && active_view=="ASSISTENTE") OpenAssistantConversation(3);
    else if(sparam==Obj("ASSISTANT_CONV_4") && active_view=="ASSISTENTE") OpenAssistantConversation(4);
+   else if(sparam==Obj("FISCAL_DAY") && active_view=="RESERVA") { fiscal_period_key="day"; RefreshFiscal(); }
+   else if(sparam==Obj("FISCAL_WEEK") && active_view=="RESERVA") { fiscal_period_key="week"; RefreshFiscal(); }
+   else if(sparam==Obj("FISCAL_MONTH") && active_view=="RESERVA") { fiscal_period_key="month"; RefreshFiscal(); }
+   else if(sparam==Obj("FISCAL_YEAR") && active_view=="RESERVA") { fiscal_period_key="year"; RefreshFiscal(); }
+   else if(sparam==Obj("FISCAL_PREV") && active_view=="RESERVA") { fiscal_history_offset=MathMax(0,fiscal_history_offset-4); RefreshFiscal(); }
+   else if(sparam==Obj("FISCAL_NEXT") && active_view=="RESERVA" && fiscal_history_has_more) { fiscal_history_offset+=4; RefreshFiscal(); }
    else if(sparam==Obj("KILL_CONFIRM") && active_view=="KILL_SWITCH") { kill_switch_confirm_armed=!kill_switch_confirm_armed; SetButton(Obj("KILL_CONFIRM"),kill_switch_confirm_armed?"CONFIRMACAO ARMADA":"CONFIRMAR BLOQUEIO",20,320,172,30); }
    else if(sparam==Obj("KILL_ACTIVATE") && active_view=="KILL_SWITCH") ActivateKillSwitch();
    else if(sparam==Obj("MEMORY_PREV")) { if(active_view=="MEMORIA" && memory_page>0) { memory_page--; RenderMemoryPage(); } }
