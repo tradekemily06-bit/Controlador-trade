@@ -60,6 +60,7 @@ int recovery_selected=0;
 bool recovery_inventory_valid=false;
 bool recovery_close_armed=false;
 bool kill_switch_confirm_armed=false;
+string kill_switch_confirm_reason="";
 string recovery_message="Inventario nao consultado.";
 double panel_sx=1.0;
 double panel_sy=1.0;
@@ -1292,13 +1293,23 @@ void ActivateKillSwitch(){
       return;
    }
    string reason=ObjectFind(0,Obj("KILL_REASON"))>=0?ObjectGetString(0,Obj("KILL_REASON"),OBJPROP_TEXT):"";
-   StringTrimLeft(reason); StringTrimRight(reason);
+   reason=StringTrimLeft(reason); reason=StringTrimRight(reason);
    if(reason=="" || StringLen(reason)>240){
+      kill_switch_confirm_armed=false;
+      kill_switch_confirm_reason="";
       SetLabel(Obj("INFO3"),"Informe um motivo de 1 a 240 caracteres.",20,401,8,C'255,118,118');
+      return;
+   }
+   if(reason!=kill_switch_confirm_reason){
+      kill_switch_confirm_armed=false;
+      kill_switch_confirm_reason="";
+      SetButton(Obj("KILL_CONFIRM"),"CONFIRMAR BLOQUEIO",20,320,172,30);
+      SetLabel(Obj("INFO3"),"O motivo mudou. Confirme novamente antes de ativar.",20,401,8,C'255,118,118');
       return;
    }
    string body="{\"reason\":\""+JsonEscape(reason)+"\",\"confirmed\":true}";
    kill_switch_confirm_armed=false;
+   kill_switch_confirm_reason="";
    SetButton(Obj("KILL_CONFIRM"),"CONFIRMAR BLOQUEIO",20,320,172,30);
    string response; int code=0;
    if(!Http("POST","/api/runtime/kill-switch/activate",body,response,code)){
@@ -2398,7 +2409,19 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("FISCAL_NEXT") && active_view=="RESERVA" && fiscal_pending_visible && fiscal_pending_has_more) { fiscal_pending_offset+=4; RefreshFiscalDomesticPending(); }
    else if(sparam==Obj("FISCAL_PREV") && active_view=="RESERVA") { fiscal_history_offset=MathMax(0,fiscal_history_offset-4); RefreshFiscal(); }
    else if(sparam==Obj("FISCAL_NEXT") && active_view=="RESERVA" && fiscal_history_has_more) { fiscal_history_offset+=4; RefreshFiscal(); }
-   else if(sparam==Obj("KILL_CONFIRM") && active_view=="KILL_SWITCH") { kill_switch_confirm_armed=!kill_switch_confirm_armed; SetButton(Obj("KILL_CONFIRM"),kill_switch_confirm_armed?"CONFIRMACAO ARMADA":"CONFIRMAR BLOQUEIO",20,320,172,30); }
+   else if(sparam==Obj("KILL_CONFIRM") && active_view=="KILL_SWITCH") {
+      string reason=ObjectFind(0,Obj("KILL_REASON"))>=0?ObjectGetString(0,Obj("KILL_REASON"),OBJPROP_TEXT):"";
+      reason=StringTrimLeft(reason); reason=StringTrimRight(reason);
+      if(reason=="" || StringLen(reason)>240){
+         kill_switch_confirm_armed=false; kill_switch_confirm_reason="";
+         SetButton(Obj("KILL_CONFIRM"),"CONFIRMAR BLOQUEIO",20,320,172,30);
+         SetLabel(Obj("INFO3"),"Informe o motivo antes de confirmar (ate 240 caracteres).",20,401,8,C'255,118,118');
+      }else{
+         kill_switch_confirm_armed=!kill_switch_confirm_armed;
+         kill_switch_confirm_reason=kill_switch_confirm_armed?reason:"";
+         SetButton(Obj("KILL_CONFIRM"),kill_switch_confirm_armed?"CONFIRMACAO ARMADA":"CONFIRMAR BLOQUEIO",20,320,172,30);
+      }
+   }
    else if(sparam==Obj("KILL_ACTIVATE") && active_view=="KILL_SWITCH") ActivateKillSwitch();
    else if(sparam==Obj("MEMORY_PREV")) { if(active_view=="MEMORIA" && memory_page>0) { memory_page--; RenderMemoryPage(); } }
    else if(sparam==Obj("MEMORY_NEXT")) { if(active_view=="MEMORIA" && (memory_page+1)*5<ArraySize(memory_records)) { memory_page++; RenderMemoryPage(); } }
