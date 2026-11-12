@@ -17,6 +17,7 @@ string active_area="COCKPIT";
 string active_module="Operação";
 string assistant_conversation_id="";
 string assistant_answer="";
+string assistant_draft="";
 int assistant_answer_page=0;
 string fiscal_period_key="month";
 int fiscal_history_offset=0;
@@ -419,6 +420,8 @@ void RenderNavigation(){
    }
 }
 void SelectArea(string area){
+   if(active_view=="ASSISTENTE" && ObjectFind(0,Obj("ASSISTANT_INPUT"))>=0)
+      assistant_draft=ObjectGetString(0,Obj("ASSISTANT_INPUT"),OBJPROP_TEXT);
    kill_switch_confirm_armed=false;
    assistant_consent_armed=false;
    active_area=area;
@@ -429,6 +432,8 @@ void SelectArea(string area){
 }
 void SelectModule(int index){
    if(index<0 || index>=AreaModuleCount(active_area)) return;
+   if(active_view=="ASSISTENTE" && ObjectFind(0,Obj("ASSISTANT_INPUT"))>=0)
+      assistant_draft=ObjectGetString(0,Obj("ASSISTANT_INPUT"),OBJPROP_TEXT);
    kill_switch_confirm_armed=false;
    assistant_consent_armed=false;
    active_module=AreaModuleName(active_area,index);
@@ -1577,13 +1582,13 @@ void RenderFiscal(){
    if(ObjectFind(0,Obj("CYCLEID"))>=0) ObjectDelete(0,Obj("CYCLEID"));
    if(ObjectFind(0,Obj("EXTID"))>=0) ObjectDelete(0,Obj("EXTID"));
    if(ObjectFind(0,Obj("PRICE"))>=0) ObjectDelete(0,Obj("PRICE"));
-   fiscal_pending_visible=false;
    SetLabel(Obj("INFO1"),"Consultando Reserva Fiscal...",20,361,9,C'205,215,230');
    SetLabel(Obj("INFO2"),"Brasil e exterior permanecem separados.",20,381,9,C'205,215,230');
    SetLabel(Obj("INFO3"),"Pendencias nao entram nos totais.",20,401,9,C'205,215,230');
    SetLabel(Obj("INFO4"),"Valores de planejamento nao confirmam imposto.",20,421,9,C'205,215,230');
    SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
-   RefreshFiscal();
+   if(fiscal_pending_visible) RefreshFiscalDomesticPending();
+   else RefreshFiscal();
 }
 void RenderAssistantAnswer(){
    for(int i=0;i<5;i++)
@@ -1618,7 +1623,7 @@ void RenderAssistant(){
    if(ObjectFind(0,Obj("EXTID"))>=0) ObjectDelete(0,Obj("EXTID"));
    if(ObjectFind(0,Obj("PRICE"))>=0) ObjectDelete(0,Obj("PRICE"));
    SetLabel(Obj("ASSISTANT_PROMPT"),"Pergunta (ate 1000 caracteres)",20,250,8,C'150,165,185');
-   SetChatEdit(Obj("ASSISTANT_INPUT"),"",20,266,390,34);
+   SetChatEdit(Obj("ASSISTANT_INPUT"),assistant_draft,20,266,390,34);
    SetButton(Obj("ASSISTANT_CONSENT"),assistant_consent_armed?"CONSENTIMENTO OPENAI: SIM":"CONSENTIMENTO OPENAI: NAO",20,307,220,28);
    SetButton(Obj("ASSISTANT_SEND"),"ENVIAR",248,307,162,28);
    SetButton(Obj("ASSISTANT_TEST"),"TESTAR",20,338,82,26);
@@ -1671,6 +1676,7 @@ void SendAssistantMessage(){
    if(assistant_answer=="") assistant_answer="Resposta vazia ou formato inesperado.";
    assistant_answer_page=0;
    RenderAssistantAnswer();
+   assistant_draft="";
    ObjectSetString(0,Obj("ASSISTANT_INPUT"),OBJPROP_TEXT,"");
 }
 void RefreshDiscoveries(){
@@ -1806,6 +1812,8 @@ void RunHistoricalSimulator(){
    SetLabel(Obj("INFO5"),"Historico hipotetico • ordens: NAO • REAL: BLOQUEADO",20,441,8,C'255,155,155');
 }
 void RenderView(){
+   if(active_view=="ASSISTENTE" && ObjectFind(0,Obj("ASSISTANT_INPUT"))>=0)
+      assistant_draft=ObjectGetString(0,Obj("ASSISTANT_INPUT"),OBJPROP_TEXT);
    ClearAssistantControls();
    // Non-operational modules must never retain visible cockpit/recovery controls.
    if(active_view!="COCKPIT") ClearCockpitFields();
