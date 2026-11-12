@@ -1918,7 +1918,6 @@ void RenderView(){
       SetLabel(Obj("INFO5"),"Noticias: atualizando...",20,441,9,C'205,215,230');
       SetButton(Obj("ANALYZE"),"ANALISAR",20,284,172,30);
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
-      SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
       SetLabel(Obj("CYCLEID"),"Ciclo DEMO: "+(last_cycle_id==""?"aguardando":"atualizado"),20,465,8,C'145,160,180');
       SetLabel(Obj("EXTID"),"Execucao: "+(last_external_id==""?"sem atividade":"registrada"),20,483,8,C'145,160,180');
