@@ -48,6 +48,7 @@ bool health_ok=false;
 datetime last_analysis_bar=0;
 datetime last_compact_cache_refresh=0;
 bool panel_visible=false;
+bool module_menu_open=false;
 int panel_x=0;
 int panel_width=360;
 int panel_height=440;
@@ -408,17 +409,13 @@ void RenderNavigation(){
       ObjectSetInteger(0,area_button,OBJPROP_BGCOLOR,selected?C'24,86,72':C'35,43,58');
    }
    int count=AreaModuleCount(active_area);
-   int columns=(active_area=="CENTRAL")?4:3;
-   int gap=6;
-   int available_width=394;
-   int module_width=(available_width-gap*(columns-1))/columns;
+   SetNavigationButton(Obj("MODULES"),(module_menu_open?"FECHAR MÓDULOS":"MÓDULO: "+active_module),18,137,394,30);
+   ObjectSetInteger(0,Obj("MODULES"),OBJPROP_BGCOLOR,C'24,86,72');
    for(int i=0;i<7;i++){
       string name=AreaModuleName(active_area,i);
       string button=Obj("M"+IntegerToString(i+1));
-      if(i<count && name!=""){
-         int column=i%columns;
-         int row=i/columns;
-         SetNavigationButton(button,AreaModuleLabel(name),18+column*(module_width+gap),137+row*37,module_width,36);
+      if(module_menu_open && i<count && name!=""){
+         SetNavigationButton(button,AreaModuleLabel(name),18,174+i*38,394,34);
          ObjectSetInteger(0,button,OBJPROP_BGCOLOR,(name==active_module)?C'24,86,72':C'35,43,58');
       }else if(ObjectFind(0,button)>=0) ObjectDelete(0,button);
    }
@@ -430,6 +427,7 @@ void SelectArea(string area){
    kill_switch_confirm_reason="";
    assistant_consent_armed=false;
    active_area=area;
+   module_menu_open=false;
    active_module=AreaModuleName(active_area,0);
    active_view=ViewForModule(active_area,active_module);
    Panel();
@@ -443,6 +441,7 @@ void SelectModule(int index){
    kill_switch_confirm_reason="";
    assistant_consent_armed=false;
    active_module=AreaModuleName(active_area,index);
+   module_menu_open=false;
    active_view=ViewForModule(active_area,active_module);
    Panel();
    RenderView();
@@ -2383,6 +2382,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    }
    if(id!=CHARTEVENT_OBJECT_CLICK) return;
    if(sparam==Obj("PANEL_TOGGLE") || sparam==Obj("PANEL_TOGGLE_BG")) { TogglePanel(); return; }
+   if(sparam==Obj("MODULES")) { module_menu_open=!module_menu_open; Panel(); RenderView(); ChartRedraw(); return; }
    if(sparam==Obj("A1")) { SelectArea("COCKPIT"); return; }
    else if(sparam==Obj("A2")) { SelectArea("ANÁLISE"); return; }
    else if(sparam==Obj("A3")) { SelectArea("ESTUDO"); return; }
