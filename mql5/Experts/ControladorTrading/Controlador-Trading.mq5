@@ -2354,7 +2354,10 @@ void OnTimer(){
       return;
    }
    bool layout_changed=RefreshPanelLayout();
-   if(layout_changed){ Panel(); RenderView(); ChartRedraw(); }
+   // RefreshPanelLayout already moves and resizes existing objects. Do not
+   // rerender the active view here: that would recreate edit fields and erase
+   // unsent simulator, discovery, and Kill Switch input while resizing.
+   if(layout_changed) ChartRedraw();
    RefreshPanelToggle();
    RefreshHealth();
    if(active_view=="COCKPIT") { RefreshSecondary(); RefreshMarketAssets(); }
