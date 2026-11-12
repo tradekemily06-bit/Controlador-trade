@@ -1816,6 +1816,11 @@ void RenderView(){
    if(active_view=="ASSISTENTE" && ObjectFind(0,Obj("ASSISTANT_INPUT"))>=0)
       assistant_draft=ObjectGetString(0,Obj("ASSISTANT_INPUT"),OBJPROP_TEXT);
    ClearAssistantControls();
+   // Clear shared information rows on every view transition; several read-only
+   // screens intentionally render fewer than five rows, so old text must not linger.
+   string transient_info[]={"INFO1","INFO2","INFO3","INFO4","INFO5","INFO6","INFO7","FISCAL_FOOTER"};
+   for(int row=0;row<ArraySize(transient_info);row++)
+      if(ObjectFind(0,Obj(transient_info[row]))>=0) ObjectDelete(0,Obj(transient_info[row]));
    // Non-operational modules must never retain visible cockpit/recovery controls.
    if(active_view!="COCKPIT") ClearCockpitFields();
    string simulator_controls[]={"SIM_STOP","SIM_TARGET","SIM_QTY","SIM_MULT","SIM_SPREAD","SIM_SLIP","SIM_COMM","SIM_RUN","SIM_L1","SIM_L2","SIM_L3","SIM_L4"};
