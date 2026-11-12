@@ -912,12 +912,13 @@ void RefreshFiscal(){
    string history_page=JsonRawObject(r,"history_page");
    fiscal_history_total=(int)StringToInteger(JsonValue(history_page,"total"));
    fiscal_history_has_more=(JsonValue(history_page,"has_more")=="true");
-   SetLabel(Obj("INFO1"),"Brasil "+StringToUpper(fiscal_period_key)+": reserva R$ "+(period_reserve==""?"—":DoubleToString(StringToDouble(period_reserve),2))+" | resultado R$ "+(period_result==""?"—":DoubleToString(StringToDouble(period_result),2)),20,361,8,C'88,214,141');
+   string period_label=(fiscal_period_key=="day"?"DIA":(fiscal_period_key=="week"?"SEMANA":(fiscal_period_key=="month"?"MES":"ANO")));
+   SetLabel(Obj("INFO1"),"Brasil "+period_label+": reserva R$ "+(period_reserve==""?"—":DoubleToString(StringToDouble(period_reserve),2))+" | resultado R$ "+(period_result==""?"—":DoubleToString(StringToDouble(period_result),2)),20,361,8,C'88,214,141');
    SetLabel(Obj("INFO2"),"Acumulado Brasil: R$ "+(total==""?"—":DoubleToString(StringToDouble(total),2))+" | lancamentos: "+(period_entries==""?"—":period_entries),20,381,8,C'205,215,230');
    SetLabel(Obj("INFO3"),"Pendencias Brasil: "+(domestic_total==""?"indisponivel":domestic_total)+" | Exterior no periodo: "+(foreign_total==""?"indisponivel":foreign_total),20,401,8,C'205,215,230');
    string records[];
    if(ExtractJsonArrayObjects(r,"history",records)){
-      for(int i=0;i<3;i++){
+      for(int i=0;i<2;i++){
          string line="";
          if(i<ArraySize(records)){
             string date=JsonValue(records[i],"occurred_on");
@@ -929,7 +930,7 @@ void RefreshFiscal(){
          SetLabel(Obj("INFO"+IntegerToString(i+4)),line,20,421+i*20,7,C'205,215,230');
       }
    }else SetLabel(Obj("INFO4"),"Historico indisponivel nesta resposta.",20,421,8,C'255,209,102');
-   SetLabel(Obj("INFO5"),"Historico "+IntegerToString(MathMin(fiscal_history_offset+4,fiscal_history_total))+"/"+IntegerToString(fiscal_history_total)+" | somente leitura • estimativa",20,481,7,C'255,209,102');
+   SetLabel(Obj("INFO6"),"Historico "+IntegerToString((int)MathMin(fiscal_history_offset+4,fiscal_history_total))+"/"+IntegerToString(fiscal_history_total)+" | somente leitura • estimativa",20,461,7,C'255,209,102');
 }
 void RefreshAssistantStatus(){
    string r; int code=0;
@@ -1713,7 +1714,7 @@ void RenderView(){
    for(int k=0;k<ArraySize(replay_controls);k++) if(ObjectFind(0,Obj(replay_controls[k]))>=0) ObjectDelete(0,Obj(replay_controls[k]));
    string kill_controls[]={"KILL_REASON","KILL_CONFIRM","KILL_ACTIVATE"};
    for(int k=0;k<ArraySize(kill_controls);k++) if(ObjectFind(0,Obj(kill_controls[k]))>=0) ObjectDelete(0,Obj(kill_controls[k]));
-   string action_buttons[]={"ANALYZE","CYCLE","SAVE","CLOSE","ONBOARD_PREV","ONBOARD_NEXT","ONBOARD_PAGE"};
+   string action_buttons[]={"ANALYZE","CYCLE","SAVE","CLOSE","ONBOARD_PREV","ONBOARD_NEXT","ONBOARD_PAGE","FISCAL_DAY","FISCAL_WEEK","FISCAL_MONTH","FISCAL_YEAR","FISCAL_PREV","FISCAL_NEXT"};
    for(int i=0;i<ArraySize(action_buttons);i++)
       if(ObjectFind(0,Obj(action_buttons[i]))>=0) ObjectDelete(0,Obj(action_buttons[i]));
    if(active_view=="UNAVAILABLE"){
