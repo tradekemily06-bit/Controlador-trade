@@ -268,31 +268,31 @@ string AreaModuleName(string area,int index){
    return "";
 }
 string AreaModuleLabel(string module){
-   if(module=="Operação") return "OPER.";
-   if(module=="Motor de Decisão") return "MOTOR";
-   if(module=="Gestão de Risco") return "RISCO";
-   if(module=="Notificações") return "ALERT.";
-   if(module=="Ambiente MT5 DEMO / Simulação") return "MT5 DEMO";
-   if(module=="Kill Switch") return "KILL";
-   if(module=="Análise de Mercado") return "MERCADO";
-   if(module=="Memória") return "MEMÓRIA";
-   if(module=="Estatísticas") return "ESTAT.";
-   if(module=="Relatórios") return "RELAT.";
-   if(module=="Laboratório") return "LAB";
-   if(module=="Replay") return "REPLAY";
-   if(module=="Simulador") return "SIMUL.";
-   if(module=="Aprendizado") return "APREND.";
-   if(module=="Descobertas") return "DESCOB.";
-   if(module=="Escola / Tutorial / Onboarding") return "ESCOLA";
-   if(module=="Reserva Fiscal") return "RESERVA";
-   if(module=="Assistente do Ecossistema") return "ASSIST.";
-   if(module=="Financeiro") return "FINANC.";
-   if(module=="Diário Operacional") return "DIARIO";
-   if(module=="Configurações") return "CONFIG";
-   if(module=="Auditoria") return "AUDIT.";
-   if(module=="Segurança") return "SEGUR.";
-   if(module=="Conexões") return "CONEX.";
-   if(module=="Multi-Broker") return "BROKER";
+   if(module=="Operação") return "Operação";
+   if(module=="Motor de Decisão") return "Motor de\\nDecisão";
+   if(module=="Gestão de Risco") return "Gestão de\\nRisco";
+   if(module=="Notificações") return "Notificações";
+   if(module=="Ambiente MT5 DEMO / Simulação") return "Ambiente\\nMT5 DEMO /\\nSimulação";
+   if(module=="Kill Switch") return "Kill Switch";
+   if(module=="Análise de Mercado") return "Análise de\\nMercado";
+   if(module=="Memória") return "Memória";
+   if(module=="Estatísticas") return "Estatísticas";
+   if(module=="Relatórios") return "Relatórios";
+   if(module=="Laboratório") return "Laboratório";
+   if(module=="Replay") return "Replay";
+   if(module=="Simulador") return "Simulador";
+   if(module=="Aprendizado") return "Aprendizado";
+   if(module=="Descobertas") return "Descobertas";
+   if(module=="Escola / Tutorial / Onboarding") return "Escola /\\nTutorial /\\nOnboarding";
+   if(module=="Reserva Fiscal") return "Reserva\\nFiscal";
+   if(module=="Assistente do Ecossistema") return "Assistente do\\nEcossistema";
+   if(module=="Financeiro") return "Financeiro";
+   if(module=="Diário Operacional") return "Diário\\nOperacional";
+   if(module=="Configurações") return "Configurações";
+   if(module=="Auditoria") return "Auditoria";
+   if(module=="Segurança") return "Segurança";
+   if(module=="Conexões") return "Conexões";
+   if(module=="Multi-Broker") return "Multi-\\nBroker";
    return "—";
 }
 string ViewForModule(string area,string module){
@@ -328,11 +328,28 @@ string ViewForModule(string area,string module){
    }
    return "UNAVAILABLE";
 }
+void SetNavigationButton(string name,string text,int x,int y,int w,int h){
+   if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0);
+   ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,SX(x));
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,SY(y));
+   ObjectSetInteger(0,name,OBJPROP_XSIZE,SW(w));
+   ObjectSetInteger(0,name,OBJPROP_YSIZE,SH(h));
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,MathMax(7,(int)MathRound(8*MathMin(panel_sx,panel_sy))));
+   ObjectSetInteger(0,name,OBJPROP_COLOR,clrWhite);
+   ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'35,43,58');
+   ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'65,78,100');
+   ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI");
+   ObjectSetString(0,name,OBJPROP_TEXT,text);
+   ObjectSetInteger(0,name,OBJPROP_ALIGN,ALIGN_CENTER);
+   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
+}
 void RenderNavigation(){
-   string area_labels[6]={"COCKPIT","ANÁLISE","ESTUDO","FISCAL","ASSIST.","CENTRAL"};
+   string area_labels[6]={"COCKPIT","ANÁLISE","ESTUDO","RESERVA\\nFISCAL","ASSISTENTE DO\\nECOSSISTEMA","CENTRAL"};
    for(int i=0;i<6;i++){
       string area_button=Obj("A"+IntegerToString(i+1));
-      SetButton(area_button,area_labels[i],18+i*54,67,52,25);
+      SetNavigationButton(area_button,area_labels[i],18+i*65,67,63,28);
       bool selected=(i==0 && active_area=="COCKPIT") || (i==1 && active_area=="ANÁLISE") || (i==2 && active_area=="ESTUDO") || (i==3 && active_area=="RESERVA FISCAL") || (i==4 && active_area=="ASSISTENTE DO ECOSSISTEMA") || (i==5 && active_area=="CENTRAL");
       ObjectSetInteger(0,area_button,OBJPROP_BGCOLOR,selected?C'24,86,72':C'35,43,58');
    }
@@ -340,7 +357,7 @@ void RenderNavigation(){
       string name=AreaModuleName(active_area,i);
       string button=Obj("M"+IntegerToString(i+1));
       if(i<AreaModuleCount(active_area) && name!="")
-         SetButton(button,AreaModuleLabel(name),18+i*54,98,52,25);
+         SetNavigationButton(button,AreaModuleLabel(name),18+i*54,98,52,42);
       if(i<AreaModuleCount(active_area) && name!="") ObjectSetInteger(0,button,OBJPROP_BGCOLOR,(name==active_module)?C'24,86,72':C'35,43,58');
       else if(ObjectFind(0,button)>=0) ObjectDelete(0,button);
    }
