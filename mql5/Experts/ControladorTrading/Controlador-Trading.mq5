@@ -46,6 +46,7 @@ bool leverage_enabled=false;
 bool runtime_ok=false;
 bool health_ok=false;
 datetime last_analysis_bar=0;
+datetime last_compact_cache_refresh=0;
 bool panel_visible=false;
 int panel_x=0;
 int panel_width=360;
@@ -2017,6 +2018,30 @@ void RenderView(){
    }
 
 }
+void RefreshCompactCachedAnalysis(){
+   datetime now=TimeLocal();
+   if(last_compact_cache_refresh>0 && now-last_compact_cache_refresh<30) return;
+   last_compact_cache_refresh=now;
+   if(!health_ok) return;
+   string symbol=_Symbol;
+   string timeframe=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
+   string response=""; int code=0;
+   string path="/api/runtime/analysis/latest?symbol="+symbol+"&timeframe="+timeframe;
+   if(!Http("GET",path,"",response,code)){
+      UpdateCompactSignal("INDISPONIVEL","",false);
+      return;
+   }
+   if(JsonValue(response,"available")!="true"){
+      UpdateCompactSignal("INDISPONIVEL","",false);
+      return;
+   }
+   string signal=JsonObjectValue(response,"analysis","signal");
+   if(signal=="") signal=JsonObjectValue(response,"analysis","decision");
+   if(signal=="") signal="AGUARDAR";
+   string quality=JsonObjectValue(response,"analysis","quality");
+   string score=JsonValue(quality,"score");
+   UpdateCompactSignal(signal,score,true);
+}
 void RefreshHealth(){
    if(active_view=="UNAVAILABLE") return;
    string r; int code=0;
@@ -2281,6 +2306,7 @@ void OnTimer(){
       RefreshPanelToggle();
       // Keep the compact health indicator current without polling market analysis.
       RefreshHealth();
+      RefreshCompactCachedAnalysis();
       return;
    }
    bool layout_changed=RefreshPanelLayout();
