@@ -1715,8 +1715,9 @@ void SaveDiscovery(){
    string statement=ObjectGetString(0,Obj("DISC_STATEMENT"),OBJPROP_TEXT);
    string concepts=ObjectGetString(0,Obj("DISC_CONCEPTS"),OBJPROP_TEXT);
    string evidence=ObjectGetString(0,Obj("DISC_EVIDENCE"),OBJPROP_TEXT);
-   StringTrimLeft(resource_id); StringTrimRight(resource_id);
-   StringTrimLeft(statement); StringTrimRight(statement);
+   resource_id=StringTrimLeft(resource_id); resource_id=StringTrimRight(resource_id);
+   statement=StringTrimLeft(statement); statement=StringTrimRight(statement);
+   evidence=StringTrimLeft(evidence); evidence=StringTrimRight(evidence);
    if(resource_id=="" || statement=="" || StringLen(statement)>3000 || StringLen(concepts)>300 || StringLen(evidence)>1000){
       SetLabel(Obj("INFO1"),"Informe ID e observacao (ate 3000 caracteres); conceitos ate 300 e evidencia ate 1000.",20,361,8,C'255,118,118'); return;
    }
@@ -1725,7 +1726,7 @@ void SaveDiscovery(){
    string concepts_json="[";
    for(int i=0;i<concept_count;i++){
       string concept=concept_items[i];
-      StringTrimLeft(concept); StringTrimRight(concept);
+      concept=StringTrimLeft(concept); concept=StringTrimRight(concept);
       if(concept=="") continue;
       if(StringLen(concepts_json)>1) concepts_json+=",";
       concepts_json+=q+JsonEscape(concept)+q;
@@ -1770,7 +1771,7 @@ void RunHistoricalReplay(){
    SetLabel(Obj("INFO5"),"Ordens enviadas: "+(orders==""?"nao confirmado":orders)+" • Execucao: NAO",20,441,8,C'255,155,155');
 }
 bool IsPlainDecimalInput(string value){
-   StringTrimLeft(value); StringTrimRight(value);
+   value=StringTrimLeft(value); value=StringTrimRight(value);
    if(value=="") return false;
    int digits=0, dots=0;
    for(int i=0;i<StringLen(value);i++){
@@ -1790,13 +1791,13 @@ void RunHistoricalSimulator(){
    string spread_text=ObjectGetString(0,Obj("SIM_SPREAD"),OBJPROP_TEXT);
    string slippage_text=ObjectGetString(0,Obj("SIM_SLIP"),OBJPROP_TEXT);
    string commission_text=ObjectGetString(0,Obj("SIM_COMM"),OBJPROP_TEXT);
-   StringTrimLeft(stop_text); StringTrimRight(stop_text);
-   StringTrimLeft(target_text); StringTrimRight(target_text);
-   StringTrimLeft(quantity_text); StringTrimRight(quantity_text);
-   StringTrimLeft(multiplier_text); StringTrimRight(multiplier_text);
-   StringTrimLeft(spread_text); StringTrimRight(spread_text);
-   StringTrimLeft(slippage_text); StringTrimRight(slippage_text);
-   StringTrimLeft(commission_text); StringTrimRight(commission_text);
+   stop_text=StringTrimLeft(stop_text); stop_text=StringTrimRight(stop_text);
+   target_text=StringTrimLeft(target_text); target_text=StringTrimRight(target_text);
+   quantity_text=StringTrimLeft(quantity_text); quantity_text=StringTrimRight(quantity_text);
+   multiplier_text=StringTrimLeft(multiplier_text); multiplier_text=StringTrimRight(multiplier_text);
+   spread_text=StringTrimLeft(spread_text); spread_text=StringTrimRight(spread_text);
+   slippage_text=StringTrimLeft(slippage_text); slippage_text=StringTrimRight(slippage_text);
+   commission_text=StringTrimLeft(commission_text); commission_text=StringTrimRight(commission_text);
    if(!IsPlainDecimalInput(stop_text) || !IsPlainDecimalInput(target_text) ||
       !IsPlainDecimalInput(quantity_text) || !IsPlainDecimalInput(multiplier_text) ||
       !IsPlainDecimalInput(spread_text) || !IsPlainDecimalInput(slippage_text) ||
