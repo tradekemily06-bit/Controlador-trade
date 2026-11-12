@@ -992,7 +992,7 @@ void RefreshFiscal(){
          SetLabel(Obj("INFO"+IntegerToString(i+4)),line,20,421+i*16,7,C'205,215,230');
       }
    }else SetLabel(Obj("INFO4"),"Historico indisponivel nesta resposta.",20,421,8,C'255,209,102');
-   SetLabel(Obj("INFO6"),"REAL: BLOQUEADO • Historico "+IntegerToString((int)MathMin(fiscal_history_offset+4,fiscal_history_total))+"/"+IntegerToString(fiscal_history_total)+" • estimativa",20,489,7,C'255,209,102');
+   SetLabel(Obj("FISCAL_FOOTER"),"REAL: BLOQUEADO • Historico "+IntegerToString((int)MathMin(fiscal_history_offset+4,fiscal_history_total))+"/"+IntegerToString(fiscal_history_total)+" • estimativa",20,489,7,C'255,209,102');
 }
 void RefreshFiscalDomesticPending(){
    string response=""; int code=0;
@@ -1556,7 +1556,7 @@ void RefreshAuditView(){
    SetLabel(Obj("INFO5"),"Persistencia: "+(persistence==""?"nao informada":persistence)+" • consulta somente leitura",20,461,7,persistence=="DURABLE"?C'88,214,141':C'255,209,102');
 }
 void ClearCockpitFields(){
-   string names[]={"SYM","TF","SYML","TFL","MARKET","SIGNAL","SCORE","REASON","MODE","CYCLEID","EXTID","PRICE","SAFE","RECOVERY_TITLE","RECOVERY_ITEM","REC_REFRESH","REC_PREV","REC_NEXT","REC_RECONCILE","REC_CLOSE","RECOVERY_STATUS","INFO6"};
+   string names[]={"SYM","TF","SYML","TFL","MARKET","SIGNAL","SCORE","REASON","MODE","CYCLEID","EXTID","PRICE","SAFE","RECOVERY_TITLE","RECOVERY_ITEM","REC_REFRESH","REC_PREV","REC_NEXT","REC_RECONCILE","REC_CLOSE","RECOVERY_STATUS","INFO6","FISCAL_FOOTER"};
    for(int i=0;i<ArraySize(names);i++)
       if(ObjectFind(0,Obj(names[i]))>=0) ObjectDelete(0,Obj(names[i]));
 }
