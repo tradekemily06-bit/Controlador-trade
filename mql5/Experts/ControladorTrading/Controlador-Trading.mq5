@@ -239,27 +239,27 @@ string AreaModuleName(string area,int index){
       if(index==0) return "Operação";
       if(index==1) return "Motor de Decisão";
       if(index==2) return "Gestão de Risco";
-      if(index==3) return "Notificações";
+      if(index==3) return "Notifica-\\nções";
       if(index==4) return "Ambiente MT5 DEMO / Simulação";
       if(index==5) return "Kill Switch";
    }else if(area=="ANÁLISE"){
       if(index==0) return "Análise de Mercado";
       if(index==1) return "Memória";
-      if(index==2) return "Estatísticas";
+      if(index==2) return "Estatís-\\nticas";
       if(index==3) return "Relatórios";
    }else if(area=="ESTUDO"){
-      if(index==0) return "Laboratório";
+      if(index==0) return "Laborató-\\nrio";
       if(index==1) return "Replay";
       if(index==2) return "Simulador";
-      if(index==3) return "Aprendizado";
-      if(index==4) return "Descobertas";
+      if(index==3) return "Aprendi-\\nzado";
+      if(index==4) return "Descober-\\ntas";
       if(index==5) return "Escola / Tutorial / Onboarding";
    }else if(area=="RESERVA FISCAL") return "Reserva Fiscal";
    else if(area=="ASSISTENTE DO ECOSSISTEMA") return "Assistente do Ecossistema";
    else if(area=="CENTRAL"){
       if(index==0) return "Financeiro";
       if(index==1) return "Diário Operacional";
-      if(index==2) return "Configurações";
+      if(index==2) return "Configu-\\nrações";
       if(index==3) return "Auditoria";
       if(index==4) return "Segurança";
       if(index==5) return "Conexões";
@@ -349,7 +349,7 @@ void RenderNavigation(){
    string area_labels[6]={"COCKPIT","ANÁLISE","ESTUDO","RESERVA\nFISCAL","ASSISTENTE DO\nECOSSISTEMA","CENTRAL"};
    for(int i=0;i<6;i++){
       string area_button=Obj("A"+IntegerToString(i+1));
-      SetNavigationButton(area_button,area_labels[i],18+i*65,67,63,28);
+      SetNavigationButton(area_button,area_labels[i],18+i*65,67,63,34);
       bool selected=(i==0 && active_area=="COCKPIT") || (i==1 && active_area=="ANÁLISE") || (i==2 && active_area=="ESTUDO") || (i==3 && active_area=="RESERVA FISCAL") || (i==4 && active_area=="ASSISTENTE DO ECOSSISTEMA") || (i==5 && active_area=="CENTRAL");
       ObjectSetInteger(0,area_button,OBJPROP_BGCOLOR,selected?C'24,86,72':C'35,43,58');
    }
@@ -357,7 +357,7 @@ void RenderNavigation(){
       string name=AreaModuleName(active_area,i);
       string button=Obj("M"+IntegerToString(i+1));
       if(i<AreaModuleCount(active_area) && name!="")
-         SetNavigationButton(button,AreaModuleLabel(name),18+i*54,98,52,42);
+         SetNavigationButton(button,AreaModuleLabel(name),18+i*54,103,52,42);
       if(i<AreaModuleCount(active_area) && name!="") ObjectSetInteger(0,button,OBJPROP_BGCOLOR,(name==active_module)?C'24,86,72':C'35,43,58');
       else if(ObjectFind(0,button)>=0) ObjectDelete(0,button);
    }
