@@ -318,28 +318,28 @@ string AreaModuleLabel(string module){
    if(module=="Operação") return "Operação";
    if(module=="Motor de Decisão") return "Motor de\nDecisão";
    if(module=="Gestão de Risco") return "Gestão de\nRisco";
-   if(module=="Notificações") return "Notifica\nções";
+   if(module=="Notificações") return "Notificações";
    if(module=="Ambiente MT5 DEMO / Simulação") return "Ambiente\nMT5 DEMO\nSimulação";
    if(module=="Kill Switch") return "Kill Switch";
    if(module=="Análise de Mercado") return "Análise de\nMercado";
    if(module=="Memória") return "Memória";
-   if(module=="Estatísticas") return "Estatís\nticas";
+   if(module=="Estatísticas") return "Estatísticas";
    if(module=="Relatórios") return "Relatórios";
-   if(module=="Laboratório") return "Laborató\nrio";
+   if(module=="Laboratório") return "Laboratório";
    if(module=="Replay") return "Replay";
    if(module=="Simulador") return "Simulador";
-   if(module=="Aprendizado") return "Aprendi\nzado";
-   if(module=="Descobertas") return "Descober\ntas";
-   if(module=="Escola / Tutorial / Onboarding") return "Escola /\nTutorial /\nOnboarding";
+   if(module=="Aprendizado") return "Aprendizado";
+   if(module=="Descobertas") return "Descobertas";
+   if(module=="Escola / Tutorial / Onboarding") return "Escola / Tutorial\nOnboarding";
    if(module=="Reserva Fiscal") return "Reserva\nFiscal";
    if(module=="Assistente do Ecossistema") return "Assistente do\nEcossistema";
    if(module=="Financeiro") return "Financeiro";
    if(module=="Diário Operacional") return "Diário\nOperacional";
-   if(module=="Configurações") return "Configu\nrações";
+   if(module=="Configurações") return "Configurações";
    if(module=="Auditoria") return "Auditoria";
    if(module=="Segurança") return "Segurança";
    if(module=="Conexões") return "Conexões";
-   if(module=="Multi-Broker") return "Multi-\nBroker";
+   if(module=="Multi-Broker") return "Multi-Broker";
    return "—";
 }
 string ViewForModule(string area,string module){
