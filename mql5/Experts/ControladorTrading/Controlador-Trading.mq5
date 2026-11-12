@@ -116,12 +116,47 @@ int SH(int h){ return MathMax(1,(int)MathRound(h*panel_sy)); }
 void RefreshPanelLayout(){
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   panel_width=MathMin(InpPanelWidth,MathMax(280,(int)MathRound(cw*0.34)));
-   panel_width=MathMin(panel_width,MathMax(220,cw-24));
-   panel_height=MathMin(InpPanelHeight,MathMax(280,(int)MathRound(ch*0.50)));
-   panel_x=MathMax(12,cw-panel_width-12);
-   panel_sx=(double)panel_width/430.0;
-   panel_sy=(double)panel_height/670.0;
+   int old_x=panel_x;
+   double old_sx=panel_sx;
+   double old_sy=panel_sy;
+   int new_width=MathMin(InpPanelWidth,MathMax(280,(int)MathRound(cw*0.34)));
+   new_width=MathMin(new_width,MathMax(220,cw-24));
+   int new_height=MathMin(InpPanelHeight,MathMax(280,(int)MathRound(ch*0.50)));
+   int new_x=MathMax(12,cw-new_width-12);
+   double new_sx=(double)new_width/430.0;
+   double new_sy=(double)new_height/670.0;
+   bool changed=(new_x!=old_x || new_width!=panel_width || new_height!=panel_height);
+   if(changed && old_sx>0.0 && old_sy>0.0){
+      double ratio_x=new_sx/old_sx;
+      double ratio_y=new_sy/old_sy;
+      int total=ObjectsTotal(0,-1,-1);
+      for(int i=total-1;i>=0;i--){
+         string name=ObjectName(0,i,-1,-1);
+         if(StringFind(name,P)!=0 || name==Obj("BG")) continue;
+         if(name==Obj("PANEL_TOGGLE") || name==Obj("PANEL_TOGGLE_BG") ||
+            name==Obj("COMPACT_SIGNAL") || name==Obj("COMPACT_SCORE")) continue;
+         int old_obj_x=(int)ObjectGetInteger(0,name,OBJPROP_XDISTANCE);
+         int old_obj_y=(int)ObjectGetInteger(0,name,OBJPROP_YDISTANCE);
+         ObjectSetInteger(0,name,OBJPROP_XDISTANCE,new_x+(int)MathRound((old_obj_x-old_x)*ratio_x));
+         ObjectSetInteger(0,name,OBJPROP_YDISTANCE,18+(int)MathRound((old_obj_y-18)*ratio_y));
+         ENUM_OBJECT object_type=(ENUM_OBJECT)ObjectGetInteger(0,name,OBJPROP_TYPE);
+         if(object_type==OBJ_BUTTON || object_type==OBJ_EDIT || object_type==OBJ_RECTANGLE_LABEL){
+            int old_obj_width=(int)ObjectGetInteger(0,name,OBJPROP_XSIZE);
+            int old_obj_height=(int)ObjectGetInteger(0,name,OBJPROP_YSIZE);
+            ObjectSetInteger(0,name,OBJPROP_XSIZE,MathMax(1,(int)MathRound(old_obj_width*ratio_x)));
+            ObjectSetInteger(0,name,OBJPROP_YSIZE,MathMax(1,(int)MathRound(old_obj_height*ratio_y)));
+         }
+         if(object_type==OBJ_LABEL || object_type==OBJ_BUTTON || object_type==OBJ_EDIT){
+            int old_font=(int)ObjectGetInteger(0,name,OBJPROP_FONTSIZE);
+            ObjectSetInteger(0,name,OBJPROP_FONTSIZE,MathMax(8,(int)MathRound(old_font*MathMin(ratio_x,ratio_y))));
+         }
+      }
+   }
+   panel_x=new_x;
+   panel_width=new_width;
+   panel_height=new_height;
+   panel_sx=new_sx;
+   panel_sy=new_sy;
    string bg=Obj("BG");
    if(ObjectFind(0,bg)>=0){
       ObjectSetInteger(0,bg,OBJPROP_XDISTANCE,panel_x);
