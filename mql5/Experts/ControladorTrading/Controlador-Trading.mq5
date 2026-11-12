@@ -425,6 +425,7 @@ void SelectArea(string area){
    if(active_view=="ASSISTENTE" && ObjectFind(0,Obj("ASSISTANT_INPUT"))>=0)
       assistant_draft=ObjectGetString(0,Obj("ASSISTANT_INPUT"),OBJPROP_TEXT);
    kill_switch_confirm_armed=false;
+   kill_switch_confirm_reason="";
    assistant_consent_armed=false;
    active_area=area;
    active_module=AreaModuleName(active_area,0);
@@ -437,6 +438,7 @@ void SelectModule(int index){
    if(active_view=="ASSISTENTE" && ObjectFind(0,Obj("ASSISTANT_INPUT"))>=0)
       assistant_draft=ObjectGetString(0,Obj("ASSISTANT_INPUT"),OBJPROP_TEXT);
    kill_switch_confirm_armed=false;
+   kill_switch_confirm_reason="";
    assistant_consent_armed=false;
    active_module=AreaModuleName(active_area,index);
    active_view=ViewForModule(active_area,active_module);
