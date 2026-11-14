@@ -78,7 +78,9 @@ def test_foreign_taxonomy_exposes_requirements_for_limited_planning_estimate():
     assert investment["calculation_status"] == "PARTIAL_PLANNING_ONLY"
     assert investment["booking_enabled"] is True
     assert any("Forex no exterior tem entendimento específico" in item for item in investment["limitations"])
-    assert crypto["calculation_status"] == "NOT_AUTOMATED"
+    assert crypto["calculation_status"] == "PARTIAL_PLANNING_ONLY"
+    assert crypto["booking_enabled"] is True
+    assert any("Autocustódia pelo residente no Brasil" in item for item in crypto["limitations"])
     assert crypto["booking_enabled"] is False
 
 
