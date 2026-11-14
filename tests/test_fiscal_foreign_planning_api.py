@@ -55,7 +55,7 @@ def _pending_payload(reference="FOREIGN-PLANNING-001", **overrides):
         "occurred_on": "2026-11-05",
         "fx_rate": 5.0,
         "fx_date": "2026-11-05",
-        "fx_source": "Banco Central do Brasil - PTAX venda",
+        "fx_source": "Banco Central do Brasil - PTAX compra",
         "fx_conversion_method": "PTAX_SELL",
         "tax_residency_at_event": "BRAZIL",
         "income_nature": "TRADING_RESULT",
@@ -97,8 +97,8 @@ def test_foreign_financial_investment_estimate_requires_explicit_confirmation_an
             "conversion_basis_confirmed": True,
             "acquisition_fx_rate": 4.8,
             "acquisition_fx_date": "2026-10-01",
-            "acquisition_fx_source": "Banco Central do Brasil - PTAX venda",
-            "acquisition_fx_method": "PTAX_SELL",
+            "acquisition_fx_source": "Banco Central do Brasil - PTAX compra",
+            "acquisition_fx_method": "PTAX_BUY",
         },
     )
 
@@ -121,7 +121,7 @@ def test_foreign_financial_investment_estimate_requires_explicit_confirmation_an
     assert evidence["declared_result_brl"] == 500.0
     assert evidence["declared_result_brl_verification"] == "USER_DECLARED_NOT_VERIFIED"
     assert evidence["acquisition_cost_original_currency"] == 1000.0
-    assert evidence["acquisition_fx_method"] == "PTAX_SELL"
+    assert evidence["acquisition_fx_method"] == "PTAX_BUY"
     assert evidence["acquisition_fx_date"] == "2026-10-01"
     assert evidence["acquisition_fx_verification"] == "USER_DECLARED_NOT_VERIFIED"
     assert evidence["jurisdiction"] == "Estados Unidos"
@@ -197,15 +197,15 @@ def test_foreign_estimate_requires_separate_acquisition_and_liquidation_fx_basis
     }
     invalid_bases = [
         {**base_payload, "acquisition_cost": None, "acquisition_fx_rate": 4.8, "acquisition_fx_date": "2026-10-01",
-         "acquisition_fx_source": "BCB PTAX", "acquisition_fx_method": "PTAX_SELL"},
-        {**base_payload, "acquisition_fx_rate": 4.8, "acquisition_fx_date": "2026-10-01",
          "acquisition_fx_source": "BCB PTAX", "acquisition_fx_method": "PTAX_BUY"},
-        {**base_payload, "acquisition_fx_rate": 4.8, "acquisition_fx_date": "2026-11-06",
+        {**base_payload, "acquisition_fx_rate": 4.8, "acquisition_fx_date": "2026-10-01",
          "acquisition_fx_source": "BCB PTAX", "acquisition_fx_method": "PTAX_SELL"},
+        {**base_payload, "acquisition_fx_rate": 4.8, "acquisition_fx_date": "2026-11-06",
+         "acquisition_fx_source": "BCB PTAX", "acquisition_fx_method": "PTAX_BUY"},
         {**base_payload, "acquisition_fx_rate": 4.8, "acquisition_fx_date": "2026-10-01",
-         "acquisition_fx_source": "Extrato da corretora", "acquisition_fx_method": "PTAX_SELL"},
+         "acquisition_fx_source": "Extrato da corretora", "acquisition_fx_method": "PTAX_BUY"},
         {**base_payload, "acquisition_fx_rate": 4.8, "acquisition_fx_date": "2026-10-01",
-         "acquisition_fx_source": "BCB PTAX", "acquisition_fx_method": "PTAX_SELL",
+         "acquisition_fx_source": "BCB PTAX", "acquisition_fx_method": "PTAX_BUY",
          "declared_result_brl": None},
     ]
     for payload in invalid_bases:
@@ -299,8 +299,8 @@ def test_foreign_crypto_is_eligible_only_with_foreign_institution_custody(tmp_pa
         "acquisition_cost": 1000.0,
         "acquisition_fx_rate": 4.8,
         "acquisition_fx_date": "2026-10-01",
-        "acquisition_fx_source": "Banco Central do Brasil - PTAX venda",
-        "acquisition_fx_method": "PTAX_SELL",
+        "acquisition_fx_source": "Banco Central do Brasil - PTAX compra",
+        "acquisition_fx_method": "PTAX_BUY",
     })
     assert status.startswith("201")
     assert body["entry"]["reserve_rate"] == 15.0
@@ -337,8 +337,8 @@ def test_foreign_crypto_keeps_nft_and_crypto_cfd_pending(tmp_path, monkeypatch):
             "acquisition_cost": 1000.0,
             "acquisition_fx_rate": 4.8,
             "acquisition_fx_date": "2026-10-01",
-            "acquisition_fx_source": "BCB PTAX venda",
-            "acquisition_fx_method": "PTAX_SELL",
+            "acquisition_fx_source": "BCB PTAX compra",
+            "acquisition_fx_method": "PTAX_BUY",
         })
         assert status.startswith("400")
     assert reserve.summary(owner_id)["total_reserved_brl"] == 0.0
@@ -366,8 +366,8 @@ def test_foreign_crypto_rejects_self_custody_in_brazil(tmp_path, monkeypatch):
         "acquisition_cost": 1000.0,
         "acquisition_fx_rate": 4.8,
         "acquisition_fx_date": "2026-10-01",
-        "acquisition_fx_source": "BCB PTAX venda",
-        "acquisition_fx_method": "PTAX_SELL",
+        "acquisition_fx_source": "BCB PTAX compra",
+        "acquisition_fx_method": "PTAX_BUY",
     })
     assert status.startswith("400")
     assert reserve.summary(owner_id)["total_reserved_brl"] == 0.0
@@ -413,8 +413,8 @@ def test_foreign_loss_is_recorded_but_does_not_create_negative_reserve(tmp_path,
             "conversion_basis_confirmed": True,
             "acquisition_fx_rate": 4.8,
             "acquisition_fx_date": "2026-10-01",
-            "acquisition_fx_source": "Banco Central do Brasil - PTAX venda",
-            "acquisition_fx_method": "PTAX_SELL",
+            "acquisition_fx_source": "Banco Central do Brasil - PTAX compra",
+            "acquisition_fx_method": "PTAX_BUY",
         },
     )
 
