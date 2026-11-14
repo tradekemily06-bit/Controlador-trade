@@ -653,7 +653,9 @@ def test_streamlit_simulator_discloses_backtest_assumptions_and_no_execution():
 
 def test_streamlit_foreign_pending_table_displays_fx_evidence_as_not_applied():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
-    assert '"Cotação informada (não aplicada)": item.get("fx_rate")' in source
+    assert '"Cotação (R$/unidade)": item.get("fx_rate")' in source
+    assert '"Valor convertido para planejamento (R$)": item.get("converted_result_brl_for_planning")' in source
+    assert '"Conversão cambial": item.get("fx_conversion_status")' in source
     assert '"Data da cotação": item.get("fx_date")' in source
     assert '"Fonte da cotação": item.get("fx_source")' in source
     assert '"Método declarado": item.get("fx_conversion_method")' in source
