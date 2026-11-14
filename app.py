@@ -778,7 +778,7 @@ def application(environ, start_response):
                 str(item.get("instrument") or ""),
                 str(item.get("contract_type") or ""),
             )).casefold()
-            crypto_terms = ("cripto", "crypto", "bitcoin", "ethereum", "btc", "eth", "solana", "token")
+            crypto_terms = ("cripto", "crypto", "bitcoin", "ethereum", "btc", "eth", "solana", "token", "usdt", "usdc", "xrp", "cardano", "ada", "bnb", "dogecoin", "doge", "polkadot", "dot", "avalanche", "avax", "litecoin", "ltc", "chainlink", "link", "tron", "trx", "toncoin", "shiba", "shib", "polygon", "matic")
             is_crypto_instrument = any(term in instrument_description for term in crypto_terms)
             if candidate_classification == "FOREIGN_CRYPTO":
                 if not is_crypto_instrument:
