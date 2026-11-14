@@ -18,7 +18,7 @@ def make_reserve(path):
 
 def test_defaults_are_separate_and_configurable(tmp_path):
     reserve = make_reserve(tmp_path / "fiscal.sqlite3")
-    assert reserve.settings(OWNER) == {"BR_DAY_TRADE": 20.0}
+    assert reserve.settings(OWNER) == {"BR_DAY_TRADE": 20.0, "BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT": 15.0}
     reserve.update_rate(OWNER, "BR_DAY_TRADE", 18)
     assert reserve.settings(OWNER)["BR_DAY_TRADE"] == 18.0
 
@@ -133,7 +133,7 @@ def test_duplicate_reference_is_rejected_without_double_reserving(tmp_path):
 def test_only_brazil_rate_can_be_updated_and_invalid_set_changes_nothing(tmp_path):
     reserve = make_reserve(tmp_path / "fiscal.sqlite3")
     reserve.update_rates(OWNER, {"BR_DAY_TRADE": 19})
-    assert reserve.settings(OWNER) == {"BR_DAY_TRADE": 19.0}
+    assert reserve.settings(OWNER) == {"BR_DAY_TRADE": 19.0, "BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT": 15.0}
     for attempt in (
         lambda: reserve.update_rate(OWNER, "FOREIGN_FINANCIAL_ASSET", 14),
         lambda: reserve.update_rates(OWNER, {"BR_DAY_TRADE": 18, "FOREIGN_FINANCIAL_ASSET": 14}),
@@ -150,7 +150,7 @@ def test_only_brazil_rate_can_be_updated_and_invalid_set_changes_nothing(tmp_pat
         pass
     else:
         raise AssertionError("invalid Brazilian rate must be rejected")
-    assert reserve.settings(OWNER) == {"BR_DAY_TRADE": 19.0}
+    assert reserve.settings(OWNER) == {"BR_DAY_TRADE": 19.0, "BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT": 15.0}
 
 
 def test_summary_exposes_day_week_month_and_year_totals(tmp_path):
@@ -301,7 +301,7 @@ def test_obsolete_foreign_rate_is_removed_without_deleting_legacy_history(tmp_pa
 
     reserve = FiscalReserve(str(database))
     migrate_fiscal_schema(str(database))
-    assert reserve.settings(OWNER) == {"BR_DAY_TRADE": 20.0}
+    assert reserve.settings(OWNER) == {"BR_DAY_TRADE": 20.0, "BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT": 15.0}
     with sqlite3.connect(database) as db:
         remaining = db.execute(
             "SELECT category FROM fiscal_reserve_settings ORDER BY category"
