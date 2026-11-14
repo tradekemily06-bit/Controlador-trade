@@ -195,7 +195,7 @@ def test_foreign_estimate_requires_separate_acquisition_and_liquidation_fx_basis
         "conversion_basis_confirmed": True,
     }
     invalid_bases = [
-        {**base_payload, "acquisition_fx_rate": None, "acquisition_fx_date": "2026-10-01",
+        {**base_payload, "acquisition_cost": None, "acquisition_fx_rate": 4.8, "acquisition_fx_date": "2026-10-01",
          "acquisition_fx_source": "BCB PTAX", "acquisition_fx_method": "PTAX_BUY"},
         {**base_payload, "acquisition_fx_rate": 4.8, "acquisition_fx_date": "2026-10-01",
          "acquisition_fx_source": "BCB PTAX", "acquisition_fx_method": "PTAX_SELL"},
