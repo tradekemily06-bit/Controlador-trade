@@ -192,13 +192,14 @@ def test_foreign_planning_estimate_rejects_unqualified_records_and_missing_fx(tm
 
 def test_foreign_investment_requires_explicit_foreign_custody_confirmation(tmp_path, monkeypatch):
     _database, owner_id, reserve, queue = _configure(tmp_path, monkeypatch)
-    for reference, custody_location, confirmed_location in [
-        ("FOREIGN-INVESTMENT-NO-CONFIRM", "Custódia estrangeira", False),
-        ("FOREIGN-INVESTMENT-DOMESTIC-CUSTODY", "Custódia no Brasil", True),
+    for reference, custody_location, jurisdiction, confirmed_location in [
+        ("FOREIGN-INVESTMENT-NO-CONFIRM", "Custódia estrangeira", "Estados Unidos", False),
+        ("FOREIGN-INVESTMENT-DOMESTIC-CUSTODY", "Custódia no Brasil", "Estados Unidos", True),
+        ("FOREIGN-INVESTMENT-DOMESTIC-JURISDICTION", "Custódia estrangeira", "Brasil", True),
     ]:
         pending = queue.add_realized_result(
             owner_id,
-            _pending_payload(reference, custody_location=custody_location),
+            _pending_payload(reference, custody_location=custody_location, jurisdiction=jurisdiction),
         )
         status, _ = _request("/api/fiscal-reserve/foreign-planning-estimate", {
             "pending_id": pending["pending_id"],
