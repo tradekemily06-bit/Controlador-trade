@@ -136,6 +136,7 @@ def test_foreign_planning_estimate_rejects_unqualified_records_and_missing_fx(tm
         _pending_payload("FOREIGN-NO-FX-001", fx_rate=None, fx_date=None, fx_source="", fx_conversion_method="NOT_CONVERTED"),
         _pending_payload("FOREIGN-TRANSFER-001", event_type="TRANSFER"),
         _pending_payload("FOREIGN-OTHER-NATURE-001", income_nature="OTHER"),
+        _pending_payload("FOREIGN-BEFORE-LAW-001", occurred_on="2023-12-31"),
     ]
     for payload in invalid_items:
         pending = queue.add_realized_result(owner_id, payload)
