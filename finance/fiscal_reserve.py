@@ -271,7 +271,7 @@ class FiscalReserve:
                 raise ValueError("estimativa estrangeira exige evidências estruturadas")
             if (
                 evidence.get("tax_classification_status") != "USER_DECLARED_PLANNING_ONLY"
-                or evidence.get("candidate_classification") not in {"FOREIGN_FINANCIAL_INVESTMENT", "FOREIGN_CRYPTO"}
+                or evidence.get("candidate_classification") not in {"FOREIGN_FINANCIAL_INVESTMENT", "FOREIGN_CRYPTO", "FOREIGN_DERIVATIVE"}
                 or evidence.get("tax_residency_at_event") != "BRAZIL"
                 or evidence.get("tax_liability_confirmed") is not False
                 or evidence.get("fx_rate_direction") != "BRL_PER_ORIGINAL_CURRENCY_UNIT"
@@ -288,6 +288,13 @@ class FiscalReserve:
                 or evidence.get("crypto_location_verification") != "USER_DECLARED_NOT_VERIFIED"
             ):
                 raise ValueError("criptoativo estrangeiro exige confirmação e evidência de localização por instituição no exterior")
+            if evidence.get("candidate_classification") == "FOREIGN_DERIVATIVE" and (
+                evidence.get("derivative_location_rule") != "FOREIGN_INSTITUTION_AND_CONTRACT_JURISDICTION_USER_DECLARED"
+                or evidence.get("derivative_location_confirmed") is not True
+                or evidence.get("derivative_location_verification") != "USER_DECLARED_NOT_VERIFIED"
+                or evidence.get("derivative_result_basis_confirmed") is not True
+            ):
+                raise ValueError("derivativo estrangeiro exige confirmação da instituição, jurisdição e base do resultado")
             if occurred_on < "2024-01-01":
                 raise ValueError("a estimativa de 15% aplica-se a eventos a partir de 01/01/2024")
             if evidence.get("fx_conversion_status") == "CONVERTED_FOR_PLANNING_ONLY":
