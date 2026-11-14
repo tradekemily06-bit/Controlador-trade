@@ -875,7 +875,6 @@ def show_fiscal() -> None:
     except Exception as exc:
         summary = {}
         st.error("Resumo fiscal indisponível. Os lançamentos e alterações de percentual ficam bloqueados. Verifique a disponibilidade do serviço e os registros técnicos locais.")
-        st.caption("Detalhes técnicos não são exibidos no painel.")
     st.subheader("Reserva Fiscal")
     st.caption("Planejamento e separação estimada. Operações MT5 sem elegibilidade verificada ficam em fila separada. Aplicações no exterior só entram na estimativa após confirmação explícita; cripto e entidades controladas permanecem pendentes.")
     if not summary_available:
