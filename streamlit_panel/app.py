@@ -876,7 +876,7 @@ def show_fiscal() -> None:
         summary = {}
         st.error("Resumo fiscal indisponível. Os lançamentos e alterações de percentual ficam bloqueados. Verifique a disponibilidade do serviço e os registros técnicos locais.")
     st.subheader("Reserva Fiscal")
-    st.caption("Planejamento, não apuração tributária. Operações MT5 sem elegibilidade verificada ficam em fila separada. No exterior, 15% é apenas referência para aplicações financeiras legalmente elegíveis de residente fiscal no Brasil; CFDs, índices, futuros, cripto e entidades controladas ficam pendentes. Forex no exterior pode seguir a referência específica da Solução de Consulta Cosit 83/2024, quando caracterizado como aplicação financeira. A confirmação do usuário não substitui a classificação fiscal.")
+    st.caption("Planejamento, não apuração tributária. Operações MT5 sem elegibilidade verificada ficam em fila separada. No exterior, 15% é referência para aplicações financeiras legalmente elegíveis de residente fiscal brasileiro, incluindo derivativos efetivamente classificados como tais e criptoativos localizados no exterior por instituição estrangeira. CFDs, índices e futuros sem contrato e enquadramento confirmados, NFTs, autocustódia no Brasil e entidades controladas permanecem pendentes. Forex segue a Solução de Consulta Cosit 83/2024 quando caracterizado como aplicação financeira. A confirmação do usuário não substitui a classificação fiscal.")
     if not summary_available:
         st.info("Os dados fiscais não foram validados nesta consulta. Totais, histórico e formulários permanecem ocultos até a leitura ser recuperada.")
         return
