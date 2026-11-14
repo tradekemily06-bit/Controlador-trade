@@ -249,6 +249,34 @@ def _remote_identity_http_status(reason: str) -> HTTPStatus:
 
 
 
+def _authorize_local_read(environ) -> tuple[bool, str]:
+    """Authorize read-only fiscal summary requests from the local browser only."""
+    remote_access_required = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "").strip().lower() in {"1", "true", "yes"}
+    if remote_access_required:
+        return False, "remote identity boundary is enabled"
+    client = str(environ.get("REMOTE_ADDR") or "").strip()
+    if client not in {"127.0.0.1", "::1"}:
+        return False, "local read requires loopback"
+    identity_header = os.environ.get("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "").strip()
+    if identity_header:
+        identity_key = "HTTP_" + identity_header.upper().replace("-", "_")
+        if str(environ.get(identity_key) or "").strip():
+            return False, "trusted remote identity cannot use local read routes"
+    allowed_hosts = {
+        item.strip().lower()
+        for item in os.environ.get("CONTROLADOR_LOCAL_MUTATION_HOSTS", "localhost,127.0.0.1,[::1]").split(",")
+        if item.strip()
+    }
+    raw_host = str(environ.get("HTTP_HOST") or "").strip().lower()
+    if raw_host.startswith("[") and "]" in raw_host:
+        host = raw_host[1:raw_host.index("]")]
+    else:
+        host = raw_host.split(":", 1)[0]
+    if not host or host not in allowed_hosts and f"[{host}]" not in allowed_hosts:
+        return False, "local Host is not allowed"
+    return True, "local-read"
+
+
 def _authorize_local_runtime(environ) -> tuple[bool, str]:
     """Authorize native terminal calls only from a loopback client using an allowed local Host."""
     client = str(environ.get("REMOTE_ADDR") or "").strip()
@@ -593,7 +621,7 @@ def application(environ, start_response):
             if path == "/api/assistant/chat" and method == "POST":
                 return _json_response(start_response, HTTPStatus.OK, ASSISTANT.ask(identity, assistant_chat_data.get("message"), fiscal_owner_id, assistant_chat_data.get("conversation_id")), request_id, environ)
         if path == "/api/fiscal-reserve/local" and method == "GET":
-            authorized, reason = _authorize_local_runtime(environ)
+            authorized, reason = _authorize_local_read(environ)
             if not authorized:
                 return _json_response(
                     start_response, _remote_identity_http_status(reason),
