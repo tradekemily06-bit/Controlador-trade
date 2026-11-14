@@ -1232,7 +1232,7 @@ def show_fiscal() -> None:
         tax_residency = st.selectbox("Residência fiscal declarada na data", list(residency_options), format_func=lambda value: residency_options[value], key="foreign_tax_residency")
         income_nature = st.selectbox("Natureza do rendimento / valor", list(income_options), format_func=lambda value: income_options[value], key="foreign_income_nature")
         event_type = st.selectbox("Tipo de evento", list(event_options), format_func=lambda value: event_options[value], key="foreign_event_type")
-        fx_rate = st.number_input("Cotação cambial (opcional)", min_value=0.0, max_value=1_000_000_000_000.0, step=0.0001, format="%.8f")
+        fx_rate = st.number_input("Cotação (R$ por 1 unidade da moeda original)", min_value=0.0, max_value=1_000_000_000_000.0, step=0.0001, format="%.8f")
         fx_date = st.date_input("Data da cotação", key="foreign_fx_date")
         fx_source = st.text_input("Fonte da cotação (opcional)", max_chars=200)
         fx_conversion_method = st.selectbox("Método de conversão cambial", list(fx_method_options), format_func=lambda value: fx_method_options[value], key="foreign_fx_method")
@@ -1258,7 +1258,7 @@ def show_fiscal() -> None:
                     raise ValueError("Altere o método cambial: há uma cotação informada, mas o método está marcado como ainda não convertido.")
                 pending_payload.update({"fx_rate": fx_rate, "fx_date": fx_date.isoformat(), "fx_source": fx_source})
             api("/api/fiscal-reserve/pending", "POST", pending_payload)
-            st.success("Registro guardado como pendente. Nenhum cálculo foi feito.")
+            st.success("Registro guardado. A conversão cambial é apenas informativa e não altera a reserva fiscal.")
             st.rerun()
         except Exception as exc:
             st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
@@ -1275,7 +1275,7 @@ def show_fiscal() -> None:
         residency_signed = st.selectbox("Residência fiscal declarada na data", list(residency_options), format_func=lambda value: residency_options[value], key="signed_tax_residency")
         income_signed = st.selectbox("Natureza do resultado", list(income_options), format_func=lambda value: income_options[value], key="signed_income_nature")
         event_signed = st.selectbox("Tipo de evento", list(event_options), format_func=lambda value: event_options[value], key="signed_event_type")
-        fx_signed = st.number_input("Cotação documentada (opcional)", min_value=0.0, max_value=1_000_000_000_000.0, format="%.8f")
+        fx_signed = st.number_input("Cotação (R$ por 1 unidade da moeda original)", min_value=0.0, max_value=1_000_000_000_000.0, format="%.8f")
         fx_date_signed = st.date_input("Data da cotação", key="signed_foreign_fx_date")
         fx_source_signed = st.text_input("Fonte da cotação", max_chars=200)
         fx_method_signed = st.selectbox("Método de conversão cambial", list(fx_method_options), format_func=lambda value: fx_method_options[value], key="signed_fx_method")
@@ -1301,7 +1301,7 @@ def show_fiscal() -> None:
                     raise ValueError("Altere o método cambial: há uma cotação informada, mas o método está marcado como ainda não convertido.")
                 signed_payload.update({"fx_rate": fx_signed, "fx_date": fx_date_signed.isoformat(), "fx_source": fx_source_signed})
             api("/api/fiscal-reserve/pending-result", "POST", signed_payload)
-            st.success("Resultado guardado com o sinal original; continua fora dos totais.")
+            st.success("Resultado guardado com o sinal original. A conversão é apenas informativa e fica fora da reserva fiscal.")
             st.rerun()
         except Exception as exc:
             st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
@@ -1336,7 +1336,12 @@ def show_fiscal() -> None:
                 "Residência declarada": item.get("tax_residency_at_event"),
                 "Natureza": item.get("income_nature"),
                 "Evento": item.get("event_type"),
-                "Cotação informada (não aplicada)": item.get("fx_rate"),
+                "Cotação (R$/unidade)": item.get("fx_rate"),
+                "Valor convertido para planejamento (R$)": item.get("converted_result_brl_for_planning") if item.get("record_kind") == "REALIZED_RESULT" else item.get("converted_amount_brl_for_planning"),
+                "Conversão cambial": item.get("fx_conversion_status"),
+                "Custo de aquisição convertido (R$)": item.get("converted_acquisition_cost_brl_for_planning"),
+                "Taxas convertidas (R$)": item.get("converted_transaction_fees_brl_for_planning"),
+                "Imposto pago fora convertido (R$)": item.get("converted_foreign_tax_paid_brl_for_planning"),
                 "Data da cotação": item.get("fx_date"),
                 "Fonte da cotação": item.get("fx_source"),
                 "Método declarado": item.get("fx_conversion_method"),
