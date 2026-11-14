@@ -546,6 +546,7 @@ class FiscalReserve:
                 "kind": "PLANNING_ESTIMATE_ONLY",
                 "tax_assessment": False,
             },
+            "foreign_annual_scenario": foreign_annual_scenario,
             "as_of": reference_day.isoformat(),
             "history": [{key: value for key, value in dict(item).items() if key != "owner_id"} for item in history],
             "history_page": {
