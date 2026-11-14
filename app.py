@@ -783,6 +783,8 @@ def application(environ, start_response):
             if candidate_classification == "FOREIGN_CRYPTO":
                 if not is_crypto_instrument:
                     raise ValueError("a categoria de criptoativos exige identificação do ativo virtual")
+                if any(term in instrument_description for term in ("cfd", "contract for difference", "futuro", "futures", "index", "índice")):
+                    raise ValueError("derivativos de criptoativos exigem classificação própria e permanecem pendentes")
                 if "nft" in instrument_description:
                     raise ValueError("NFTs sem enquadramento como aplicação financeira permanecem pendentes")
                 if self_custody:
