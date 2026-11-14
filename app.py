@@ -802,9 +802,65 @@ def application(environ, start_response):
                     raise ValueError("a fonte da cotação deve identificar o Banco Central do Brasil (PTAX)")
             elif item.get("fx_conversion_status") != "ALREADY_BRL":
                 raise ValueError("cotação oficial documentada para conversão em reais é obrigatória")
-            converted_result = item.get("converted_result_brl_for_planning")
-            if isinstance(converted_result, bool) or not isinstance(converted_result, (int, float)):
-                raise ValueError("resultado convertido para BRL indisponível")
+            original_currency = str(item.get("original_currency") or "").strip().upper()
+            acquisition_fx_evidence = {}
+            if original_currency != "BRL":
+                declared_result_brl = data.get("declared_result_brl")
+                if (
+                    isinstance(declared_result_brl, bool)
+                    or not isinstance(declared_result_brl, (int, float))
+                    or not math.isfinite(declared_result_brl)
+                    or abs(declared_result_brl) > 1_000_000_000_000
+                ):
+                    raise ValueError("resultado líquido em BRL declarado é obrigatório para moeda estrangeira")
+                if data.get("conversion_basis_confirmed") is not True:
+                    raise ValueError("confirme a base cambial separada para aquisição e liquidação")
+                requires_acquisition_basis = (
+                    item.get("income_nature") in {"CAPITAL_GAIN", "TRADING_RESULT"}
+                    or item.get("event_type") in {"DISPOSAL", "REDEMPTION"}
+                )
+                if requires_acquisition_basis:
+                    acquisition_cost = item.get("acquisition_cost")
+                    if (
+                        isinstance(acquisition_cost, bool)
+                        or not isinstance(acquisition_cost, (int, float))
+                        or not math.isfinite(acquisition_cost)
+                        or acquisition_cost < 0
+                    ):
+                        raise ValueError("custo de aquisição na moeda original é obrigatório")
+                    acquisition_fx_rate = data.get("acquisition_fx_rate")
+                    if (
+                        isinstance(acquisition_fx_rate, bool)
+                        or not isinstance(acquisition_fx_rate, (int, float))
+                        or not math.isfinite(acquisition_fx_rate)
+                        or acquisition_fx_rate <= 0
+                    ):
+                        raise ValueError("PTAX de compra na data de aquisição é obrigatória")
+                    acquisition_fx_date = data.get("acquisition_fx_date")
+                    try:
+                        parsed_acquisition_date = datetime.strptime(acquisition_fx_date, "%Y-%m-%d").date()
+                    except (TypeError, ValueError):
+                        raise ValueError("data da PTAX de compra inválida")
+                    if parsed_acquisition_date.isoformat() != acquisition_fx_date or acquisition_fx_date > item.get("occurred_on", ""):
+                        raise ValueError("data da PTAX de compra deve ser válida e não posterior à liquidação")
+                    acquisition_fx_source = str(data.get("acquisition_fx_source") or "").casefold()
+                    if data.get("acquisition_fx_method") != "PTAX_BUY":
+                        raise ValueError("a conversão do custo exige PTAX de compra do BCB")
+                    if "bcb" not in acquisition_fx_source and "banco central" not in acquisition_fx_source and "ptax" not in acquisition_fx_source:
+                        raise ValueError("a fonte da cotação de compra deve identificar o Banco Central do Brasil (PTAX)")
+                    acquisition_fx_evidence = {
+                        "acquisition_cost_original_currency": acquisition_cost,
+                        "acquisition_fx_rate": acquisition_fx_rate,
+                        "acquisition_fx_date": acquisition_fx_date,
+                        "acquisition_fx_source": data.get("acquisition_fx_source"),
+                        "acquisition_fx_method": "PTAX_BUY",
+                        "acquisition_fx_verification": "USER_DECLARED_NOT_VERIFIED",
+                    }
+                converted_result = float(declared_result_brl)
+            else:
+                converted_result = item.get("converted_result_brl_for_planning")
+                if isinstance(converted_result, bool) or not isinstance(converted_result, (int, float)):
+                    raise ValueError("resultado em BRL indisponível")
             evidence = {
                 "tax_classification_status": "USER_DECLARED_PLANNING_ONLY",
                 "classification_source": "EXPLICIT_USER_CONFIRMATION",
@@ -815,6 +871,10 @@ def application(environ, start_response):
                 "source_pending_id": item["pending_id"],
                 "original_currency": item["original_currency"],
                 "original_result": item["original_result"],
+                "declared_result_brl": converted_result if original_currency != "BRL" else None,
+                "conversion_basis": "USER_DECLARED_SEPARATE_ACQUISITION_AND_LIQUIDATION_QUOTES" if original_currency != "BRL" else "ALREADY_BRL",
+                "conversion_basis_confirmed": data.get("conversion_basis_confirmed") is True,
+                **acquisition_fx_evidence,
                 "income_nature": item.get("income_nature"),
                 "event_type": item.get("event_type"),
                 "instrument": item.get("instrument"),
@@ -830,6 +890,7 @@ def application(environ, start_response):
                 "fx_conversion_method": item.get("fx_conversion_method"),
                 "fx_quote_verification": "USER_DECLARED_NOT_VERIFIED",
                 "fx_source_verification": "USER_DECLARED_NOT_VERIFIED",
+                "liquidation_fx_method": "PTAX_SELL" if original_currency != "BRL" else None,
                 "foreign_tax_credit_applied": False,
                 "loss_offsets_applied": False,
                 "legal_reference": "Lei 14.754/2023, art. 2º; Solução de Consulta Cosit 83/2024",
