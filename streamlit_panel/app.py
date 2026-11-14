@@ -981,7 +981,7 @@ def show_fiscal() -> None:
         }.get(br.get("rate_source"), "origem não identificada")
         st.caption(
             f"Período: {selected_period.get('start', '—')} a {selected_period.get('end', '—')} · "
-            f"Brasil day trade · percentual de planejamento {rate_source_label}: {br.get('rate', '—')}%"
+            f"Day trade no Brasil · alíquota legal de referência: 20% · reserva configurada {rate_source_label}: {br.get('rate', '—')}%"
         )
         semantics = summary.get("reserve_semantics", {})
         st.warning("ESTIMATIVA DE PLANEJAMENTO — não é imposto apurado ou devido. " + str(semantics.get("description") or "Não calcula compensação mensal de prejuízos nem créditos de IRRF."))
@@ -1059,10 +1059,11 @@ def show_fiscal() -> None:
         st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
         summary = {}
 
-    with st.expander("Percentual de planejamento · Brasil day trade"):
+    with st.expander("Reserva estimada · day trade no Brasil"):
         current_rate = summary.get("categories", {}).get("BR_DAY_TRADE", {}).get("rate", 0) if summary else 0
         with st.form("fiscal_rate_form"):
-            rate = st.number_input("Percentual para novos lançamentos", min_value=0.0, max_value=100.0, value=float(current_rate or 0), step=0.5)
+            st.caption("A alíquota legal de day trade no Brasil é 20%. Este campo ajusta somente sua margem de reserva financeira; não altera o imposto legal nem substitui a apuração fiscal.")
+            rate = st.number_input("Percentual da reserva financeira", min_value=0.0, max_value=100.0, value=float(current_rate or 0), step=0.5)
             rate_submit = st.form_submit_button("Salvar percentual", disabled=not summary_available)
         if rate_submit:
             try:
