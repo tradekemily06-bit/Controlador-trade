@@ -279,7 +279,7 @@ def test_streamlit_foreign_pending_forms_capture_structured_evidence_and_display
     assert "Natureza do rendimento / valor" in source
     assert "Tipo de evento" in source
     assert "Método cambial (obrigatório com cotação)" in source
-    assert "A estimativa de 15% não se aplica automaticamente a Forex, CFDs, índices, futuros ou cripto" in source
+    assert "Forex no exterior pode seguir a referência específica da Solução de Consulta Cosit 83/2024" in source
     assert "Residência declarada" in source
     assert "Método declarado" in source
     assert "NOT_INFORMED" in source
@@ -1600,7 +1600,7 @@ def test_streamlit_foreign_fiscal_inputs_match_api_limits():
     api_source = (PANEL_DIR.parent / "finance" / "fiscal_pending_queue.py").read_text(encoding="utf-8")
 
     assert 'max_value=1_000_000_000_000.0' in source
-    assert 'placeholder="Ex.: ação ou ETF; Forex, CFD, índice, futuro e cripto ficam pendentes", max_chars=80' in source
+    assert 'placeholder="Ex.: ação, ETF ou Forex no exterior; CFD, índice, futuro e cripto exigem revisão", max_chars=80' in source
     assert 'placeholder="EUA, Brasil, outro", max_chars=80' in source
     assert 'instrument_signed = st.text_input("Instrumento", max_chars=80)' in source
     assert 'jurisdiction_signed = st.text_input("Jurisdição", max_chars=80)' in source
