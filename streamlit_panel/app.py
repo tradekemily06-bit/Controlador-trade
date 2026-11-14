@@ -1456,6 +1456,10 @@ def show_fiscal() -> None:
                     )
                     is_crypto_estimate = selected_candidate_classification == "FOREIGN_CRYPTO"
                     is_derivative_estimate = selected_candidate_classification == "FOREIGN_DERIVATIVE"
+                    if is_derivative_estimate:
+                        st.caption("Lei 14.754/2023, art. 3º, § 1º: derivativos podem ser aplicações financeiras no exterior. Este fluxo exige contrato e instituição/jurisdição estrangeiros; a classificação e o resultado são declarados pelo usuário, não verificados pelo sistema.")
+                    elif is_crypto_estimate:
+                        st.caption("IN RFB 2.180/2024, art. 9º: ativos virtuais podem ser aplicações financeiras no exterior quando custodiados ou negociados por instituição estrangeira; autocustódia no Brasil não entra nesta faixa.")
                     if str(selected_foreign_item.get("original_currency") or "").upper() != "BRL":
                         declared_result_brl = st.number_input(
                             "Resultado líquido apurado em BRL (após conversões separadas)",
