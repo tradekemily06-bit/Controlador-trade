@@ -1319,24 +1319,6 @@ def show_fiscal() -> None:
         fx_source_signed = st.text_input("Fonte da cotação", max_chars=200)
         fx_method_signed = st.selectbox("Método de conversão cambial", list(fx_method_options), format_func=lambda value: fx_method_options[value], key="signed_fx_method")
         st.caption("Para moeda estrangeira, informe o resultado líquido em BRL com base na conversão separada do custo de aquisição (PTAX compra na data da aquisição) e do valor recebido (PTAX venda na liquidação). O sistema não consulta nem valida as cotações.")
-        if currency_signed != "BRL":
-            declared_result_brl_signed = st.number_input("Resultado líquido apurado em BRL (após conversões separadas)", min_value=-1_000_000_000_000.0, max_value=1_000_000_000_000.0, format="%.2f", key="signed_declared_result_brl")
-            conversion_basis_confirmed_signed = st.checkbox("Confirmo que converti custo e liquidação separadamente pelas PTAX de compra e venda nas respectivas datas.", key="signed_conversion_basis_confirmed")
-            requires_acquisition_basis_signed = income_signed in {"CAPITAL_GAIN", "TRADING_RESULT"} or event_signed in {"DISPOSAL", "REDEMPTION"}
-            if requires_acquisition_basis_signed:
-                acquisition_fx_rate_signed = st.number_input("PTAX compra (BCB) na data da aquisição", min_value=0.0, max_value=1_000_000_000_000.0, format="%.8f", key="signed_acquisition_fx_rate")
-                acquisition_fx_date_signed = st.date_input("Data da PTAX compra", key="signed_acquisition_fx_date")
-                acquisition_fx_source_signed = st.text_input("Fonte da PTAX compra (BCB)", max_chars=200, key="signed_acquisition_fx_source")
-            else:
-                acquisition_fx_rate_signed = None
-                acquisition_fx_date_signed = None
-                acquisition_fx_source_signed = ""
-        else:
-            declared_result_brl_signed = None
-            conversion_basis_confirmed_signed = False
-            acquisition_fx_rate_signed = None
-            acquisition_fx_date_signed = None
-            acquisition_fx_source_signed = ""
         institution_signed = st.text_input("Corretora / instituição", max_chars=160, key="signed_institution")
         custody_signed = st.text_input("Local de custódia", max_chars=120, key="signed_custody")
         contract_signed = st.text_input("Tipo / especificação do contrato", max_chars=120, key="signed_contract")
@@ -1352,14 +1334,6 @@ def show_fiscal() -> None:
     if submit_signed:
         try:
             signed_payload = {"reference": ref_signed, "original_result": amount_signed, "original_currency": currency_signed, "instrument": instrument_signed, "jurisdiction": jurisdiction_signed, "occurred_on": date_signed.isoformat(), "tax_residency_at_event": residency_signed, "income_nature": income_signed, "event_type": event_signed, "fx_conversion_method": fx_method_signed, "institution": institution_signed, "custody_location": custody_signed, "contract_type": contract_signed, "acquisition_cost": acquisition_cost_signed, "transaction_fees": fees_signed, "foreign_tax_paid": tax_paid_signed, "notes": notes_signed}
-            if currency_signed != "BRL":
-                if not conversion_basis_confirmed_signed:
-                    raise ValueError("Confirme a conversão separada do custo e da liquidação.")
-                signed_payload.update({"declared_result_brl": declared_result_brl_signed, "conversion_basis_confirmed": True})
-                if income_signed in {"CAPITAL_GAIN", "TRADING_RESULT"} or event_signed in {"DISPOSAL", "REDEMPTION"}:
-                    if acquisition_cost_signed is None or acquisition_fx_rate_signed is None or acquisition_fx_rate_signed <= 0 or not acquisition_fx_source_signed:
-                        raise ValueError("Informe custo de aquisição e PTAX de compra.")
-                    signed_payload.update({"acquisition_fx_rate": acquisition_fx_rate_signed, "acquisition_fx_date": acquisition_fx_date_signed.isoformat(), "acquisition_fx_source": acquisition_fx_source_signed, "acquisition_fx_method": "PTAX_BUY"})
             if fx_signed or fx_source_signed:
                 if not fx_signed or not fx_source_signed:
                     raise ValueError("Informe cotação e fonte juntas.")
@@ -1460,6 +1434,52 @@ def show_fiscal() -> None:
                         options=list(eligible_foreign_results),
                         format_func=lambda value: eligible_foreign_results[value],
                     )
+                    selected_foreign_item = next(
+                        item for item in foreign_items if item.get("pending_id") == selected_foreign_result
+                    )
+                    if str(selected_foreign_item.get("original_currency") or "").upper() != "BRL":
+                        declared_result_brl = st.number_input(
+                            "Resultado líquido apurado em BRL (após conversões separadas)",
+                            min_value=-1_000_000_000_000.0,
+                            max_value=1_000_000_000_000.0,
+                            format="%.2f",
+                            key="foreign_declared_result_brl",
+                        )
+                        conversion_basis_confirmed = st.checkbox(
+                            "Confirmo que converti o custo pela PTAX compra na aquisição e o valor recebido pela PTAX venda na liquidação.",
+                            key="foreign_conversion_basis_confirmed",
+                        )
+                        requires_acquisition_basis = (
+                            selected_foreign_item.get("income_nature") in {"CAPITAL_GAIN", "TRADING_RESULT"}
+                            or selected_foreign_item.get("event_type") in {"DISPOSAL", "REDEMPTION"}
+                        )
+                        if requires_acquisition_basis:
+                            acquisition_fx_rate = st.number_input(
+                                "PTAX compra (BCB) na data da aquisição",
+                                min_value=0.0,
+                                max_value=1_000_000_000_000.0,
+                                format="%.8f",
+                                key="foreign_estimate_acquisition_fx_rate",
+                            )
+                            acquisition_fx_date = st.date_input(
+                                "Data da PTAX compra",
+                                key="foreign_estimate_acquisition_fx_date",
+                            )
+                            acquisition_fx_source = st.text_input(
+                                "Fonte da PTAX compra (BCB)",
+                                max_chars=200,
+                                key="foreign_estimate_acquisition_fx_source",
+                            )
+                        else:
+                            acquisition_fx_rate = None
+                            acquisition_fx_date = None
+                            acquisition_fx_source = ""
+                    else:
+                        declared_result_brl = None
+                        conversion_basis_confirmed = False
+                        acquisition_fx_rate = None
+                        acquisition_fx_date = None
+                        acquisition_fx_source = ""
                     confirm_foreign_estimate = st.checkbox(
                         "Confirmo aplicação financeira no exterior e residência fiscal no Brasil na data do evento."
                     )
@@ -1469,11 +1489,28 @@ def show_fiscal() -> None:
                     )
                 if submit_foreign_estimate:
                     try:
-                        result = api("/api/fiscal-reserve/foreign-planning-estimate", "POST", {
+                        estimate_payload = {
                             "pending_id": selected_foreign_result,
                             "candidate_classification": "FOREIGN_FINANCIAL_INVESTMENT",
                             "confirmed": True,
-                        })
+                        }
+                        if str(selected_foreign_item.get("original_currency") or "").upper() != "BRL":
+                            if not conversion_basis_confirmed:
+                                raise ValueError("Confirme a conversão cambial separada.")
+                            estimate_payload.update({
+                                "declared_result_brl": declared_result_brl,
+                                "conversion_basis_confirmed": True,
+                            })
+                            if requires_acquisition_basis:
+                                if acquisition_fx_rate <= 0 or not acquisition_fx_source:
+                                    raise ValueError("Informe a PTAX compra na data da aquisição.")
+                                estimate_payload.update({
+                                    "acquisition_fx_rate": acquisition_fx_rate,
+                                    "acquisition_fx_date": acquisition_fx_date.isoformat(),
+                                    "acquisition_fx_source": acquisition_fx_source,
+                                    "acquisition_fx_method": "PTAX_BUY",
+                                })
+                        result = api("/api/fiscal-reserve/foreign-planning-estimate", "POST", estimate_payload)
                         st.success(
                             f"Estimativa registrada: R$ {float(result['entry']['reserve_amount_brl']):,.2f}. "
                             "Não representa imposto apurado."
