@@ -1524,6 +1524,7 @@ def show_fiscal() -> None:
                         acquisition_fx_rate = None
                         acquisition_fx_date = None
                         acquisition_fx_source = ""
+                    financial_investment_location_confirmed = False
                     if is_derivative_estimate:
                         derivative_location_confirmed = st.checkbox(
                             "Confirmo que o contrato é um derivativo negociado por instituição e sob jurisdição fora do Brasil.",
@@ -1555,9 +1556,15 @@ def show_fiscal() -> None:
                         derivative_location_confirmed = False
                         derivative_result_basis_confirmed = False
                         crypto_location_confirmed = False
-                        confirm_foreign_estimate = st.checkbox(
-                            "Confirmo aplicação financeira no exterior e residência fiscal no Brasil na data do evento."
+                        financial_investment_location_confirmed = st.checkbox(
+                            "Confirmo que a aplicação financeira e sua custódia efetiva estão localizadas fora do Brasil.",
+                            key="foreign_financial_investment_location_confirmed",
                         )
+                        financial_tax_confirmed = st.checkbox(
+                            "Confirmo residência fiscal brasileira e evento realizado a partir de 2024.",
+                            key="foreign_financial_investment_tax_confirmed",
+                        )
+                        confirm_foreign_estimate = financial_investment_location_confirmed and financial_tax_confirmed
                     submit_foreign_estimate = st.form_submit_button(
                         "Registrar estimativa de 15%",
                         disabled=not confirm_foreign_estimate,
@@ -1569,6 +1576,8 @@ def show_fiscal() -> None:
                             "candidate_classification": selected_candidate_classification,
                             "confirmed": True,
                         }
+                        if selected_candidate_classification == "FOREIGN_FINANCIAL_INVESTMENT":
+                            estimate_payload["financial_investment_location_confirmed"] = True
                         if is_crypto_estimate:
                             estimate_payload["crypto_location_confirmed"] = True
                         if is_derivative_estimate:
