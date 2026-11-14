@@ -62,9 +62,12 @@ def test_documented_fx_is_converted_for_planning_without_entering_reserve(tmp_pa
     assert created["fx_conversion_status"] == "CONVERTED_FOR_PLANNING_ONLY"
     assert created["fx_rate_direction"] == "BRL_PER_ORIGINAL_CURRENCY_UNIT"
     assert created["converted_amount_brl_for_planning"] == 680.21
-    assert created["converted_acquisition_cost_brl_for_planning"] == 542.0
-    assert created["converted_transaction_fees_brl_for_planning"] == 13.55
-    assert created["converted_foreign_tax_paid_brl_for_planning"] == 6.78
+    # The event-date quote must not be reused for acquisition costs, fees,
+    # or foreign tax paid; each may require a different historical PTAX date/direction.
+    assert created["converted_acquisition_cost_brl_for_planning"] is None
+    assert created["converted_transaction_fees_brl_for_planning"] is None
+    assert created["converted_foreign_tax_paid_brl_for_planning"] is None
+    assert created["fx_preview_scope"] == "EVENT_AMOUNT_OR_REALIZED_RESULT_ONLY"
 
     listed = queue.list_pending(OWNER)["items"][0]
     assert listed["converted_amount_brl_for_planning"] == 680.21
