@@ -79,9 +79,13 @@ FOREIGN_CATEGORIES: dict[str, dict[str, Any]] = {
         "scope": "FOREIGN",
         "requires": ["residencia_fiscal", "natureza_do_rendimento", "evento", "moeda", "fx_method", "instituicao_ou_autocustodia", "local_custodia", "tipo_de_contrato"],
         "recommended_evidence": ["custo_de_aquisicao", "taxas_e_custos", "imposto_pago_no_exterior", "extrato_da_instituicao"],
-        "calculation_status": "NOT_AUTOMATED",
-        "booking_enabled": False,
-        "limitations": ["Não aplicar percentual genérico; classificar evento e método cambial antes."],
+        "calculation_status": "PARTIAL_PLANNING_ONLY",
+        "booking_enabled": True,
+        "limitations": [
+            "Estimativa de 15% somente para resultado realizado, residência fiscal brasileira declarada e confirmação explícita desta categoria.",
+            "Exige cotação documentada convertida para BRL; ajuste anual, sem compensação de perdas ou créditos de imposto estrangeiro.",
+            "Não é apuração tributária; criptoativos, entidades controladas e eventos não suportados permanecem pendentes.",
+        ],
     },
     "FOREIGN_ENTITY_CONTROLLED": {
         "label": "Exterior · entidade controlada",
