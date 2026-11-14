@@ -784,8 +784,6 @@ def application(environ, start_response):
                 "fx_date": item.get("fx_date"),
                 "fx_source": item.get("fx_source"),
                 "fx_conversion_method": item.get("fx_conversion_method"),
-                "foreign_tax_paid_original": item.get("foreign_tax_paid"),
-                "foreign_tax_paid_brl_reference": item.get("converted_foreign_tax_paid_brl_for_planning"),
                 "foreign_tax_credit_applied": False,
                 "loss_offsets_applied": False,
                 "legal_reference": "Lei 14.754/2023, art. 2º; Solução de Consulta Cosit 83/2024",
