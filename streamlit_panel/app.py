@@ -1367,6 +1367,11 @@ def show_fiscal() -> None:
             st.rerun()
         foreign_items = foreign_pending_data["items"]
         if foreign_items:
+            st.caption(
+                "A cotação exibida converte somente o valor do evento na data informada. "
+                "Custo de aquisição, taxas e imposto pago no exterior permanecem na moeda original "
+                "até que suas datas e regras cambiais próprias sejam registradas."
+            )
             st.dataframe([{
                 "Data": item.get("occurred_on"),
                 "Referência": item.get("reference"),
@@ -1379,9 +1384,6 @@ def show_fiscal() -> None:
                 "Cotação (R$/unidade)": item.get("fx_rate"),
                 "Valor convertido para planejamento (R$)": item.get("converted_result_brl_for_planning") if item.get("record_kind") == "REALIZED_RESULT" else item.get("converted_amount_brl_for_planning"),
                 "Conversão cambial": item.get("fx_conversion_status"),
-                "Custo de aquisição convertido (R$)": item.get("converted_acquisition_cost_brl_for_planning"),
-                "Taxas convertidas (R$)": item.get("converted_transaction_fees_brl_for_planning"),
-                "Imposto pago fora convertido (R$)": item.get("converted_foreign_tax_paid_brl_for_planning"),
                 "Data da cotação": item.get("fx_date"),
                 "Fonte da cotação": item.get("fx_source"),
                 "Método declarado": item.get("fx_conversion_method"),
