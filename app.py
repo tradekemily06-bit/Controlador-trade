@@ -791,7 +791,7 @@ def application(environ, start_response):
                     (custody_location + " " + str(item.get("jurisdiction") or "").casefold())
                     .replace(",", " ").replace("/", " ").split()
                 )
-                if location_tokens.intersection({"br", "brasil", "brazil"}):
+                if location_tokens.intersection({"br", "brasil", "brazil", "brasileiro", "brasileira"}):
                     raise ValueError("o ativo virtual precisa estar custodiado ou negociado por instituição localizada fora do Brasil")
                 if not institution or data.get("crypto_location_confirmed") is not True:
                     raise ValueError("confirme a instituição localizada no exterior e a ausência de autocustódia no Brasil")
@@ -896,6 +896,7 @@ def application(environ, start_response):
                 "conversion_basis": conversion_basis_label if original_currency != "BRL" else "ALREADY_BRL",
                 "crypto_location_rule": "FOREIGN_INSTITUTION_CUSTODY_OR_TRADING_USER_DECLARED" if candidate_classification == "FOREIGN_CRYPTO" else None,
                 "crypto_location_verification": "USER_DECLARED_NOT_VERIFIED" if candidate_classification == "FOREIGN_CRYPTO" else "NOT_APPLICABLE",
+                "crypto_location_confirmed": data.get("crypto_location_confirmed") is True if candidate_classification == "FOREIGN_CRYPTO" else False,
                 "conversion_basis_confirmed": data.get("conversion_basis_confirmed") is True,
                 **acquisition_fx_evidence,
                 "income_nature": item.get("income_nature"),
