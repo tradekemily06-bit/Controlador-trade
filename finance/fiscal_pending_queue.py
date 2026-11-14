@@ -279,9 +279,13 @@ class FiscalPendingQueue:
         result["converted_result_brl_for_planning"] = (
             convert(original_result, signed=True) if is_result else None
         )
-        result["converted_acquisition_cost_brl_for_planning"] = convert(result.get("acquisition_cost"))
-        result["converted_transaction_fees_brl_for_planning"] = convert(result.get("transaction_fees"))
-        result["converted_foreign_tax_paid_brl_for_planning"] = convert(result.get("foreign_tax_paid"))
+        # This quote belongs to the event date. Acquisition costs and fees may
+        # require their own historical dates/quotes; foreign tax paid uses a
+        # separate BCB BUY quote on the payment date. Never reuse this quote.
+        result["converted_acquisition_cost_brl_for_planning"] = None
+        result["converted_transaction_fees_brl_for_planning"] = None
+        result["converted_foreign_tax_paid_brl_for_planning"] = None
+        result["fx_preview_scope"] = "EVENT_AMOUNT_OR_REALIZED_RESULT_ONLY"
         return result
 
     def add(self, owner_id: str, payload: dict[str, Any]) -> dict[str, Any]:
