@@ -215,7 +215,7 @@ def fiscal_history_display_row(item: dict[str, Any]) -> dict[str, Any]:
         "Percentual de planejamento (%)": "—",
         "Reserva estimada (R$)": "—",
         "Referência": item.get("reference"),
-        "Status": "RESERVA ESTIMADA" if item.get("planning_estimate_registered") is True else "PENDENTE DE CLASSIFICAÇÃO",
+        "Status": "ESTIMATIVA REGISTRADA" if item.get("planning_estimate_registered") is True else "PENDENTE DE CLASSIFICAÇÃO",
     }
     if category == "BR_DAY_TRADE":
         evidence = {}
@@ -991,6 +991,8 @@ def show_fiscal() -> None:
         if foreign_pending.get("available") is False:
             st.warning("A contagem das pendências do exterior está indisponível. Nenhum registro foi incluído nos totais.")
         else:
+            registered_estimates = _safe_fiscal_count(foreign_pending.get("planning_estimates_registered", 0))
+            st.caption(f"{registered_estimates} resultado(s) com estimativa registrada; os demais continuam pendentes de classificação.")
             pending_periods = foreign_pending.get("periods", {})
             pending_cols = st.columns(4)
             for col, period, label in zip(pending_cols, ("day", "week", "month", "year"), ("Dia", "Semana", "Mês", "Ano")):
@@ -998,7 +1000,7 @@ def show_fiscal() -> None:
                 col.metric(f"Exterior pendente · {label}", _safe_fiscal_count(pending_period.get("total", 0)))
                 col.caption(
                     f"{_safe_fiscal_count(pending_period.get('realized_results', 0))} resultado(s) · "
-                    f"{_safe_fiscal_count(pending_period.get('asset_amounts', 0))} ativo(s) · sem cálculo"
+                    f"{_safe_fiscal_count(pending_period.get('asset_amounts', 0))} ativo(s) · em revisão"
                 )
             evidence_gaps = foreign_pending.get("evidence_completeness", {})
             if isinstance(evidence_gaps, dict) and evidence_gaps:
