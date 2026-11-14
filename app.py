@@ -802,6 +802,8 @@ def application(environ, start_response):
                 "fx_date": item.get("fx_date"),
                 "fx_source": item.get("fx_source"),
                 "fx_conversion_method": item.get("fx_conversion_method"),
+                "fx_quote_verification": "USER_DECLARED_NOT_VERIFIED",
+                "fx_source_verification": "USER_DECLARED_NOT_VERIFIED",
                 "foreign_tax_credit_applied": False,
                 "loss_offsets_applied": False,
                 "legal_reference": "Lei 14.754/2023, art. 2º; Solução de Consulta Cosit 83/2024",
@@ -830,6 +832,8 @@ def application(environ, start_response):
                                    "reserve_is_estimate": True,
                                    "reserve_calculated": True,
                                    "annual_rule_reference": "Lei 14.754/2023, art. 2º; Solução de Consulta Cosit 83/2024",
+                                   "fx_quote_verified": False,
+                                   "fx_source_verified": False,
                                    "execution_allowed": False},
                                   request_id, environ)
         if path.startswith("/api/fiscal-reserve/pending/") and path.endswith("/reviews"):
