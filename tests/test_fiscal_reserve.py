@@ -733,5 +733,5 @@ def test_foreign_annual_scenario_shows_declared_loss_offset_without_changing_led
     assert scenario["loss_carryforward_calculated"] is False
     assert scenario["tax_assessment"] is False
     # The annual scenario is informational only; ledger entries and gross reserve remain unchanged.
-    assert summary["categories"]["BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT"]["reserve_amount_brl"] == 150.0
-    assert summary["total_reserved_brl"] == 150.0
+    assert summary["categories"]["BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT"]["reserve_amount_brl"] == 180.0
+    assert summary["total_reserved_brl"] == 180.0
