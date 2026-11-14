@@ -662,6 +662,8 @@ def test_foreign_annual_scenario_shows_declared_loss_offset_without_changing_led
         "fx_conversion_method": "PTAX_SELL",
         "legal_rate": 15.0,
         "legal_period": "ANNUAL_ADJUSTMENT",
+        "income_nature": "CAPITAL_GAIN",
+        "event_type": "DISPOSAL",
     }
     for reference, amount in (
         ("FOREIGN-ANNUAL-GAIN-001", 1000.0),
@@ -674,12 +676,22 @@ def test_foreign_annual_scenario_shows_declared_loss_offset_without_changing_led
             "occurred_on": "2026-11-05",
             "notes": json.dumps(evidence, separators=(",", ":")),
         })
+    # A negative dividend/interest cashflow is not treated as a deductible
+    # realized loss in this conservative scenario.
+    non_loss_evidence = {**evidence, "income_nature": "DIVIDEND", "event_type": "DIVIDEND_RECEIPT"}
+    reserve.record_realized_result(OWNER, {
+        "category": "BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT",
+        "realized_result_brl": -90.0,
+        "reference": "FOREIGN-ANNUAL-NEGATIVE-DIVIDEND-001",
+        "occurred_on": "2026-11-05",
+        "notes": json.dumps(non_loss_evidence, separators=(",", ":")),
+    })
 
     summary = reserve.summary(OWNER, as_of=date(2026, 11, 5))
     scenario = summary["foreign_annual_scenario"]
 
     assert scenario["year"] == 2026
-    assert scenario["entries"] == 2
+    assert scenario["entries"] == 3
     assert scenario["gross_positive_results_brl"] == 1000.0
     assert scenario["declared_losses_brl"] == 250.0
     assert scenario["net_result_after_declared_losses_brl"] == 750.0
