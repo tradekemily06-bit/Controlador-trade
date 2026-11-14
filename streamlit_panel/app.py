@@ -1450,11 +1450,12 @@ def show_fiscal() -> None:
                     )
                     selected_candidate_classification = st.selectbox(
                         "Classificação candidata",
-                        options=["FOREIGN_FINANCIAL_INVESTMENT", "FOREIGN_CRYPTO"],
-                        format_func=lambda value: "Aplicação financeira no exterior" if value == "FOREIGN_FINANCIAL_INVESTMENT" else "Criptoativo custodiado/negociado no exterior",
+                        options=["FOREIGN_FINANCIAL_INVESTMENT", "FOREIGN_DERIVATIVE", "FOREIGN_CRYPTO"],
+                        format_func=lambda value: {"FOREIGN_FINANCIAL_INVESTMENT": "Aplicação financeira no exterior", "FOREIGN_DERIVATIVE": "Derivativo negociado no exterior", "FOREIGN_CRYPTO": "Criptoativo custodiado/negociado no exterior"}[value],
                         key="foreign_estimate_candidate_classification",
                     )
                     is_crypto_estimate = selected_candidate_classification == "FOREIGN_CRYPTO"
+                    is_derivative_estimate = selected_candidate_classification == "FOREIGN_DERIVATIVE"
                     if str(selected_foreign_item.get("original_currency") or "").upper() != "BRL":
                         declared_result_brl = st.number_input(
                             "Resultado líquido apurado em BRL (após conversões separadas)",
@@ -1464,13 +1465,20 @@ def show_fiscal() -> None:
                             key="foreign_declared_result_brl",
                         )
                         requires_acquisition_basis = (
-                            selected_foreign_item.get("income_nature") in {"CAPITAL_GAIN", "TRADING_RESULT"}
-                            or selected_foreign_item.get("event_type") in {"DISPOSAL", "REDEMPTION"}
+                            not is_derivative_estimate
+                            and (
+                                selected_foreign_item.get("income_nature") in {"CAPITAL_GAIN", "TRADING_RESULT"}
+                                or selected_foreign_item.get("event_type") in {"DISPOSAL", "REDEMPTION"}
+                            )
                         )
                         conversion_confirmation_label = (
-                            "Confirmo a conversão do custo pela PTAX compra na aquisição e do valor recebido pela PTAX venda na liquidação."
-                            if requires_acquisition_basis
-                            else "Confirmo a conversão do rendimento pela PTAX venda do BCB na data do recebimento."
+                            "Confirmo que o resultado em BRL considera o contrato, as liquidações, os custos e as conversões cambiais aplicáveis."
+                            if is_derivative_estimate
+                            else (
+                                "Confirmo a conversão do custo pela PTAX compra na aquisição e do valor recebido pela PTAX venda na liquidação."
+                                if requires_acquisition_basis
+                                else "Confirmo a conversão do rendimento pela PTAX venda do BCB na data do recebimento."
+                            )
                         )
                         conversion_basis_confirmed = st.checkbox(
                             conversion_confirmation_label,
@@ -1512,7 +1520,23 @@ def show_fiscal() -> None:
                         acquisition_fx_rate = None
                         acquisition_fx_date = None
                         acquisition_fx_source = ""
-                    if is_crypto_estimate:
+                    if is_derivative_estimate:
+                        derivative_location_confirmed = st.checkbox(
+                            "Confirmo que o contrato é um derivativo negociado por instituição e sob jurisdição fora do Brasil.",
+                            key="foreign_derivative_location_confirmed",
+                        )
+                        derivative_result_basis_confirmed = st.checkbox(
+                            "Confirmo que o resultado em BRL foi calculado conforme o contrato e o extrato de liquidações.",
+                            key="foreign_derivative_result_basis_confirmed",
+                        )
+                        crypto_location_confirmed = False
+                        confirm_foreign_estimate = derivative_location_confirmed and derivative_result_basis_confirmed and st.checkbox(
+                            "Confirmo residência fiscal brasileira e evento realizado a partir de 2024.",
+                            key="foreign_derivative_tax_confirmed",
+                        )
+                    elif is_crypto_estimate:
+                        derivative_location_confirmed = False
+                        derivative_result_basis_confirmed = False
                         crypto_location_confirmed = st.checkbox(
                             "Confirmo que o criptoativo foi custodiado ou negociado por instituição localizada fora do Brasil; não é autocustódia no Brasil.",
                             key="foreign_crypto_location_confirmed",
@@ -1523,6 +1547,8 @@ def show_fiscal() -> None:
                         )
                         confirm_foreign_estimate = crypto_location_confirmed and crypto_tax_confirmed
                     else:
+                        derivative_location_confirmed = False
+                        derivative_result_basis_confirmed = False
                         crypto_location_confirmed = False
                         confirm_foreign_estimate = st.checkbox(
                             "Confirmo aplicação financeira no exterior e residência fiscal no Brasil na data do evento."
@@ -1540,6 +1566,11 @@ def show_fiscal() -> None:
                         }
                         if is_crypto_estimate:
                             estimate_payload["crypto_location_confirmed"] = True
+                        if is_derivative_estimate:
+                            estimate_payload.update({
+                                "derivative_location_confirmed": True,
+                                "derivative_result_basis_confirmed": True,
+                            })
                         if str(selected_foreign_item.get("original_currency") or "").upper() != "BRL":
                             if not conversion_basis_confirmed:
                                 raise ValueError("Confirme a conversão cambial separada.")
