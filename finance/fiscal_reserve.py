@@ -284,17 +284,24 @@ class FiscalReserve:
                 raise ValueError("a estimativa de 15% aplica-se a eventos a partir de 01/01/2024")
             if evidence.get("fx_conversion_status") == "CONVERTED_FOR_PLANNING_ONLY":
                 fx_rate = evidence.get("fx_rate")
+                fx_source = evidence.get("fx_source")
+                fx_date = evidence.get("fx_date")
+                fx_method = evidence.get("fx_conversion_method")
                 if (
                     isinstance(fx_rate, bool)
                     or not isinstance(fx_rate, (int, float))
                     or not math.isfinite(float(fx_rate))
                     or fx_rate <= 0
-                    or not isinstance(evidence.get("fx_date"), str)
-                    or not evidence.get("fx_date").strip()
-                    or not isinstance(evidence.get("fx_source"), str)
-                    or not evidence.get("fx_source").strip()
+                    or not isinstance(fx_date, str)
+                    or fx_date != occurred_on
+                    or not isinstance(fx_source, str)
+                    or not fx_source.strip()
+                    or not any(token in fx_source.casefold() for token in ("bcb", "banco central", "ptax"))
+                    or fx_method != "PTAX_SELL"
                 ):
-                    raise ValueError("cotação estrangeira exige taxa, data e fonte documentadas")
+                    raise ValueError(
+                        "estimativa exige PTAX de venda do BCB, fonte identificada e data igual à do evento"
+                    )
             elif evidence.get("original_currency") != "BRL":
                 raise ValueError("conversão direta só é válida para registros originalmente em BRL")
         with self._connect() as db:
