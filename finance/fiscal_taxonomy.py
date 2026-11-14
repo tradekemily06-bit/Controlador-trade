@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 
-CATALOG_VERSION = "2026-11-14.1"
+CATALOG_VERSION = "2026-11-14.2"
 
 # The categories are intake/classification lanes, not claims that every event
 # in the lane has one universal tax treatment.
@@ -101,9 +101,14 @@ FOREIGN_CATEGORIES: dict[str, dict[str, Any]] = {
         "scope": "FOREIGN",
         "requires": ["custodia", "local_da_operacao", "evento", "moeda", "fx_method", "instituicao_ou_autocustodia"],
         "recommended_evidence": ["identificacao_do_criptoativo", "historico_de_transacoes", "taxas_e_custos", "imposto_pago_no_exterior"],
-        "calculation_status": "NOT_AUTOMATED",
-        "booking_enabled": False,
-        "limitations": ["Exige determinar custódia, localização e natureza do evento."],
+        "calculation_status": "PARTIAL_PLANNING_ONLY",
+        "booking_enabled": True,
+        "limitations": [
+            "Bitcoin e outros ativos virtuais podem ser aplicações financeiras no exterior quando custodiados ou negociados por instituição localizada fora do Brasil, conforme IN RFB 2.180/2024, art. 9º, §§ 1º e 2º.",
+            "Autocustódia pelo residente no Brasil não caracteriza localização no exterior; NFTs e ativos sem natureza de aplicação financeira permanecem pendentes.",
+            "A estimativa de 15% exige resultado realizado, residência fiscal brasileira, instituição e localização declaradas, conversão cambial documentada e confirmação explícita.",
+            "Localização e documentos são declarados pelo usuário e não verificados automaticamente; não é apuração tributária.",
+        ],
     },
 }
 
