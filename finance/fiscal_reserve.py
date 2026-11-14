@@ -283,7 +283,10 @@ class FiscalReserve:
             ):
                 raise ValueError("estimativa estrangeira exige classificação, residência e conversão confirmadas")
             if evidence.get("candidate_classification") == "FOREIGN_FINANCIAL_INVESTMENT":
-                custody_location = str(evidence.get("custody_location") or "").casefold()
+                custody_location = " ".join((
+                    str(evidence.get("custody_location") or ""),
+                    str(evidence.get("jurisdiction") or ""),
+                )).casefold()
                 custody_tokens = set(custody_location.replace(",", " ").replace("/", " ").split())
                 if (
                     evidence.get("financial_investment_location_confirmed") is not True
