@@ -773,10 +773,16 @@ def application(environ, start_response):
             contract_type = str(item.get("contract_type") or "").strip().upper()
             if contract_type in {"", "NOT_INFORMED", "NOT_CONFIRMED"}:
                 raise ValueError("tipo de contrato é obrigatório")
-            if item.get("fx_conversion_status") not in {
-                "CONVERTED_FOR_PLANNING_ONLY", "ALREADY_BRL"
-            }:
-                raise ValueError("cotação documentada para conversão em reais é obrigatória")
+            if item.get("fx_conversion_status") == "CONVERTED_FOR_PLANNING_ONLY":
+                fx_source = str(item.get("fx_source") or "").casefold()
+                if item.get("fx_conversion_method") != "PTAX_SELL":
+                    raise ValueError("a estimativa exige cotação de fechamento para venda do BCB (PTAX)")
+                if item.get("fx_date") != item.get("occurred_on"):
+                    raise ValueError("a data da PTAX deve corresponder à data do evento tributável")
+                if "bcb" not in fx_source and "banco central" not in fx_source and "ptax" not in fx_source:
+                    raise ValueError("a fonte da cotação deve identificar o Banco Central do Brasil (PTAX)")
+            elif item.get("fx_conversion_status") != "ALREADY_BRL":
+                raise ValueError("cotação oficial documentada para conversão em reais é obrigatória")
             converted_result = item.get("converted_result_brl_for_planning")
             if isinstance(converted_result, bool) or not isinstance(converted_result, (int, float)):
                 raise ValueError("resultado convertido para BRL indisponível")
