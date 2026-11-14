@@ -20,12 +20,12 @@ def test_streamlit_panel_starts_and_exposes_the_expected_main_areas(monkeypatch)
     app = _open_panel(monkeypatch)
     area = next(item for item in app.radio if item.label == "Áreas principais")
     assert list(area.options) == [
-        "COCKPIT",
+        "CABINE DE COMANDO",
         "ANÁLISE",
         "ESTUDO",
         "RESERVA FISCAL",
         "ASSISTENTE DO ECOSSISTEMA",
-        "MAIS / ADMIN",
+        "CENTRAL",
     ]
 
 
