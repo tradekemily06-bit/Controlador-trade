@@ -1629,7 +1629,7 @@ def show_fiscal() -> None:
                 with st.form("foreign_review_form"):
                     foreign_review_category = st.selectbox(
                         "Classificação candidata revisada",
-                        ["FOREIGN_FINANCIAL_INVESTMENT", "FOREIGN_ENTITY_CONTROLLED", "FOREIGN_CRYPTO"],
+                        ["FOREIGN_FINANCIAL_INVESTMENT", "FOREIGN_ENTITY_CONTROLLED", "FOREIGN_CRYPTO", "FOREIGN_DERIVATIVE"],
                     )
                     foreign_review_jurisdiction = st.text_input(
                         "Jurisdição declarada pelo revisor · não verificada", max_chars=120, key="foreign_review_jurisdiction"
