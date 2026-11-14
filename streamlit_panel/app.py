@@ -1395,6 +1395,15 @@ def show_fiscal() -> None:
                 and item.get("event_type") in {
                     "DISPOSAL", "REDEMPTION", "DIVIDEND_RECEIPT", "INTEREST_RECEIPT"
                 }
+                and item.get("instrument")
+                and item.get("jurisdiction")
+                and (
+                    item.get("institution")
+                    or "autocust" in str(item.get("custody_location") or "").casefold()
+                    or "self-custod" in str(item.get("custody_location") or "").casefold()
+                )
+                and str(item.get("custody_location") or "").strip().upper() not in {"", "NOT_INFORMED"}
+                and str(item.get("contract_type") or "").strip().upper() not in {"", "NOT_INFORMED", "NOT_CONFIRMED"}
                 and item.get("fx_conversion_status") in {
                     "CONVERTED_FOR_PLANNING_ONLY", "ALREADY_BRL"
                 }
