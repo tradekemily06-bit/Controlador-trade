@@ -77,6 +77,7 @@ def test_foreign_taxonomy_exposes_requirements_for_limited_planning_estimate():
     assert "instituicao_ou_autocustodia" in crypto["requires"]
     assert investment["calculation_status"] == "PARTIAL_PLANNING_ONLY"
     assert investment["booking_enabled"] is True
+    assert any("Forex, CFDs, índices, futuros" in item for item in investment["limitations"])
     assert crypto["calculation_status"] == "NOT_AUTOMATED"
     assert crypto["booking_enabled"] is False
 
