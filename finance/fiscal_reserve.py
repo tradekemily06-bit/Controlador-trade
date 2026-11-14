@@ -499,6 +499,8 @@ class FiscalReserve:
                 "Resultados negativos são registrados, mas compensações fiscais não são calculadas.",
                 "Registros MT5 com classificação declarada pelo usuário e ainda não verificada permanecem fora dos totais, mesmo se existirem no histórico legado.",
                 "Aplicações financeiras no exterior só entram em estimativa após confirmação da categoria, residência fiscal brasileira, resultado realizado e câmbio documentado; criptoativos e entidades controladas permanecem pendentes.",
+                "A regra de 15% desta estimativa vale para eventos a partir de 01/01/2024; eventos anteriores exigem revisão separada.",
+                "Imposto pago no exterior e compensação de prejuízos não são calculados.",
                 "Nenhum valor é transferido ou movimentado pela Reserva Fiscal.",
             ],
         }
