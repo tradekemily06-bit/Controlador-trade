@@ -761,6 +761,18 @@ def application(environ, start_response):
                 "DISPOSAL", "REDEMPTION", "DIVIDEND_RECEIPT", "INTEREST_RECEIPT"
             }:
                 raise ValueError("tipo de evento não está habilitado para esta estimativa")
+            if not item.get("instrument") or not item.get("jurisdiction"):
+                raise ValueError("instrumento e jurisdição são obrigatórios")
+            institution = str(item.get("institution") or "").strip()
+            custody_location = str(item.get("custody_location") or "").strip().casefold()
+            self_custody = "autocust" in custody_location or "self-custod" in custody_location
+            if not institution and not self_custody:
+                raise ValueError("informe a instituição ou declare autocustódia")
+            if not custody_location or custody_location == "not_informed":
+                raise ValueError("local de custódia é obrigatório")
+            contract_type = str(item.get("contract_type") or "").strip().upper()
+            if contract_type in {"", "NOT_INFORMED", "NOT_CONFIRMED"}:
+                raise ValueError("tipo de contrato é obrigatório")
             if item.get("fx_conversion_status") not in {
                 "CONVERTED_FOR_PLANNING_ONLY", "ALREADY_BRL"
             }:
