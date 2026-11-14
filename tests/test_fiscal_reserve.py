@@ -339,7 +339,7 @@ def test_obsolete_foreign_rate_is_removed_without_deleting_legacy_history(tmp_pa
         remaining = db.execute(
             "SELECT category FROM fiscal_reserve_settings ORDER BY category"
         ).fetchall()
-    assert remaining == [("BR_DAY_TRADE",)]
+    assert remaining == [("BR_DAY_TRADE",), ("BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT",)]
 
 
 def test_money_rejects_boolean_values(tmp_path):
