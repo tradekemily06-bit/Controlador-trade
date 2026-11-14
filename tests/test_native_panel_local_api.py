@@ -203,6 +203,7 @@ def test_native_fiscal_summary_uses_server_owner_and_keeps_foreign_pending_separ
             }
 
     _allow_native_local(monkeypatch)
+    monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "false")
     monkeypatch.setattr(app_module, "FISCAL_RESERVE", Fiscal())
     monkeypatch.setattr(app_module, "FISCAL_PENDING_QUEUE", Queue())
     monkeypatch.setattr(app_module, "FISCAL_DOMESTIC_PENDING_QUEUE", Queue())
