@@ -83,8 +83,9 @@ FOREIGN_CATEGORIES: dict[str, dict[str, Any]] = {
         "booking_enabled": True,
         "limitations": [
             "Estimativa de 15% somente para resultado realizado, residência fiscal brasileira declarada e confirmação explícita desta categoria.",
-            "Exige cotação documentada convertida para BRL; ajuste anual, sem compensação de perdas ou créditos de imposto estrangeiro.",
-            "Não é apuração tributária; criptoativos, entidades controladas e eventos não suportados permanecem pendentes.",
+            "Exige cotação documentada convertida para BRL; ajuste anual. A visão anual pode simular perdas declaradas no mesmo ano, sem validação documental.",
+            "Não calcula saldo de perdas de anos anteriores nem créditos de imposto estrangeiro; não é apuração tributária.",
+            "Criptoativos, entidades controladas e eventos não suportados permanecem pendentes.",
         ],
     },
     "FOREIGN_ENTITY_CONTROLLED": {
