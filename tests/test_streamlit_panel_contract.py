@@ -1124,6 +1124,7 @@ def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid
             "total": 3,
             "realized_results": 1,
             "asset_amounts": 2,
+            "planning_estimates_registered": 0,
             "evidence_completeness": {
                 "total": 3,
                 "missing_institution": 1,
