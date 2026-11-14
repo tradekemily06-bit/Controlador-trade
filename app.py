@@ -766,6 +766,8 @@ def application(environ, start_response):
             if not item.get("instrument") or jurisdiction.casefold() in {"", "not_informed", "not informed", "not_confirmed", "not confirmed"}:
                 raise ValueError("instrumento e jurisdição identificada são obrigatórios")
             institution = str(item.get("institution") or "").strip()
+            if institution.casefold() in {"not_informed", "not informed", "not_confirmed", "not confirmed"}:
+                institution = ""
             custody_location = str(item.get("custody_location") or "").strip().casefold()
             self_custody = "autocust" in custody_location or "self-custod" in custody_location
             if not institution and not self_custody:
