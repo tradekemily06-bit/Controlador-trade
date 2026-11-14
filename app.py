@@ -751,8 +751,9 @@ def application(environ, start_response):
                 raise ValueError("a regra exige residência fiscal brasileira declarada na data do evento")
             if str(item.get("occurred_on") or "") < "2024-01-01":
                 raise ValueError("a estimativa de 15% aplica-se a eventos a partir de 01/01/2024; registros anteriores exigem revisão separada")
-            if data.get("candidate_classification") != "FOREIGN_FINANCIAL_INVESTMENT":
-                raise ValueError("a categoria deve ser confirmada como aplicação financeira no exterior")
+            candidate_classification = data.get("candidate_classification")
+            if candidate_classification not in {"FOREIGN_FINANCIAL_INVESTMENT", "FOREIGN_CRYPTO"}:
+                raise ValueError("a categoria estrangeira deve ser confirmada explicitamente")
             if item.get("income_nature") not in {
                 "CAPITAL_GAIN", "INVESTMENT_INCOME", "TRADING_RESULT", "DIVIDEND", "INTEREST"
             }:
@@ -773,25 +774,42 @@ def application(environ, start_response):
             contract_type = str(item.get("contract_type") or "").strip().upper()
             if contract_type in {"", "NOT_INFORMED", "NOT_CONFIRMED"}:
                 raise ValueError("tipo de contrato é obrigatório")
-            # Conservative guard: Forex has a specific RFB interpretation (SC Cosit
-            # 83/2024). CFDs, futures, crypto, and index/commodity derivatives are
-            # not yet classified by this planning flow. A user-entered label alone
-            # cannot establish their legal regime, so keep them pending.
             instrument_description = " ".join((
                 str(item.get("instrument") or ""),
                 str(item.get("contract_type") or ""),
             )).casefold()
-            unsupported_instrument_terms = (
-                "índice", "index",
-                "cfd", "contract for difference", "futuro", "futures",
-                "cripto", "crypto", "bitcoin", "ethereum", "índice futuro",
-                "index future", "commodity future", "derivativo de índice",
-            )
-            if any(term in instrument_description for term in unsupported_instrument_terms):
-                raise ValueError(
-                    "este instrumento exige classificação fiscal própria e permanece pendente; "
-                    "a estimativa de 15% não pode ser aplicada automaticamente"
+            crypto_terms = ("cripto", "crypto", "bitcoin", "ethereum", "btc", "eth", "solana", "token")
+            is_crypto_instrument = any(term in instrument_description for term in crypto_terms)
+            if candidate_classification == "FOREIGN_CRYPTO":
+                if not is_crypto_instrument:
+                    raise ValueError("a categoria de criptoativos exige identificação do ativo virtual")
+                if "nft" in instrument_description:
+                    raise ValueError("NFTs sem enquadramento como aplicação financeira permanecem pendentes")
+                if self_custody:
+                    raise ValueError("autocustódia pelo residente no Brasil não caracteriza ativo virtual localizado no exterior")
+                location_tokens = set(
+                    (custody_location + " " + str(item.get("jurisdiction") or "").casefold())
+                    .replace(",", " ").replace("/", " ").split()
                 )
+                if location_tokens.intersection({"br", "brasil", "brazil"}):
+                    raise ValueError("o ativo virtual precisa estar custodiado ou negociado por instituição localizada fora do Brasil")
+                if not institution or data.get("crypto_location_confirmed") is not True:
+                    raise ValueError("confirme a instituição localizada no exterior e a ausência de autocustódia no Brasil")
+                if item.get("income_nature") not in {"CAPITAL_GAIN", "TRADING_RESULT"} or item.get("event_type") not in {"DISPOSAL", "REDEMPTION"}:
+                    raise ValueError("criptoativos só entram neste fluxo em alienação ou resgate realizado")
+            else:
+                if is_crypto_instrument:
+                    raise ValueError("criptoativos exigem a categoria específica e confirmação de custódia no exterior")
+                unsupported_instrument_terms = (
+                    "índice", "index", "cfd", "contract for difference",
+                    "futuro", "futures", "índice futuro", "index future",
+                    "commodity future", "derivativo de índice",
+                )
+                if any(term in instrument_description for term in unsupported_instrument_terms):
+                    raise ValueError(
+                        "este instrumento exige classificação fiscal própria e permanece pendente; "
+                        "a estimativa de 15% não pode ser aplicada automaticamente"
+                    )
             if item.get("fx_conversion_status") == "CONVERTED_FOR_PLANNING_ONLY":
                 fx_source = str(item.get("fx_source") or "").casefold()
                 if item.get("fx_conversion_method") != "PTAX_SELL":
@@ -866,7 +884,7 @@ def application(environ, start_response):
             evidence = {
                 "tax_classification_status": "USER_DECLARED_PLANNING_ONLY",
                 "classification_source": "EXPLICIT_USER_CONFIRMATION",
-                "candidate_classification": "FOREIGN_FINANCIAL_INVESTMENT",
+                "candidate_classification": candidate_classification,
                 "tax_residency_at_event": "BRAZIL",
                 "tax_liability_confirmed": False,
                 "reserve_semantics": "PLANNING_ESTIMATE_ONLY",
@@ -876,6 +894,8 @@ def application(environ, start_response):
                 "declared_result_brl": converted_result if original_currency != "BRL" else None,
                 "declared_result_brl_verification": "USER_DECLARED_NOT_VERIFIED" if original_currency != "BRL" else "NOT_APPLICABLE",
                 "conversion_basis": conversion_basis_label if original_currency != "BRL" else "ALREADY_BRL",
+                "crypto_location_rule": "FOREIGN_INSTITUTION_CUSTODY_OR_TRADING_USER_DECLARED" if candidate_classification == "FOREIGN_CRYPTO" else None,
+                "crypto_location_verification": "USER_DECLARED_NOT_VERIFIED" if candidate_classification == "FOREIGN_CRYPTO" else "NOT_APPLICABLE",
                 "conversion_basis_confirmed": data.get("conversion_basis_confirmed") is True,
                 **acquisition_fx_evidence,
                 "income_nature": item.get("income_nature"),
