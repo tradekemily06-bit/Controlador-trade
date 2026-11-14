@@ -1434,14 +1434,6 @@ def show_fiscal() -> None:
                         )
                     )
                 )
-                and (
-                    str(item.get("original_currency") or "").upper() == "BRL"
-                    or not (
-                        item.get("income_nature") in {"CAPITAL_GAIN", "TRADING_RESULT"}
-                        or item.get("event_type") in {"DISPOSAL", "REDEMPTION"}
-                    )
-                    or item.get("acquisition_cost") is not None
-                )
                 and item.get("planning_estimate_registered") is not True
             }
             st.markdown("##### Estimativa de reserva · aplicação financeira no exterior")
@@ -1478,6 +1470,14 @@ def show_fiscal() -> None:
                             key="foreign_conversion_basis_confirmed",
                         )
                         if requires_acquisition_basis:
+                            acquisition_cost_for_estimate = st.number_input(
+                                "Custo de aquisição na moeda original",
+                                min_value=0.0,
+                                max_value=1_000_000_000_000.0,
+                                format="%.8f",
+                                value=float(selected_foreign_item.get("acquisition_cost") or 0.0),
+                                key="foreign_estimate_acquisition_cost",
+                            )
                             acquisition_fx_rate = st.number_input(
                                 "PTAX compra (BCB) na data da aquisição",
                                 min_value=0.0,
@@ -1495,6 +1495,7 @@ def show_fiscal() -> None:
                                 key="foreign_estimate_acquisition_fx_source",
                             )
                         else:
+                            acquisition_cost_for_estimate = None
                             acquisition_fx_rate = None
                             acquisition_fx_date = None
                             acquisition_fx_source = ""
@@ -1529,6 +1530,7 @@ def show_fiscal() -> None:
                                 if acquisition_fx_rate <= 0 or not acquisition_fx_source:
                                     raise ValueError("Informe a PTAX compra na data da aquisição.")
                                 estimate_payload.update({
+                                    "acquisition_cost": acquisition_cost_for_estimate,
                                     "acquisition_fx_rate": acquisition_fx_rate,
                                     "acquisition_fx_date": acquisition_fx_date.isoformat(),
                                     "acquisition_fx_source": acquisition_fx_source,
