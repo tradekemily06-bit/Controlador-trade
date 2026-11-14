@@ -1557,7 +1557,7 @@ def show_fiscal() -> None:
                         derivative_result_basis_confirmed = False
                         crypto_location_confirmed = False
                         financial_investment_location_confirmed = st.checkbox(
-                            "Confirmo que a aplicação financeira e sua custódia efetiva estão localizadas fora do Brasil.",
+                            "Confirmo que a aplicação financeira, sua jurisdição e sua custódia efetiva estão localizadas fora do Brasil.",
                             key="foreign_financial_investment_location_confirmed",
                         )
                         financial_tax_confirmed = st.checkbox(
