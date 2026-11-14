@@ -288,7 +288,8 @@ def test_streamlit_foreign_pending_forms_capture_structured_evidence_and_display
 def test_streamlit_fiscal_summary_labels_accumulated_amount_as_planning_estimate():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert 'c.metric("Estimativa acumulada · total"' in source
-    assert "percentual de planejamento {rate_source_label}" in source
+    assert "alíquota legal de referência: 20%" in source
+    assert "Este campo ajusta somente sua margem de reserva financeira" in source
     assert '"DEFAULT": "padrão inicial do sistema"' in source
     assert '"USER_CONFIGURED": "configurado pelo usuário"' in source
     assert "ESTIMATIVA DE PLANEJAMENTO — não é imposto apurado ou devido." in source
