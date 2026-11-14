@@ -1389,6 +1389,7 @@ def show_fiscal() -> None:
                 if item.get("pending_id")
                 and item.get("record_kind") == "REALIZED_RESULT"
                 and item.get("tax_residency_at_event") == "BRAZIL"
+                and str(item.get("occurred_on") or "") >= "2024-01-01"
                 and item.get("income_nature") in {
                     "CAPITAL_GAIN", "INVESTMENT_INCOME", "TRADING_RESULT", "DIVIDEND", "INTEREST"
                 }
