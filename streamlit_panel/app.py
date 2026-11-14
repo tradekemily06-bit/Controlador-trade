@@ -1378,7 +1378,7 @@ def show_fiscal() -> None:
                 "Custo de aquisição (moeda original)": item.get("acquisition_cost"),
                 "Taxas (moeda original)": item.get("transaction_fees"),
                 "Imposto pago fora (moeda original)": item.get("foreign_tax_paid"),
-                "Status": "PENDENTE DE CLASSIFICAÇÃO",
+                "Status": "ESTIMATIVA REGISTRADA · CLASSIFICAÇÃO DECLARADA" if item.get("planning_estimate_registered") is True else "PENDENTE DE CLASSIFICAÇÃO",
             } for item in foreign_items], use_container_width=True, hide_index=True)
             eligible_foreign_results = {
                 item["pending_id"]: (
