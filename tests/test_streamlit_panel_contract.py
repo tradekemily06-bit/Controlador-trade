@@ -2116,3 +2116,13 @@ def test_streamlit_fiscal_monthly_planning_validates_and_labels_the_annual_estim
     assert '"Reserva estimada": money(item["reserve_amount_brl"])' in source
     assert "não compensa prejuízos nem créditos de imposto pago no exterior" in source
     assert "Os valores não foram estimados nem substituídos por zeros." in source
+
+
+
+def test_streamlit_shows_foreign_annual_loss_scenario_separately_from_gross_reserve():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'summary.get("foreign_annual_scenario", {})' in source
+    assert "Reserva bruta registrada · exterior" in source
+    assert "Simulação anual após perdas declaradas" in source
+    assert "sem validar documentos" in source
+    assert "não representa imposto apurado" in source
