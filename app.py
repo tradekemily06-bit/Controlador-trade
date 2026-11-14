@@ -773,10 +773,10 @@ def application(environ, start_response):
             contract_type = str(item.get("contract_type") or "").strip().upper()
             if contract_type in {"", "NOT_INFORMED", "NOT_CONFIRMED"}:
                 raise ValueError("tipo de contrato é obrigatório")
-            # Conservative guard: the current 15% planning lane does not classify
-            # Forex, CFDs, futures, crypto, or index/commodity derivatives. A
-            # user-entered label alone cannot establish the legal regime; keep
-            # these instruments pending until their own tax rules are implemented.
+            # Conservative guard: Forex has a specific RFB interpretation (SC Cosit
+            # 83/2024). CFDs, futures, crypto, and index/commodity derivatives are
+            # not yet classified by this planning flow. A user-entered label alone
+            # cannot establish their legal regime, so keep them pending.
             instrument_description = " ".join((
                 str(item.get("instrument") or ""),
                 str(item.get("contract_type") or ""),
