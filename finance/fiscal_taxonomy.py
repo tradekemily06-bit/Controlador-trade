@@ -1,15 +1,15 @@
 """Explicit fiscal classification catalog.
 
-This catalog is descriptive only. It deliberately contains no tax rates and
-does not authorize ledger booking. Unsupported or unreviewed records remain
-pending until a rule set is implemented and validated for the exact event.
+The catalog contains no tax rates and does not itself authorize ledger writes.
+A booking-enabled category only signals a separate, limited planning workflow;
+unsupported or unconfirmed events remain pending.
 """
 from __future__ import annotations
 
 from typing import Any
 
 
-CATALOG_VERSION = "2026-11-04.1"
+CATALOG_VERSION = "2026-11-14.3"
 
 # The categories are intake/classification lanes, not claims that every event
 # in the lane has one universal tax treatment.
@@ -79,9 +79,29 @@ FOREIGN_CATEGORIES: dict[str, dict[str, Any]] = {
         "scope": "FOREIGN",
         "requires": ["residencia_fiscal", "natureza_do_rendimento", "evento", "moeda", "fx_method", "instituicao_ou_autocustodia", "local_custodia", "tipo_de_contrato"],
         "recommended_evidence": ["custo_de_aquisicao", "taxas_e_custos", "imposto_pago_no_exterior", "extrato_da_instituicao"],
-        "calculation_status": "NOT_AUTOMATED",
-        "booking_enabled": False,
-        "limitations": ["Não aplicar percentual genérico; classificar evento e método cambial antes."],
+        "calculation_status": "PARTIAL_PLANNING_ONLY",
+        "booking_enabled": True,
+        "limitations": [
+            "Estimativa de 15% somente para resultado realizado, residência fiscal brasileira declarada e confirmação explícita desta categoria.",
+            "Exige cotação documentada convertida para BRL; ajuste anual. A visão anual pode simular perdas declaradas no mesmo ano, sem validação documental.",
+            "Não calcula saldo de perdas de anos anteriores nem créditos de imposto estrangeiro; não é apuração tributária.",
+            "Forex no exterior tem entendimento específico na Solução de Consulta Cosit 83/2024 e pode integrar esta faixa quando caracterizado como aplicação financeira; CFDs, índices, futuros, entidades controladas e eventos sem classificação própria permanecem pendentes; criptoativos usam a categoria estrangeira específica e exigem custódia ou negociação por instituição no exterior.",
+        ],
+    },
+    "FOREIGN_DERIVATIVE": {
+        "label": "Exterior · derivativos",
+        "scope": "FOREIGN",
+        "requires": ["residencia_fiscal", "instituicao_localizada_no_exterior", "jurisdicao_do_contrato", "ativo_subjacente", "tipo_de_derivativo", "evento_realizado", "resultado_em_brl_declarado", "confirmacao_de_localizacao_no_exterior"],
+        "recommended_evidence": ["contrato_do_derivativo", "extrato_da_corretora", "historico_de_liquidacoes", "custos_e_comissoes", "memoria_de_conversao_cambial"],
+        "calculation_status": "PARTIAL_PLANNING_ONLY",
+        "booking_enabled": True,
+        "limitations": [
+            "A Lei 14.754/2023, art. 3º, § 1º, inclui derivativos entre aplicações financeiras no exterior; o fluxo exige contrato identificado e instituição/jurisdição fora do Brasil.",
+            "A estimativa de 15% usa resultado em BRL declarado pelo usuário, calculado conforme o contrato, liquidações, custos e regras cambiais aplicáveis.",
+            "A natureza do contrato, a localização e o resultado declarado não são verificados automaticamente; CFDs, futuros e índices só entram quando o instrumento contratual é efetivamente um derivativo estrangeiro.",
+            "Derivativos de criptoativos, operações em instituição brasileira e contratos sem documentação permanecem pendentes.",
+            "Não é apuração tributária; não calcula compensação de perdas nem créditos de imposto pago no exterior.",
+        ],
     },
     "FOREIGN_ENTITY_CONTROLLED": {
         "label": "Exterior · entidade controlada",
@@ -94,11 +114,16 @@ FOREIGN_CATEGORIES: dict[str, dict[str, Any]] = {
     "FOREIGN_CRYPTO": {
         "label": "Exterior · criptoativos",
         "scope": "FOREIGN",
-        "requires": ["custodia", "local_da_operacao", "evento", "moeda", "fx_method", "instituicao_ou_autocustodia"],
-        "recommended_evidence": ["identificacao_do_criptoativo", "historico_de_transacoes", "taxas_e_custos", "imposto_pago_no_exterior"],
-        "calculation_status": "NOT_AUTOMATED",
-        "booking_enabled": False,
-        "limitations": ["Exige determinar custódia, localização e natureza do evento."],
+        "requires": ["residencia_fiscal", "instituicao_localizada_no_exterior", "localizacao_do_ativo", "evento", "moeda", "fx_method", "confirmacao_sem_autocustodia_no_brasil"],
+        "recommended_evidence": ["identificacao_do_criptoativo", "historico_de_transacoes", "comprovante_da_instituicao_no_exterior", "comprovante_de_custodia_ou_negociacao", "taxas_e_custos", "imposto_pago_no_exterior"],
+        "calculation_status": "PARTIAL_PLANNING_ONLY",
+        "booking_enabled": True,
+        "limitations": [
+            "Bitcoin e outros ativos virtuais podem ser aplicações financeiras no exterior quando custodiados ou negociados por instituição localizada fora do Brasil, conforme IN RFB 2.180/2024, art. 9º, §§ 1º e 2º.",
+            "Autocustódia pelo residente no Brasil não caracteriza localização no exterior; NFTs e ativos sem natureza de aplicação financeira permanecem pendentes.",
+            "A estimativa de 15% exige resultado realizado, residência fiscal brasileira, instituição e localização declaradas, conversão cambial documentada e confirmação explícita.",
+            "Localização e documentos são declarados pelo usuário e não verificados automaticamente; não é apuração tributária.",
+        ],
     },
 }
 

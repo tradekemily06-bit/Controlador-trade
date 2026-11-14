@@ -1,6 +1,7 @@
 """Pending intake for foreign fiscal items; never estimates or books tax reserves."""
 from __future__ import annotations
 
+import math
 import sqlite3
 import uuid
 from contextlib import contextmanager
@@ -18,6 +19,7 @@ FOREIGN_REVIEW_CANDIDATES = frozenset({
     "FOREIGN_FINANCIAL_INVESTMENT",
     "FOREIGN_ENTITY_CONTROLLED",
     "FOREIGN_CRYPTO",
+    "FOREIGN_DERIVATIVE",
 })
 
 
@@ -221,6 +223,77 @@ class FiscalPendingQueue:
             raise ValueError(f"{field} possui opção inválida")
         return value
 
+    @staticmethod
+    def _with_fx_planning_preview(item: dict[str, Any]) -> dict[str, Any]:
+        """Expose documented currency conversion for planning without tax booking."""
+        result = dict(item)
+        if "planning_estimate_registered" in result:
+            result["planning_estimate_registered"] = bool(result["planning_estimate_registered"])
+        currency = str(result.get("original_currency") or "").upper()
+        if currency == "BRL":
+            rate = 1.0
+            result["fx_conversion_status"] = "ALREADY_BRL"
+        else:
+            rate = result.get("fx_rate")
+            method = result.get("fx_conversion_method")
+            documented_methods = {
+                "PTAX_SELL", "PTAX_BUY", "BROKER_STATEMENT",
+                "BANK_RECEIPT", "OTHER_DOCUMENTED",
+            }
+            if (
+                isinstance(rate, bool)
+                or not isinstance(rate, (int, float))
+                or rate <= 0
+                or not math.isfinite(float(rate))
+                or method not in documented_methods
+                or not result.get("fx_date")
+                or not result.get("fx_source")
+            ):
+                rate = None
+                result["fx_conversion_status"] = "FX_NOT_PROVIDED"
+            elif result.get("fx_date") != result.get("occurred_on"):
+                # A quote from another day must never be presented as the
+                # event-date BRL equivalent, even as an informational preview.
+                rate = None
+                result["fx_conversion_status"] = "FX_DATE_MISMATCH"
+            else:
+                rate = float(rate)
+                result["fx_conversion_status"] = "CONVERTED_FOR_PLANNING_ONLY"
+
+        result["fx_rate_direction"] = "BRL_PER_ORIGINAL_CURRENCY_UNIT"
+        if rate is None:
+            result["converted_amount_brl_for_planning"] = None
+            result["converted_result_brl_for_planning"] = None
+            result["converted_acquisition_cost_brl_for_planning"] = None
+            result["converted_transaction_fees_brl_for_planning"] = None
+            result["converted_foreign_tax_paid_brl_for_planning"] = None
+            return result
+
+        def convert(value: Any, *, signed: bool = False) -> float | None:
+            if value is None:
+                return None
+            amount = float(value)
+            if not signed:
+                amount = abs(amount)
+            return round(amount * rate, 2)
+
+        is_result = result.get("record_kind") == "REALIZED_RESULT"
+        original_result = result.get("original_result")
+        result["converted_amount_brl_for_planning"] = (
+            None if is_result else convert(result.get("original_amount"))
+        )
+        result["converted_result_brl_for_planning"] = (
+            convert(original_result, signed=True) if is_result else None
+        )
+        # This quote belongs to the event date. Acquisition costs and fees may
+        # require their own historical dates/quotes; foreign tax paid uses a
+        # separate BCB BUY quote on the payment date. Never reuse this quote.
+        result["converted_acquisition_cost_brl_for_planning"] = None
+        result["converted_transaction_fees_brl_for_planning"] = None
+        result["converted_foreign_tax_paid_brl_for_planning"] = None
+        result["fx_preview_scope"] = "EVENT_AMOUNT_OR_REALIZED_RESULT_ONLY"
+        return result
+
     def add(self, owner_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         owner_id = self._require_owner(owner_id)
         if not isinstance(payload, dict):
@@ -283,7 +356,9 @@ class FiscalPendingQueue:
                        ":jurisdiction, :occurred_on, :fx_rate, :fx_date, :fx_source, :tax_residency_at_event, "
                        ":income_nature, :event_type, :fx_conversion_method, :institution, :custody_location, "
                        ":contract_type, :acquisition_cost, :transaction_fees, :foreign_tax_paid, :notes, :status, :created_at)", item)
-        return {key: value for key, value in item.items() if key != "owner_id"}
+        return self._with_fx_planning_preview(
+            {key: value for key, value in item.items() if key != "owner_id"}
+        )
 
     def add_realized_result(self, owner_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         """Store a signed foreign realized result; it remains pending and outside fiscal totals."""
@@ -361,7 +436,9 @@ class FiscalPendingQueue:
                  :original_result, :record_kind)""",
                 item,
             )
-        return {key: value for key, value in item.items() if key != "owner_id"}
+        return self._with_fx_planning_preview(
+            {key: value for key, value in item.items() if key != "owner_id"}
+        )
 
     def record_review(self, owner_id: str, pending_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         """Append professional review evidence; never changes pending status or calculates tax."""
@@ -483,6 +560,16 @@ class FiscalPendingQueue:
                 "SELECT COUNT(*) FROM fiscal_reserve_pending_foreign WHERE owner_id = ?",
                 (owner_id,),
             ).fetchone()[0])
+            planning_estimates_registered = int(db.execute(
+                """SELECT COUNT(*) FROM fiscal_reserve_pending_foreign p
+                   WHERE p.owner_id = ? AND EXISTS(
+                       SELECT 1 FROM fiscal_reserve_entries e
+                       WHERE e.owner_id = p.owner_id
+                         AND e.category = 'BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT'
+                         AND e.reference = p.reference
+                   )""",
+                (owner_id,),
+            ).fetchone()[0])
             kinds = db.execute(
                 """SELECT record_kind, COUNT(*) AS item_count
                    FROM fiscal_reserve_pending_foreign
@@ -544,6 +631,7 @@ class FiscalPendingQueue:
             "total": total,
             "realized_results": counts.get("REALIZED_RESULT", 0),
             "asset_amounts": counts.get("ASSET_AMOUNT", 0),
+            "planning_estimates_registered": planning_estimates_registered,
             "currencies": [str(row["original_currency"]) for row in currencies],
             "evidence_completeness": {
                 "total": int(evidence["total"] or 0),
@@ -557,6 +645,32 @@ class FiscalPendingQueue:
             "included_in_totals": False,
             "reserve_calculated": False,
         }
+
+    def get_pending(self, owner_id: str, pending_id: str) -> dict[str, Any]:
+        owner_id = self._require_owner(owner_id)
+        if not isinstance(pending_id, str):
+            raise ValueError("pending_id inválido")
+        pending_id = pending_id.strip()
+        if not pending_id or len(pending_id) > 80:
+            raise ValueError("pending_id inválido")
+        with self._connect() as db:
+            row = db.execute(
+                """SELECT p.*,
+                   EXISTS(
+                       SELECT 1 FROM fiscal_reserve_entries e
+                       WHERE e.owner_id = p.owner_id
+                         AND e.category = 'BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT'
+                         AND e.reference = p.reference
+                   ) AS planning_estimate_registered
+                   FROM fiscal_reserve_pending_foreign p
+                   WHERE p.owner_id = ? AND p.pending_id = ?""",
+                (owner_id, pending_id),
+            ).fetchone()
+        if row is None:
+            raise ValueError("pendência não encontrada")
+        return self._with_fx_planning_preview(
+            {key: value for key, value in dict(row).items() if key != "owner_id"}
+        )
 
     def list_pending(self, owner_id: str, limit: int = 100, offset: int = 0) -> dict[str, Any]:
         owner_id = self._require_owner(owner_id)
@@ -572,9 +686,28 @@ class FiscalPendingQueue:
             )
         with self._connect() as db:
             total = int(db.execute("SELECT COUNT(*) FROM fiscal_reserve_pending_foreign WHERE owner_id = ?", (owner_id,)).fetchone()[0])
-            rows = db.execute("SELECT * FROM fiscal_reserve_pending_foreign WHERE owner_id = ? "
-                              "ORDER BY created_at DESC, pending_id DESC LIMIT ? OFFSET ?",
-                              (owner_id, limit, offset)).fetchall()
-        return {"items": [{key: value for key, value in dict(row).items() if key != "owner_id"} for row in rows], "total": total,
-                "limit": limit, "offset": offset,
-                "note": "Pendências não integram os totais nem geram estimativa de reserva."}
+            rows = db.execute(
+                """SELECT p.*,
+                   EXISTS(
+                       SELECT 1 FROM fiscal_reserve_entries e
+                       WHERE e.owner_id = p.owner_id
+                         AND e.category = 'BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT'
+                         AND e.reference = p.reference
+                   ) AS planning_estimate_registered
+                   FROM fiscal_reserve_pending_foreign p
+                   WHERE p.owner_id = ?
+                   ORDER BY p.created_at DESC, p.pending_id DESC LIMIT ? OFFSET ?""",
+                (owner_id, limit, offset),
+            ).fetchall()
+        return {
+            "items": [
+                self._with_fx_planning_preview(
+                    {key: value for key, value in dict(row).items() if key != "owner_id"}
+                )
+                for row in rows
+            ],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "note": "Conversões documentadas são apoio de planejamento; a fila não integra os totais. Estimativas confirmadas aparecem separadamente no livro de reserva.",
+        }

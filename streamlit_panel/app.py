@@ -215,7 +215,7 @@ def fiscal_history_display_row(item: dict[str, Any]) -> dict[str, Any]:
         "Percentual de planejamento (%)": "—",
         "Reserva estimada (R$)": "—",
         "Referência": item.get("reference"),
-        "Status": "PENDENTE DE CLASSIFICAÇÃO",
+        "Status": "ESTIMATIVA REGISTRADA · CLASSIFICAÇÃO DECLARADA" if item.get("planning_estimate_registered") is True else "PENDENTE DE CLASSIFICAÇÃO",
     }
     if category == "BR_DAY_TRADE":
         evidence = {}
@@ -658,8 +658,9 @@ def _valid_fiscal_summary(summary: Any) -> bool:
     if not isinstance(categories, dict) or not isinstance(periods, dict) or not isinstance(semantics, dict):
         return False
     brazil = categories.get("BR_DAY_TRADE")
+    foreign_investment = categories.get("BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT")
     foreign = categories.get("FOREIGN_FINANCIAL_ASSET")
-    if not isinstance(brazil, dict) or not isinstance(foreign, dict):
+    if not isinstance(brazil, dict) or not isinstance(foreign_investment, dict) or not isinstance(foreign, dict):
         return False
     foreign_entries = foreign.get("entries")
     if isinstance(foreign_entries, bool) or not isinstance(foreign_entries, int) or not 0 <= foreign_entries <= 1_000_000_000:
@@ -684,10 +685,25 @@ def _valid_fiscal_summary(summary: Any) -> bool:
             return False
     if brazil.get("reserve_amount_brl") < 0:
         return False
+    foreign_rate = foreign_investment.get("rate")
+    foreign_entries = foreign_investment.get("entries")
+    if not _is_finite_number(foreign_rate) or foreign_rate != 15.0:
+        return False
+    if isinstance(foreign_entries, bool) or not isinstance(foreign_entries, int) or not 0 <= foreign_entries <= 1_000_000_000:
+        return False
+    for field in ("realized_result_brl", "reserve_amount_brl"):
+        value = foreign_investment.get(field)
+        if not _is_finite_number(value) or not -1_000_000_000_000 <= value <= 1_000_000_000_000:
+            return False
+    if foreign_investment.get("reserve_amount_brl") < 0:
+        return False
     total = summary.get("total_reserved_brl")
     if not _is_finite_number(total) or not 0 <= total <= 1_000_000_000_000:
         return False
-    if total != brazil.get("reserve_amount_brl"):
+    expected_total = round(
+        brazil.get("reserve_amount_brl") + foreign_investment.get("reserve_amount_brl"), 2
+    )
+    if total != expected_total:
         return False
     as_of_raw = summary.get("as_of")
     if not isinstance(as_of_raw, str) or len(as_of_raw) != 10:
@@ -728,6 +744,13 @@ def _valid_fiscal_summary(summary: Any) -> bool:
                 return False
             if foreign_pending["total"] != (
                 foreign_pending["realized_results"] + foreign_pending["asset_amounts"]
+            ):
+                return False
+            registered_estimates = foreign_pending.get("planning_estimates_registered")
+            if (
+                isinstance(registered_estimates, bool)
+                or not isinstance(registered_estimates, int)
+                or not 0 <= registered_estimates <= foreign_pending["realized_results"]
             ):
                 return False
             evidence_completeness = foreign_pending.get("evidence_completeness")
@@ -836,7 +859,8 @@ def show_fiscal() -> None:
         st.session_state.fiscal_history_offset = 0
     summary_available = False
     try:
-        summary = api("/api/fiscal-reserve?limit=50&offset=" + str(int(st.session_state.fiscal_history_offset)))
+        summary_path = "/api/fiscal-reserve" if REMOTE_REQUIRED else "/api/fiscal-reserve/local"
+        summary = api(summary_path + "?limit=50&offset=" + str(int(st.session_state.fiscal_history_offset)))
         summary_available = (
             _valid_fiscal_summary(summary)
             and _valid_fiscal_history_page(summary, int(st.session_state.fiscal_history_offset))
@@ -852,9 +876,8 @@ def show_fiscal() -> None:
     except Exception as exc:
         summary = {}
         st.error("Resumo fiscal indisponível. Os lançamentos e alterações de percentual ficam bloqueados. Verifique a disponibilidade do serviço e os registros técnicos locais.")
-        st.caption("Detalhes técnicos não são exibidos no painel.")
     st.subheader("Reserva Fiscal")
-    st.caption("Planejamento e separação estimada. Operações MT5 cuja elegibilidade fiscal não foi verificada ficam em fila brasileira separada, sem cálculo e fora dos totais. Registros estrangeiros não classificados também ficam fora dos totais; nenhuma alíquota genérica é aplicada.")
+    st.caption("Planejamento, não apuração tributária. Operações MT5 sem elegibilidade verificada ficam em fila separada. No exterior, 15% é referência para aplicações financeiras legalmente elegíveis de residente fiscal brasileiro, incluindo derivativos efetivamente classificados como tais e criptoativos localizados no exterior por instituição estrangeira. CFDs, índices e futuros sem contrato e enquadramento confirmados, NFTs, autocustódia no Brasil e entidades controladas permanecem pendentes. Forex segue a Solução de Consulta Cosit 83/2024 quando caracterizado como aplicação financeira. A confirmação do usuário não substitui a classificação fiscal.")
     if not summary_available:
         st.info("Os dados fiscais não foram validados nesta consulta. Totais, histórico e formulários permanecem ocultos até a leitura ser recuperada.")
         return
@@ -909,7 +932,7 @@ def show_fiscal() -> None:
             "Anual": "year",
         }
         selected_period_label = st.selectbox(
-            "Período da Reserva Fiscal · Brasil",
+            "Período da Reserva Fiscal",
             options=list(period_options),
             index=2,
             key="fiscal_brazil_period",
@@ -925,13 +948,26 @@ def show_fiscal() -> None:
             f"Resultado realizado · {selected_period_label.lower()}",
             money(selected_period.get("realized_result_brl")),
         )
-        c.metric("Estimativa acumulada · Brasil", money(summary.get("total_reserved_brl")))
+        c.metric("Estimativa acumulada · total", money(summary.get("total_reserved_brl")))
         as_of_year = date.fromisoformat(summary["as_of"]).year
+        foreign_planning = summary.get("categories", {}).get("BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT", {})
+        st.metric("Reserva bruta registrada · exterior", money(foreign_planning.get("reserve_amount_brl")))
+        st.caption("Aplicações financeiras elegíveis declaradas · referência de 15% · ajuste anual.")
+        foreign_annual_scenario = summary.get("foreign_annual_scenario", {})
+        st.metric(
+            f"Simulação anual após perdas declaradas · até {summary['as_of']}",
+            money(foreign_annual_scenario.get("scenario_reserve_brl")),
+        )
+        st.caption(
+            "Cenário informativo: considera perdas declaradas no mesmo ano, sem validar documentos. "
+            "Não altera a reserva bruta registrada, não calcula perdas acumuladas de anos anteriores "
+            "e não representa imposto apurado."
+        )
         monthly_planning = summary.get("monthly_planning")
         st.markdown(f"#### Histórico mensal de planejamento · {as_of_year}")
         st.caption(
-            "Consolidação anual dos lançamentos brasileiros elegíveis já registrados. "
-            "Não representa apuração mensal de imposto, não compensa prejuízos e não desconta créditos de IRRF."
+            "Consolidação anual dos lançamentos de planejamento já registrados. "
+            "Não representa apuração tributária; não compensa prejuízos nem créditos de imposto pago no exterior."
         )
         if _valid_monthly_planning(monthly_planning, as_of_year):
             st.dataframe(
@@ -956,7 +992,7 @@ def show_fiscal() -> None:
         }.get(br.get("rate_source"), "origem não identificada")
         st.caption(
             f"Período: {selected_period.get('start', '—')} a {selected_period.get('end', '—')} · "
-            f"Brasil day trade · percentual de planejamento {rate_source_label}: {br.get('rate', '—')}%"
+            f"Day trade no Brasil · alíquota legal de referência: 20% · reserva configurada {rate_source_label}: {br.get('rate', '—')}%"
         )
         semantics = summary.get("reserve_semantics", {})
         st.warning("ESTIMATIVA DE PLANEJAMENTO — não é imposto apurado ou devido. " + str(semantics.get("description") or "Não calcula compensação mensal de prejuízos nem créditos de IRRF."))
@@ -965,6 +1001,8 @@ def show_fiscal() -> None:
         if foreign_pending.get("available") is False:
             st.warning("A contagem das pendências do exterior está indisponível. Nenhum registro foi incluído nos totais.")
         else:
+            registered_estimates = _safe_fiscal_count(foreign_pending.get("planning_estimates_registered", 0))
+            st.caption(f"{registered_estimates} resultado(s) com estimativa registrada; os demais continuam pendentes de classificação.")
             pending_periods = foreign_pending.get("periods", {})
             pending_cols = st.columns(4)
             for col, period, label in zip(pending_cols, ("day", "week", "month", "year"), ("Dia", "Semana", "Mês", "Ano")):
@@ -972,7 +1010,7 @@ def show_fiscal() -> None:
                 col.metric(f"Exterior pendente · {label}", _safe_fiscal_count(pending_period.get("total", 0)))
                 col.caption(
                     f"{_safe_fiscal_count(pending_period.get('realized_results', 0))} resultado(s) · "
-                    f"{_safe_fiscal_count(pending_period.get('asset_amounts', 0))} ativo(s) · sem cálculo"
+                    f"{_safe_fiscal_count(pending_period.get('asset_amounts', 0))} ativo(s) · em revisão"
                 )
             evidence_gaps = foreign_pending.get("evidence_completeness", {})
             if isinstance(evidence_gaps, dict) and evidence_gaps:
@@ -1032,10 +1070,11 @@ def show_fiscal() -> None:
         st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
         summary = {}
 
-    with st.expander("Percentual de planejamento · Brasil day trade"):
+    with st.expander("Reserva estimada · day trade no Brasil"):
         current_rate = summary.get("categories", {}).get("BR_DAY_TRADE", {}).get("rate", 0) if summary else 0
         with st.form("fiscal_rate_form"):
-            rate = st.number_input("Percentual para novos lançamentos", min_value=0.0, max_value=100.0, value=float(current_rate or 0), step=0.5)
+            st.caption("A alíquota legal de day trade no Brasil é 20%. Este campo ajusta somente sua margem de reserva financeira; não altera o imposto legal nem substitui a apuração fiscal.")
+            rate = st.number_input("Percentual da reserva financeira", min_value=0.0, max_value=100.0, value=float(current_rate or 0), step=0.5)
             rate_submit = st.form_submit_button("Salvar percentual", disabled=not summary_available)
         if rate_submit:
             try:
@@ -1218,24 +1257,25 @@ def show_fiscal() -> None:
     residency_options = {"NOT_INFORMED": "Não informado", "BRAZIL": "Brasil", "FOREIGN": "Exterior", "DUAL_OR_UNCERTAIN": "Dupla ou incerta"}
     income_options = {"NOT_INFORMED": "Não informado", "CAPITAL_GAIN": "Ganho de capital", "INVESTMENT_INCOME": "Rendimento de investimento", "TRADING_RESULT": "Resultado de negociação", "DIVIDEND": "Dividendo", "INTEREST": "Juros", "RENTAL_INCOME": "Aluguel", "OTHER": "Outro"}
     event_options = {"NOT_INFORMED": "Não informado", "ACQUISITION": "Aquisição", "DISPOSAL": "Alienação / venda", "DIVIDEND_RECEIPT": "Recebimento de dividendo", "INTEREST_RECEIPT": "Recebimento de juros", "REDEMPTION": "Resgate", "EXCHANGE": "Troca / permuta", "TRANSFER": "Transferência", "OTHER": "Outro"}
-    fx_method_options = {"NOT_INFORMED": "Não informado", "NOT_CONVERTED": "Ainda não convertido", "PTAX_SELL": "PTAX venda", "PTAX_BUY": "PTAX compra", "BROKER_STATEMENT": "Extrato da corretora", "BANK_RECEIPT": "Comprovante bancário", "OTHER_DOCUMENTED": "Outro método documentado"}
+    fx_method_options = {"NOT_INFORMED": "Não informado", "NOT_CONVERTED": "Ainda não convertido", "PTAX_SELL": "PTAX venda (BCB · informar manualmente)", "BROKER_STATEMENT": "Extrato da corretora", "BANK_RECEIPT": "Comprovante bancário", "OTHER_DOCUMENTED": "Outro método documentado"}
+    st.caption("A Receita Federal reconhece o Forex no exterior como aplicação financeira para a regra de 15% a partir de 2024 (Solução de Consulta Cosit 83/2024), quando os fatos correspondem ao entendimento. CFDs, índices e futuros só entram na faixa de 15% pela categoria de derivativos, com contrato e instituição/jurisdição fora do Brasil e resultado em BRL documentado. Criptoativos exigem custódia ou negociação por instituição estrangeira, sem autocustódia no Brasil. Para alienações e resultados de negociação, informe também a PTAX de venda do BCB na data de aquisição e o resultado líquido em BRL após as duas conversões; para juros e dividendos, use a PTAX de venda na data do recebimento. Fonte e cotações são declaradas pelo usuário e não verificadas automaticamente.")
     with st.form("foreign_pending_form"):
         col1, col2 = st.columns(2)
         reference = col1.text_input("Referência / comprovante", max_chars=160)
         amount = col2.number_input("Valor original", min_value=0.00000001, max_value=1_000_000_000_000.0, step=1.0, format="%.8f")
         col3, col4 = st.columns(2)
         currency = col3.text_input("Código da moeda (3 letras)", value="USD", max_chars=3).strip().upper()
-        instrument = col4.text_input("Instrumento", placeholder="ETF, ação, Forex, CFD, cripto", max_chars=80)
+        instrument = col4.text_input("Instrumento", placeholder="Ex.: ação, ETF ou Forex no exterior; CFD, índice, futuro e cripto exigem revisão", max_chars=80)
         col5, col6 = st.columns(2)
         jurisdiction = col5.text_input("Jurisdição", placeholder="EUA, Brasil, outro", max_chars=80)
         occurred_on = col6.date_input("Data da operação", key="foreign_date")
         tax_residency = st.selectbox("Residência fiscal declarada na data", list(residency_options), format_func=lambda value: residency_options[value], key="foreign_tax_residency")
         income_nature = st.selectbox("Natureza do rendimento / valor", list(income_options), format_func=lambda value: income_options[value], key="foreign_income_nature")
         event_type = st.selectbox("Tipo de evento", list(event_options), format_func=lambda value: event_options[value], key="foreign_event_type")
-        fx_rate = st.number_input("Cotação cambial (opcional)", min_value=0.0, max_value=1_000_000_000_000.0, step=0.0001, format="%.8f")
-        fx_date = st.date_input("Data da cotação", key="foreign_fx_date")
-        fx_source = st.text_input("Fonte da cotação (opcional)", max_chars=200)
-        fx_conversion_method = st.selectbox("Método de conversão cambial", list(fx_method_options), format_func=lambda value: fx_method_options[value], key="foreign_fx_method")
+        fx_rate = st.number_input("Cotação (R$ por 1 unidade da moeda original)", min_value=0.0, max_value=1_000_000_000_000.0, step=0.0001, format="%.8f")
+        fx_date = st.date_input("Data da cotação (obrigatória com cotação)", key="foreign_fx_date")
+        fx_source = st.text_input("Fonte da cotação (obrigatória com cotação)", max_chars=200)
+        fx_conversion_method = st.selectbox("Método cambial (obrigatório com cotação)", list(fx_method_options), format_func=lambda value: fx_method_options[value], key="foreign_fx_method")
         institution = st.text_input("Corretora / instituição", max_chars=160, key="foreign_institution")
         custody_location = st.text_input("Local de custódia (país, instituição ou autocustódia)", max_chars=120, key="foreign_custody")
         contract_type = st.text_input("Tipo / especificação do contrato", max_chars=120, key="foreign_contract")
@@ -1258,7 +1298,7 @@ def show_fiscal() -> None:
                     raise ValueError("Altere o método cambial: há uma cotação informada, mas o método está marcado como ainda não convertido.")
                 pending_payload.update({"fx_rate": fx_rate, "fx_date": fx_date.isoformat(), "fx_source": fx_source})
             api("/api/fiscal-reserve/pending", "POST", pending_payload)
-            st.success("Registro guardado como pendente. Nenhum cálculo foi feito.")
+            st.success("Registro guardado. A conversão cambial é apenas informativa e não altera a reserva fiscal.")
             st.rerun()
         except Exception as exc:
             st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
@@ -1275,10 +1315,11 @@ def show_fiscal() -> None:
         residency_signed = st.selectbox("Residência fiscal declarada na data", list(residency_options), format_func=lambda value: residency_options[value], key="signed_tax_residency")
         income_signed = st.selectbox("Natureza do resultado", list(income_options), format_func=lambda value: income_options[value], key="signed_income_nature")
         event_signed = st.selectbox("Tipo de evento", list(event_options), format_func=lambda value: event_options[value], key="signed_event_type")
-        fx_signed = st.number_input("Cotação documentada (opcional)", min_value=0.0, max_value=1_000_000_000_000.0, format="%.8f")
+        fx_signed = st.number_input("Cotação (R$ por 1 unidade da moeda original)", min_value=0.0, max_value=1_000_000_000_000.0, format="%.8f")
         fx_date_signed = st.date_input("Data da cotação", key="signed_foreign_fx_date")
         fx_source_signed = st.text_input("Fonte da cotação", max_chars=200)
         fx_method_signed = st.selectbox("Método de conversão cambial", list(fx_method_options), format_func=lambda value: fx_method_options[value], key="signed_fx_method")
+        st.caption("Para moeda estrangeira, informe o resultado líquido em BRL com base na conversão separada do custo de aquisição (PTAX venda na data da aquisição) e do valor recebido (PTAX venda na liquidação). O sistema não consulta nem valida as cotações.")
         institution_signed = st.text_input("Corretora / instituição", max_chars=160, key="signed_institution")
         custody_signed = st.text_input("Local de custódia", max_chars=120, key="signed_custody")
         contract_signed = st.text_input("Tipo / especificação do contrato", max_chars=120, key="signed_contract")
@@ -1301,7 +1342,7 @@ def show_fiscal() -> None:
                     raise ValueError("Altere o método cambial: há uma cotação informada, mas o método está marcado como ainda não convertido.")
                 signed_payload.update({"fx_rate": fx_signed, "fx_date": fx_date_signed.isoformat(), "fx_source": fx_source_signed})
             api("/api/fiscal-reserve/pending-result", "POST", signed_payload)
-            st.success("Resultado guardado com o sinal original; continua fora dos totais.")
+            st.success("Resultado guardado com o sinal original. A conversão é apenas informativa e fica fora da reserva fiscal.")
             st.rerun()
         except Exception as exc:
             st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
@@ -1327,6 +1368,11 @@ def show_fiscal() -> None:
             st.rerun()
         foreign_items = foreign_pending_data["items"]
         if foreign_items:
+            st.caption(
+                "A cotação exibida converte somente o valor principal ou resultado na data informada. "
+                "Custo de aquisição, taxas e imposto pago no exterior permanecem na moeda original "
+                "até que suas datas e regras cambiais próprias sejam registradas."
+            )
             st.dataframe([{
                 "Data": item.get("occurred_on"),
                 "Referência": item.get("reference"),
@@ -1336,7 +1382,9 @@ def show_fiscal() -> None:
                 "Residência declarada": item.get("tax_residency_at_event"),
                 "Natureza": item.get("income_nature"),
                 "Evento": item.get("event_type"),
-                "Cotação informada (não aplicada)": item.get("fx_rate"),
+                "Cotação (R$/unidade)": item.get("fx_rate"),
+                "Valor convertido para planejamento (R$)": item.get("converted_result_brl_for_planning") if item.get("record_kind") == "REALIZED_RESULT" else item.get("converted_amount_brl_for_planning"),
+                "Conversão cambial": item.get("fx_conversion_status"),
                 "Data da cotação": item.get("fx_date"),
                 "Fonte da cotação": item.get("fx_source"),
                 "Método declarado": item.get("fx_conversion_method"),
@@ -1346,8 +1394,232 @@ def show_fiscal() -> None:
                 "Custo de aquisição (moeda original)": item.get("acquisition_cost"),
                 "Taxas (moeda original)": item.get("transaction_fees"),
                 "Imposto pago fora (moeda original)": item.get("foreign_tax_paid"),
-                "Status": "PENDENTE DE CLASSIFICAÇÃO",
+                "Status": "ESTIMATIVA REGISTRADA · CLASSIFICAÇÃO DECLARADA" if item.get("planning_estimate_registered") is True else "PENDENTE DE CLASSIFICAÇÃO",
             } for item in foreign_items], use_container_width=True, hide_index=True)
+            eligible_foreign_results = {
+                item["pending_id"]: (
+                    f"{item.get('occurred_on')} · {item.get('instrument')} · "
+                    f"{item.get('original_result')} {item.get('original_currency')}"
+                )
+                for item in foreign_items
+                if item.get("pending_id")
+                and item.get("record_kind") == "REALIZED_RESULT"
+                and item.get("tax_residency_at_event") == "BRAZIL"
+                and str(item.get("occurred_on") or "") >= "2024-01-01"
+                and item.get("income_nature") in {
+                    "CAPITAL_GAIN", "INVESTMENT_INCOME", "TRADING_RESULT", "DIVIDEND", "INTEREST"
+                }
+                and item.get("event_type") in {
+                    "DISPOSAL", "REDEMPTION", "DIVIDEND_RECEIPT", "INTEREST_RECEIPT"
+                }
+                and item.get("instrument")
+                and item.get("jurisdiction")
+                and (
+                    item.get("institution")
+                    or "autocust" in str(item.get("custody_location") or "").casefold()
+                    or "self-custod" in str(item.get("custody_location") or "").casefold()
+                )
+                and str(item.get("custody_location") or "").strip().upper() not in {"", "NOT_INFORMED"}
+                and str(item.get("contract_type") or "").strip().upper() not in {"", "NOT_INFORMED", "NOT_CONFIRMED"}
+                and item.get("fx_conversion_status") in {
+                    "CONVERTED_FOR_PLANNING_ONLY", "ALREADY_BRL"
+                }
+                and (
+                    str(item.get("original_currency") or "").upper() == "BRL"
+                    or (
+                        item.get("fx_conversion_method") == "PTAX_SELL"
+                        and item.get("fx_date") == item.get("occurred_on")
+                        and any(
+                            marker in str(item.get("fx_source") or "").casefold()
+                            for marker in ("bcb", "banco central", "ptax")
+                        )
+                    )
+                )
+                and item.get("planning_estimate_registered") is not True
+            }
+            st.markdown("##### Estimativa de reserva · aplicação financeira / criptoativo no exterior")
+            st.caption("15% sobre resultado positivo em BRL declarado após conversões cambiais separadas; ajuste anual. Não compensa perdas nem créditos de imposto pago fora.")
+            if eligible_foreign_results:
+                with st.form("foreign_planning_estimate_form"):
+                    selected_foreign_result = st.selectbox(
+                        "Resultado realizado",
+                        options=list(eligible_foreign_results),
+                        format_func=lambda value: eligible_foreign_results[value],
+                    )
+                    selected_foreign_item = next(
+                        item for item in foreign_items if item.get("pending_id") == selected_foreign_result
+                    )
+                    selected_candidate_classification = st.selectbox(
+                        "Classificação candidata",
+                        options=["FOREIGN_FINANCIAL_INVESTMENT", "FOREIGN_DERIVATIVE", "FOREIGN_CRYPTO"],
+                        format_func=lambda value: {"FOREIGN_FINANCIAL_INVESTMENT": "Aplicação financeira no exterior", "FOREIGN_DERIVATIVE": "Derivativo negociado no exterior", "FOREIGN_CRYPTO": "Criptoativo custodiado/negociado no exterior"}[value],
+                        key="foreign_estimate_candidate_classification",
+                    )
+                    is_crypto_estimate = selected_candidate_classification == "FOREIGN_CRYPTO"
+                    is_derivative_estimate = selected_candidate_classification == "FOREIGN_DERIVATIVE"
+                    if is_derivative_estimate:
+                        st.caption("Lei 14.754/2023, art. 3º, § 1º: derivativos podem ser aplicações financeiras no exterior. Este fluxo exige contrato e instituição/jurisdição estrangeiros; a classificação e o resultado são declarados pelo usuário, não verificados pelo sistema.")
+                    elif is_crypto_estimate:
+                        st.caption("IN RFB 2.180/2024, art. 9º: ativos virtuais podem ser aplicações financeiras no exterior quando custodiados ou negociados por instituição estrangeira; autocustódia no Brasil não entra nesta faixa.")
+                    if str(selected_foreign_item.get("original_currency") or "").upper() != "BRL":
+                        declared_result_brl = st.number_input(
+                            "Resultado líquido apurado em BRL (após conversões separadas)",
+                            min_value=-1_000_000_000_000.0,
+                            max_value=1_000_000_000_000.0,
+                            format="%.2f",
+                            key="foreign_declared_result_brl",
+                        )
+                        requires_acquisition_basis = (
+                            not is_derivative_estimate
+                            and (
+                                selected_foreign_item.get("income_nature") in {"CAPITAL_GAIN", "TRADING_RESULT"}
+                                or selected_foreign_item.get("event_type") in {"DISPOSAL", "REDEMPTION"}
+                            )
+                        )
+                        conversion_confirmation_label = (
+                            "Confirmo que o resultado em BRL considera o contrato, as liquidações, os custos e as conversões cambiais aplicáveis."
+                            if is_derivative_estimate
+                            else (
+                                "Confirmo a conversão do custo pela PTAX venda na aquisição e do valor recebido pela PTAX venda na liquidação."
+                                if requires_acquisition_basis
+                                else "Confirmo a conversão do rendimento pela PTAX venda do BCB na data do recebimento."
+                            )
+                        )
+                        conversion_basis_confirmed = st.checkbox(
+                            conversion_confirmation_label,
+                            key="foreign_conversion_basis_confirmed",
+                        )
+                        if requires_acquisition_basis:
+                            acquisition_cost_for_estimate = st.number_input(
+                                "Custo de aquisição na moeda original",
+                                min_value=0.0,
+                                max_value=1_000_000_000_000.0,
+                                format="%.8f",
+                                value=float(selected_foreign_item.get("acquisition_cost") or 0.0),
+                                key="foreign_estimate_acquisition_cost",
+                            )
+                            acquisition_fx_rate = st.number_input(
+                                "PTAX venda (BCB) na data da aquisição",
+                                min_value=0.0,
+                                max_value=1_000_000_000_000.0,
+                                format="%.8f",
+                                key="foreign_estimate_acquisition_fx_rate",
+                            )
+                            acquisition_fx_date = st.date_input(
+                                "Data da PTAX venda",
+                                key="foreign_estimate_acquisition_fx_date",
+                            )
+                            acquisition_fx_source = st.text_input(
+                                "Fonte da PTAX venda (BCB)",
+                                max_chars=200,
+                                key="foreign_estimate_acquisition_fx_source",
+                            )
+                        else:
+                            acquisition_cost_for_estimate = None
+                            acquisition_fx_rate = None
+                            acquisition_fx_date = None
+                            acquisition_fx_source = ""
+                    else:
+                        declared_result_brl = None
+                        conversion_basis_confirmed = False
+                        acquisition_fx_rate = None
+                        acquisition_fx_date = None
+                        acquisition_fx_source = ""
+                    financial_investment_location_confirmed = False
+                    if is_derivative_estimate:
+                        derivative_location_confirmed = st.checkbox(
+                            "Confirmo que o contrato é um derivativo negociado por instituição e sob jurisdição fora do Brasil.",
+                            key="foreign_derivative_location_confirmed",
+                        )
+                        derivative_result_basis_confirmed = st.checkbox(
+                            "Confirmo que o resultado em BRL foi calculado conforme o contrato e o extrato de liquidações.",
+                            key="foreign_derivative_result_basis_confirmed",
+                        )
+                        crypto_location_confirmed = False
+                        derivative_tax_confirmed = st.checkbox(
+                            "Confirmo residência fiscal brasileira e evento realizado a partir de 2024.",
+                            key="foreign_derivative_tax_confirmed",
+                        )
+                        confirm_foreign_estimate = derivative_location_confirmed and derivative_result_basis_confirmed and derivative_tax_confirmed
+                    elif is_crypto_estimate:
+                        derivative_location_confirmed = False
+                        derivative_result_basis_confirmed = False
+                        crypto_location_confirmed = st.checkbox(
+                            "Confirmo que o criptoativo foi custodiado ou negociado por instituição localizada fora do Brasil; não é autocustódia no Brasil.",
+                            key="foreign_crypto_location_confirmed",
+                        )
+                        crypto_tax_confirmed = st.checkbox(
+                            "Confirmo residência fiscal brasileira e que o ativo virtual tem natureza de aplicação financeira.",
+                            key="foreign_crypto_tax_confirmed",
+                        )
+                        confirm_foreign_estimate = crypto_location_confirmed and crypto_tax_confirmed
+                    elif selected_candidate_classification == "FOREIGN_FINANCIAL_INVESTMENT":
+                        derivative_location_confirmed = False
+                        derivative_result_basis_confirmed = False
+                        crypto_location_confirmed = False
+                        financial_investment_location_confirmed = st.checkbox(
+                            "Confirmo que a aplicação financeira, sua jurisdição e sua custódia efetiva estão localizadas fora do Brasil.",
+                            key="foreign_financial_investment_location_confirmed",
+                        )
+                        financial_tax_confirmed = st.checkbox(
+                            "Confirmo residência fiscal brasileira e evento realizado a partir de 2024.",
+                            key="foreign_financial_investment_tax_confirmed",
+                        )
+                        confirm_foreign_estimate = financial_investment_location_confirmed and financial_tax_confirmed
+                    else:
+                        derivative_location_confirmed = False
+                        derivative_result_basis_confirmed = False
+                        crypto_location_confirmed = False
+                        financial_investment_location_confirmed = False
+                        confirm_foreign_estimate = False
+                        st.caption("Entidades controladas no exterior permanecem pendentes e fora dos totais.")
+                    submit_foreign_estimate = st.form_submit_button(
+                        "Registrar estimativa de 15%",
+                        disabled=not confirm_foreign_estimate,
+                    )
+                if submit_foreign_estimate:
+                    try:
+                        estimate_payload = {
+                            "pending_id": selected_foreign_result,
+                            "candidate_classification": selected_candidate_classification,
+                            "confirmed": True,
+                        }
+                        if selected_candidate_classification == "FOREIGN_FINANCIAL_INVESTMENT":
+                            estimate_payload["financial_investment_location_confirmed"] = True
+                        if is_crypto_estimate:
+                            estimate_payload["crypto_location_confirmed"] = True
+                        if is_derivative_estimate:
+                            estimate_payload.update({
+                                "derivative_location_confirmed": True,
+                                "derivative_result_basis_confirmed": True,
+                            })
+                        if str(selected_foreign_item.get("original_currency") or "").upper() != "BRL":
+                            if not conversion_basis_confirmed:
+                                raise ValueError("Confirme a conversão cambial separada.")
+                            estimate_payload.update({
+                                "declared_result_brl": declared_result_brl,
+                                "conversion_basis_confirmed": True,
+                            })
+                            if requires_acquisition_basis:
+                                if acquisition_fx_rate <= 0 or not acquisition_fx_source:
+                                    raise ValueError("Informe a PTAX venda na data da aquisição.")
+                                estimate_payload.update({
+                                    "acquisition_cost": acquisition_cost_for_estimate,
+                                    "acquisition_fx_rate": acquisition_fx_rate,
+                                    "acquisition_fx_date": acquisition_fx_date.isoformat(),
+                                    "acquisition_fx_source": acquisition_fx_source,
+                                    "acquisition_fx_method": "PTAX_SELL",
+                                })
+                        result = api("/api/fiscal-reserve/foreign-planning-estimate", "POST", estimate_payload)
+                        st.success(
+                            f"Estimativa registrada: R$ {float(result['entry']['reserve_amount_brl']):,.2f}. "
+                            "Não representa imposto apurado."
+                        )
+                        st.rerun()
+                    except Exception:
+                        st.error("Não foi possível registrar a estimativa. Confira a classificação e os dados cambiais.")
+            else:
+                st.caption("Nenhum resultado estrangeiro reúne os requisitos para esta estimativa.")
             foreign_page_cols = st.columns(2)
             with foreign_page_cols[0]:
                 if st.button("← Pendências do exterior anteriores", key="foreign_pending_previous", disabled=foreign_offset <= 0):
@@ -1374,7 +1646,7 @@ def show_fiscal() -> None:
                 with st.form("foreign_review_form"):
                     foreign_review_category = st.selectbox(
                         "Classificação candidata revisada",
-                        ["FOREIGN_FINANCIAL_INVESTMENT", "FOREIGN_ENTITY_CONTROLLED", "FOREIGN_CRYPTO"],
+                        ["FOREIGN_FINANCIAL_INVESTMENT", "FOREIGN_ENTITY_CONTROLLED", "FOREIGN_CRYPTO", "FOREIGN_DERIVATIVE"],
                     )
                     foreign_review_jurisdiction = st.text_input(
                         "Jurisdição declarada pelo revisor · não verificada", max_chars=120, key="foreign_review_jurisdiction"
@@ -1715,7 +1987,8 @@ def show_finance_overview() -> None:
         "onde ficam lançamentos, histórico completo, filas e revisões documentais."
     )
     try:
-        summary = api("/api/fiscal-reserve?limit=50&offset=0")
+        summary_path = "/api/fiscal-reserve" if REMOTE_REQUIRED else "/api/fiscal-reserve/local"
+        summary = api(summary_path + "?limit=50&offset=0")
         if not (
             _valid_fiscal_summary(summary)
             and _valid_fiscal_history_page(summary, 0)
