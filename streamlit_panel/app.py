@@ -1318,7 +1318,7 @@ def show_fiscal() -> None:
         fx_date_signed = st.date_input("Data da cotação", key="signed_foreign_fx_date")
         fx_source_signed = st.text_input("Fonte da cotação", max_chars=200)
         fx_method_signed = st.selectbox("Método de conversão cambial", list(fx_method_options), format_func=lambda value: fx_method_options[value], key="signed_fx_method")
-        st.caption("Para moeda estrangeira, informe o resultado líquido em BRL com base na conversão separada do custo de aquisição (PTAX compra na data da aquisição) e do valor recebido (PTAX venda na liquidação). O sistema não consulta nem valida as cotações.")
+        st.caption("Para moeda estrangeira, informe o resultado líquido em BRL com base na conversão separada do custo de aquisição (PTAX venda na data da aquisição) e do valor recebido (PTAX venda na liquidação). O sistema não consulta nem valida as cotações.")
         institution_signed = st.text_input("Corretora / instituição", max_chars=160, key="signed_institution")
         custody_signed = st.text_input("Local de custódia", max_chars=120, key="signed_custody")
         contract_signed = st.text_input("Tipo / especificação do contrato", max_chars=120, key="signed_contract")
@@ -1498,18 +1498,18 @@ def show_fiscal() -> None:
                                 key="foreign_estimate_acquisition_cost",
                             )
                             acquisition_fx_rate = st.number_input(
-                                "PTAX compra (BCB) na data da aquisição",
+                                "PTAX venda (BCB) na data da aquisição",
                                 min_value=0.0,
                                 max_value=1_000_000_000_000.0,
                                 format="%.8f",
                                 key="foreign_estimate_acquisition_fx_rate",
                             )
                             acquisition_fx_date = st.date_input(
-                                "Data da PTAX compra",
+                                "Data da PTAX venda",
                                 key="foreign_estimate_acquisition_fx_date",
                             )
                             acquisition_fx_source = st.text_input(
-                                "Fonte da PTAX compra (BCB)",
+                                "Fonte da PTAX venda (BCB)",
                                 max_chars=200,
                                 key="foreign_estimate_acquisition_fx_source",
                             )
@@ -1585,13 +1585,13 @@ def show_fiscal() -> None:
                             })
                             if requires_acquisition_basis:
                                 if acquisition_fx_rate <= 0 or not acquisition_fx_source:
-                                    raise ValueError("Informe a PTAX compra na data da aquisição.")
+                                    raise ValueError("Informe a PTAX venda na data da aquisição.")
                                 estimate_payload.update({
                                     "acquisition_cost": acquisition_cost_for_estimate,
                                     "acquisition_fx_rate": acquisition_fx_rate,
                                     "acquisition_fx_date": acquisition_fx_date.isoformat(),
                                     "acquisition_fx_source": acquisition_fx_source,
-                                    "acquisition_fx_method": "PTAX_BUY",
+                                    "acquisition_fx_method": "PTAX_SELL",
                                 })
                         result = api("/api/fiscal-reserve/foreign-planning-estimate", "POST", estimate_payload)
                         st.success(
