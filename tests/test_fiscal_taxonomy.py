@@ -20,6 +20,7 @@ def test_catalog_covers_distinct_brazilian_and_foreign_lanes_without_rates():
     assert "FOREIGN_FINANCIAL_INVESTMENT" in catalog["foreign"]
     assert "FOREIGN_ENTITY_CONTROLLED" in catalog["foreign"]
     assert "FOREIGN_CRYPTO" in catalog["foreign"]
+    assert "FOREIGN_DERIVATIVE" in catalog["foreign"]
 
 
 def test_only_supported_planning_flows_are_booking_enabled():
@@ -35,6 +36,7 @@ def test_only_supported_planning_flows_are_booking_enabled():
     assert catalog["foreign"]["FOREIGN_FINANCIAL_INVESTMENT"]["calculation_status"] == "PARTIAL_PLANNING_ONLY"
     assert catalog["foreign"]["FOREIGN_ENTITY_CONTROLLED"]["booking_enabled"] is False
     assert catalog["foreign"]["FOREIGN_CRYPTO"]["booking_enabled"] is True
+    assert catalog["foreign"]["FOREIGN_DERIVATIVE"]["booking_enabled"] is True
 
 
 def test_catalog_mutation_does_not_change_future_catalogs():
@@ -68,6 +70,7 @@ def test_foreign_taxonomy_exposes_requirements_for_limited_planning_estimate():
     catalog = fiscal_classification_catalog()
     investment = catalog["foreign"]["FOREIGN_FINANCIAL_INVESTMENT"]
     crypto = catalog["foreign"]["FOREIGN_CRYPTO"]
+    derivative = catalog["foreign"]["FOREIGN_DERIVATIVE"]
 
     assert "instituicao_ou_autocustodia" in investment["requires"]
     assert "local_custodia" in investment["requires"]
@@ -83,6 +86,9 @@ def test_foreign_taxonomy_exposes_requirements_for_limited_planning_estimate():
     assert crypto["calculation_status"] == "PARTIAL_PLANNING_ONLY"
     assert crypto["booking_enabled"] is True
     assert any("Autocustódia pelo residente no Brasil" in item for item in crypto["limitations"])
+    assert derivative["calculation_status"] == "PARTIAL_PLANNING_ONLY"
+    assert derivative["booking_enabled"] is True
+    assert any("derivativos" in item for item in derivative["limitations"])
 
 
 def test_recommended_evidence_lists_are_copy_safe():
