@@ -504,7 +504,11 @@ class FiscalReserve:
                     continue
                 if not isinstance(evidence, dict) or (
                     evidence.get("tax_classification_status") != "USER_DECLARED_PLANNING_ONLY"
-                    or evidence.get("candidate_classification") != "FOREIGN_FINANCIAL_INVESTMENT"
+                    or evidence.get("candidate_classification") not in {
+                        "FOREIGN_FINANCIAL_INVESTMENT",
+                        "FOREIGN_CRYPTO",
+                        "FOREIGN_DERIVATIVE",
+                    }
                     or evidence.get("tax_residency_at_event") != "BRAZIL"
                     or evidence.get("legal_period") != "ANNUAL_ADJUSTMENT"
                     or evidence.get("tax_liability_confirmed") is not False
