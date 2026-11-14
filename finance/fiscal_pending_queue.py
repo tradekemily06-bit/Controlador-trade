@@ -548,6 +548,16 @@ class FiscalPendingQueue:
                 "SELECT COUNT(*) FROM fiscal_reserve_pending_foreign WHERE owner_id = ?",
                 (owner_id,),
             ).fetchone()[0])
+            planning_estimates_registered = int(db.execute(
+                """SELECT COUNT(*) FROM fiscal_reserve_pending_foreign p
+                   WHERE p.owner_id = ? AND EXISTS(
+                       SELECT 1 FROM fiscal_reserve_entries e
+                       WHERE e.owner_id = p.owner_id
+                         AND e.category = 'BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT'
+                         AND e.reference = p.reference
+                   )""",
+                (owner_id,),
+            ).fetchone()[0])
             kinds = db.execute(
                 """SELECT record_kind, COUNT(*) AS item_count
                    FROM fiscal_reserve_pending_foreign
@@ -609,6 +619,7 @@ class FiscalPendingQueue:
             "total": total,
             "realized_results": counts.get("REALIZED_RESULT", 0),
             "asset_amounts": counts.get("ASSET_AMOUNT", 0),
+            "planning_estimates_registered": planning_estimates_registered,
             "currencies": [str(row["original_currency"]) for row in currencies],
             "evidence_completeness": {
                 "total": int(evidence["total"] or 0),
