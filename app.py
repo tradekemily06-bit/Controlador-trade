@@ -780,6 +780,7 @@ def application(environ, start_response):
                 "original_result": item["original_result"],
                 "fx_rate": item.get("fx_rate"),
                 "fx_rate_direction": item.get("fx_rate_direction"),
+                "fx_conversion_status": item.get("fx_conversion_status"),
                 "fx_date": item.get("fx_date"),
                 "fx_source": item.get("fx_source"),
                 "fx_conversion_method": item.get("fx_conversion_method"),
