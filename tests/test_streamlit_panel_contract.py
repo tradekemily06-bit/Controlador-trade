@@ -2137,3 +2137,11 @@ def test_streamlit_shows_foreign_annual_loss_scenario_separately_from_gross_rese
     assert "Simulação anual após perdas declaradas" in source
     assert "sem validar documentos" in source
     assert "não representa imposto apurado" in source
+
+
+def test_streamlit_fiscal_overview_and_review_selector_match_foreign_taxonomy():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert "derivativos efetivamente classificados como tais" in source
+    assert "criptoativos localizados no exterior por instituição estrangeira" in source
+    assert '["FOREIGN_FINANCIAL_INVESTMENT", "FOREIGN_ENTITY_CONTROLLED", "FOREIGN_CRYPTO", "FOREIGN_DERIVATIVE"]' in source
+    assert "CFDs, índices e futuros sem contrato e enquadramento confirmados" in source
