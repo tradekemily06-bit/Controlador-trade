@@ -1368,7 +1368,7 @@ def show_fiscal() -> None:
         foreign_items = foreign_pending_data["items"]
         if foreign_items:
             st.caption(
-                "A cotação exibida converte somente o valor do evento na data informada. "
+                "A cotação exibida converte somente o valor principal ou resultado na data informada. "
                 "Custo de aquisição, taxas e imposto pago no exterior permanecem na moeda original "
                 "até que suas datas e regras cambiais próprias sejam registradas."
             )
