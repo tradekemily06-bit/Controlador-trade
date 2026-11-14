@@ -134,7 +134,8 @@ def test_streamlit_panel_explains_fiscal_catalog_automation_boundaries():
 
 def test_streamlit_fiscal_catalog_reuses_the_single_summary_request():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
-    assert source.count('api("/api/fiscal-reserve?limit=50&offset="') == 1
+    assert source.count('summary = api(summary_path + "?limit=50&offset="') == 1
+    assert 'summary_path = "/api/fiscal-reserve" if REMOTE_REQUIRED else "/api/fiscal-reserve/local"' in source
     assert 'api("/api/fiscal-reserve")' not in source
 
 def test_streamlit_keeps_brazilian_pending_items_separate_from_foreign_queue():
