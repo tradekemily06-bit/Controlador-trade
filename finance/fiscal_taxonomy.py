@@ -99,7 +99,7 @@ FOREIGN_CATEGORIES: dict[str, dict[str, Any]] = {
     "FOREIGN_CRYPTO": {
         "label": "Exterior · criptoativos",
         "scope": "FOREIGN",
-        "requires": ["custodia", "local_da_operacao", "evento", "moeda", "fx_method", "instituicao_ou_autocustodia"],
+        "requires": ["residencia_fiscal", "instituicao_localizada_no_exterior", "localizacao_do_ativo", "evento", "moeda", "fx_method", "confirmacao_sem_autocustodia_no_brasil"],
         "recommended_evidence": ["identificacao_do_criptoativo", "historico_de_transacoes", "taxas_e_custos", "imposto_pago_no_exterior"],
         "calculation_status": "PARTIAL_PLANNING_ONLY",
         "booking_enabled": True,
