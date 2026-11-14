@@ -676,6 +676,37 @@ def test_foreign_annual_scenario_shows_declared_loss_offset_without_changing_led
             "occurred_on": "2026-11-05",
             "notes": json.dumps(evidence, separators=(",", ":")),
         })
+    # Eligible foreign crypto and documented derivatives share the same
+    # annual-planning lane, but only with their own explicit location evidence.
+    crypto_evidence = {
+        **evidence,
+        "candidate_classification": "FOREIGN_CRYPTO",
+        "crypto_location_rule": "FOREIGN_INSTITUTION_CUSTODY_OR_TRADING_USER_DECLARED",
+        "crypto_location_confirmed": True,
+        "crypto_location_verification": "USER_DECLARED_NOT_VERIFIED",
+    }
+    reserve.record_realized_result(OWNER, {
+        "category": "BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT",
+        "realized_result_brl": 200.0,
+        "reference": "FOREIGN-ANNUAL-CRYPTO-GAIN-001",
+        "occurred_on": "2026-11-05",
+        "notes": json.dumps(crypto_evidence, separators=(",", ":")),
+    })
+    derivative_evidence = {
+        **evidence,
+        "candidate_classification": "FOREIGN_DERIVATIVE",
+        "derivative_location_rule": "FOREIGN_INSTITUTION_AND_CONTRACT_JURISDICTION_USER_DECLARED",
+        "derivative_location_confirmed": True,
+        "derivative_location_verification": "USER_DECLARED_NOT_VERIFIED",
+        "derivative_result_basis_confirmed": True,
+    }
+    reserve.record_realized_result(OWNER, {
+        "category": "BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT",
+        "realized_result_brl": -100.0,
+        "reference": "FOREIGN-ANNUAL-DERIVATIVE-LOSS-001",
+        "occurred_on": "2026-11-05",
+        "notes": json.dumps(derivative_evidence, separators=(",", ":")),
+    })
     # A negative dividend/interest cashflow is not treated as a deductible
     # realized loss in this conservative scenario.
     non_loss_evidence = {**evidence, "income_nature": "DIVIDEND", "event_type": "DIVIDEND_RECEIPT"}
@@ -691,13 +722,13 @@ def test_foreign_annual_scenario_shows_declared_loss_offset_without_changing_led
     scenario = summary["foreign_annual_scenario"]
 
     assert scenario["year"] == 2026
-    assert scenario["entries"] == 3
-    assert scenario["gross_positive_results_brl"] == 1000.0
-    assert scenario["declared_losses_brl"] == 250.0
-    assert scenario["net_result_after_declared_losses_brl"] == 750.0
-    assert scenario["gross_entry_reserve_brl"] == 150.0
-    assert scenario["scenario_reserve_brl"] == 112.5
-    assert scenario["loss_offset_scenario_brl"] == 37.5
+    assert scenario["entries"] == 5
+    assert scenario["gross_positive_results_brl"] == 1200.0
+    assert scenario["declared_losses_brl"] == 350.0
+    assert scenario["net_result_after_declared_losses_brl"] == 850.0
+    assert scenario["gross_entry_reserve_brl"] == 180.0
+    assert scenario["scenario_reserve_brl"] == 127.5
+    assert scenario["loss_offset_scenario_brl"] == 52.5
     assert scenario["loss_documentation_verified"] is False
     assert scenario["loss_carryforward_calculated"] is False
     assert scenario["tax_assessment"] is False
