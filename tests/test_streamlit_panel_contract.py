@@ -166,7 +166,7 @@ def test_streamlit_marks_mt5_tax_classification_as_user_declared_pending_review(
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert "DECLARAÇÃO DO USUÁRIO · REVISÃO PENDENTE" in source
     assert 'evidence.get("tax_classification_status") == "USER_DECLARED_PENDING_REVIEW"' in source
-    assert "fila brasileira separada, sem cálculo e fora dos totais" in source
+    assert "Operações MT5 sem elegibilidade verificada ficam em fila separada." in source
 
 
 def test_streamlit_unverified_mt5_history_never_displays_reserve_rate_or_amount():
@@ -174,7 +174,7 @@ def test_streamlit_unverified_mt5_history_never_displays_reserve_rate_or_amount(
     assert 'if not user_declared_pending:' in source
     assert "Percentual de planejamento (%)" in source
     assert "Reserva estimada (R$)" in source
-    assert "fila brasileira separada, sem cálculo e fora dos totais" in source
+    assert "Operações MT5 sem elegibilidade verificada ficam em fila separada." in source
 
 
 def test_streamlit_labels_user_declared_day_trade_planning_estimates():
@@ -286,7 +286,7 @@ def test_streamlit_foreign_pending_forms_capture_structured_evidence_and_display
 
 def test_streamlit_fiscal_summary_labels_accumulated_amount_as_planning_estimate():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
-    assert 'c.metric("Estimativa acumulada · Brasil"' in source
+    assert 'c.metric("Estimativa acumulada · total"' in source
     assert "percentual de planejamento {rate_source_label}" in source
     assert '"DEFAULT": "padrão inicial do sistema"' in source
     assert '"USER_CONFIGURED": "configurado pelo usuário"' in source
@@ -655,7 +655,7 @@ def test_streamlit_foreign_reserve_requires_explicit_classification_and_confirma
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert 'api("/api/fiscal-reserve/foreign-planning-estimate", "POST"' in source
     assert '"FOREIGN_FINANCIAL_INVESTMENT"' in source
-    assert "Confirmo que o registro é uma aplicação financeira no exterior" in source
+    assert "Confirmo aplicação financeira no exterior e residência fiscal no Brasil" in source
     assert '"planning_estimate_registered"' in source
     assert "Registrar estimativa de 15%" in source
 
@@ -2112,5 +2112,5 @@ def test_streamlit_fiscal_monthly_planning_validates_and_labels_the_annual_estim
     assert '"Lançamentos": item["entries"]' in source
     assert '"Resultado registrado": money(item["realized_result_brl"])' in source
     assert '"Reserva estimada": money(item["reserve_amount_brl"])' in source
-    assert "não compensa prejuízos e não desconta créditos de IRRF" in source
+    assert "não compensa prejuízos nem créditos de imposto pago no exterior" in source
     assert "Os valores não foram estimados nem substituídos por zeros." in source
