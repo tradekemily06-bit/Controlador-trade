@@ -1,15 +1,15 @@
 """Explicit fiscal classification catalog.
 
-This catalog is descriptive only. It deliberately contains no tax rates and
-does not authorize ledger booking. Unsupported or unreviewed records remain
-pending until a rule set is implemented and validated for the exact event.
+The catalog contains no tax rates and does not itself authorize ledger writes.
+A booking-enabled category only signals a separate, limited planning workflow;
+unsupported or unconfirmed events remain pending.
 """
 from __future__ import annotations
 
 from typing import Any
 
 
-CATALOG_VERSION = "2026-11-04.1"
+CATALOG_VERSION = "2026-11-14.1"
 
 # The categories are intake/classification lanes, not claims that every event
 # in the lane has one universal tax treatment.
