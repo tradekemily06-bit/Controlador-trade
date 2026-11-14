@@ -658,8 +658,9 @@ def _valid_fiscal_summary(summary: Any) -> bool:
     if not isinstance(categories, dict) or not isinstance(periods, dict) or not isinstance(semantics, dict):
         return False
     brazil = categories.get("BR_DAY_TRADE")
+    foreign_investment = categories.get("BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT")
     foreign = categories.get("FOREIGN_FINANCIAL_ASSET")
-    if not isinstance(brazil, dict) or not isinstance(foreign, dict):
+    if not isinstance(brazil, dict) or not isinstance(foreign_investment, dict) or not isinstance(foreign, dict):
         return False
     foreign_entries = foreign.get("entries")
     if isinstance(foreign_entries, bool) or not isinstance(foreign_entries, int) or not 0 <= foreign_entries <= 1_000_000_000:
@@ -684,10 +685,25 @@ def _valid_fiscal_summary(summary: Any) -> bool:
             return False
     if brazil.get("reserve_amount_brl") < 0:
         return False
+    foreign_rate = foreign_investment.get("rate")
+    foreign_entries = foreign_investment.get("entries")
+    if not _is_finite_number(foreign_rate) or foreign_rate != 15.0:
+        return False
+    if isinstance(foreign_entries, bool) or not isinstance(foreign_entries, int) or not 0 <= foreign_entries <= 1_000_000_000:
+        return False
+    for field in ("realized_result_brl", "reserve_amount_brl"):
+        value = foreign_investment.get(field)
+        if not _is_finite_number(value) or not -1_000_000_000_000 <= value <= 1_000_000_000_000:
+            return False
+    if foreign_investment.get("reserve_amount_brl") < 0:
+        return False
     total = summary.get("total_reserved_brl")
     if not _is_finite_number(total) or not 0 <= total <= 1_000_000_000_000:
         return False
-    if total != brazil.get("reserve_amount_brl"):
+    expected_total = round(
+        brazil.get("reserve_amount_brl") + foreign_investment.get("reserve_amount_brl"), 2
+    )
+    if total != expected_total:
         return False
     as_of_raw = summary.get("as_of")
     if not isinstance(as_of_raw, str) or len(as_of_raw) != 10:
