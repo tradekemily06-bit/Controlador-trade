@@ -954,7 +954,7 @@ def show_fiscal() -> None:
         st.caption("Aplicações financeiras elegíveis declaradas · referência de 15% · ajuste anual.")
         foreign_annual_scenario = summary.get("foreign_annual_scenario", {})
         st.metric(
-            f"Simulação anual após perdas declaradas · {as_of_year}",
+            f"Simulação anual após perdas declaradas · até {summary['as_of']}",
             money(foreign_annual_scenario.get("scenario_reserve_brl")),
         )
         st.caption(
