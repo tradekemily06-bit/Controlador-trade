@@ -1245,7 +1245,8 @@ def show_fiscal() -> None:
     residency_options = {"NOT_INFORMED": "Não informado", "BRAZIL": "Brasil", "FOREIGN": "Exterior", "DUAL_OR_UNCERTAIN": "Dupla ou incerta"}
     income_options = {"NOT_INFORMED": "Não informado", "CAPITAL_GAIN": "Ganho de capital", "INVESTMENT_INCOME": "Rendimento de investimento", "TRADING_RESULT": "Resultado de negociação", "DIVIDEND": "Dividendo", "INTEREST": "Juros", "RENTAL_INCOME": "Aluguel", "OTHER": "Outro"}
     event_options = {"NOT_INFORMED": "Não informado", "ACQUISITION": "Aquisição", "DISPOSAL": "Alienação / venda", "DIVIDEND_RECEIPT": "Recebimento de dividendo", "INTEREST_RECEIPT": "Recebimento de juros", "REDEMPTION": "Resgate", "EXCHANGE": "Troca / permuta", "TRANSFER": "Transferência", "OTHER": "Outro"}
-    fx_method_options = {"NOT_INFORMED": "Não informado", "NOT_CONVERTED": "Ainda não convertido", "PTAX_SELL": "PTAX venda", "PTAX_BUY": "PTAX compra", "BROKER_STATEMENT": "Extrato da corretora", "BANK_RECEIPT": "Comprovante bancário", "OTHER_DOCUMENTED": "Outro método documentado"}
+    fx_method_options = {"NOT_INFORMED": "Não informado", "NOT_CONVERTED": "Ainda não convertido", "PTAX_SELL": "PTAX venda (BCB)", "PTAX_BUY": "PTAX compra", "BROKER_STATEMENT": "Extrato da corretora", "BANK_RECEIPT": "Comprovante bancário", "OTHER_DOCUMENTED": "Outro método documentado"}
+    st.caption("Para registrar estimativa de aplicação financeira no exterior: PTAX de venda do BCB na mesma data do evento. Outros métodos servem apenas para manter a pendência documentada.")
     with st.form("foreign_pending_form"):
         col1, col2 = st.columns(2)
         reference = col1.text_input("Referência / comprovante", max_chars=160)
@@ -1306,6 +1307,7 @@ def show_fiscal() -> None:
         fx_date_signed = st.date_input("Data da cotação", key="signed_foreign_fx_date")
         fx_source_signed = st.text_input("Fonte da cotação", max_chars=200)
         fx_method_signed = st.selectbox("Método de conversão cambial", list(fx_method_options), format_func=lambda value: fx_method_options[value], key="signed_fx_method")
+        st.caption("A estimativa de 15% exige PTAX de venda do BCB na data do evento; sem isso, o resultado permanece pendente.")
         institution_signed = st.text_input("Corretora / instituição", max_chars=160, key="signed_institution")
         custody_signed = st.text_input("Local de custódia", max_chars=120, key="signed_custody")
         contract_signed = st.text_input("Tipo / especificação do contrato", max_chars=120, key="signed_contract")
