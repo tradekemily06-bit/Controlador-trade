@@ -655,7 +655,7 @@ def test_streamlit_foreign_reserve_requires_explicit_classification_and_confirma
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert 'api("/api/fiscal-reserve/foreign-planning-estimate", "POST"' in source
     assert '"FOREIGN_FINANCIAL_INVESTMENT"' in source
-    assert "Confirmo aplicação financeira no exterior e residência fiscal no Brasil" in source
+    assert "Confirmo que o registro é uma aplicação financeira no exterior" in source
     assert '"planning_estimate_registered"' in source
     assert "Registrar estimativa de 15%" in source
 
