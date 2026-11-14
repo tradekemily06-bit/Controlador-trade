@@ -1256,7 +1256,7 @@ def show_fiscal() -> None:
     residency_options = {"NOT_INFORMED": "Não informado", "BRAZIL": "Brasil", "FOREIGN": "Exterior", "DUAL_OR_UNCERTAIN": "Dupla ou incerta"}
     income_options = {"NOT_INFORMED": "Não informado", "CAPITAL_GAIN": "Ganho de capital", "INVESTMENT_INCOME": "Rendimento de investimento", "TRADING_RESULT": "Resultado de negociação", "DIVIDEND": "Dividendo", "INTEREST": "Juros", "RENTAL_INCOME": "Aluguel", "OTHER": "Outro"}
     event_options = {"NOT_INFORMED": "Não informado", "ACQUISITION": "Aquisição", "DISPOSAL": "Alienação / venda", "DIVIDEND_RECEIPT": "Recebimento de dividendo", "INTEREST_RECEIPT": "Recebimento de juros", "REDEMPTION": "Resgate", "EXCHANGE": "Troca / permuta", "TRANSFER": "Transferência", "OTHER": "Outro"}
-    fx_method_options = {"NOT_INFORMED": "Não informado", "NOT_CONVERTED": "Ainda não convertido", "PTAX_SELL": "PTAX venda (BCB · informar manualmente)", "PTAX_BUY": "PTAX compra", "BROKER_STATEMENT": "Extrato da corretora", "BANK_RECEIPT": "Comprovante bancário", "OTHER_DOCUMENTED": "Outro método documentado"}
+    fx_method_options = {"NOT_INFORMED": "Não informado", "NOT_CONVERTED": "Ainda não convertido", "PTAX_SELL": "PTAX venda (BCB · informar manualmente)", "BROKER_STATEMENT": "Extrato da corretora", "BANK_RECEIPT": "Comprovante bancário", "OTHER_DOCUMENTED": "Outro método documentado"}
     st.caption("A Receita Federal reconhece o Forex no exterior como aplicação financeira para a regra de 15% a partir de 2024 (Solução de Consulta Cosit 83/2024), quando os fatos correspondem ao entendimento. CFDs, índices e futuros só entram na faixa de 15% pela categoria de derivativos, com contrato e instituição/jurisdição fora do Brasil e resultado em BRL documentado. Criptoativos exigem custódia ou negociação por instituição estrangeira, sem autocustódia no Brasil. Para alienações e resultados de negociação, informe também a PTAX de compra do BCB na data de aquisição e o resultado líquido em BRL após as duas conversões; para juros e dividendos, use a PTAX de venda na data do recebimento. Fonte e cotações são declaradas pelo usuário e não verificadas automaticamente.")
     with st.form("foreign_pending_form"):
         col1, col2 = st.columns(2)
@@ -1318,7 +1318,7 @@ def show_fiscal() -> None:
         fx_date_signed = st.date_input("Data da cotação", key="signed_foreign_fx_date")
         fx_source_signed = st.text_input("Fonte da cotação", max_chars=200)
         fx_method_signed = st.selectbox("Método de conversão cambial", list(fx_method_options), format_func=lambda value: fx_method_options[value], key="signed_fx_method")
-        st.caption("Para moeda estrangeira, informe o resultado líquido em BRL com base na conversão separada do custo de aquisição (PTAX compra na data da aquisição) e do valor recebido (PTAX venda na liquidação). O sistema não consulta nem valida as cotações.")
+        st.caption("Para moeda estrangeira, informe o resultado líquido em BRL com base na conversão separada do custo de aquisição (PTAX venda na data da aquisição) e do valor recebido (PTAX venda na liquidação). O sistema não consulta nem valida as cotações.")
         institution_signed = st.text_input("Corretora / instituição", max_chars=160, key="signed_institution")
         custody_signed = st.text_input("Local de custódia", max_chars=120, key="signed_custody")
         contract_signed = st.text_input("Tipo / especificação do contrato", max_chars=120, key="signed_contract")
@@ -1479,7 +1479,7 @@ def show_fiscal() -> None:
                             "Confirmo que o resultado em BRL considera o contrato, as liquidações, os custos e as conversões cambiais aplicáveis."
                             if is_derivative_estimate
                             else (
-                                "Confirmo a conversão do custo pela PTAX compra na aquisição e do valor recebido pela PTAX venda na liquidação."
+                                "Confirmo a conversão do custo pela PTAX venda na aquisição e do valor recebido pela PTAX venda na liquidação."
                                 if requires_acquisition_basis
                                 else "Confirmo a conversão do rendimento pela PTAX venda do BCB na data do recebimento."
                             )
@@ -1498,18 +1498,18 @@ def show_fiscal() -> None:
                                 key="foreign_estimate_acquisition_cost",
                             )
                             acquisition_fx_rate = st.number_input(
-                                "PTAX compra (BCB) na data da aquisição",
+                                "PTAX venda (BCB) na data da aquisição",
                                 min_value=0.0,
                                 max_value=1_000_000_000_000.0,
                                 format="%.8f",
                                 key="foreign_estimate_acquisition_fx_rate",
                             )
                             acquisition_fx_date = st.date_input(
-                                "Data da PTAX compra",
+                                "Data da PTAX venda",
                                 key="foreign_estimate_acquisition_fx_date",
                             )
                             acquisition_fx_source = st.text_input(
-                                "Fonte da PTAX compra (BCB)",
+                                "Fonte da PTAX venda (BCB)",
                                 max_chars=200,
                                 key="foreign_estimate_acquisition_fx_source",
                             )
@@ -1585,13 +1585,13 @@ def show_fiscal() -> None:
                             })
                             if requires_acquisition_basis:
                                 if acquisition_fx_rate <= 0 or not acquisition_fx_source:
-                                    raise ValueError("Informe a PTAX compra na data da aquisição.")
+                                    raise ValueError("Informe a PTAX venda na data da aquisição.")
                                 estimate_payload.update({
                                     "acquisition_cost": acquisition_cost_for_estimate,
                                     "acquisition_fx_rate": acquisition_fx_rate,
                                     "acquisition_fx_date": acquisition_fx_date.isoformat(),
                                     "acquisition_fx_source": acquisition_fx_source,
-                                    "acquisition_fx_method": "PTAX_BUY",
+                                    "acquisition_fx_method": "PTAX_SELL",
                                 })
                         result = api("/api/fiscal-reserve/foreign-planning-estimate", "POST", estimate_payload)
                         st.success(
