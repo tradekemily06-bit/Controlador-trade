@@ -286,15 +286,19 @@ class FiscalReserve:
                 evidence.get("crypto_location_rule") != "FOREIGN_INSTITUTION_CUSTODY_OR_TRADING_USER_DECLARED"
                 or evidence.get("crypto_location_confirmed") is not True
                 or evidence.get("crypto_location_verification") != "USER_DECLARED_NOT_VERIFIED"
+                or evidence.get("income_nature") not in {"CAPITAL_GAIN", "TRADING_RESULT"}
+                or evidence.get("event_type") not in {"DISPOSAL", "REDEMPTION"}
             ):
-                raise ValueError("criptoativo estrangeiro exige confirmação e evidência de localização por instituição no exterior")
+                raise ValueError("criptoativo estrangeiro exige confirmação de localização e evento de alienação ou resgate")
             if evidence.get("candidate_classification") == "FOREIGN_DERIVATIVE" and (
                 evidence.get("derivative_location_rule") != "FOREIGN_INSTITUTION_AND_CONTRACT_JURISDICTION_USER_DECLARED"
                 or evidence.get("derivative_location_confirmed") is not True
                 or evidence.get("derivative_location_verification") != "USER_DECLARED_NOT_VERIFIED"
                 or evidence.get("derivative_result_basis_confirmed") is not True
+                or evidence.get("income_nature") not in {"CAPITAL_GAIN", "TRADING_RESULT"}
+                or evidence.get("event_type") not in {"DISPOSAL", "REDEMPTION"}
             ):
-                raise ValueError("derivativo estrangeiro exige confirmação da instituição, jurisdição e base do resultado")
+                raise ValueError("derivativo estrangeiro exige confirmação da instituição, jurisdição e evento realizado")
             if occurred_on < "2024-01-01":
                 raise ValueError("a estimativa de 15% aplica-se a eventos a partir de 01/01/2024")
             if evidence.get("fx_conversion_status") == "CONVERTED_FOR_PLANNING_ONLY":
