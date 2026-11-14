@@ -1257,7 +1257,7 @@ def show_fiscal() -> None:
     income_options = {"NOT_INFORMED": "Não informado", "CAPITAL_GAIN": "Ganho de capital", "INVESTMENT_INCOME": "Rendimento de investimento", "TRADING_RESULT": "Resultado de negociação", "DIVIDEND": "Dividendo", "INTEREST": "Juros", "RENTAL_INCOME": "Aluguel", "OTHER": "Outro"}
     event_options = {"NOT_INFORMED": "Não informado", "ACQUISITION": "Aquisição", "DISPOSAL": "Alienação / venda", "DIVIDEND_RECEIPT": "Recebimento de dividendo", "INTEREST_RECEIPT": "Recebimento de juros", "REDEMPTION": "Resgate", "EXCHANGE": "Troca / permuta", "TRANSFER": "Transferência", "OTHER": "Outro"}
     fx_method_options = {"NOT_INFORMED": "Não informado", "NOT_CONVERTED": "Ainda não convertido", "PTAX_SELL": "PTAX venda (BCB · informar manualmente)", "PTAX_BUY": "PTAX compra", "BROKER_STATEMENT": "Extrato da corretora", "BANK_RECEIPT": "Comprovante bancário", "OTHER_DOCUMENTED": "Outro método documentado"}
-    st.caption("A Receita Federal reconhece o Forex no exterior como aplicação financeira para a regra de 15% a partir de 2024 (Solução de Consulta Cosit 83/2024), quando os fatos correspondem ao entendimento. CFDs, índices, futuros e cripto permanecem pendentes até classificação fiscal própria. Para alienações e resultados de negociação, informe também a PTAX de compra do BCB na data de aquisição e o resultado líquido em BRL após as duas conversões; para juros e dividendos, use a PTAX de venda na data do recebimento. Fonte e cotações são declaradas pelo usuário e não verificadas automaticamente.")
+    st.caption("A Receita Federal reconhece o Forex no exterior como aplicação financeira para a regra de 15% a partir de 2024 (Solução de Consulta Cosit 83/2024), quando os fatos correspondem ao entendimento. CFDs, índices e futuros permanecem pendentes; criptoativos só entram na faixa de 15% quando custodiados ou negociados por instituição no exterior, sem autocustódia no Brasil. Para alienações e resultados de negociação, informe também a PTAX de compra do BCB na data de aquisição e o resultado líquido em BRL após as duas conversões; para juros e dividendos, use a PTAX de venda na data do recebimento. Fonte e cotações são declaradas pelo usuário e não verificadas automaticamente.")
     with st.form("foreign_pending_form"):
         col1, col2 = st.columns(2)
         reference = col1.text_input("Referência / comprovante", max_chars=160)
@@ -1436,7 +1436,7 @@ def show_fiscal() -> None:
                 )
                 and item.get("planning_estimate_registered") is not True
             }
-            st.markdown("##### Estimativa de reserva · aplicação financeira no exterior")
+            st.markdown("##### Estimativa de reserva · aplicação financeira / criptoativo no exterior")
             st.caption("15% sobre resultado positivo em BRL declarado após conversões cambiais separadas; ajuste anual. Não compensa perdas nem créditos de imposto pago fora.")
             if eligible_foreign_results:
                 with st.form("foreign_planning_estimate_form"):
@@ -1448,6 +1448,10 @@ def show_fiscal() -> None:
                     selected_foreign_item = next(
                         item for item in foreign_items if item.get("pending_id") == selected_foreign_result
                     )
+                    selected_instrument_text = " ".join((str(selected_foreign_item.get("instrument") or ""), str(selected_foreign_item.get("contract_type") or ""))).casefold()
+                    crypto_terms = ("cripto", "crypto", "bitcoin", "ethereum", "btc", "eth", "solana", "token")
+                    is_crypto_estimate = any(term in selected_instrument_text for term in crypto_terms)
+                    selected_candidate_classification = "FOREIGN_CRYPTO" if is_crypto_estimate else "FOREIGN_FINANCIAL_INVESTMENT"
                     if str(selected_foreign_item.get("original_currency") or "").upper() != "BRL":
                         declared_result_brl = st.number_input(
                             "Resultado líquido apurado em BRL (após conversões separadas)",
@@ -1505,9 +1509,20 @@ def show_fiscal() -> None:
                         acquisition_fx_rate = None
                         acquisition_fx_date = None
                         acquisition_fx_source = ""
-                    confirm_foreign_estimate = st.checkbox(
-                        "Confirmo aplicação financeira no exterior e residência fiscal no Brasil na data do evento."
-                    )
+                    if is_crypto_estimate:
+                        crypto_location_confirmed = st.checkbox(
+                            "Confirmo que o criptoativo foi custodiado ou negociado por instituição localizada fora do Brasil; não é autocustódia no Brasil.",
+                            key="foreign_crypto_location_confirmed",
+                        )
+                        confirm_foreign_estimate = crypto_location_confirmed and st.checkbox(
+                            "Confirmo residência fiscal brasileira e que o ativo virtual tem natureza de aplicação financeira.",
+                            key="foreign_crypto_tax_confirmed",
+                        )
+                    else:
+                        crypto_location_confirmed = False
+                        confirm_foreign_estimate = st.checkbox(
+                            "Confirmo aplicação financeira no exterior e residência fiscal no Brasil na data do evento."
+                        )
                     submit_foreign_estimate = st.form_submit_button(
                         "Registrar estimativa de 15%",
                         disabled=not confirm_foreign_estimate,
@@ -1516,9 +1531,11 @@ def show_fiscal() -> None:
                     try:
                         estimate_payload = {
                             "pending_id": selected_foreign_result,
-                            "candidate_classification": "FOREIGN_FINANCIAL_INVESTMENT",
+                            "candidate_classification": selected_candidate_classification,
                             "confirmed": True,
                         }
+                        if is_crypto_estimate:
+                            estimate_payload["crypto_location_confirmed"] = True
                         if str(selected_foreign_item.get("original_currency") or "").upper() != "BRL":
                             if not conversion_basis_confirmed:
                                 raise ValueError("Confirme a conversão cambial separada.")
