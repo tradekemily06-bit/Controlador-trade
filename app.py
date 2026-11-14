@@ -773,6 +773,25 @@ def application(environ, start_response):
             contract_type = str(item.get("contract_type") or "").strip().upper()
             if contract_type in {"", "NOT_INFORMED", "NOT_CONFIRMED"}:
                 raise ValueError("tipo de contrato é obrigatório")
+            # Conservative guard: the current 15% planning lane does not classify
+            # Forex, CFDs, futures, crypto, or index/commodity derivatives. A
+            # user-entered label alone cannot establish the legal regime; keep
+            # these instruments pending until their own tax rules are implemented.
+            instrument_description = " ".join((
+                str(item.get("instrument") or ""),
+                str(item.get("contract_type") or ""),
+            )).casefold()
+            unsupported_instrument_terms = (
+                "forex", "fx ", "currency pair", "paridade cambial", "câmbio",
+                "cfd", "contract for difference", "futuro", "futures",
+                "cripto", "crypto", "bitcoin", "ethereum", "índice futuro",
+                "index future", "commodity future", "derivativo de índice",
+            )
+            if any(term in instrument_description for term in unsupported_instrument_terms):
+                raise ValueError(
+                    "este instrumento exige classificação fiscal própria e permanece pendente; "
+                    "a estimativa de 15% não pode ser aplicada automaticamente"
+                )
             if item.get("fx_conversion_status") == "CONVERTED_FOR_PLANNING_ONLY":
                 fx_source = str(item.get("fx_source") or "").casefold()
                 if item.get("fx_conversion_method") != "PTAX_SELL":
