@@ -102,6 +102,8 @@ def test_foreign_financial_investment_estimate_requires_explicit_confirmation_an
     assert body["entry"]["realized_result_brl"] == 500.0
     assert body["entry"]["reserve_rate"] == 15.0
     assert body["entry"]["reserve_amount_brl"] == 75.0
+    assert body["fx_quote_verified"] is False
+    assert body["fx_source_verified"] is False
 
     evidence = json.loads(body["entry"]["notes"])
     assert evidence["source_pending_id"] == pending["pending_id"]
@@ -109,6 +111,8 @@ def test_foreign_financial_investment_estimate_requires_explicit_confirmation_an
     assert evidence["foreign_tax_credit_applied"] is False
     assert evidence["loss_offsets_applied"] is False
     assert evidence["legal_rate"] == 15.0
+    assert evidence["fx_quote_verification"] == "USER_DECLARED_NOT_VERIFIED"
+    assert evidence["fx_source_verification"] == "USER_DECLARED_NOT_VERIFIED"
 
     summary = reserve.summary(owner_id)
     assert summary["total_reserved_brl"] == 75.0
