@@ -876,7 +876,7 @@ def show_fiscal() -> None:
         summary = {}
         st.error("Resumo fiscal indisponível. Os lançamentos e alterações de percentual ficam bloqueados. Verifique a disponibilidade do serviço e os registros técnicos locais.")
     st.subheader("Reserva Fiscal")
-    st.caption("Planejamento, não apuração tributária. Operações MT5 sem elegibilidade verificada ficam em fila separada. No exterior, 15% é apenas referência para aplicações financeiras legalmente elegíveis de residente fiscal no Brasil; Forex, CFDs, índices, futuros, cripto e entidades controladas ficam pendentes. A confirmação do usuário não substitui a classificação fiscal.")
+    st.caption("Planejamento, não apuração tributária. Operações MT5 sem elegibilidade verificada ficam em fila separada. No exterior, 15% é apenas referência para aplicações financeiras legalmente elegíveis de residente fiscal no Brasil; CFDs, índices, futuros, cripto e entidades controladas ficam pendentes. Forex no exterior pode seguir a referência específica da Solução de Consulta Cosit 83/2024, quando caracterizado como aplicação financeira. A confirmação do usuário não substitui a classificação fiscal.")
     if not summary_available:
         st.info("Os dados fiscais não foram validados nesta consulta. Totais, histórico e formulários permanecem ocultos até a leitura ser recuperada.")
         return
@@ -1257,14 +1257,14 @@ def show_fiscal() -> None:
     income_options = {"NOT_INFORMED": "Não informado", "CAPITAL_GAIN": "Ganho de capital", "INVESTMENT_INCOME": "Rendimento de investimento", "TRADING_RESULT": "Resultado de negociação", "DIVIDEND": "Dividendo", "INTEREST": "Juros", "RENTAL_INCOME": "Aluguel", "OTHER": "Outro"}
     event_options = {"NOT_INFORMED": "Não informado", "ACQUISITION": "Aquisição", "DISPOSAL": "Alienação / venda", "DIVIDEND_RECEIPT": "Recebimento de dividendo", "INTEREST_RECEIPT": "Recebimento de juros", "REDEMPTION": "Resgate", "EXCHANGE": "Troca / permuta", "TRANSFER": "Transferência", "OTHER": "Outro"}
     fx_method_options = {"NOT_INFORMED": "Não informado", "NOT_CONVERTED": "Ainda não convertido", "PTAX_SELL": "PTAX venda (BCB · informar manualmente)", "PTAX_BUY": "PTAX compra", "BROKER_STATEMENT": "Extrato da corretora", "BANK_RECEIPT": "Comprovante bancário", "OTHER_DOCUMENTED": "Outro método documentado"}
-    st.caption("A estimativa de 15% não se aplica automaticamente a Forex, CFDs, índices, futuros ou cripto. Esses registros permanecem pendentes até existir classificação fiscal própria. Para aplicações elegíveis, informe manualmente a PTAX de venda do BCB na data do evento; fonte e cotação são declaradas pelo usuário e não verificadas automaticamente.")
+    st.caption("A Receita Federal reconhece o Forex no exterior como aplicação financeira para a regra de 15% a partir de 2024 (Solução de Consulta Cosit 83/2024), quando os fatos correspondem ao entendimento. CFDs, índices, futuros e cripto permanecem pendentes até classificação fiscal própria. Para aplicações elegíveis, informe manualmente a PTAX de venda do BCB na data do evento; fonte e cotação são declaradas pelo usuário e não verificadas automaticamente.")
     with st.form("foreign_pending_form"):
         col1, col2 = st.columns(2)
         reference = col1.text_input("Referência / comprovante", max_chars=160)
         amount = col2.number_input("Valor original", min_value=0.00000001, max_value=1_000_000_000_000.0, step=1.0, format="%.8f")
         col3, col4 = st.columns(2)
         currency = col3.text_input("Código da moeda (3 letras)", value="USD", max_chars=3).strip().upper()
-        instrument = col4.text_input("Instrumento", placeholder="Ex.: ação ou ETF; Forex, CFD, índice, futuro e cripto ficam pendentes", max_chars=80)
+        instrument = col4.text_input("Instrumento", placeholder="Ex.: ação ou ETF; CFD, índice, futuro e cripto ficam pendentes; Forex no exterior exige contrato e custódia identificados", max_chars=80)
         col5, col6 = st.columns(2)
         jurisdiction = col5.text_input("Jurisdição", placeholder="EUA, Brasil, outro", max_chars=80)
         occurred_on = col6.date_input("Data da operação", key="foreign_date")
