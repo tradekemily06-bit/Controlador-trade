@@ -1464,13 +1464,18 @@ def show_fiscal() -> None:
                             format="%.2f",
                             key="foreign_declared_result_brl",
                         )
-                        conversion_basis_confirmed = st.checkbox(
-                            "Confirmo que converti o custo pela PTAX compra na aquisição e o valor recebido pela PTAX venda na liquidação.",
-                            key="foreign_conversion_basis_confirmed",
-                        )
                         requires_acquisition_basis = (
                             selected_foreign_item.get("income_nature") in {"CAPITAL_GAIN", "TRADING_RESULT"}
                             or selected_foreign_item.get("event_type") in {"DISPOSAL", "REDEMPTION"}
+                        )
+                        conversion_confirmation_label = (
+                            "Confirmo a conversão do custo pela PTAX compra na aquisição e do valor recebido pela PTAX venda na liquidação."
+                            if requires_acquisition_basis
+                            else "Confirmo a conversão do rendimento pela PTAX venda do BCB na data do recebimento."
+                        )
+                        conversion_basis_confirmed = st.checkbox(
+                            conversion_confirmation_label,
+                            key="foreign_conversion_basis_confirmed",
                         )
                         if requires_acquisition_basis:
                             acquisition_fx_rate = st.number_input(
