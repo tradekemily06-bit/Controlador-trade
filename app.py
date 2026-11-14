@@ -888,17 +888,17 @@ def application(environ, start_response):
                         or not math.isfinite(acquisition_fx_rate)
                         or acquisition_fx_rate <= 0
                     ):
-                        raise ValueError("PTAX de compra na data de aquisição é obrigatória")
+                        raise ValueError("PTAX de venda na data de aquisição é obrigatória")
                     acquisition_fx_date = data.get("acquisition_fx_date")
                     try:
                         parsed_acquisition_date = datetime.strptime(acquisition_fx_date, "%Y-%m-%d").date()
                     except (TypeError, ValueError):
-                        raise ValueError("data da PTAX de compra inválida")
+                        raise ValueError("data da PTAX de venda inválida")
                     if parsed_acquisition_date.isoformat() != acquisition_fx_date or acquisition_fx_date > item.get("occurred_on", ""):
-                        raise ValueError("data da PTAX de compra deve ser válida e não posterior à liquidação")
+                        raise ValueError("data da PTAX de venda deve ser válida e não posterior à liquidação")
                     acquisition_fx_source = str(data.get("acquisition_fx_source") or "").casefold()
-                    if data.get("acquisition_fx_method") != "PTAX_BUY":
-                        raise ValueError("a conversão do custo exige PTAX de compra do BCB")
+                    if data.get("acquisition_fx_method") != "PTAX_SELL":
+                        raise ValueError("a conversão do custo exige PTAX de venda do BCB")
                     if "bcb" not in acquisition_fx_source and "banco central" not in acquisition_fx_source and "ptax" not in acquisition_fx_source:
                         raise ValueError("a fonte da cotação de compra deve identificar o Banco Central do Brasil (PTAX)")
                     acquisition_fx_evidence = {
@@ -906,7 +906,7 @@ def application(environ, start_response):
                         "acquisition_fx_rate": acquisition_fx_rate,
                         "acquisition_fx_date": acquisition_fx_date,
                         "acquisition_fx_source": data.get("acquisition_fx_source"),
-                        "acquisition_fx_method": "PTAX_BUY",
+                        "acquisition_fx_method": "PTAX_SELL",
                         "acquisition_fx_verification": "USER_DECLARED_NOT_VERIFIED",
                     }
                 converted_result = float(declared_result_brl)
