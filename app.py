@@ -1141,6 +1141,7 @@ def application(environ, start_response):
             # Keep the legacy foreign setting internally for database compatibility,
             # but never expose its generic percentage through the public API.
             settings.pop("FOREIGN_FINANCIAL_ASSET", None)
+            settings.pop("BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT", None)
             return _json_response(start_response, HTTPStatus.OK, {"settings": settings}, request_id, environ)
         if path == "/api/fiscal-reserve/results" and method == "POST":
             data = _read_json(environ)
