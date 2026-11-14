@@ -7,6 +7,7 @@ the original currency/rate should be retained by a future import adapter.
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 import uuid
 from contextlib import contextmanager
@@ -258,6 +259,28 @@ class FiscalReserve:
             raise ValueError("notes contém marcador interno reservado para registros legados")
         if len(notes) > 1000:
             raise ValueError("notes deve ter até 1000 caracteres")
+        if category == "BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT":
+            try:
+                evidence = json.loads(notes)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("estimativa estrangeira exige evidências estruturadas") from exc
+            if not isinstance(evidence, dict):
+                raise ValueError("estimativa estrangeira exige evidências estruturadas")
+            if (
+                evidence.get("tax_classification_status") != "USER_DECLARED_PLANNING_ONLY"
+                or evidence.get("candidate_classification") != "FOREIGN_FINANCIAL_INVESTMENT"
+                or evidence.get("tax_residency_at_event") != "BRAZIL"
+                or evidence.get("tax_liability_confirmed") is not False
+                or evidence.get("fx_rate_direction") != "BRL_PER_ORIGINAL_CURRENCY_UNIT"
+                or evidence.get("fx_conversion_status") not in {
+                    "CONVERTED_FOR_PLANNING_ONLY", "ALREADY_BRL"
+                }
+                or evidence.get("legal_rate") != 15.0
+                or evidence.get("legal_period") != "ANNUAL_ADJUSTMENT"
+            ):
+                raise ValueError("estimativa estrangeira exige classificação, residência e conversão confirmadas")
+            if occurred_on < "2024-01-01":
+                raise ValueError("a estimativa de 15% aplica-se a eventos a partir de 01/01/2024")
         with self._connect() as db:
             # Serialize writers before checking the idempotency key. The unique
             # index remains the final guard if multiple workers race.
