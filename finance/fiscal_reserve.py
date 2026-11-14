@@ -496,7 +496,14 @@ class FiscalReserve:
                 if amount > 0:
                     foreign_gains += amount
                 elif amount < 0:
-                    foreign_declared_losses += abs(amount)
+                    # A negative cashflow is not automatically a deductible
+                    # financial-application loss. Restrict this informational
+                    # scenario to declared realized disposal/redemption results.
+                    if (
+                        evidence.get("income_nature") in {"CAPITAL_GAIN", "TRADING_RESULT"}
+                        and evidence.get("event_type") in {"DISPOSAL", "REDEMPTION"}
+                    ):
+                        foreign_declared_losses += abs(amount)
             foreign_net_scenario = round(max(foreign_gains - foreign_declared_losses, 0.0), 2)
             foreign_rate = rates.get(
                 "BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT",
