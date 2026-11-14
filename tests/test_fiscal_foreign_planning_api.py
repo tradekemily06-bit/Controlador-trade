@@ -63,6 +63,7 @@ def _pending_payload(reference="FOREIGN-PLANNING-001", **overrides):
         "institution": "Corretora estrangeira",
         "custody_location": "Custódia estrangeira",
         "contract_type": "Contrato Forex",
+        "acquisition_cost": 1000.0,
     }
     payload.update(overrides)
     return payload
@@ -92,6 +93,12 @@ def test_foreign_financial_investment_estimate_requires_explicit_confirmation_an
             "candidate_classification": "FOREIGN_FINANCIAL_INVESTMENT",
             "confirmed": True,
             "owner_id": "forged-owner-is-ignored",
+            "declared_result_brl": 500.0,
+            "conversion_basis_confirmed": True,
+            "acquisition_fx_rate": 4.8,
+            "acquisition_fx_date": "2026-10-01",
+            "acquisition_fx_source": "Banco Central do Brasil - PTAX compra",
+            "acquisition_fx_method": "PTAX_BUY",
         },
     )
 
@@ -111,6 +118,10 @@ def test_foreign_financial_investment_estimate_requires_explicit_confirmation_an
     assert evidence["income_nature"] == "TRADING_RESULT"
     assert evidence["event_type"] == "DISPOSAL"
     assert evidence["instrument"] == "Forex"
+    assert evidence["declared_result_brl"] == 500.0
+    assert evidence["acquisition_fx_method"] == "PTAX_BUY"
+    assert evidence["acquisition_fx_date"] == "2026-10-01"
+    assert evidence["acquisition_fx_verification"] == "USER_DECLARED_NOT_VERIFIED"
     assert evidence["jurisdiction"] == "Estados Unidos"
     assert evidence["foreign_tax_credit_applied"] is False
     assert evidence["loss_offsets_applied"] is False
