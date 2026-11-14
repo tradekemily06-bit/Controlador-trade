@@ -108,6 +108,10 @@ def test_foreign_financial_investment_estimate_requires_explicit_confirmation_an
     evidence = json.loads(body["entry"]["notes"])
     assert evidence["source_pending_id"] == pending["pending_id"]
     assert evidence["tax_residency_at_event"] == "BRAZIL"
+    assert evidence["income_nature"] == "TRADING_RESULT"
+    assert evidence["event_type"] == "DISPOSAL"
+    assert evidence["instrument"] == "Forex"
+    assert evidence["jurisdiction"] == "Estados Unidos"
     assert evidence["foreign_tax_credit_applied"] is False
     assert evidence["loss_offsets_applied"] is False
     assert evidence["legal_rate"] == 15.0
