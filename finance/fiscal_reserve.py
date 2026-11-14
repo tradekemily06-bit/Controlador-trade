@@ -498,7 +498,7 @@ class FiscalReserve:
                 "Lançamentos manuais BR_DAY_TRADE dependem de declaração do usuário; elegibilidade de mercado não é verificada independentemente.",
                 "Resultados negativos são registrados, mas compensações fiscais não são calculadas.",
                 "Registros MT5 com classificação declarada pelo usuário e ainda não verificada permanecem fora dos totais, mesmo se existirem no histórico legado.",
-                "Resultados estrangeiros sem confirmação de aplicação financeira e residência fiscal brasileira permanecem fora dos totais; criptoativos e entidades controladas continuam pendentes.",
+                "Aplicações financeiras no exterior só entram em estimativa após confirmação da categoria, residência fiscal brasileira, resultado realizado e câmbio documentado; criptoativos e entidades controladas permanecem pendentes.",
                 "Nenhum valor é transferido ou movimentado pela Reserva Fiscal.",
             ],
         }
