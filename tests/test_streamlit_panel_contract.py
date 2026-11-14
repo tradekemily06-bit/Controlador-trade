@@ -1077,6 +1077,12 @@ def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid
                 "classification_status": "PENDING_CLASSIFICATION",
                 "rate_available": False,
             },
+            "BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT": {
+                "entries": 0,
+                "rate": 15.0,
+                "realized_result_brl": 0.0,
+                "reserve_amount_brl": 0.0,
+            },
         },
         "total_reserved_brl": 200.0,
         "as_of": "2026-11-05",
@@ -1430,6 +1436,7 @@ def test_fiscal_reserve_writes_are_disabled_when_summary_read_fails_or_is_incomp
     assert "_valid_fiscal_history_page(summary" in fiscal
     assert "def _valid_fiscal_summary(summary: Any) -> bool:" in source
     assert 'categories.get("BR_DAY_TRADE")' in source
+    assert 'categories.get("BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT")' in source
     assert 'semantics.get("kind") != "PLANNING_ESTIMATE_ONLY"' in source
     assert '("day", "week", "month", "year")' in source
     assert 'def _is_finite_number(value: Any) -> bool:' in source
