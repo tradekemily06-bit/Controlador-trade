@@ -282,6 +282,15 @@ class FiscalReserve:
                 or evidence.get("legal_period") != "ANNUAL_ADJUSTMENT"
             ):
                 raise ValueError("estimativa estrangeira exige classificação, residência e conversão confirmadas")
+            if evidence.get("candidate_classification") == "FOREIGN_FINANCIAL_INVESTMENT":
+                custody_location = str(evidence.get("custody_location") or "").casefold()
+                custody_tokens = set(custody_location.replace(",", " ").replace("/", " ").split())
+                if (
+                    evidence.get("financial_investment_location_confirmed") is not True
+                    or evidence.get("financial_investment_location_verification") != "USER_DECLARED_NOT_VERIFIED"
+                    or custody_tokens.intersection({"br", "brasil", "brazil", "brasileiro", "brasileira"})
+                ):
+                    raise ValueError("aplicação financeira exige confirmação de localização e custódia efetiva no exterior")
             if evidence.get("candidate_classification") == "FOREIGN_CRYPTO" and (
                 evidence.get("crypto_location_rule") != "FOREIGN_INSTITUTION_CUSTODY_OR_TRADING_USER_DECLARED"
                 or evidence.get("crypto_location_confirmed") is not True
