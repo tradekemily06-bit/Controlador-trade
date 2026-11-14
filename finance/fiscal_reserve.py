@@ -258,8 +258,9 @@ class FiscalReserve:
         notes = raw_notes.strip()
         if _UNVERIFIED_LEGACY_MARKER.casefold() in notes.casefold():
             raise ValueError("notes contém marcador interno reservado para registros legados")
-        if len(notes) > 1000:
-            raise ValueError("notes deve ter até 1000 caracteres")
+        notes_limit = 4000 if category == "BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT" else 1000
+        if len(notes) > notes_limit:
+            raise ValueError(f"notes deve ter até {notes_limit} caracteres")
         if category == "BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT":
             try:
                 evidence = json.loads(notes)
