@@ -1423,6 +1423,25 @@ def show_fiscal() -> None:
                 and item.get("fx_conversion_status") in {
                     "CONVERTED_FOR_PLANNING_ONLY", "ALREADY_BRL"
                 }
+                and (
+                    str(item.get("original_currency") or "").upper() == "BRL"
+                    or (
+                        item.get("fx_conversion_method") == "PTAX_SELL"
+                        and item.get("fx_date") == item.get("occurred_on")
+                        and any(
+                            marker in str(item.get("fx_source") or "").casefold()
+                            for marker in ("bcb", "banco central", "ptax")
+                        )
+                    )
+                )
+                and (
+                    str(item.get("original_currency") or "").upper() == "BRL"
+                    or not (
+                        item.get("income_nature") in {"CAPITAL_GAIN", "TRADING_RESULT"}
+                        or item.get("event_type") in {"DISPOSAL", "REDEMPTION"}
+                    )
+                    or item.get("acquisition_cost") is not None
+                )
                 and item.get("planning_estimate_registered") is not True
             }
             st.markdown("##### Estimativa de reserva · aplicação financeira no exterior")
