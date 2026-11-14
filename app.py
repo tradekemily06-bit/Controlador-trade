@@ -762,15 +762,16 @@ def application(environ, start_response):
                 "DISPOSAL", "REDEMPTION", "DIVIDEND_RECEIPT", "INTEREST_RECEIPT"
             }:
                 raise ValueError("tipo de evento não está habilitado para esta estimativa")
-            if not item.get("instrument") or not item.get("jurisdiction"):
-                raise ValueError("instrumento e jurisdição são obrigatórios")
+            jurisdiction = str(item.get("jurisdiction") or "").strip()
+            if not item.get("instrument") or jurisdiction.casefold() in {"", "not_informed", "not informed", "not_confirmed", "not confirmed"}:
+                raise ValueError("instrumento e jurisdição identificada são obrigatórios")
             institution = str(item.get("institution") or "").strip()
             custody_location = str(item.get("custody_location") or "").strip().casefold()
             self_custody = "autocust" in custody_location or "self-custod" in custody_location
             if not institution and not self_custody:
                 raise ValueError("informe a instituição ou declare autocustódia")
-            if not custody_location or custody_location == "not_informed":
-                raise ValueError("local de custódia é obrigatório")
+            if custody_location in {"", "not_informed", "not informed", "not_confirmed", "not confirmed"}:
+                raise ValueError("local de custódia é obrigatório e deve ser identificado")
             contract_type = str(item.get("contract_type") or "").strip().upper()
             if contract_type in {"", "NOT_INFORMED", "NOT_CONFIRMED"}:
                 raise ValueError("tipo de contrato é obrigatório")
@@ -795,7 +796,11 @@ def application(environ, start_response):
                 )
                 if location_tokens.intersection({"br", "brasil", "brazil", "brasileiro", "brasileira"}):
                     raise ValueError("o ativo virtual precisa estar custodiado ou negociado por instituição localizada fora do Brasil")
-                if not institution or data.get("crypto_location_confirmed") is not True:
+                if (
+                    not institution
+                    or institution.casefold() in {"not_informed", "not informed", "not_confirmed", "not confirmed"}
+                    or data.get("crypto_location_confirmed") is not True
+                ):
                     raise ValueError("confirme a instituição localizada no exterior e a ausência de autocustódia no Brasil")
                 if item.get("income_nature") not in {"CAPITAL_GAIN", "TRADING_RESULT"} or item.get("event_type") not in {"DISPOSAL", "REDEMPTION"}:
                     raise ValueError("criptoativos só entram neste fluxo em alienação ou resgate realizado")
