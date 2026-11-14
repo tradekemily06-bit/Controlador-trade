@@ -870,7 +870,7 @@ def show_fiscal() -> None:
         st.error("Resumo fiscal indisponível. Os lançamentos e alterações de percentual ficam bloqueados. Verifique a disponibilidade do serviço e os registros técnicos locais.")
         st.caption("Detalhes técnicos não são exibidos no painel.")
     st.subheader("Reserva Fiscal")
-    st.caption("Planejamento e separação estimada. Operações MT5 cuja elegibilidade fiscal não foi verificada ficam em fila brasileira separada, sem cálculo e fora dos totais. Registros estrangeiros não classificados também ficam fora dos totais; nenhuma alíquota genérica é aplicada.")
+    st.caption("Planejamento e separação estimada. Operações MT5 sem elegibilidade verificada ficam em fila separada. Aplicações no exterior só entram na estimativa após confirmação explícita; cripto e entidades controladas permanecem pendentes.")
     if not summary_available:
         st.info("Os dados fiscais não foram validados nesta consulta. Totais, histórico e formulários permanecem ocultos até a leitura ser recuperada.")
         return
@@ -925,7 +925,7 @@ def show_fiscal() -> None:
             "Anual": "year",
         }
         selected_period_label = st.selectbox(
-            "Período da Reserva Fiscal · Brasil",
+            "Período da Reserva Fiscal",
             options=list(period_options),
             index=2,
             key="fiscal_brazil_period",
@@ -941,13 +941,16 @@ def show_fiscal() -> None:
             f"Resultado realizado · {selected_period_label.lower()}",
             money(selected_period.get("realized_result_brl")),
         )
-        c.metric("Estimativa acumulada · Brasil", money(summary.get("total_reserved_brl")))
+        c.metric("Estimativa acumulada · total", money(summary.get("total_reserved_brl")))
+        foreign_planning = summary.get("categories", {}).get("BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT", {})
+        st.metric("Reserva estimada · aplicações no exterior", money(foreign_planning.get("reserve_amount_brl")))
+        st.caption("Aplicações financeiras no exterior · 15% para residente fiscal no Brasil · ajuste anual.")
         as_of_year = date.fromisoformat(summary["as_of"]).year
         monthly_planning = summary.get("monthly_planning")
         st.markdown(f"#### Histórico mensal de planejamento · {as_of_year}")
         st.caption(
-            "Consolidação anual dos lançamentos brasileiros elegíveis já registrados. "
-            "Não representa apuração mensal de imposto, não compensa prejuízos e não desconta créditos de IRRF."
+            "Consolidação anual dos lançamentos de planejamento já registrados. "
+            "Não representa apuração tributária; não compensa prejuízos nem créditos de imposto pago no exterior."
         )
         if _valid_monthly_planning(monthly_planning, as_of_year):
             st.dataframe(
