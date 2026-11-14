@@ -249,6 +249,39 @@ def test_foreign_crypto_is_eligible_only_with_foreign_institution_custody(tmp_pa
     assert evidence["crypto_location_verification"] == "USER_DECLARED_NOT_VERIFIED"
 
 
+def test_foreign_crypto_keeps_nft_and_crypto_cfd_pending(tmp_path, monkeypatch):
+    _database, owner_id, reserve, queue = _configure(tmp_path, monkeypatch)
+    for reference, instrument, contract_type in [
+        ("FOREIGN-CRYPTO-NFT", "NFT art", "NFT"),
+        ("FOREIGN-CRYPTO-CFD", "Bitcoin", "CFD"),
+    ]:
+        pending = queue.add_realized_result(owner_id, _pending_payload(
+            reference,
+            instrument=instrument,
+            contract_type=contract_type,
+            institution="Coinbase",
+            custody_location="Coinbase, Estados Unidos",
+            jurisdiction="Estados Unidos",
+            income_nature="TRADING_RESULT",
+            event_type="DISPOSAL",
+        ))
+        status, _ = _request("/api/fiscal-reserve/foreign-planning-estimate", {
+            "pending_id": pending["pending_id"],
+            "candidate_classification": "FOREIGN_CRYPTO",
+            "confirmed": True,
+            "crypto_location_confirmed": True,
+            "declared_result_brl": 500.0,
+            "conversion_basis_confirmed": True,
+            "acquisition_cost": 1000.0,
+            "acquisition_fx_rate": 4.8,
+            "acquisition_fx_date": "2026-10-01",
+            "acquisition_fx_source": "BCB PTAX compra",
+            "acquisition_fx_method": "PTAX_BUY",
+        })
+        assert status.startswith("400")
+    assert reserve.summary(owner_id)["total_reserved_brl"] == 0.0
+
+
 def test_foreign_crypto_rejects_self_custody_in_brazil(tmp_path, monkeypatch):
     _database, owner_id, reserve, queue = _configure(tmp_path, monkeypatch)
     pending = queue.add_realized_result(owner_id, _pending_payload(
