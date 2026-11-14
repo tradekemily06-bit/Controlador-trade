@@ -1,6 +1,7 @@
 """Pending intake for foreign fiscal items; never estimates or books tax reserves."""
 from __future__ import annotations
 
+import math
 import sqlite3
 import uuid
 from contextlib import contextmanager
@@ -240,6 +241,7 @@ class FiscalPendingQueue:
                 isinstance(rate, bool)
                 or not isinstance(rate, (int, float))
                 or rate <= 0
+                or not math.isfinite(float(rate))
                 or method not in documented_methods
                 or not result.get("fx_date")
                 or not result.get("fx_source")
