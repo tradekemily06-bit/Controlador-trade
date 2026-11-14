@@ -17,6 +17,10 @@ from typing import Any, Iterator
 from zoneinfo import ZoneInfo
 
 
+# Planning rates only. The foreign lane is limited to an explicitly confirmed
+# financial-application result for a Brazilian tax resident; it is not a generic
+# foreign, crypto, controlled-entity, or tax-assessment rate.
+# Legal basis: Lei 14.754/2023, art. 2º; RFB Solução de Consulta Cosit 83/2024.
 DEFAULT_RATES = {
     "BR_DAY_TRADE": 20.0,
     "BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT": 15.0,
