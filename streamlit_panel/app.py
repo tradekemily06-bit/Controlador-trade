@@ -215,7 +215,7 @@ def fiscal_history_display_row(item: dict[str, Any]) -> dict[str, Any]:
         "Percentual de planejamento (%)": "—",
         "Reserva estimada (R$)": "—",
         "Referência": item.get("reference"),
-        "Status": "PENDENTE DE CLASSIFICAÇÃO",
+        "Status": "RESERVA ESTIMADA" if item.get("planning_estimate_registered") is True else "PENDENTE DE CLASSIFICAÇÃO",
     }
     if category == "BR_DAY_TRADE":
         evidence = {}
@@ -1353,6 +1353,58 @@ def show_fiscal() -> None:
                 "Imposto pago fora (moeda original)": item.get("foreign_tax_paid"),
                 "Status": "PENDENTE DE CLASSIFICAÇÃO",
             } for item in foreign_items], use_container_width=True, hide_index=True)
+            eligible_foreign_results = {
+                item["pending_id"]: (
+                    f"{item.get('occurred_on')} · {item.get('instrument')} · "
+                    f"{item.get('original_result')} {item.get('original_currency')}"
+                )
+                for item in foreign_items
+                if item.get("pending_id")
+                and item.get("record_kind") == "REALIZED_RESULT"
+                and item.get("tax_residency_at_event") == "BRAZIL"
+                and item.get("income_nature") in {
+                    "CAPITAL_GAIN", "INVESTMENT_INCOME", "TRADING_RESULT", "DIVIDEND", "INTEREST"
+                }
+                and item.get("event_type") in {
+                    "DISPOSAL", "REDEMPTION", "DIVIDEND_RECEIPT", "INTEREST_RECEIPT"
+                }
+                and item.get("fx_conversion_status") in {
+                    "CONVERTED_FOR_PLANNING_ONLY", "ALREADY_BRL"
+                }
+                and item.get("planning_estimate_registered") is not True
+            }
+            st.markdown("##### Estimativa de reserva · aplicação financeira no exterior")
+            st.caption("15% sobre resultado positivo convertido em BRL; ajuste anual. Não compensa perdas nem créditos de imposto pago fora.")
+            if eligible_foreign_results:
+                with st.form("foreign_planning_estimate_form"):
+                    selected_foreign_result = st.selectbox(
+                        "Resultado realizado",
+                        options=list(eligible_foreign_results),
+                        format_func=lambda value: eligible_foreign_results[value],
+                    )
+                    confirm_foreign_estimate = st.checkbox(
+                        "Confirmo aplicação financeira no exterior e residência fiscal no Brasil na data do evento."
+                    )
+                    submit_foreign_estimate = st.form_submit_button(
+                        "Registrar estimativa de 15%",
+                        disabled=not confirm_foreign_estimate,
+                    )
+                if submit_foreign_estimate:
+                    try:
+                        result = api("/api/fiscal-reserve/foreign-planning-estimate", "POST", {
+                            "pending_id": selected_foreign_result,
+                            "candidate_classification": "FOREIGN_FINANCIAL_INVESTMENT",
+                            "confirmed": True,
+                        })
+                        st.success(
+                            f"Estimativa registrada: R$ {float(result['entry']['reserve_amount_brl']):,.2f}. "
+                            "Não representa imposto apurado."
+                        )
+                        st.rerun()
+                    except Exception:
+                        st.error("Não foi possível registrar a estimativa. Confira a classificação e os dados cambiais.")
+            else:
+                st.caption("Nenhum resultado estrangeiro reúne os requisitos para esta estimativa.")
             foreign_page_cols = st.columns(2)
             with foreign_page_cols[0]:
                 if st.button("← Pendências do exterior anteriores", key="foreign_pending_previous", disabled=foreign_offset <= 0):
