@@ -114,6 +114,7 @@ def test_foreign_financial_investment_estimate_requires_explicit_confirmation_an
     assert summary["total_reserved_brl"] == 75.0
     assert summary["categories"]["BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT"]["reserve_amount_brl"] == 75.0
     assert queue.get_pending(owner_id, pending["pending_id"])["planning_estimate_registered"] is True
+    assert queue.summary(owner_id)["planning_estimates_registered"] == 1
 
     duplicate_status, _ = _request(
         "/api/fiscal-reserve/foreign-planning-estimate",
