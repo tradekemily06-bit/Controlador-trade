@@ -87,6 +87,24 @@ def test_documented_fx_converts_signed_foreign_result_and_preserves_sign(tmp_pat
     assert created["fx_conversion_status"] == "CONVERTED_FOR_PLANNING_ONLY"
 
 
+def test_fx_preview_rejects_quote_from_a_different_event_date(tmp_path):
+    queue = make_queue(tmp_path / "fiscal-fx-date-mismatch.sqlite3")
+
+    asset = sample("FOREIGN-FX-ASSET-DATE-MISMATCH")
+    asset["fx_date"] = "2026-10-29"
+    asset_result = queue.add(OWNER, asset)
+    assert asset_result["fx_conversion_status"] == "FX_DATE_MISMATCH"
+    assert asset_result["converted_amount_brl_for_planning"] is None
+
+    realized = sample("FOREIGN-FX-RESULT-DATE-MISMATCH")
+    realized.pop("original_amount")
+    realized["original_result"] = 25.0
+    realized["fx_date"] = "2026-10-29"
+    realized_result = queue.add_realized_result(OWNER, realized)
+    assert realized_result["fx_conversion_status"] == "FX_DATE_MISMATCH"
+    assert realized_result["converted_result_brl_for_planning"] is None
+
+
 def test_foreign_item_without_documented_fx_stays_unconverted(tmp_path):
     queue = make_queue(tmp_path / "fiscal-fx-missing.sqlite3")
     payload = sample("FOREIGN-FX-MISSING-001")
