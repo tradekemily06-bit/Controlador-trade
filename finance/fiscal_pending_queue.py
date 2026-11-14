@@ -251,6 +251,11 @@ class FiscalPendingQueue:
             ):
                 rate = None
                 result["fx_conversion_status"] = "FX_NOT_PROVIDED"
+            elif result.get("fx_date") != result.get("occurred_on"):
+                # A quote from another day must never be presented as the
+                # event-date BRL equivalent, even as an informational preview.
+                rate = None
+                result["fx_conversion_status"] = "FX_DATE_MISMATCH"
             else:
                 rate = float(rate)
                 result["fx_conversion_status"] = "CONVERTED_FOR_PLANNING_ONLY"
