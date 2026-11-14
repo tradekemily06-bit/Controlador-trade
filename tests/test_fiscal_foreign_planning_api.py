@@ -172,7 +172,7 @@ def test_foreign_planning_estimate_rejects_unqualified_records_and_missing_fx(tm
     assert reserve.summary(owner_id)["total_reserved_brl"] == 0.0
 
 
-def test_foreign_estimate_keeps_forex_cfd_futures_and_crypto_pending(tmp_path, monkeypatch):
+def test_foreign_estimate_keeps_cfd_futures_and_crypto_pending(tmp_path, monkeypatch):
     _database, owner_id, reserve, queue = _configure(tmp_path, monkeypatch)
     unsupported = [
         _pending_payload("UNSUPPORTED-CFD", instrument="Índice S&P 500", contract_type="CFD"),
