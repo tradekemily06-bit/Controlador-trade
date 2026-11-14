@@ -749,6 +749,8 @@ def application(environ, start_response):
                 raise ValueError("somente resultados realizados podem gerar estimativa de reserva")
             if item.get("tax_residency_at_event") != "BRAZIL":
                 raise ValueError("a regra exige residência fiscal brasileira declarada na data do evento")
+            if str(item.get("occurred_on") or "") < "2024-01-01":
+                raise ValueError("a estimativa de 15% aplica-se a eventos a partir de 01/01/2024; registros anteriores exigem revisão separada")
             if data.get("candidate_classification") != "FOREIGN_FINANCIAL_INVESTMENT":
                 raise ValueError("a categoria deve ser confirmada como aplicação financeira no exterior")
             if item.get("income_nature") not in {
