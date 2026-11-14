@@ -839,7 +839,8 @@ def application(environ, start_response):
                         "a estimativa de 15% não pode ser aplicada automaticamente"
                     )
                 custody_tokens = set(
-                    custody_location.replace(",", " ").replace("/", " ").split()
+                    (custody_location + " " + str(item.get("jurisdiction") or "").casefold())
+                    .replace(",", " ").replace("/", " ").split()
                 )
                 if custody_tokens.intersection({"br", "brasil", "brazil", "brasileiro", "brasileira"}):
                     raise ValueError("a aplicação financeira precisa estar efetivamente custodiada no exterior")
