@@ -949,8 +949,18 @@ def show_fiscal() -> None:
         )
         c.metric("Estimativa acumulada · total", money(summary.get("total_reserved_brl")))
         foreign_planning = summary.get("categories", {}).get("BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT", {})
-        st.metric("Reserva estimada · aplicações no exterior", money(foreign_planning.get("reserve_amount_brl")))
-        st.caption("Aplicações financeiras no exterior · 15% para residente fiscal no Brasil · ajuste anual.")
+        st.metric("Reserva bruta registrada · exterior", money(foreign_planning.get("reserve_amount_brl")))
+        st.caption("Aplicações financeiras elegíveis declaradas · referência de 15% · ajuste anual.")
+        foreign_annual_scenario = summary.get("foreign_annual_scenario", {})
+        st.metric(
+            f"Simulação anual após perdas declaradas · {as_of_year if 'as_of_year' in locals() else date.fromisoformat(summary['as_of']).year}",
+            money(foreign_annual_scenario.get("scenario_reserve_brl")),
+        )
+        st.caption(
+            "Cenário informativo: considera perdas declaradas no mesmo ano, sem validar documentos. "
+            "Não altera a reserva bruta registrada, não calcula perdas acumuladas de anos anteriores "
+            "e não representa imposto apurado."
+        )
         as_of_year = date.fromisoformat(summary["as_of"]).year
         monthly_planning = summary.get("monthly_planning")
         st.markdown(f"#### Histórico mensal de planejamento · {as_of_year}")
