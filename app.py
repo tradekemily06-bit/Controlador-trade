@@ -874,6 +874,7 @@ def application(environ, start_response):
                 "original_currency": item["original_currency"],
                 "original_result": item["original_result"],
                 "declared_result_brl": converted_result if original_currency != "BRL" else None,
+                "declared_result_brl_verification": "USER_DECLARED_NOT_VERIFIED" if original_currency != "BRL" else "NOT_APPLICABLE",
                 "conversion_basis": conversion_basis_label if original_currency != "BRL" else "ALREADY_BRL",
                 "conversion_basis_confirmed": data.get("conversion_basis_confirmed") is True,
                 **acquisition_fx_evidence,
