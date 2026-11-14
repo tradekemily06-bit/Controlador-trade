@@ -1,9 +1,9 @@
-"""Reserva Fiscal: earmarked planning reserve for realized trading results.
+"""Reserva Fiscal: planning reserve for realized results.
 
-Rates are configurable planning defaults, not a tax calculator or tax advice.
-Foreign results require an explicit classification before a rate is applied.
-All monetary inputs are stored in BRL; FX conversion must happen upstream and
-the original currency/rate should be retained by a future import adapter.
+Rates are planning estimates, not a tax calculator or tax advice.
+Foreign entries require explicit classification, Brazilian tax residency,
+and documented BRL conversion before a planning rate is applied.
+Original currency and FX evidence remain preserved in the pending ledger.
 """
 from __future__ import annotations
 
