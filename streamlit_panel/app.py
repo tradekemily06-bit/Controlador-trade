@@ -1530,10 +1530,11 @@ def show_fiscal() -> None:
                             key="foreign_derivative_result_basis_confirmed",
                         )
                         crypto_location_confirmed = False
-                        confirm_foreign_estimate = derivative_location_confirmed and derivative_result_basis_confirmed and st.checkbox(
+                        derivative_tax_confirmed = st.checkbox(
                             "Confirmo residência fiscal brasileira e evento realizado a partir de 2024.",
                             key="foreign_derivative_tax_confirmed",
                         )
+                        confirm_foreign_estimate = derivative_location_confirmed and derivative_result_basis_confirmed and derivative_tax_confirmed
                     elif is_crypto_estimate:
                         derivative_location_confirmed = False
                         derivative_result_basis_confirmed = False
