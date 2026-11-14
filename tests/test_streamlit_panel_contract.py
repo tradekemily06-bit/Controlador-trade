@@ -318,6 +318,8 @@ def test_streamlit_foreign_pending_queue_exposes_auditable_professional_review()
     assert "FOREIGN_DERIVATIVE" in source
     assert "derivative_location_confirmed" in source
     assert "derivative_result_basis_confirmed" in source
+    assert "Lei 14.754/2023, art. 3º, § 1º" in source
+    assert "IN RFB 2.180/2024, art. 9º" in source
     assert "Identidade" in source
     assert "NÃO VERIFICADA" in source
     assert "A operação continua pendente, sem cálculo ou inclusão nos totais." in source
