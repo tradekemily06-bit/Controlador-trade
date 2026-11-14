@@ -287,6 +287,7 @@ def test_streamlit_foreign_pending_forms_capture_structured_evidence_and_display
     assert "NOT_INFORMED" in source
     assert "Confirmo que a aplicação financeira e sua custódia efetiva estão localizadas fora do Brasil." in source
     assert '"financial_investment_location_confirmed"' in source
+    assert "Entidades controladas no exterior permanecem pendentes e fora dos totais." in source
 
 
 def test_streamlit_fiscal_summary_labels_accumulated_amount_as_planning_estimate():
