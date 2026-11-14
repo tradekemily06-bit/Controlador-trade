@@ -822,7 +822,7 @@ def application(environ, start_response):
                 )
                 if requires_acquisition_basis:
                     conversion_basis_label = "USER_DECLARED_SEPARATE_ACQUISITION_AND_LIQUIDATION_QUOTES"
-                    acquisition_cost = item.get("acquisition_cost")
+                    acquisition_cost = data.get("acquisition_cost", item.get("acquisition_cost"))
                     if (
                         isinstance(acquisition_cost, bool)
                         or not isinstance(acquisition_cost, (int, float))
