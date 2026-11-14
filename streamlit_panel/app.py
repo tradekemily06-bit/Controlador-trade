@@ -3299,7 +3299,8 @@ with st.container(key="control-hub-shell"):
     with st.container(key="open-signal-strip"):
         render_latest_signal(closed=False)
 
-    area = st.radio("Áreas principais", list(AREAS), horizontal=True, key="main_area_navigation", label_visibility="collapsed")
+    area_labels = {"COCKPIT": "CABINE DE COMANDO", "MAIS / ADMIN": "CENTRAL"}
+    area = st.radio("Áreas principais", list(AREAS), format_func=lambda name: area_labels.get(name, name), horizontal=True, key="main_area_navigation", label_visibility="collapsed")
     st.divider()
     if area in {"RESERVA FISCAL", "ASSISTENTE DO ECOSSISTEMA"}:
         module = AREAS[area][0]
