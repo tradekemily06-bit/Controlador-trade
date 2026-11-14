@@ -1448,10 +1448,13 @@ def show_fiscal() -> None:
                     selected_foreign_item = next(
                         item for item in foreign_items if item.get("pending_id") == selected_foreign_result
                     )
-                    selected_instrument_text = " ".join((str(selected_foreign_item.get("instrument") or ""), str(selected_foreign_item.get("contract_type") or ""))).casefold()
-                    crypto_terms = ("cripto", "crypto", "bitcoin", "ethereum", "btc", "eth", "solana", "token")
-                    is_crypto_estimate = any(term in selected_instrument_text for term in crypto_terms)
-                    selected_candidate_classification = "FOREIGN_CRYPTO" if is_crypto_estimate else "FOREIGN_FINANCIAL_INVESTMENT"
+                    selected_candidate_classification = st.selectbox(
+                        "Classificação candidata",
+                        options=["FOREIGN_FINANCIAL_INVESTMENT", "FOREIGN_CRYPTO"],
+                        format_func=lambda value: "Aplicação financeira no exterior" if value == "FOREIGN_FINANCIAL_INVESTMENT" else "Criptoativo custodiado/negociado no exterior",
+                        key="foreign_estimate_candidate_classification",
+                    )
+                    is_crypto_estimate = selected_candidate_classification == "FOREIGN_CRYPTO"
                     if str(selected_foreign_item.get("original_currency") or "").upper() != "BRL":
                         declared_result_brl = st.number_input(
                             "Resultado líquido apurado em BRL (após conversões separadas)",
