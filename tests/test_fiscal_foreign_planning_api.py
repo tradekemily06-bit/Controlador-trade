@@ -50,7 +50,7 @@ def _pending_payload(reference="FOREIGN-PLANNING-001", **overrides):
         "reference": reference,
         "original_result": 100.0,
         "original_currency": "USD",
-        "instrument": "ETF",
+        "instrument": "Forex",
         "jurisdiction": "Estados Unidos",
         "occurred_on": "2026-11-05",
         "fx_rate": 5.0,
@@ -62,7 +62,7 @@ def _pending_payload(reference="FOREIGN-PLANNING-001", **overrides):
         "event_type": "DISPOSAL",
         "institution": "Corretora estrangeira",
         "custody_location": "Custódia estrangeira",
-        "contract_type": "ETF à vista",
+        "contract_type": "Contrato Forex",
     }
     payload.update(overrides)
     return payload
@@ -110,7 +110,7 @@ def test_foreign_financial_investment_estimate_requires_explicit_confirmation_an
     assert evidence["tax_residency_at_event"] == "BRAZIL"
     assert evidence["income_nature"] == "TRADING_RESULT"
     assert evidence["event_type"] == "DISPOSAL"
-    assert evidence["instrument"] == "ETF"
+    assert evidence["instrument"] == "Forex"
     assert evidence["jurisdiction"] == "Estados Unidos"
     assert evidence["foreign_tax_credit_applied"] is False
     assert evidence["loss_offsets_applied"] is False
@@ -175,7 +175,6 @@ def test_foreign_planning_estimate_rejects_unqualified_records_and_missing_fx(tm
 def test_foreign_estimate_keeps_forex_cfd_futures_and_crypto_pending(tmp_path, monkeypatch):
     _database, owner_id, reserve, queue = _configure(tmp_path, monkeypatch)
     unsupported = [
-        _pending_payload("UNSUPPORTED-FOREX", instrument="Forex", contract_type="Contrato Forex"),
         _pending_payload("UNSUPPORTED-CFD", instrument="Índice S&P 500", contract_type="CFD"),
         _pending_payload("UNSUPPORTED-FUTURES", instrument="Futures", contract_type="Contrato futuro"),
         _pending_payload("UNSUPPORTED-CRYPTO", instrument="Bitcoin", contract_type="Spot crypto"),
