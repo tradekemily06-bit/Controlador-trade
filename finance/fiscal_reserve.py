@@ -19,13 +19,14 @@ from zoneinfo import ZoneInfo
 
 DEFAULT_RATES = {
     "BR_DAY_TRADE": 20.0,
+    "BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT": 15.0,
 }
 MAX_FISCAL_HISTORY_OFFSET = 1_000_000_000
 # Reserved legacy marker: user-entered notes must never control fiscal inclusion.
 _UNVERIFIED_LEGACY_MARKER = "USER_DECLARED_PENDING_REVIEW"
 # Keep the legacy category readable for historical rows, but never configure
 # or seed a generic foreign tax percentage.
-VALID_CATEGORIES = frozenset({"BR_DAY_TRADE", "FOREIGN_FINANCIAL_ASSET"})
+VALID_CATEGORIES = frozenset({"BR_DAY_TRADE", "BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT", "FOREIGN_FINANCIAL_ASSET"})
 
 
 @dataclass(frozen=True)
@@ -140,7 +141,7 @@ class FiscalReserve:
             raise ValueError("categoria deve ser texto")
         category = value.strip().upper()
         if category not in VALID_CATEGORIES:
-            raise ValueError("categoria deve ser BR_DAY_TRADE ou FOREIGN_FINANCIAL_ASSET")
+            raise ValueError("categoria fiscal inválida")
         return category
 
     @staticmethod
@@ -180,8 +181,8 @@ class FiscalReserve:
     def update_rate(self, owner_id: str, category: str, rate: Any) -> dict[str, float]:
         owner_id = self._require_owner(owner_id)
         category = self._category(category)
-        if category == "FOREIGN_FINANCIAL_ASSET":
-            raise ValueError("percentual internacional genérico não pode ser alterado sem classificação validada")
+        if category in {"FOREIGN_FINANCIAL_ASSET", "BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT"}:
+            raise ValueError("a taxa estrangeira de planejamento é fixa em 15% para a categoria legal específica")
         parsed = self._money(rate, "percentual")
         if not 0 <= parsed <= 100:
             raise ValueError("percentual deve estar entre 0 e 100")
@@ -215,9 +216,8 @@ class FiscalReserve:
         if not isinstance(payload, dict):
             raise ValueError("payload deve ser um objeto")
         category = self._category(payload.get("category"))
-        # The generic foreign category is retained for historical rows and
-        # configuration compatibility only. New foreign results must not be
-        # reserved until instrument/jurisdiction/FX classification is explicit.
+        # The generic foreign category remains history-only. New foreign planning
+        # entries use the separate Brazil-resident financial-investment lane.
         if category == "FOREIGN_FINANCIAL_ASSET":
             raise ValueError(
                 "resultado internacional não pode ser lançado na categoria genérica; "
@@ -329,7 +329,7 @@ class FiscalReserve:
                     COALESCE(SUM(realized_result_brl), 0) AS realized_result_brl,
                     COALESCE(SUM(reserve_amount_brl), 0) AS reserve_amount_brl
                     FROM fiscal_reserve_entries
-                    WHERE owner_id = ? AND category = 'BR_DAY_TRADE'
+                    WHERE owner_id = ? AND category IN ('BR_DAY_TRADE', 'BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT')
                     AND notes NOT LIKE ? AND occurred_on >= ? AND occurred_on < ?""",
                     (owner_id, "%USER_DECLARED_PENDING_REVIEW%", start_day.isoformat(), date.fromordinal(end_day.toordinal() + 1).isoformat()),
                 ).fetchone()
@@ -347,7 +347,7 @@ class FiscalReserve:
                 COALESCE(SUM(realized_result_brl), 0) AS realized_result_brl,
                 COALESCE(SUM(reserve_amount_brl), 0) AS reserve_amount_brl
                 FROM fiscal_reserve_entries
-                WHERE owner_id = ? AND category = 'BR_DAY_TRADE'
+                WHERE owner_id = ? AND category IN ('BR_DAY_TRADE', 'BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT')
                 AND notes NOT LIKE ? AND occurred_on >= ? AND occurred_on <= ?
                 GROUP BY substr(occurred_on, 6, 2)""",
                 (
@@ -406,7 +406,7 @@ class FiscalReserve:
                     }
             total = db.execute(
                 """SELECT COALESCE(SUM(reserve_amount_brl), 0) AS total
-                FROM fiscal_reserve_entries WHERE owner_id = ? AND category = 'BR_DAY_TRADE'
+                FROM fiscal_reserve_entries WHERE owner_id = ? AND category IN ('BR_DAY_TRADE', 'BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT')
                 AND notes NOT LIKE ?""",
                 (owner_id, "%USER_DECLARED_PENDING_REVIEW%"),
             ).fetchone()
@@ -455,7 +455,7 @@ class FiscalReserve:
                 "Lançamentos manuais BR_DAY_TRADE dependem de declaração do usuário; elegibilidade de mercado não é verificada independentemente.",
                 "Resultados negativos são registrados, mas compensações fiscais não são calculadas.",
                 "Registros MT5 com classificação declarada pelo usuário e ainda não verificada permanecem fora dos totais, mesmo se existirem no histórico legado.",
-                "Resultados estrangeiros, inclusive registros legados, ficam fora dos totais até classificação tributária validada e conversão para BRL.",
+                "Resultados estrangeiros sem confirmação de aplicação financeira e residência fiscal brasileira permanecem fora dos totais; criptoativos e entidades controladas continuam pendentes.",
                 "Nenhum valor é transferido ou movimentado pela Reserva Fiscal.",
             ],
         }
