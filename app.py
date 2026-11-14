@@ -782,7 +782,7 @@ def application(environ, start_response):
                 str(item.get("contract_type") or ""),
             )).casefold()
             unsupported_instrument_terms = (
-                "forex", "fx ", "currency pair", "paridade cambial", "câmbio",
+                "forex", "fx", "currency pair", "paridade cambial", "câmbio", "índice", "index",
                 "cfd", "contract for difference", "futuro", "futures",
                 "cripto", "crypto", "bitcoin", "ethereum", "índice futuro",
                 "index future", "commodity future", "derivativo de índice",
