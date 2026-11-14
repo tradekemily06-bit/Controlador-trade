@@ -460,6 +460,70 @@ class FiscalReserve:
                 AND notes NOT LIKE ?""",
                 (owner_id, "%USER_DECLARED_PENDING_REVIEW%"),
             ).fetchone()
+            foreign_annual_rows = db.execute(
+                """SELECT occurred_on, realized_result_brl, notes
+                FROM fiscal_reserve_entries
+                WHERE owner_id = ?
+                  AND category = 'BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT'
+                  AND occurred_on >= ? AND occurred_on <= ?
+                  AND notes NOT LIKE ?
+                ORDER BY occurred_on, created_at, entry_id""",
+                (
+                    owner_id,
+                    year_start.isoformat(),
+                    reference_day.isoformat(),
+                    "%USER_DECLARED_PENDING_REVIEW%",
+                ),
+            ).fetchall()
+            foreign_gains = 0.0
+            foreign_declared_losses = 0.0
+            foreign_annual_entries = 0
+            for foreign_row in foreign_annual_rows:
+                try:
+                    evidence = json.loads(str(foreign_row["notes"] or ""))
+                except (TypeError, ValueError):
+                    continue
+                if not isinstance(evidence, dict) or (
+                    evidence.get("tax_classification_status") != "USER_DECLARED_PLANNING_ONLY"
+                    or evidence.get("candidate_classification") != "FOREIGN_FINANCIAL_INVESTMENT"
+                    or evidence.get("tax_residency_at_event") != "BRAZIL"
+                    or evidence.get("legal_period") != "ANNUAL_ADJUSTMENT"
+                    or evidence.get("tax_liability_confirmed") is not False
+                ):
+                    continue
+                amount = float(foreign_row["realized_result_brl"])
+                foreign_annual_entries += 1
+                if amount > 0:
+                    foreign_gains += amount
+                elif amount < 0:
+                    foreign_declared_losses += abs(amount)
+            foreign_net_scenario = round(max(foreign_gains - foreign_declared_losses, 0.0), 2)
+            foreign_rate = rates.get(
+                "BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT",
+                DEFAULT_RATES["BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT"],
+            )
+            foreign_annual_scenario = {
+                "year": reference_day.year,
+                "entries": foreign_annual_entries,
+                "gross_positive_results_brl": round(foreign_gains, 2),
+                "declared_losses_brl": round(foreign_declared_losses, 2),
+                "net_result_after_declared_losses_brl": foreign_net_scenario,
+                "scenario_reserve_brl": round(foreign_net_scenario * foreign_rate / 100.0, 2),
+                "gross_entry_reserve_brl": round(foreign_gains * foreign_rate / 100.0, 2),
+                "loss_offset_scenario_brl": round(
+                    min(foreign_gains, foreign_declared_losses) * foreign_rate / 100.0, 2
+                ),
+                "kind": "USER_DECLARED_ANNUAL_SCENARIO_ONLY",
+                "loss_documentation_verified": False,
+                "loss_carryforward_calculated": False,
+                "foreign_tax_credits_calculated": False,
+                "tax_assessment": False,
+                "description": (
+                    "Simulação anual com perdas declaradas pelo usuário; documentos não são "
+                    "validados pelo sistema. Não representa compensação fiscal confirmada, "
+                    "não inclui saldo de perdas de anos anteriores nem créditos de imposto estrangeiro."
+                ),
+            }
             history_total = int(db.execute(
                 "SELECT COUNT(*) AS total FROM fiscal_reserve_entries WHERE owner_id = ?",
                 (owner_id,),
