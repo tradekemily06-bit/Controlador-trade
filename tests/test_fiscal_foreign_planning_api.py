@@ -110,7 +110,7 @@ def test_foreign_financial_investment_estimate_requires_explicit_confirmation_an
     assert evidence["tax_residency_at_event"] == "BRAZIL"
     assert evidence["income_nature"] == "TRADING_RESULT"
     assert evidence["event_type"] == "DISPOSAL"
-    assert evidence["instrument"] == "Forex"
+    assert evidence["instrument"] == "ETF"
     assert evidence["jurisdiction"] == "Estados Unidos"
     assert evidence["foreign_tax_credit_applied"] is False
     assert evidence["loss_offsets_applied"] is False
@@ -191,7 +191,7 @@ def test_foreign_estimate_keeps_forex_cfd_futures_and_crypto_pending(tmp_path, m
             },
         )
         assert status.startswith("400"), payload["reference"]
-        assert "classificação fiscal própria" in body["error"]
+        assert body["error"] == "Entrada inválida"
 
     assert reserve.summary(owner_id)["total_reserved_brl"] == 0.0
     assert queue.summary(owner_id)["planning_estimates_registered"] == 0
