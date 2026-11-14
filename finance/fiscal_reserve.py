@@ -8,6 +8,7 @@ Original currency and FX evidence remain preserved in the pending ledger.
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 import uuid
 from contextlib import contextmanager
@@ -281,6 +282,21 @@ class FiscalReserve:
                 raise ValueError("estimativa estrangeira exige classificação, residência e conversão confirmadas")
             if occurred_on < "2024-01-01":
                 raise ValueError("a estimativa de 15% aplica-se a eventos a partir de 01/01/2024")
+            if evidence.get("fx_conversion_status") == "CONVERTED_FOR_PLANNING_ONLY":
+                fx_rate = evidence.get("fx_rate")
+                if (
+                    isinstance(fx_rate, bool)
+                    or not isinstance(fx_rate, (int, float))
+                    or not math.isfinite(float(fx_rate))
+                    or fx_rate <= 0
+                    or not isinstance(evidence.get("fx_date"), str)
+                    or not evidence.get("fx_date").strip()
+                    or not isinstance(evidence.get("fx_source"), str)
+                    or not evidence.get("fx_source").strip()
+                ):
+                    raise ValueError("cotação estrangeira exige taxa, data e fonte documentadas")
+            elif evidence.get("original_currency") != "BRL":
+                raise ValueError("conversão direta só é válida para registros originalmente em BRL")
         with self._connect() as db:
             # Serialize writers before checking the idempotency key. The unique
             # index remains the final guard if multiple workers race.
