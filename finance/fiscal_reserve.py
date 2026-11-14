@@ -282,6 +282,12 @@ class FiscalReserve:
                 or evidence.get("legal_period") != "ANNUAL_ADJUSTMENT"
             ):
                 raise ValueError("estimativa estrangeira exige classificação, residência e conversão confirmadas")
+            if evidence.get("candidate_classification") == "FOREIGN_CRYPTO" and (
+                evidence.get("crypto_location_rule") != "FOREIGN_INSTITUTION_CUSTODY_OR_TRADING_USER_DECLARED"
+                or evidence.get("crypto_location_confirmed") is not True
+                or evidence.get("crypto_location_verification") != "USER_DECLARED_NOT_VERIFIED"
+            ):
+                raise ValueError("criptoativo estrangeiro exige confirmação e evidência de localização por instituição no exterior")
             if occurred_on < "2024-01-01":
                 raise ValueError("a estimativa de 15% aplica-se a eventos a partir de 01/01/2024")
             if evidence.get("fx_conversion_status") == "CONVERTED_FOR_PLANNING_ONLY":
