@@ -623,6 +623,32 @@ class FiscalPendingQueue:
             "reserve_calculated": False,
         }
 
+    def get_pending(self, owner_id: str, pending_id: str) -> dict[str, Any]:
+        owner_id = self._require_owner(owner_id)
+        if not isinstance(pending_id, str):
+            raise ValueError("pending_id inválido")
+        pending_id = pending_id.strip()
+        if not pending_id or len(pending_id) > 80:
+            raise ValueError("pending_id inválido")
+        with self._connect() as db:
+            row = db.execute(
+                """SELECT p.*,
+                   EXISTS(
+                       SELECT 1 FROM fiscal_reserve_entries e
+                       WHERE e.owner_id = p.owner_id
+                         AND e.category = 'BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT'
+                         AND e.reference = p.reference
+                   ) AS planning_estimate_registered
+                   FROM fiscal_reserve_pending_foreign p
+                   WHERE p.owner_id = ? AND p.pending_id = ?""",
+                (owner_id, pending_id),
+            ).fetchone()
+        if row is None:
+            raise ValueError("pendência não encontrada")
+        return self._with_fx_planning_preview(
+            {key: value for key, value in dict(row).items() if key != "owner_id"}
+        )
+
     def list_pending(self, owner_id: str, limit: int = 100, offset: int = 0) -> dict[str, Any]:
         owner_id = self._require_owner(owner_id)
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
@@ -637,9 +663,19 @@ class FiscalPendingQueue:
             )
         with self._connect() as db:
             total = int(db.execute("SELECT COUNT(*) FROM fiscal_reserve_pending_foreign WHERE owner_id = ?", (owner_id,)).fetchone()[0])
-            rows = db.execute("SELECT * FROM fiscal_reserve_pending_foreign WHERE owner_id = ? "
-                              "ORDER BY created_at DESC, pending_id DESC LIMIT ? OFFSET ?",
-                              (owner_id, limit, offset)).fetchall()
+            rows = db.execute(
+                """SELECT p.*,
+                   EXISTS(
+                       SELECT 1 FROM fiscal_reserve_entries e
+                       WHERE e.owner_id = p.owner_id
+                         AND e.category = 'BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT'
+                         AND e.reference = p.reference
+                   ) AS planning_estimate_registered
+                   FROM fiscal_reserve_pending_foreign p
+                   WHERE p.owner_id = ?
+                   ORDER BY p.created_at DESC, p.pending_id DESC LIMIT ? OFFSET ?""",
+                (owner_id, limit, offset),
+            ).fetchall()
         return {
             "items": [
                 self._with_fx_planning_preview(
