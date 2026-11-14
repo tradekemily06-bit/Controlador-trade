@@ -247,6 +247,7 @@ def test_foreign_crypto_is_eligible_only_with_foreign_institution_custody(tmp_pa
     assert evidence["candidate_classification"] == "FOREIGN_CRYPTO"
     assert evidence["crypto_location_rule"] == "FOREIGN_INSTITUTION_CUSTODY_OR_TRADING_USER_DECLARED"
     assert evidence["crypto_location_verification"] == "USER_DECLARED_NOT_VERIFIED"
+    assert evidence["crypto_location_confirmed"] is True
 
 
 def test_foreign_crypto_keeps_nft_and_crypto_cfd_pending(tmp_path, monkeypatch):
