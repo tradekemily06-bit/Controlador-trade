@@ -861,7 +861,7 @@ def application(environ, start_response):
                 ):
                     raise ValueError("resultado líquido em BRL declarado é obrigatório para moeda estrangeira")
                 if data.get("conversion_basis_confirmed") is not True:
-                    raise ValueError("confirme a base cambial separada para aquisição e liquidação")
+                    raise ValueError("confirme a base cambial declarada para o resultado em BRL")
                 requires_acquisition_basis = (
                     candidate_classification != "FOREIGN_DERIVATIVE"
                     and (
