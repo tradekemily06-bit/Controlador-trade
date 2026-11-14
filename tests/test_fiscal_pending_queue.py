@@ -42,7 +42,7 @@ def test_foreign_item_is_persisted_as_pending_without_tax_calculation(tmp_path):
     result = queue.list_pending(OWNER)
     assert result["total"] == 1
     assert result["items"][0]["reference"] == "FOREIGN-STATEMENT-001"
-    assert "não integram os totais" in result["note"]
+    assert "a fila não integra os totais" in result["note"]
 
 
 def test_documented_fx_is_converted_for_planning_without_entering_reserve(tmp_path):
