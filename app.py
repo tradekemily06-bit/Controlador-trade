@@ -804,6 +804,7 @@ def application(environ, start_response):
                 raise ValueError("cotação oficial documentada para conversão em reais é obrigatória")
             original_currency = str(item.get("original_currency") or "").strip().upper()
             acquisition_fx_evidence = {}
+            conversion_basis_label = "USER_DECLARED_EVENT_DATE_PTAX_SELL"
             if original_currency != "BRL":
                 declared_result_brl = data.get("declared_result_brl")
                 if (
@@ -820,6 +821,7 @@ def application(environ, start_response):
                     or item.get("event_type") in {"DISPOSAL", "REDEMPTION"}
                 )
                 if requires_acquisition_basis:
+                    conversion_basis_label = "USER_DECLARED_SEPARATE_ACQUISITION_AND_LIQUIDATION_QUOTES"
                     acquisition_cost = item.get("acquisition_cost")
                     if (
                         isinstance(acquisition_cost, bool)
@@ -872,7 +874,7 @@ def application(environ, start_response):
                 "original_currency": item["original_currency"],
                 "original_result": item["original_result"],
                 "declared_result_brl": converted_result if original_currency != "BRL" else None,
-                "conversion_basis": "USER_DECLARED_SEPARATE_ACQUISITION_AND_LIQUIDATION_QUOTES" if original_currency != "BRL" else "ALREADY_BRL",
+                "conversion_basis": conversion_basis_label if original_currency != "BRL" else "ALREADY_BRL",
                 "conversion_basis_confirmed": data.get("conversion_basis_confirmed") is True,
                 **acquisition_fx_evidence,
                 "income_nature": item.get("income_nature"),
