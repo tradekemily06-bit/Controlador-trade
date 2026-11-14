@@ -900,7 +900,7 @@ def application(environ, start_response):
                     if data.get("acquisition_fx_method") != "PTAX_SELL":
                         raise ValueError("a conversão do custo exige PTAX de venda do BCB")
                     if "bcb" not in acquisition_fx_source and "banco central" not in acquisition_fx_source and "ptax" not in acquisition_fx_source:
-                        raise ValueError("a fonte da cotação de compra deve identificar o Banco Central do Brasil (PTAX)")
+                        raise ValueError("a fonte da PTAX de venda deve identificar o Banco Central do Brasil")
                     acquisition_fx_evidence = {
                         "acquisition_cost_original_currency": acquisition_cost,
                         "acquisition_fx_rate": acquisition_fx_rate,
