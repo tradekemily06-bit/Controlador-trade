@@ -261,14 +261,14 @@ def test_brazil_resident_foreign_financial_investment_uses_fixed_15_percent_plan
         "realized_result_brl": 1000.0,
         "reference": "FOREIGN-INVESTMENT-PROFIT-001",
         "occurred_on": "2026-11-05",
-        "notes": '{"tax_classification_status":"USER_DECLARED_PLANNING_ONLY","candidate_classification":"FOREIGN_FINANCIAL_INVESTMENT","tax_residency_at_event":"BRAZIL","tax_liability_confirmed":false,"fx_rate_direction":"BRL_PER_ORIGINAL_CURRENCY_UNIT","fx_conversion_status":"CONVERTED_FOR_PLANNING_ONLY","original_currency":"USD","fx_rate":5.0,"fx_date":"2026-11-05","fx_source":"Banco Central do Brasil - PTAX venda","fx_conversion_method":"PTAX_SELL","legal_rate":15.0,"legal_period":"ANNUAL_ADJUSTMENT"}',
+        "notes": '{"tax_classification_status":"USER_DECLARED_PLANNING_ONLY","candidate_classification":"FOREIGN_FINANCIAL_INVESTMENT","financial_investment_location_confirmed":true,"financial_investment_location_verification":"USER_DECLARED_NOT_VERIFIED","tax_residency_at_event":"BRAZIL","tax_liability_confirmed":false,"fx_rate_direction":"BRL_PER_ORIGINAL_CURRENCY_UNIT","fx_conversion_status":"CONVERTED_FOR_PLANNING_ONLY","original_currency":"USD","fx_rate":5.0,"fx_date":"2026-11-05","fx_source":"Banco Central do Brasil - PTAX venda","fx_conversion_method":"PTAX_SELL","legal_rate":15.0,"legal_period":"ANNUAL_ADJUSTMENT"}',
     })
     negative = reserve.record_realized_result(OWNER, {
         "category": "BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT",
         "realized_result_brl": -250.0,
         "reference": "FOREIGN-INVESTMENT-LOSS-001",
         "occurred_on": "2026-11-05",
-        "notes": '{"tax_classification_status":"USER_DECLARED_PLANNING_ONLY","candidate_classification":"FOREIGN_FINANCIAL_INVESTMENT","tax_residency_at_event":"BRAZIL","tax_liability_confirmed":false,"fx_rate_direction":"BRL_PER_ORIGINAL_CURRENCY_UNIT","fx_conversion_status":"CONVERTED_FOR_PLANNING_ONLY","original_currency":"USD","fx_rate":5.0,"fx_date":"2026-11-05","fx_source":"Banco Central do Brasil - PTAX venda","fx_conversion_method":"PTAX_SELL","legal_rate":15.0,"legal_period":"ANNUAL_ADJUSTMENT"}',
+        "notes": '{"tax_classification_status":"USER_DECLARED_PLANNING_ONLY","candidate_classification":"FOREIGN_FINANCIAL_INVESTMENT","financial_investment_location_confirmed":true,"financial_investment_location_verification":"USER_DECLARED_NOT_VERIFIED","tax_residency_at_event":"BRAZIL","tax_liability_confirmed":false,"fx_rate_direction":"BRL_PER_ORIGINAL_CURRENCY_UNIT","fx_conversion_status":"CONVERTED_FOR_PLANNING_ONLY","original_currency":"USD","fx_rate":5.0,"fx_date":"2026-11-05","fx_source":"Banco Central do Brasil - PTAX venda","fx_conversion_method":"PTAX_SELL","legal_rate":15.0,"legal_period":"ANNUAL_ADJUSTMENT"}',
     })
 
     assert positive["reserve_rate"] == 15.0
@@ -651,6 +651,8 @@ def test_foreign_annual_scenario_shows_declared_loss_offset_without_changing_led
     evidence = {
         "tax_classification_status": "USER_DECLARED_PLANNING_ONLY",
         "candidate_classification": "FOREIGN_FINANCIAL_INVESTMENT",
+        "financial_investment_location_confirmed": True,
+        "financial_investment_location_verification": "USER_DECLARED_NOT_VERIFIED",
         "tax_residency_at_event": "BRAZIL",
         "tax_liability_confirmed": False,
         "fx_rate_direction": "BRL_PER_ORIGINAL_CURRENCY_UNIT",
