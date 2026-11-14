@@ -838,6 +838,13 @@ def application(environ, start_response):
                         "este instrumento exige classificação fiscal própria e permanece pendente; "
                         "a estimativa de 15% não pode ser aplicada automaticamente"
                     )
+                custody_tokens = set(
+                    custody_location.replace(",", " ").replace("/", " ").split()
+                )
+                if custody_tokens.intersection({"br", "brasil", "brazil", "brasileiro", "brasileira"}):
+                    raise ValueError("a aplicação financeira precisa estar efetivamente custodiada no exterior")
+                if data.get("financial_investment_location_confirmed") is not True:
+                    raise ValueError("confirme que a aplicação financeira e sua custódia efetiva estão localizadas no exterior")
             if item.get("fx_conversion_status") == "CONVERTED_FOR_PLANNING_ONLY":
                 fx_source = str(item.get("fx_source") or "").casefold()
                 if item.get("fx_conversion_method") != "PTAX_SELL":
@@ -927,6 +934,8 @@ def application(environ, start_response):
                 "declared_result_brl": converted_result if original_currency != "BRL" else None,
                 "declared_result_brl_verification": "USER_DECLARED_NOT_VERIFIED" if original_currency != "BRL" else "NOT_APPLICABLE",
                 "conversion_basis": conversion_basis_label if original_currency != "BRL" else "ALREADY_BRL",
+                "financial_investment_location_confirmed": data.get("financial_investment_location_confirmed") is True if candidate_classification == "FOREIGN_FINANCIAL_INVESTMENT" else False,
+                "financial_investment_location_verification": "USER_DECLARED_NOT_VERIFIED" if candidate_classification == "FOREIGN_FINANCIAL_INVESTMENT" else "NOT_APPLICABLE",
                 "crypto_location_rule": "FOREIGN_INSTITUTION_CUSTODY_OR_TRADING_USER_DECLARED" if candidate_classification == "FOREIGN_CRYPTO" else None,
                 "crypto_location_verification": "USER_DECLARED_NOT_VERIFIED" if candidate_classification == "FOREIGN_CRYPTO" else "NOT_APPLICABLE",
                 "crypto_location_confirmed": data.get("crypto_location_confirmed") is True if candidate_classification == "FOREIGN_CRYPTO" else False,
