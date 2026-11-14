@@ -226,6 +226,8 @@ class FiscalPendingQueue:
     def _with_fx_planning_preview(item: dict[str, Any]) -> dict[str, Any]:
         """Expose documented currency conversion for planning without tax booking."""
         result = dict(item)
+        if "planning_estimate_registered" in result:
+            result["planning_estimate_registered"] = bool(result["planning_estimate_registered"])
         currency = str(result.get("original_currency") or "").upper()
         if currency == "BRL":
             rate = 1.0
