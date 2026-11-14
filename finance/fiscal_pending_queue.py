@@ -650,5 +650,5 @@ class FiscalPendingQueue:
             "total": total,
             "limit": limit,
             "offset": offset,
-            "note": "Conversões documentadas são apenas apoio de planejamento; pendências não entram na reserva fiscal.",
+            "note": "Conversões documentadas são apenas apoio de planejamento; pendências não integram os totais nem geram reserva fiscal.",
         }
