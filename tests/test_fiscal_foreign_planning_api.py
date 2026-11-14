@@ -216,12 +216,73 @@ def test_foreign_estimate_requires_separate_acquisition_and_liquidation_fx_basis
     assert queue.summary(owner_id)["planning_estimates_registered"] == 0
 
 
+def test_foreign_crypto_is_eligible_only_with_foreign_institution_custody(tmp_path, monkeypatch):
+    _database, owner_id, reserve, queue = _configure(tmp_path, monkeypatch)
+    pending = queue.add_realized_result(owner_id, _pending_payload(
+        "FOREIGN-CRYPTO-ELIGIBLE",
+        instrument="Bitcoin",
+        contract_type="Spot crypto",
+        institution="Coinbase",
+        custody_location="Coinbase, Estados Unidos",
+        jurisdiction="Estados Unidos",
+        income_nature="TRADING_RESULT",
+        event_type="DISPOSAL",
+    ))
+    status, body = _request("/api/fiscal-reserve/foreign-planning-estimate", {
+        "pending_id": pending["pending_id"],
+        "candidate_classification": "FOREIGN_CRYPTO",
+        "confirmed": True,
+        "crypto_location_confirmed": True,
+        "declared_result_brl": 500.0,
+        "conversion_basis_confirmed": True,
+        "acquisition_cost": 1000.0,
+        "acquisition_fx_rate": 4.8,
+        "acquisition_fx_date": "2026-10-01",
+        "acquisition_fx_source": "Banco Central do Brasil - PTAX compra",
+        "acquisition_fx_method": "PTAX_BUY",
+    })
+    assert status.startswith("201")
+    assert body["entry"]["reserve_rate"] == 15.0
+    evidence = json.loads(body["entry"]["notes"])
+    assert evidence["candidate_classification"] == "FOREIGN_CRYPTO"
+    assert evidence["crypto_location_rule"] == "FOREIGN_INSTITUTION_CUSTODY_OR_TRADING_USER_DECLARED"
+    assert evidence["crypto_location_verification"] == "USER_DECLARED_NOT_VERIFIED"
+
+
+def test_foreign_crypto_rejects_self_custody_in_brazil(tmp_path, monkeypatch):
+    _database, owner_id, reserve, queue = _configure(tmp_path, monkeypatch)
+    pending = queue.add_realized_result(owner_id, _pending_payload(
+        "FOREIGN-CRYPTO-SELF-CUSTODY",
+        instrument="Bitcoin",
+        contract_type="Spot crypto",
+        institution="",
+        custody_location="Autocustódia no Brasil",
+        jurisdiction="Brasil",
+        income_nature="TRADING_RESULT",
+        event_type="DISPOSAL",
+    ))
+    status, _ = _request("/api/fiscal-reserve/foreign-planning-estimate", {
+        "pending_id": pending["pending_id"],
+        "candidate_classification": "FOREIGN_CRYPTO",
+        "confirmed": True,
+        "crypto_location_confirmed": True,
+        "declared_result_brl": 500.0,
+        "conversion_basis_confirmed": True,
+        "acquisition_cost": 1000.0,
+        "acquisition_fx_rate": 4.8,
+        "acquisition_fx_date": "2026-10-01",
+        "acquisition_fx_source": "BCB PTAX compra",
+        "acquisition_fx_method": "PTAX_BUY",
+    })
+    assert status.startswith("400")
+    assert reserve.summary(owner_id)["total_reserved_brl"] == 0.0
+
+
 def test_foreign_estimate_keeps_cfd_futures_and_crypto_pending(tmp_path, monkeypatch):
     _database, owner_id, reserve, queue = _configure(tmp_path, monkeypatch)
     unsupported = [
         _pending_payload("UNSUPPORTED-CFD", instrument="Índice S&P 500", contract_type="CFD"),
         _pending_payload("UNSUPPORTED-FUTURES", instrument="Futures", contract_type="Contrato futuro"),
-        _pending_payload("UNSUPPORTED-CRYPTO", instrument="Bitcoin", contract_type="Spot crypto"),
     ]
     for payload in unsupported:
         pending = queue.add_realized_result(owner_id, payload)
