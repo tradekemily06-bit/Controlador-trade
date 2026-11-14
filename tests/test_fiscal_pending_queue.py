@@ -45,6 +45,78 @@ def test_foreign_item_is_persisted_as_pending_without_tax_calculation(tmp_path):
     assert "não integram os totais" in result["note"]
 
 
+def test_documented_fx_is_converted_for_planning_without_entering_reserve(tmp_path):
+    from finance.fiscal_reserve import FiscalReserve
+
+    path = str(tmp_path / "fiscal-fx-preview.sqlite3")
+    queue = make_queue(path)
+    reserve = FiscalReserve(path)
+    payload = sample("FOREIGN-FX-ASSET-001")
+    payload.update({
+        "acquisition_cost": 100.0,
+        "transaction_fees": 2.5,
+        "foreign_tax_paid": 1.25,
+    })
+
+    created = queue.add(OWNER, payload)
+    assert created["fx_conversion_status"] == "CONVERTED_FOR_PLANNING_ONLY"
+    assert created["fx_rate_direction"] == "BRL_PER_ORIGINAL_CURRENCY_UNIT"
+    assert created["converted_amount_brl_for_planning"] == 680.21
+    assert created["converted_acquisition_cost_brl_for_planning"] == 542.0
+    assert created["converted_transaction_fees_brl_for_planning"] == 13.55
+    assert created["converted_foreign_tax_paid_brl_for_planning"] == 6.78
+
+    listed = queue.list_pending(OWNER)["items"][0]
+    assert listed["converted_amount_brl_for_planning"] == 680.21
+    assert reserve.summary(OWNER)["total_reserved_brl"] == 0.0
+
+
+def test_documented_fx_converts_signed_foreign_result_and_preserves_sign(tmp_path):
+    queue = make_queue(tmp_path / "fiscal-fx-result.sqlite3")
+    payload = sample("FOREIGN-FX-RESULT-001")
+    payload.pop("original_amount")
+    payload["original_result"] = -12.5
+
+    created = queue.add_realized_result(OWNER, payload)
+
+    assert created["converted_result_brl_for_planning"] == -67.75
+    assert created["converted_amount_brl_for_planning"] is None
+    assert created["fx_conversion_status"] == "CONVERTED_FOR_PLANNING_ONLY"
+
+
+def test_foreign_item_without_documented_fx_stays_unconverted(tmp_path):
+    queue = make_queue(tmp_path / "fiscal-fx-missing.sqlite3")
+    payload = sample("FOREIGN-FX-MISSING-001")
+    payload.update({
+        "fx_rate": None,
+        "fx_date": None,
+        "fx_source": "",
+        "fx_conversion_method": "NOT_CONVERTED",
+    })
+
+    created = queue.add(OWNER, payload)
+
+    assert created["fx_conversion_status"] == "FX_NOT_PROVIDED"
+    assert created["converted_amount_brl_for_planning"] is None
+
+
+def test_brl_item_needs_no_fx_quote_for_planning_preview(tmp_path):
+    queue = make_queue(tmp_path / "fiscal-fx-brl.sqlite3")
+    payload = sample("FOREIGN-FX-BRL-001")
+    payload.update({
+        "original_currency": "BRL",
+        "fx_rate": None,
+        "fx_date": None,
+        "fx_source": "",
+        "fx_conversion_method": "NOT_INFORMED",
+    })
+
+    created = queue.add(OWNER, payload)
+
+    assert created["fx_conversion_status"] == "ALREADY_BRL"
+    assert created["converted_amount_brl_for_planning"] == 125.5
+
+
 def test_duplicate_reference_is_rejected(tmp_path):
     queue = make_queue(tmp_path / "fiscal.sqlite3")
     queue.add(OWNER, sample())
