@@ -85,7 +85,7 @@ FOREIGN_CATEGORIES: dict[str, dict[str, Any]] = {
             "Estimativa de 15% somente para resultado realizado, residência fiscal brasileira declarada e confirmação explícita desta categoria.",
             "Exige cotação documentada convertida para BRL; ajuste anual. A visão anual pode simular perdas declaradas no mesmo ano, sem validação documental.",
             "Não calcula saldo de perdas de anos anteriores nem créditos de imposto estrangeiro; não é apuração tributária.",
-            "Forex, CFDs, índices, futuros, criptoativos, entidades controladas e eventos sem classificação própria permanecem pendentes.",
+            "Forex no exterior tem entendimento específico na Solução de Consulta Cosit 83/2024 e pode integrar esta faixa quando caracterizado como aplicação financeira; CFDs, índices, futuros, criptoativos, entidades controladas e eventos sem classificação própria permanecem pendentes.",
         ],
     },
     "FOREIGN_ENTITY_CONTROLLED": {
