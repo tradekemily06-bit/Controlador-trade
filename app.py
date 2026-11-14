@@ -752,7 +752,7 @@ def application(environ, start_response):
             if str(item.get("occurred_on") or "") < "2024-01-01":
                 raise ValueError("a estimativa de 15% aplica-se a eventos a partir de 01/01/2024; registros anteriores exigem revisão separada")
             candidate_classification = data.get("candidate_classification")
-            if candidate_classification not in {"FOREIGN_FINANCIAL_INVESTMENT", "FOREIGN_CRYPTO"}:
+            if candidate_classification not in {"FOREIGN_FINANCIAL_INVESTMENT", "FOREIGN_CRYPTO", "FOREIGN_DERIVATIVE"}:
                 raise ValueError("a categoria estrangeira deve ser confirmada explicitamente")
             if item.get("income_nature") not in {
                 "CAPITAL_GAIN", "INVESTMENT_INCOME", "TRADING_RESULT", "DIVIDEND", "INTEREST"
@@ -783,7 +783,26 @@ def application(environ, start_response):
             )).casefold()
             crypto_terms = ("cripto", "crypto", "bitcoin", "ethereum", "btc", "eth", "solana", "token", "usdt", "usdc", "xrp", "cardano", "ada", "bnb", "dogecoin", "doge", "polkadot", "dot", "avalanche", "avax", "litecoin", "ltc", "chainlink", "link", "tron", "trx", "toncoin", "shiba", "shib", "polygon", "matic")
             is_crypto_instrument = any(term in instrument_description for term in crypto_terms)
-            if candidate_classification == "FOREIGN_CRYPTO":
+            derivative_terms = ("cfd", "contract for difference", "futuro", "futures", "future", "derivativo", "derivative")
+            is_derivative_contract = any(term in contract_type.casefold() for term in derivative_terms)
+            if candidate_classification == "FOREIGN_DERIVATIVE":
+                if is_crypto_instrument:
+                    raise ValueError("derivativos de criptoativos permanecem pendentes até classificação própria")
+                if not is_derivative_contract:
+                    raise ValueError("a categoria de derivativos exige contrato CFD, futuro ou derivativo identificado")
+                if self_custody or not institution:
+                    raise ValueError("derivativos estrangeiros exigem instituição intermediária localizada no exterior")
+                location_tokens = set(
+                    (custody_location + " " + str(item.get("jurisdiction") or "").casefold())
+                    .replace(",", " ").replace("/", " ").split()
+                )
+                if location_tokens.intersection({"br", "brasil", "brazil", "brasileiro", "brasileira"}):
+                    raise ValueError("o derivativo precisa ser negociado por instituição e jurisdição fora do Brasil")
+                if data.get("derivative_location_confirmed") is not True or data.get("derivative_result_basis_confirmed") is not True:
+                    raise ValueError("confirme a localização estrangeira do contrato e a base documentada do resultado")
+                if item.get("income_nature") not in {"CAPITAL_GAIN", "TRADING_RESULT"} or item.get("event_type") not in {"DISPOSAL", "REDEMPTION"}:
+                    raise ValueError("derivativos só entram neste fluxo em resultado realizado por liquidação ou encerramento")
+            elif candidate_classification == "FOREIGN_CRYPTO":
                 if not is_crypto_instrument:
                     raise ValueError("a categoria de criptoativos exige identificação do ativo virtual")
                 if any(term in instrument_description for term in ("cfd", "contract for difference", "futuro", "futures", "index", "índice")):
@@ -844,9 +863,14 @@ def application(environ, start_response):
                 if data.get("conversion_basis_confirmed") is not True:
                     raise ValueError("confirme a base cambial separada para aquisição e liquidação")
                 requires_acquisition_basis = (
-                    item.get("income_nature") in {"CAPITAL_GAIN", "TRADING_RESULT"}
-                    or item.get("event_type") in {"DISPOSAL", "REDEMPTION"}
+                    candidate_classification != "FOREIGN_DERIVATIVE"
+                    and (
+                        item.get("income_nature") in {"CAPITAL_GAIN", "TRADING_RESULT"}
+                        or item.get("event_type") in {"DISPOSAL", "REDEMPTION"}
+                    )
                 )
+                if candidate_classification == "FOREIGN_DERIVATIVE":
+                    conversion_basis_label = "USER_DECLARED_FOREIGN_DERIVATIVE_RESULT_IN_BRL"
                 if requires_acquisition_basis:
                     conversion_basis_label = "USER_DECLARED_SEPARATE_ACQUISITION_AND_LIQUIDATION_QUOTES"
                     acquisition_cost = data.get("acquisition_cost", item.get("acquisition_cost"))
@@ -906,6 +930,10 @@ def application(environ, start_response):
                 "crypto_location_rule": "FOREIGN_INSTITUTION_CUSTODY_OR_TRADING_USER_DECLARED" if candidate_classification == "FOREIGN_CRYPTO" else None,
                 "crypto_location_verification": "USER_DECLARED_NOT_VERIFIED" if candidate_classification == "FOREIGN_CRYPTO" else "NOT_APPLICABLE",
                 "crypto_location_confirmed": data.get("crypto_location_confirmed") is True if candidate_classification == "FOREIGN_CRYPTO" else False,
+                "derivative_location_rule": "FOREIGN_INSTITUTION_AND_CONTRACT_JURISDICTION_USER_DECLARED" if candidate_classification == "FOREIGN_DERIVATIVE" else None,
+                "derivative_location_confirmed": data.get("derivative_location_confirmed") is True if candidate_classification == "FOREIGN_DERIVATIVE" else False,
+                "derivative_location_verification": "USER_DECLARED_NOT_VERIFIED" if candidate_classification == "FOREIGN_DERIVATIVE" else "NOT_APPLICABLE",
+                "derivative_result_basis_confirmed": data.get("derivative_result_basis_confirmed") is True if candidate_classification == "FOREIGN_DERIVATIVE" else False,
                 "conversion_basis_confirmed": data.get("conversion_basis_confirmed") is True,
                 **acquisition_fx_evidence,
                 "income_nature": item.get("income_nature"),
