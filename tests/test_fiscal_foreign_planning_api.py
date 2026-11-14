@@ -50,7 +50,7 @@ def _pending_payload(reference="FOREIGN-PLANNING-001", **overrides):
         "reference": reference,
         "original_result": 100.0,
         "original_currency": "USD",
-        "instrument": "Forex",
+        "instrument": "ETF",
         "jurisdiction": "Estados Unidos",
         "occurred_on": "2026-11-05",
         "fx_rate": 5.0,
@@ -62,7 +62,7 @@ def _pending_payload(reference="FOREIGN-PLANNING-001", **overrides):
         "event_type": "DISPOSAL",
         "institution": "Corretora estrangeira",
         "custody_location": "Custódia estrangeira",
-        "contract_type": "Contrato Forex",
+        "contract_type": "ETF à vista",
     }
     payload.update(overrides)
     return payload
@@ -170,6 +170,31 @@ def test_foreign_planning_estimate_rejects_unqualified_records_and_missing_fx(tm
         assert status.startswith("400"), pending["reference"]
 
     assert reserve.summary(owner_id)["total_reserved_brl"] == 0.0
+
+
+def test_foreign_estimate_keeps_forex_cfd_futures_and_crypto_pending(tmp_path, monkeypatch):
+    _database, owner_id, reserve, queue = _configure(tmp_path, monkeypatch)
+    unsupported = [
+        _pending_payload("UNSUPPORTED-FOREX", instrument="Forex", contract_type="Contrato Forex"),
+        _pending_payload("UNSUPPORTED-CFD", instrument="Índice S&P 500", contract_type="CFD"),
+        _pending_payload("UNSUPPORTED-FUTURES", instrument="Futures", contract_type="Contrato futuro"),
+        _pending_payload("UNSUPPORTED-CRYPTO", instrument="Bitcoin", contract_type="Spot crypto"),
+    ]
+    for payload in unsupported:
+        pending = queue.add_realized_result(owner_id, payload)
+        status, body = _request(
+            "/api/fiscal-reserve/foreign-planning-estimate",
+            {
+                "pending_id": pending["pending_id"],
+                "candidate_classification": "FOREIGN_FINANCIAL_INVESTMENT",
+                "confirmed": True,
+            },
+        )
+        assert status.startswith("400"), payload["reference"]
+        assert "classificação fiscal própria" in body["error"]
+
+    assert reserve.summary(owner_id)["total_reserved_brl"] == 0.0
+    assert queue.summary(owner_id)["planning_estimates_registered"] == 0
 
 
 def test_foreign_loss_is_recorded_but_does_not_create_negative_reserve(tmp_path, monkeypatch):
