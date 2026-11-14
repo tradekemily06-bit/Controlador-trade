@@ -802,13 +802,20 @@ def application(environ, start_response):
                 "legal_rate": 15.0,
                 "legal_period": "ANNUAL_ADJUSTMENT",
             }
-            entry = FISCAL_RESERVE.record_realized_result(fiscal_owner_id, {
-                "category": "BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT",
-                "realized_result_brl": converted_result,
-                "reference": item["reference"],
-                "occurred_on": item["occurred_on"],
-                "notes": json.dumps(evidence, ensure_ascii=False, separators=(",", ":")),
-            })
+            try:
+                entry = FISCAL_RESERVE.record_realized_result(fiscal_owner_id, {
+                    "category": "BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT",
+                    "realized_result_brl": converted_result,
+                    "reference": item["reference"],
+                    "occurred_on": item["occurred_on"],
+                    "notes": json.dumps(evidence, ensure_ascii=False, separators=(",", ":")),
+                })
+            except ValueError as exc:
+                if "já foi registrada" in str(exc):
+                    return _json_response(start_response, HTTPStatus.CONFLICT,
+                                          {"error": "Esta referência já possui estimativa de reserva registrada."},
+                                          request_id, environ)
+                raise
             return _json_response(start_response, HTTPStatus.CREATED,
                                   {"entry": entry,
                                    "classification_status": "USER_DECLARED_PLANNING_ONLY",
