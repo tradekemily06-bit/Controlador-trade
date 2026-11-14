@@ -746,6 +746,13 @@ def _valid_fiscal_summary(summary: Any) -> bool:
                 foreign_pending["realized_results"] + foreign_pending["asset_amounts"]
             ):
                 return False
+            registered_estimates = foreign_pending.get("planning_estimates_registered")
+            if (
+                isinstance(registered_estimates, bool)
+                or not isinstance(registered_estimates, int)
+                or not 0 <= registered_estimates <= foreign_pending["realized_results"]
+            ):
+                return False
             evidence_completeness = foreign_pending.get("evidence_completeness")
             if evidence_completeness is not None:
                 if not isinstance(evidence_completeness, dict):
