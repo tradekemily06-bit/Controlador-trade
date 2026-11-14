@@ -1087,3 +1087,17 @@ def test_foreign_review_history_is_append_only_at_database_level(tmp_path):
     history = queue.list_reviews(OWNER, pending["pending_id"])
     assert len(history) == 1
     assert history[0]["reviewer_name"] == review["reviewer_name"]
+
+
+def test_professional_review_accepts_foreign_derivative_candidate_without_classifying(tmp_path):
+    queue = make_queue(tmp_path / "foreign-derivative-review.sqlite3")
+    pending = queue.add(OWNER, sample())
+    payload = review_sample()
+    payload["candidate_classification"] = "FOREIGN_DERIVATIVE"
+
+    review = queue.record_review(OWNER, pending["pending_id"], payload)
+
+    assert review["candidate_classification"] == "FOREIGN_DERIVATIVE"
+    assert review["status_unchanged"] == "PENDING_CLASSIFICATION"
+    assert review["reserve_calculated"] is False
+    assert review["tax_rate_available"] is False
