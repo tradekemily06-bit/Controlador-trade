@@ -1257,7 +1257,7 @@ def show_fiscal() -> None:
     income_options = {"NOT_INFORMED": "Não informado", "CAPITAL_GAIN": "Ganho de capital", "INVESTMENT_INCOME": "Rendimento de investimento", "TRADING_RESULT": "Resultado de negociação", "DIVIDEND": "Dividendo", "INTEREST": "Juros", "RENTAL_INCOME": "Aluguel", "OTHER": "Outro"}
     event_options = {"NOT_INFORMED": "Não informado", "ACQUISITION": "Aquisição", "DISPOSAL": "Alienação / venda", "DIVIDEND_RECEIPT": "Recebimento de dividendo", "INTEREST_RECEIPT": "Recebimento de juros", "REDEMPTION": "Resgate", "EXCHANGE": "Troca / permuta", "TRANSFER": "Transferência", "OTHER": "Outro"}
     fx_method_options = {"NOT_INFORMED": "Não informado", "NOT_CONVERTED": "Ainda não convertido", "PTAX_SELL": "PTAX venda (BCB · informar manualmente)", "PTAX_BUY": "PTAX compra", "BROKER_STATEMENT": "Extrato da corretora", "BANK_RECEIPT": "Comprovante bancário", "OTHER_DOCUMENTED": "Outro método documentado"}
-    st.caption("A Receita Federal reconhece o Forex no exterior como aplicação financeira para a regra de 15% a partir de 2024 (Solução de Consulta Cosit 83/2024), quando os fatos correspondem ao entendimento. CFDs, índices, futuros e cripto permanecem pendentes até classificação fiscal própria. Para aplicações elegíveis, informe manualmente a PTAX de venda do BCB na data do evento; fonte e cotação são declaradas pelo usuário e não verificadas automaticamente.")
+    st.caption("A Receita Federal reconhece o Forex no exterior como aplicação financeira para a regra de 15% a partir de 2024 (Solução de Consulta Cosit 83/2024), quando os fatos correspondem ao entendimento. CFDs, índices, futuros e cripto permanecem pendentes até classificação fiscal própria. Para alienações e resultados de negociação, informe também a PTAX de compra do BCB na data de aquisição e o resultado líquido em BRL após as duas conversões; para juros e dividendos, use a PTAX de venda na data do recebimento. Fonte e cotações são declaradas pelo usuário e não verificadas automaticamente.")
     with st.form("foreign_pending_form"):
         col1, col2 = st.columns(2)
         reference = col1.text_input("Referência / comprovante", max_chars=160)
@@ -1445,7 +1445,7 @@ def show_fiscal() -> None:
                 and item.get("planning_estimate_registered") is not True
             }
             st.markdown("##### Estimativa de reserva · aplicação financeira no exterior")
-            st.caption("15% sobre resultado positivo convertido em BRL; ajuste anual. Não compensa perdas nem créditos de imposto pago fora.")
+            st.caption("15% sobre resultado positivo em BRL declarado após conversões cambiais separadas; ajuste anual. Não compensa perdas nem créditos de imposto pago fora.")
             if eligible_foreign_results:
                 with st.form("foreign_planning_estimate_form"):
                     selected_foreign_result = st.selectbox(
