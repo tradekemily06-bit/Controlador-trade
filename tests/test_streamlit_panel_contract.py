@@ -279,7 +279,7 @@ def test_streamlit_foreign_pending_forms_capture_structured_evidence_and_display
     assert "Natureza do rendimento / valor" in source
     assert "Tipo de evento" in source
     assert "Método cambial (obrigatório com cotação)" in source
-    assert "PTAX de venda do BCB na mesma data do evento" in source
+    assert "A fonte e a cotação são declaradas pelo usuário e não são verificadas automaticamente" in source
     assert "Residência declarada" in source
     assert "Método declarado" in source
     assert "NOT_INFORMED" in source
