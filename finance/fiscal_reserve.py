@@ -19,9 +19,9 @@ from typing import Any, Iterator
 from zoneinfo import ZoneInfo
 
 
-# Planning rates only. The foreign lane is limited to an explicitly confirmed
-# financial-application result for a Brazilian tax resident; it is not a generic
-# foreign, crypto, controlled-entity, or tax-assessment rate.
+# Planning rates only. The foreign lane covers explicitly confirmed financial
+# applications for a Brazilian tax resident, including eligible virtual assets;
+# it is not a generic foreign, controlled-entity, or tax-assessment rate.
 # Legal basis: Lei 14.754/2023, art. 2º; RFB Solução de Consulta Cosit 83/2024.
 DEFAULT_RATES = {
     "BR_DAY_TRADE": 20.0,
@@ -222,8 +222,9 @@ class FiscalReserve:
         if not isinstance(payload, dict):
             raise ValueError("payload deve ser um objeto")
         category = self._category(payload.get("category"))
-        # The generic foreign category remains history-only. New foreign planning
-        # entries use the separate Brazil-resident financial-investment lane.
+        # The generic legacy foreign category remains history-only. New foreign
+        # planning entries use the Brazil-resident financial-investment lane,
+        # including virtual assets only when the foreign-custody rule is confirmed.
         if category == "FOREIGN_FINANCIAL_ASSET":
             raise ValueError(
                 "resultado internacional não pode ser lançado na categoria genérica; "
@@ -270,7 +271,7 @@ class FiscalReserve:
                 raise ValueError("estimativa estrangeira exige evidências estruturadas")
             if (
                 evidence.get("tax_classification_status") != "USER_DECLARED_PLANNING_ONLY"
-                or evidence.get("candidate_classification") != "FOREIGN_FINANCIAL_INVESTMENT"
+                or evidence.get("candidate_classification") not in {"FOREIGN_FINANCIAL_INVESTMENT", "FOREIGN_CRYPTO"}
                 or evidence.get("tax_residency_at_event") != "BRAZIL"
                 or evidence.get("tax_liability_confirmed") is not False
                 or evidence.get("fx_rate_direction") != "BRL_PER_ORIGINAL_CURRENCY_UNIT"
