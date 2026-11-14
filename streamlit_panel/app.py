@@ -1264,7 +1264,7 @@ def show_fiscal() -> None:
         amount = col2.number_input("Valor original", min_value=0.00000001, max_value=1_000_000_000_000.0, step=1.0, format="%.8f")
         col3, col4 = st.columns(2)
         currency = col3.text_input("Código da moeda (3 letras)", value="USD", max_chars=3).strip().upper()
-        instrument = col4.text_input("Instrumento", placeholder="Ex.: ação ou ETF; CFD, índice, futuro e cripto ficam pendentes; Forex no exterior exige contrato e custódia identificados", max_chars=80)
+        instrument = col4.text_input("Instrumento", placeholder="Ex.: ação, ETF ou Forex no exterior; CFD, índice, futuro e cripto exigem revisão", max_chars=80)
         col5, col6 = st.columns(2)
         jurisdiction = col5.text_input("Jurisdição", placeholder="EUA, Brasil, outro", max_chars=80)
         occurred_on = col6.date_input("Data da operação", key="foreign_date")
