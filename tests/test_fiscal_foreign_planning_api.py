@@ -216,6 +216,65 @@ def test_foreign_estimate_requires_separate_acquisition_and_liquidation_fx_basis
     assert queue.summary(owner_id)["planning_estimates_registered"] == 0
 
 
+def test_foreign_derivative_is_eligible_only_with_foreign_contract_and_declared_brl_basis(tmp_path, monkeypatch):
+    _database, owner_id, reserve, queue = _configure(tmp_path, monkeypatch)
+    pending = queue.add_realized_result(owner_id, _pending_payload(
+        "FOREIGN-DERIVATIVE-INDEX-CFD",
+        instrument="S&P 500 Index",
+        contract_type="CFD",
+        institution="IC Markets",
+        custody_location="IC Markets, Austrália",
+        jurisdiction="Austrália",
+        income_nature="TRADING_RESULT",
+        event_type="DISPOSAL",
+    ))
+    status, body = _request("/api/fiscal-reserve/foreign-planning-estimate", {
+        "pending_id": pending["pending_id"],
+        "candidate_classification": "FOREIGN_DERIVATIVE",
+        "confirmed": True,
+        "derivative_location_confirmed": True,
+        "derivative_result_basis_confirmed": True,
+        "declared_result_brl": 500.0,
+        "conversion_basis_confirmed": True,
+    })
+    assert status.startswith("201")
+    assert body["entry"]["reserve_rate"] == 15.0
+    evidence = json.loads(body["entry"]["notes"])
+    assert evidence["candidate_classification"] == "FOREIGN_DERIVATIVE"
+    assert evidence["derivative_location_rule"] == "FOREIGN_INSTITUTION_AND_CONTRACT_JURISDICTION_USER_DECLARED"
+    assert evidence["derivative_location_verification"] == "USER_DECLARED_NOT_VERIFIED"
+    assert evidence["conversion_basis"] == "USER_DECLARED_FOREIGN_DERIVATIVE_RESULT_IN_BRL"
+
+
+def test_foreign_derivative_rejects_domestic_institution_and_non_derivative_contract(tmp_path, monkeypatch):
+    _database, owner_id, reserve, queue = _configure(tmp_path, monkeypatch)
+    for reference, contract_type, jurisdiction, custody_location in [
+        ("FOREIGN-DERIVATIVE-DOMESTIC", "CFD", "Brasil", "Corretora no Brasil"),
+        ("FOREIGN-DERIVATIVE-NOT-DERIVATIVE", "Spot", "Estados Unidos", "Corretora EUA"),
+    ]:
+        pending = queue.add_realized_result(owner_id, _pending_payload(
+            reference,
+            instrument="S&P 500 Index",
+            contract_type=contract_type,
+            institution="Broker",
+            custody_location=custody_location,
+            jurisdiction=jurisdiction,
+            income_nature="TRADING_RESULT",
+            event_type="DISPOSAL",
+        ))
+        status, _ = _request("/api/fiscal-reserve/foreign-planning-estimate", {
+            "pending_id": pending["pending_id"],
+            "candidate_classification": "FOREIGN_DERIVATIVE",
+            "confirmed": True,
+            "derivative_location_confirmed": True,
+            "derivative_result_basis_confirmed": True,
+            "declared_result_brl": 500.0,
+            "conversion_basis_confirmed": True,
+        })
+        assert status.startswith("400")
+    assert reserve.summary(owner_id)["total_reserved_brl"] == 0.0
+
+
 def test_foreign_crypto_is_eligible_only_with_foreign_institution_custody(tmp_path, monkeypatch):
     _database, owner_id, reserve, queue = _configure(tmp_path, monkeypatch)
     pending = queue.add_realized_result(owner_id, _pending_payload(
