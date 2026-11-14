@@ -667,6 +667,10 @@ def test_streamlit_foreign_pending_table_displays_fx_evidence_as_not_applied():
     assert '"Cotação (R$/unidade)": item.get("fx_rate")' in source
     assert '"Valor convertido para planejamento (R$)": item.get("converted_result_brl_for_planning")' in source
     assert '"Conversão cambial": item.get("fx_conversion_status")' in source
+    assert "converte somente o valor do evento na data informada" in source
+    assert "regras cambiais próprias sejam registradas" in source
+    assert '"Custo de aquisição convertido (R$)"' not in source
+    assert '"Imposto pago fora convertido (R$)"' not in source
     assert '"Data da cotação": item.get("fx_date")' in source
     assert '"Fonte da cotação": item.get("fx_source")' in source
     assert '"Método declarado": item.get("fx_conversion_method")' in source
