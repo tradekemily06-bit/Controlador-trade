@@ -733,6 +733,79 @@ def application(environ, start_response):
                                   {"pending": item, "reserve_calculated": False,
                                    "classification_status": "PENDING_CLASSIFICATION"},
                                   request_id, environ)
+        if path == "/api/fiscal-reserve/foreign-planning-estimate" and method == "POST":
+            data = _read_json(environ)
+            if data.get("confirmed") is not True:
+                raise ValueError("confirmação explícita da estimativa estrangeira é obrigatória")
+            pending_id = data.get("pending_id")
+            if not isinstance(pending_id, str) or not pending_id.strip() or len(pending_id.strip()) > 80:
+                raise ValueError("pending_id inválido")
+            item = FISCAL_PENDING_QUEUE.get_pending(fiscal_owner_id, pending_id)
+            if item.get("planning_estimate_registered") is True:
+                return _json_response(start_response, HTTPStatus.CONFLICT,
+                                      {"error": "Esta referência já possui estimativa de reserva registrada."},
+                                      request_id, environ)
+            if item.get("record_kind") != "REALIZED_RESULT":
+                raise ValueError("somente resultados realizados podem gerar estimativa de reserva")
+            if item.get("tax_residency_at_event") != "BRAZIL":
+                raise ValueError("a regra exige residência fiscal brasileira declarada na data do evento")
+            if data.get("candidate_classification") != "FOREIGN_FINANCIAL_INVESTMENT":
+                raise ValueError("a categoria deve ser confirmada como aplicação financeira no exterior")
+            if item.get("income_nature") not in {
+                "CAPITAL_GAIN", "INVESTMENT_INCOME", "TRADING_RESULT", "DIVIDEND", "INTEREST"
+            }:
+                raise ValueError("natureza do rendimento não está habilitada para esta estimativa")
+            if item.get("event_type") not in {
+                "DISPOSAL", "REDEMPTION", "DIVIDEND_RECEIPT", "INTEREST_RECEIPT"
+            }:
+                raise ValueError("tipo de evento não está habilitado para esta estimativa")
+            if item.get("fx_conversion_status") not in {
+                "CONVERTED_FOR_PLANNING_ONLY", "ALREADY_BRL"
+            }:
+                raise ValueError("cotação documentada para conversão em reais é obrigatória")
+            converted_result = item.get("converted_result_brl_for_planning")
+            if isinstance(converted_result, bool) or not isinstance(converted_result, (int, float)):
+                raise ValueError("resultado convertido para BRL indisponível")
+            evidence = {
+                "tax_classification_status": "USER_DECLARED_PLANNING_ONLY",
+                "classification_source": "EXPLICIT_USER_CONFIRMATION",
+                "candidate_classification": "FOREIGN_FINANCIAL_INVESTMENT",
+                "tax_residency_at_event": "BRAZIL",
+                "tax_liability_confirmed": False,
+                "reserve_semantics": "PLANNING_ESTIMATE_ONLY",
+                "source_pending_id": item["pending_id"],
+                "original_currency": item["original_currency"],
+                "original_result": item["original_result"],
+                "fx_rate": item.get("fx_rate"),
+                "fx_rate_direction": item.get("fx_rate_direction"),
+                "fx_date": item.get("fx_date"),
+                "fx_source": item.get("fx_source"),
+                "fx_conversion_method": item.get("fx_conversion_method"),
+                "foreign_tax_paid_original": item.get("foreign_tax_paid"),
+                "foreign_tax_paid_brl_reference": item.get("converted_foreign_tax_paid_brl_for_planning"),
+                "foreign_tax_credit_applied": False,
+                "loss_offsets_applied": False,
+                "legal_reference": "Lei 14.754/2023, art. 2º; Solução de Consulta Cosit 83/2024",
+                "legal_rate": 15.0,
+                "legal_period": "ANNUAL_ADJUSTMENT",
+            }
+            entry = FISCAL_RESERVE.record_realized_result(fiscal_owner_id, {
+                "category": "BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT",
+                "realized_result_brl": converted_result,
+                "reference": item["reference"],
+                "occurred_on": item["occurred_on"],
+                "notes": json.dumps(evidence, ensure_ascii=False, separators=(",", ":")),
+            })
+            return _json_response(start_response, HTTPStatus.CREATED,
+                                  {"entry": entry,
+                                   "classification_status": "USER_DECLARED_PLANNING_ONLY",
+                                   "classification_source": "EXPLICIT_USER_CONFIRMATION",
+                                   "tax_liability_confirmed": False,
+                                   "reserve_is_estimate": True,
+                                   "reserve_calculated": True,
+                                   "annual_rule_reference": "Lei 14.754/2023, art. 2º; Solução de Consulta Cosit 83/2024",
+                                   "execution_allowed": False},
+                                  request_id, environ)
         if path.startswith("/api/fiscal-reserve/pending/") and path.endswith("/reviews"):
             pending_id = path[len("/api/fiscal-reserve/pending/"):-len("/reviews")].strip("/")
             if not pending_id or "/" in pending_id:
