@@ -859,7 +859,8 @@ def show_fiscal() -> None:
         st.session_state.fiscal_history_offset = 0
     summary_available = False
     try:
-        summary = api("/api/fiscal-reserve?limit=50&offset=" + str(int(st.session_state.fiscal_history_offset)))
+        summary_path = "/api/fiscal-reserve" if REMOTE_REQUIRED else "/api/fiscal-reserve/local"
+        summary = api(summary_path + "?limit=50&offset=" + str(int(st.session_state.fiscal_history_offset)))
         summary_available = (
             _valid_fiscal_summary(summary)
             and _valid_fiscal_history_page(summary, int(st.session_state.fiscal_history_offset))
@@ -1986,7 +1987,8 @@ def show_finance_overview() -> None:
         "onde ficam lançamentos, histórico completo, filas e revisões documentais."
     )
     try:
-        summary = api("/api/fiscal-reserve?limit=50&offset=0")
+        summary_path = "/api/fiscal-reserve" if REMOTE_REQUIRED else "/api/fiscal-reserve/local"
+        summary = api(summary_path + "?limit=50&offset=0")
         if not (
             _valid_fiscal_summary(summary)
             and _valid_fiscal_history_page(summary, 0)
