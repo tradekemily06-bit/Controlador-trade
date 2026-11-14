@@ -504,6 +504,7 @@ class FiscalReserve:
             )
             foreign_annual_scenario = {
                 "year": reference_day.year,
+                "as_of": reference_day.isoformat(),
                 "entries": foreign_annual_entries,
                 "gross_positive_results_brl": round(foreign_gains, 2),
                 "declared_losses_brl": round(foreign_declared_losses, 2),
