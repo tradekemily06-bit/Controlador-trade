@@ -183,6 +183,37 @@ def test_foreign_planning_estimate_rejects_unqualified_records_and_missing_fx(tm
     assert reserve.summary(owner_id)["total_reserved_brl"] == 0.0
 
 
+def test_foreign_estimate_requires_separate_acquisition_and_liquidation_fx_basis(tmp_path, monkeypatch):
+    _database, owner_id, reserve, queue = _configure(tmp_path, monkeypatch)
+    pending = queue.add_realized_result(owner_id, _pending_payload("FOREIGN-FX-BASIS-001"))
+    base_payload = {
+        "pending_id": pending["pending_id"],
+        "candidate_classification": "FOREIGN_FINANCIAL_INVESTMENT",
+        "confirmed": True,
+        "declared_result_brl": 500.0,
+        "conversion_basis_confirmed": True,
+    }
+    invalid_bases = [
+        {**base_payload, "acquisition_fx_rate": None, "acquisition_fx_date": "2026-10-01",
+         "acquisition_fx_source": "BCB PTAX", "acquisition_fx_method": "PTAX_BUY"},
+        {**base_payload, "acquisition_fx_rate": 4.8, "acquisition_fx_date": "2026-10-01",
+         "acquisition_fx_source": "BCB PTAX", "acquisition_fx_method": "PTAX_SELL"},
+        {**base_payload, "acquisition_fx_rate": 4.8, "acquisition_fx_date": "2026-11-06",
+         "acquisition_fx_source": "BCB PTAX", "acquisition_fx_method": "PTAX_BUY"},
+        {**base_payload, "acquisition_fx_rate": 4.8, "acquisition_fx_date": "2026-10-01",
+         "acquisition_fx_source": "Extrato da corretora", "acquisition_fx_method": "PTAX_BUY"},
+        {**base_payload, "acquisition_fx_rate": 4.8, "acquisition_fx_date": "2026-10-01",
+         "acquisition_fx_source": "BCB PTAX", "acquisition_fx_method": "PTAX_BUY",
+         "declared_result_brl": None},
+    ]
+    for payload in invalid_bases:
+        status, _ = _request("/api/fiscal-reserve/foreign-planning-estimate", payload)
+        assert status.startswith("400")
+
+    assert reserve.summary(owner_id)["total_reserved_brl"] == 0.0
+    assert queue.summary(owner_id)["planning_estimates_registered"] == 0
+
+
 def test_foreign_estimate_keeps_cfd_futures_and_crypto_pending(tmp_path, monkeypatch):
     _database, owner_id, reserve, queue = _configure(tmp_path, monkeypatch)
     unsupported = [
