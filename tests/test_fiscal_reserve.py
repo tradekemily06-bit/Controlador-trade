@@ -641,3 +641,54 @@ def test_summary_exposes_monthly_planning_only_and_excludes_unverified_or_future
     }
     assert by_month["2026-11"]["entries"] == 0
     assert sum(item["reserve_amount_brl"] for item in monthly["months"]) == 60.0
+
+
+
+def test_foreign_annual_scenario_shows_declared_loss_offset_without_changing_ledger(tmp_path):
+    import json
+
+    reserve = make_reserve(tmp_path / "foreign-annual-scenario.sqlite3")
+    evidence = {
+        "tax_classification_status": "USER_DECLARED_PLANNING_ONLY",
+        "candidate_classification": "FOREIGN_FINANCIAL_INVESTMENT",
+        "tax_residency_at_event": "BRAZIL",
+        "tax_liability_confirmed": False,
+        "fx_rate_direction": "BRL_PER_ORIGINAL_CURRENCY_UNIT",
+        "fx_conversion_status": "CONVERTED_FOR_PLANNING_ONLY",
+        "original_currency": "USD",
+        "fx_rate": 5.0,
+        "fx_date": "2026-11-05",
+        "fx_source": "Banco Central do Brasil - PTAX venda",
+        "fx_conversion_method": "PTAX_SELL",
+        "legal_rate": 15.0,
+        "legal_period": "ANNUAL_ADJUSTMENT",
+    }
+    for reference, amount in (
+        ("FOREIGN-ANNUAL-GAIN-001", 1000.0),
+        ("FOREIGN-ANNUAL-LOSS-001", -250.0),
+    ):
+        reserve.record_realized_result(OWNER, {
+            "category": "BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT",
+            "realized_result_brl": amount,
+            "reference": reference,
+            "occurred_on": "2026-11-05",
+            "notes": json.dumps(evidence, separators=(",", ":")),
+        })
+
+    summary = reserve.summary(OWNER, as_of=date(2026, 11, 5))
+    scenario = summary["foreign_annual_scenario"]
+
+    assert scenario["year"] == 2026
+    assert scenario["entries"] == 2
+    assert scenario["gross_positive_results_brl"] == 1000.0
+    assert scenario["declared_losses_brl"] == 250.0
+    assert scenario["net_result_after_declared_losses_brl"] == 750.0
+    assert scenario["gross_entry_reserve_brl"] == 150.0
+    assert scenario["scenario_reserve_brl"] == 112.5
+    assert scenario["loss_offset_scenario_brl"] == 37.5
+    assert scenario["loss_documentation_verified"] is False
+    assert scenario["loss_carryforward_calculated"] is False
+    assert scenario["tax_assessment"] is False
+    # The annual scenario is informational only; ledger entries and gross reserve remain unchanged.
+    assert summary["categories"]["BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT"]["reserve_amount_brl"] == 150.0
+    assert summary["total_reserved_brl"] == 150.0
