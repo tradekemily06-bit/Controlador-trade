@@ -1517,10 +1517,11 @@ def show_fiscal() -> None:
                             "Confirmo que o criptoativo foi custodiado ou negociado por instituição localizada fora do Brasil; não é autocustódia no Brasil.",
                             key="foreign_crypto_location_confirmed",
                         )
-                        confirm_foreign_estimate = crypto_location_confirmed and st.checkbox(
+                        crypto_tax_confirmed = st.checkbox(
                             "Confirmo residência fiscal brasileira e que o ativo virtual tem natureza de aplicação financeira.",
                             key="foreign_crypto_tax_confirmed",
                         )
+                        confirm_foreign_estimate = crypto_location_confirmed and crypto_tax_confirmed
                     else:
                         crypto_location_confirmed = False
                         confirm_foreign_estimate = st.checkbox(
