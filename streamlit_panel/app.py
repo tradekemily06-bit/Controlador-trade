@@ -215,7 +215,7 @@ def fiscal_history_display_row(item: dict[str, Any]) -> dict[str, Any]:
         "Percentual de planejamento (%)": "—",
         "Reserva estimada (R$)": "—",
         "Referência": item.get("reference"),
-        "Status": "ESTIMATIVA REGISTRADA" if item.get("planning_estimate_registered") is True else "PENDENTE DE CLASSIFICAÇÃO",
+        "Status": "ESTIMATIVA REGISTRADA · CLASSIFICAÇÃO DECLARADA" if item.get("planning_estimate_registered") is True else "PENDENTE DE CLASSIFICAÇÃO",
     }
     if category == "BR_DAY_TRADE":
         evidence = {}
