@@ -76,6 +76,7 @@ def test_foreign_taxonomy_exposes_requirements_for_limited_planning_estimate():
     assert "imposto_pago_no_exterior" in investment["recommended_evidence"]
     assert "instituicao_localizada_no_exterior" in crypto["requires"]
     assert "confirmacao_sem_autocustodia_no_brasil" in crypto["requires"]
+    assert "comprovante_da_instituicao_no_exterior" in crypto["recommended_evidence"]
     assert investment["calculation_status"] == "PARTIAL_PLANNING_ONLY"
     assert investment["booking_enabled"] is True
     assert any("Forex no exterior tem entendimento específico" in item for item in investment["limitations"])
