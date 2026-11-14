@@ -651,6 +651,15 @@ def test_streamlit_simulator_discloses_backtest_assumptions_and_no_execution():
     assert "Execução permitida: NÃO" in source
     assert "O backtest não integra o Risk Manager" in source
 
+def test_streamlit_foreign_reserve_requires_explicit_classification_and_confirmation():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'api("/api/fiscal-reserve/foreign-planning-estimate", "POST"' in source
+    assert '"FOREIGN_FINANCIAL_INVESTMENT"' in source
+    assert "Confirmo aplicação financeira no exterior e residência fiscal no Brasil" in source
+    assert '"planning_estimate_registered"' in source
+    assert "Registrar estimativa de 15%" in source
+
+
 def test_streamlit_foreign_pending_table_displays_fx_evidence_as_not_applied():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert '"Cotação (R$/unidade)": item.get("fx_rate")' in source
