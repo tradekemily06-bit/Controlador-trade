@@ -120,6 +120,7 @@ def test_foreign_financial_investment_estimate_requires_explicit_confirmation_an
     assert evidence["instrument"] == "Forex"
     assert evidence["declared_result_brl"] == 500.0
     assert evidence["declared_result_brl_verification"] == "USER_DECLARED_NOT_VERIFIED"
+    assert evidence["acquisition_cost_original_currency"] == 1000.0
     assert evidence["acquisition_fx_method"] == "PTAX_BUY"
     assert evidence["acquisition_fx_date"] == "2026-10-01"
     assert evidence["acquisition_fx_verification"] == "USER_DECLARED_NOT_VERIFIED"
