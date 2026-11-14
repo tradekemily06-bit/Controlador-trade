@@ -315,6 +315,9 @@ def test_streamlit_foreign_pending_queue_exposes_auditable_professional_review()
     assert "FOREIGN_FINANCIAL_INVESTMENT" in source
     assert "FOREIGN_ENTITY_CONTROLLED" in source
     assert "FOREIGN_CRYPTO" in source
+    assert "FOREIGN_DERIVATIVE" in source
+    assert "derivative_location_confirmed" in source
+    assert "derivative_result_basis_confirmed" in source
     assert "Identidade" in source
     assert "NÃO VERIFICADA" in source
     assert "A operação continua pendente, sem cálculo ou inclusão nos totais." in source
