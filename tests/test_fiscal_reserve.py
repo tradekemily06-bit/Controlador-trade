@@ -254,6 +254,39 @@ def test_concurrent_duplicate_reference_is_never_double_recorded(tmp_path):
 
 
 
+def test_brazil_resident_foreign_financial_investment_uses_fixed_15_percent_planning_rate(tmp_path):
+    reserve = make_reserve(tmp_path / "foreign-investment-planning.sqlite3")
+    positive = reserve.record_realized_result(OWNER, {
+        "category": "BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT",
+        "realized_result_brl": 1000.0,
+        "reference": "FOREIGN-INVESTMENT-PROFIT-001",
+        "occurred_on": "2026-11-05",
+        "notes": '{"tax_classification_status":"USER_DECLARED_PLANNING_ONLY"}',
+    })
+    negative = reserve.record_realized_result(OWNER, {
+        "category": "BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT",
+        "realized_result_brl": -250.0,
+        "reference": "FOREIGN-INVESTMENT-LOSS-001",
+        "occurred_on": "2026-11-05",
+        "notes": '{"tax_classification_status":"USER_DECLARED_PLANNING_ONLY"}',
+    })
+
+    assert positive["reserve_rate"] == 15.0
+    assert positive["reserve_amount_brl"] == 150.0
+    assert negative["reserve_rate"] == 15.0
+    assert negative["reserve_amount_brl"] == 0.0
+    with pytest.raises(ValueError, match="fixa em 15%"):
+        reserve.update_rate(OWNER, "BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT", 20.0)
+
+    summary = reserve.summary(OWNER, as_of=date(2026, 11, 5))
+    foreign = summary["categories"]["BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT"]
+    assert foreign["entries"] == 2
+    assert foreign["realized_result_brl"] == 750.0
+    assert foreign["reserve_amount_brl"] == 150.0
+    assert summary["total_reserved_brl"] == 150.0
+    assert summary["periods"]["day"]["reserve_amount_brl"] == 150.0
+
+
 def test_legacy_foreign_rows_are_preserved_but_excluded_from_all_reserve_totals(tmp_path):
     import sqlite3
     from datetime import date
