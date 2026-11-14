@@ -280,7 +280,7 @@ def test_streamlit_foreign_pending_forms_capture_structured_evidence_and_display
     assert "Tipo de evento" in source
     assert "Método cambial (obrigatório com cotação)" in source
     assert "Forex segue a Solução de Consulta Cosit 83/2024 quando caracterizado como aplicação financeira" in source
-    assert "PTAX venda na data da aquisição" in source
+    assert "PTAX compra na data da aquisição" in source
     assert "Resultado líquido apurado em BRL (após conversões separadas)" in source
     assert "Residência declarada" in source
     assert "Método declarado" in source
