@@ -227,6 +227,7 @@ def test_foreign_derivative_is_eligible_only_with_foreign_contract_and_declared_
         jurisdiction="Austrália",
         income_nature="TRADING_RESULT",
         event_type="DISPOSAL",
+        acquisition_cost=None,
     ))
     status, body = _request("/api/fiscal-reserve/foreign-planning-estimate", {
         "pending_id": pending["pending_id"],
@@ -243,6 +244,7 @@ def test_foreign_derivative_is_eligible_only_with_foreign_contract_and_declared_
     assert evidence["candidate_classification"] == "FOREIGN_DERIVATIVE"
     assert evidence["derivative_location_rule"] == "FOREIGN_INSTITUTION_AND_CONTRACT_JURISDICTION_USER_DECLARED"
     assert evidence["derivative_location_verification"] == "USER_DECLARED_NOT_VERIFIED"
+    assert evidence["derivative_result_basis_confirmed"] is True
     assert evidence["conversion_basis"] == "USER_DECLARED_FOREIGN_DERIVATIVE_RESULT_IN_BRL"
 
 
