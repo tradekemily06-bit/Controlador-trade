@@ -389,6 +389,7 @@ def test_summary_counts_entire_queue_and_is_scoped_to_owner(tmp_path):
         "total": 501,
         "realized_results": 501,
         "asset_amounts": 0,
+        "planning_estimates_registered": 0,
         "currencies": ["EUR", "USD"],
         "evidence_completeness": {
             "total": 501,
