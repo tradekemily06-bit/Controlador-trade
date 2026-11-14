@@ -251,6 +251,12 @@ def test_foreign_loss_is_recorded_but_does_not_create_negative_reserve(tmp_path,
             "pending_id": pending["pending_id"],
             "candidate_classification": "FOREIGN_FINANCIAL_INVESTMENT",
             "confirmed": True,
+            "declared_result_brl": -200.0,
+            "conversion_basis_confirmed": True,
+            "acquisition_fx_rate": 4.8,
+            "acquisition_fx_date": "2026-10-01",
+            "acquisition_fx_source": "Banco Central do Brasil - PTAX compra",
+            "acquisition_fx_method": "PTAX_BUY",
         },
     )
 
