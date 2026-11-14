@@ -80,6 +80,7 @@ def test_foreign_financial_investment_estimate_requires_explicit_confirmation_an
         {
             "pending_id": pending["pending_id"],
             "candidate_classification": "FOREIGN_FINANCIAL_INVESTMENT",
+            "financial_investment_location_confirmed": True,
             "confirmed": False,
         },
     )
@@ -91,6 +92,7 @@ def test_foreign_financial_investment_estimate_requires_explicit_confirmation_an
         {
             "pending_id": pending["pending_id"],
             "candidate_classification": "FOREIGN_FINANCIAL_INVESTMENT",
+            "financial_investment_location_confirmed": True,
             "confirmed": True,
             "owner_id": "forged-owner-is-ignored",
             "declared_result_brl": 500.0,
@@ -142,6 +144,7 @@ def test_foreign_financial_investment_estimate_requires_explicit_confirmation_an
         {
             "pending_id": pending["pending_id"],
             "candidate_classification": "FOREIGN_FINANCIAL_INVESTMENT",
+            "financial_investment_location_confirmed": True,
             "confirmed": True,
         },
     )
@@ -163,6 +166,7 @@ def test_foreign_planning_estimate_rejects_unqualified_records_and_missing_fx(tm
         _pending_payload("FOREIGN-BEFORE-LAW-001", occurred_on="2023-12-31"),
         _pending_payload("FOREIGN-NO-INSTITUTION-001", institution=""),
         _pending_payload("FOREIGN-NO-CUSTODY-001", custody_location="NOT_INFORMED"),
+        _pending_payload("FOREIGN-DOMESTIC-CUSTODY-001", custody_location="Custódia no Brasil"),
         _pending_payload("FOREIGN-NO-CONTRACT-001", contract_type="NOT_INFORMED"),
     ]
     for payload in invalid_items:
@@ -177,11 +181,38 @@ def test_foreign_planning_estimate_rejects_unqualified_records_and_missing_fx(tm
             {
                 "pending_id": pending["pending_id"],
                 "candidate_classification": category,
+                "financial_investment_location_confirmed": category == "FOREIGN_FINANCIAL_INVESTMENT",
                 "confirmed": True,
             },
         )
         assert status.startswith("400"), pending["reference"]
 
+    assert reserve.summary(owner_id)["total_reserved_brl"] == 0.0
+
+
+def test_foreign_investment_requires_explicit_foreign_custody_confirmation(tmp_path, monkeypatch):
+    _database, owner_id, reserve, queue = _configure(tmp_path, monkeypatch)
+    for reference, custody_location, confirmed_location in [
+        ("FOREIGN-INVESTMENT-NO-CONFIRM", "Custódia estrangeira", False),
+        ("FOREIGN-INVESTMENT-DOMESTIC-CUSTODY", "Custódia no Brasil", True),
+    ]:
+        pending = queue.add_realized_result(
+            owner_id,
+            _pending_payload(reference, custody_location=custody_location),
+        )
+        status, _ = _request("/api/fiscal-reserve/foreign-planning-estimate", {
+            "pending_id": pending["pending_id"],
+            "candidate_classification": "FOREIGN_FINANCIAL_INVESTMENT",
+            "financial_investment_location_confirmed": confirmed_location,
+            "confirmed": True,
+            "declared_result_brl": 500.0,
+            "conversion_basis_confirmed": True,
+            "acquisition_fx_rate": 4.8,
+            "acquisition_fx_date": "2026-10-01",
+            "acquisition_fx_source": "Banco Central do Brasil - PTAX venda",
+            "acquisition_fx_method": "PTAX_SELL",
+        })
+        assert status.startswith("400"), reference
     assert reserve.summary(owner_id)["total_reserved_brl"] == 0.0
 
 
@@ -191,6 +222,7 @@ def test_foreign_estimate_requires_separate_acquisition_and_liquidation_fx_basis
     base_payload = {
         "pending_id": pending["pending_id"],
         "candidate_classification": "FOREIGN_FINANCIAL_INVESTMENT",
+            "financial_investment_location_confirmed": True,
         "confirmed": True,
         "declared_result_brl": 500.0,
         "conversion_basis_confirmed": True,
@@ -386,6 +418,7 @@ def test_foreign_estimate_keeps_cfd_futures_and_indices_pending(tmp_path, monkey
             {
                 "pending_id": pending["pending_id"],
                 "candidate_classification": "FOREIGN_FINANCIAL_INVESTMENT",
+            "financial_investment_location_confirmed": True,
                 "confirmed": True,
             },
         )
@@ -408,6 +441,7 @@ def test_foreign_loss_is_recorded_but_does_not_create_negative_reserve(tmp_path,
         {
             "pending_id": pending["pending_id"],
             "candidate_classification": "FOREIGN_FINANCIAL_INVESTMENT",
+            "financial_investment_location_confirmed": True,
             "confirmed": True,
             "declared_result_brl": -200.0,
             "conversion_basis_confirmed": True,
