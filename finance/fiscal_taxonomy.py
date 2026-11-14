@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 
-CATALOG_VERSION = "2026-11-14.2"
+CATALOG_VERSION = "2026-11-14.3"
 
 # The categories are intake/classification lanes, not claims that every event
 # in the lane has one universal tax treatment.
@@ -86,6 +86,21 @@ FOREIGN_CATEGORIES: dict[str, dict[str, Any]] = {
             "Exige cotação documentada convertida para BRL; ajuste anual. A visão anual pode simular perdas declaradas no mesmo ano, sem validação documental.",
             "Não calcula saldo de perdas de anos anteriores nem créditos de imposto estrangeiro; não é apuração tributária.",
             "Forex no exterior tem entendimento específico na Solução de Consulta Cosit 83/2024 e pode integrar esta faixa quando caracterizado como aplicação financeira; CFDs, índices, futuros, entidades controladas e eventos sem classificação própria permanecem pendentes; criptoativos usam a categoria estrangeira específica e exigem custódia ou negociação por instituição no exterior.",
+        ],
+    },
+    "FOREIGN_DERIVATIVE": {
+        "label": "Exterior · derivativos",
+        "scope": "FOREIGN",
+        "requires": ["residencia_fiscal", "instituicao_localizada_no_exterior", "jurisdicao_do_contrato", "ativo_subjacente", "tipo_de_derivativo", "evento_realizado", "resultado_em_brl_declarado", "confirmacao_de_localizacao_no_exterior"],
+        "recommended_evidence": ["contrato_do_derivativo", "extrato_da_corretora", "historico_de_liquidacoes", "custos_e_comissoes", "memoria_de_conversao_cambial"],
+        "calculation_status": "PARTIAL_PLANNING_ONLY",
+        "booking_enabled": True,
+        "limitations": [
+            "A Lei 14.754/2023, art. 3º, § 1º, inclui derivativos entre aplicações financeiras no exterior; o fluxo exige contrato identificado e instituição/jurisdição fora do Brasil.",
+            "A estimativa de 15% usa resultado em BRL declarado pelo usuário, calculado conforme o contrato, liquidações, custos e regras cambiais aplicáveis.",
+            "A natureza do contrato, a localização e o resultado declarado não são verificados automaticamente; CFDs, futuros e índices só entram quando o instrumento contratual é efetivamente um derivativo estrangeiro.",
+            "Derivativos de criptoativos, operações em instituição brasileira e contratos sem documentação permanecem pendentes.",
+            "Não é apuração tributária; não calcula compensação de perdas nem créditos de imposto pago no exterior.",
         ],
     },
     "FOREIGN_ENTITY_CONTROLLED": {
