@@ -1552,7 +1552,7 @@ def show_fiscal() -> None:
                             key="foreign_crypto_tax_confirmed",
                         )
                         confirm_foreign_estimate = crypto_location_confirmed and crypto_tax_confirmed
-                    else:
+                    elif selected_candidate_classification == "FOREIGN_FINANCIAL_INVESTMENT":
                         derivative_location_confirmed = False
                         derivative_result_basis_confirmed = False
                         crypto_location_confirmed = False
@@ -1565,6 +1565,13 @@ def show_fiscal() -> None:
                             key="foreign_financial_investment_tax_confirmed",
                         )
                         confirm_foreign_estimate = financial_investment_location_confirmed and financial_tax_confirmed
+                    else:
+                        derivative_location_confirmed = False
+                        derivative_result_basis_confirmed = False
+                        crypto_location_confirmed = False
+                        financial_investment_location_confirmed = False
+                        confirm_foreign_estimate = False
+                        st.caption("Entidades controladas no exterior permanecem pendentes e fora dos totais.")
                     submit_foreign_estimate = st.form_submit_button(
                         "Registrar estimativa de 15%",
                         disabled=not confirm_foreign_estimate,
