@@ -248,6 +248,12 @@ def migrate_fiscal_schema(database_path: str) -> str:
                        VALUES (?, 'BR_DAY_TRADE', 20.0, 'DEFAULT')""",
                     (owner_id,),
                 )
+                db.execute(
+                    """INSERT OR IGNORE INTO fiscal_reserve_settings
+                       (owner_id, category, rate, rate_source)
+                       VALUES (?, 'BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT', 15.0, 'DEFAULT')""",
+                    (owner_id,),
+                )
                 violations = db.execute("PRAGMA foreign_key_check").fetchall()
                 if violations:
                     raise RuntimeError(
@@ -424,6 +430,10 @@ def migrate_fiscal_schema(database_path: str) -> str:
         db.execute("""
             INSERT OR IGNORE INTO fiscal_reserve_settings(owner_id,category,rate,rate_source)
             VALUES(?, 'BR_DAY_TRADE', 20.0, 'DEFAULT')
+        """, (owner_id,))
+        db.execute("""
+            INSERT OR IGNORE INTO fiscal_reserve_settings(owner_id,category,rate,rate_source)
+            VALUES(?, 'BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT', 15.0, 'DEFAULT')
         """, (owner_id,))
         violations = db.execute("PRAGMA foreign_key_check").fetchall()
         if violations:

@@ -249,6 +249,34 @@ def _remote_identity_http_status(reason: str) -> HTTPStatus:
 
 
 
+def _authorize_local_read(environ) -> tuple[bool, str]:
+    """Authorize read-only fiscal summary requests from the local browser only."""
+    remote_access_required = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "").strip().lower() in {"1", "true", "yes"}
+    if remote_access_required:
+        return False, "remote identity boundary is enabled"
+    client = str(environ.get("REMOTE_ADDR") or "").strip()
+    if client not in {"127.0.0.1", "::1"}:
+        return False, "local read requires loopback"
+    identity_header = os.environ.get("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "").strip()
+    if identity_header:
+        identity_key = "HTTP_" + identity_header.upper().replace("-", "_")
+        if str(environ.get(identity_key) or "").strip():
+            return False, "trusted remote identity cannot use local read routes"
+    allowed_hosts = {
+        item.strip().lower()
+        for item in os.environ.get("CONTROLADOR_LOCAL_MUTATION_HOSTS", "localhost,127.0.0.1,[::1]").split(",")
+        if item.strip()
+    }
+    raw_host = str(environ.get("HTTP_HOST") or "").strip().lower()
+    if raw_host.startswith("[") and "]" in raw_host:
+        host = raw_host[1:raw_host.index("]")]
+    else:
+        host = raw_host.split(":", 1)[0]
+    if not host or host not in allowed_hosts and f"[{host}]" not in allowed_hosts:
+        return False, "local Host is not allowed"
+    return True, "local-read"
+
+
 def _authorize_local_runtime(environ) -> tuple[bool, str]:
     """Authorize native terminal calls only from a loopback client using an allowed local Host."""
     client = str(environ.get("REMOTE_ADDR") or "").strip()
@@ -593,7 +621,7 @@ def application(environ, start_response):
             if path == "/api/assistant/chat" and method == "POST":
                 return _json_response(start_response, HTTPStatus.OK, ASSISTANT.ask(identity, assistant_chat_data.get("message"), fiscal_owner_id, assistant_chat_data.get("conversation_id")), request_id, environ)
         if path == "/api/fiscal-reserve/local" and method == "GET":
-            authorized, reason = _authorize_local_runtime(environ)
+            authorized, reason = _authorize_local_read(environ)
             if not authorized:
                 return _json_response(
                     start_response, _remote_identity_http_status(reason),
@@ -732,6 +760,267 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.CREATED,
                                   {"pending": item, "reserve_calculated": False,
                                    "classification_status": "PENDING_CLASSIFICATION"},
+                                  request_id, environ)
+        if path == "/api/fiscal-reserve/foreign-planning-estimate" and method == "POST":
+            data = _read_json(environ)
+            if data.get("confirmed") is not True:
+                raise ValueError("confirmação explícita da estimativa estrangeira é obrigatória")
+            pending_id = data.get("pending_id")
+            if not isinstance(pending_id, str) or not pending_id.strip() or len(pending_id.strip()) > 80:
+                raise ValueError("pending_id inválido")
+            item = FISCAL_PENDING_QUEUE.get_pending(fiscal_owner_id, pending_id)
+            if item.get("planning_estimate_registered") is True:
+                return _json_response(start_response, HTTPStatus.CONFLICT,
+                                      {"error": "Esta referência já possui estimativa de reserva registrada."},
+                                      request_id, environ)
+            if item.get("record_kind") != "REALIZED_RESULT":
+                raise ValueError("somente resultados realizados podem gerar estimativa de reserva")
+            if item.get("tax_residency_at_event") != "BRAZIL":
+                raise ValueError("a regra exige residência fiscal brasileira declarada na data do evento")
+            if str(item.get("occurred_on") or "") < "2024-01-01":
+                raise ValueError("a estimativa de 15% aplica-se a eventos a partir de 01/01/2024; registros anteriores exigem revisão separada")
+            candidate_classification = data.get("candidate_classification")
+            if candidate_classification not in {"FOREIGN_FINANCIAL_INVESTMENT", "FOREIGN_CRYPTO", "FOREIGN_DERIVATIVE"}:
+                raise ValueError("a categoria estrangeira deve ser confirmada explicitamente")
+            if item.get("income_nature") not in {
+                "CAPITAL_GAIN", "INVESTMENT_INCOME", "TRADING_RESULT", "DIVIDEND", "INTEREST"
+            }:
+                raise ValueError("natureza do rendimento não está habilitada para esta estimativa")
+            if item.get("event_type") not in {
+                "DISPOSAL", "REDEMPTION", "DIVIDEND_RECEIPT", "INTEREST_RECEIPT"
+            }:
+                raise ValueError("tipo de evento não está habilitado para esta estimativa")
+            jurisdiction = str(item.get("jurisdiction") or "").strip()
+            if not item.get("instrument") or jurisdiction.casefold() in {"", "not_informed", "not informed", "not_confirmed", "not confirmed"}:
+                raise ValueError("instrumento e jurisdição identificada são obrigatórios")
+            institution = str(item.get("institution") or "").strip()
+            if institution.casefold() in {"not_informed", "not informed", "not_confirmed", "not confirmed"}:
+                institution = ""
+            custody_location = str(item.get("custody_location") or "").strip().casefold()
+            self_custody = "autocust" in custody_location or "self-custod" in custody_location
+            if not institution and not self_custody:
+                raise ValueError("informe a instituição ou declare autocustódia")
+            if custody_location in {"", "not_informed", "not informed", "not_confirmed", "not confirmed"}:
+                raise ValueError("local de custódia é obrigatório e deve ser identificado")
+            contract_type = str(item.get("contract_type") or "").strip().upper()
+            if contract_type in {"", "NOT_INFORMED", "NOT_CONFIRMED"}:
+                raise ValueError("tipo de contrato é obrigatório")
+            instrument_description = " ".join((
+                str(item.get("instrument") or ""),
+                str(item.get("contract_type") or ""),
+            )).casefold()
+            crypto_terms = ("cripto", "crypto", "bitcoin", "ethereum", "btc", "eth", "solana", "token", "usdt", "usdc", "xrp", "cardano", "ada", "bnb", "dogecoin", "doge", "polkadot", "dot", "avalanche", "avax", "litecoin", "ltc", "chainlink", "link", "tron", "trx", "toncoin", "shiba", "shib", "polygon", "matic")
+            is_crypto_instrument = any(term in instrument_description for term in crypto_terms)
+            derivative_terms = ("cfd", "contract for difference", "futuro", "futures", "future", "derivativo", "derivative")
+            is_derivative_contract = any(term in contract_type.casefold() for term in derivative_terms)
+            if candidate_classification == "FOREIGN_DERIVATIVE":
+                if is_crypto_instrument:
+                    raise ValueError("derivativos de criptoativos permanecem pendentes até classificação própria")
+                if not is_derivative_contract:
+                    raise ValueError("a categoria de derivativos exige contrato CFD, futuro ou derivativo identificado")
+                if self_custody or not institution:
+                    raise ValueError("derivativos estrangeiros exigem instituição intermediária localizada no exterior")
+                location_tokens = set(
+                    (custody_location + " " + str(item.get("jurisdiction") or "").casefold())
+                    .replace(",", " ").replace("/", " ").split()
+                )
+                if location_tokens.intersection({"br", "brasil", "brazil", "brasileiro", "brasileira"}):
+                    raise ValueError("o derivativo precisa ser negociado por instituição e jurisdição fora do Brasil")
+                if data.get("derivative_location_confirmed") is not True or data.get("derivative_result_basis_confirmed") is not True:
+                    raise ValueError("confirme a localização estrangeira do contrato e a base documentada do resultado")
+                if item.get("income_nature") not in {"CAPITAL_GAIN", "TRADING_RESULT"} or item.get("event_type") not in {"DISPOSAL", "REDEMPTION"}:
+                    raise ValueError("derivativos só entram neste fluxo em resultado realizado por liquidação ou encerramento")
+            elif candidate_classification == "FOREIGN_CRYPTO":
+                if not is_crypto_instrument:
+                    raise ValueError("a categoria de criptoativos exige identificação do ativo virtual")
+                if any(term in instrument_description for term in ("cfd", "contract for difference", "futuro", "futures", "index", "índice")):
+                    raise ValueError("derivativos de criptoativos exigem classificação própria e permanecem pendentes")
+                if "nft" in instrument_description:
+                    raise ValueError("NFTs sem enquadramento como aplicação financeira permanecem pendentes")
+                if self_custody:
+                    raise ValueError("autocustódia pelo residente no Brasil não caracteriza ativo virtual localizado no exterior")
+                location_tokens = set(
+                    (custody_location + " " + str(item.get("jurisdiction") or "").casefold())
+                    .replace(",", " ").replace("/", " ").split()
+                )
+                if location_tokens.intersection({"br", "brasil", "brazil", "brasileiro", "brasileira"}):
+                    raise ValueError("o ativo virtual precisa estar custodiado ou negociado por instituição localizada fora do Brasil")
+                if (
+                    not institution
+                    or institution.casefold() in {"not_informed", "not informed", "not_confirmed", "not confirmed"}
+                    or data.get("crypto_location_confirmed") is not True
+                ):
+                    raise ValueError("confirme a instituição localizada no exterior e a ausência de autocustódia no Brasil")
+                if item.get("income_nature") not in {"CAPITAL_GAIN", "TRADING_RESULT"} or item.get("event_type") not in {"DISPOSAL", "REDEMPTION"}:
+                    raise ValueError("criptoativos só entram neste fluxo em alienação ou resgate realizado")
+            else:
+                if is_crypto_instrument:
+                    raise ValueError("criptoativos exigem a categoria específica e confirmação de custódia no exterior")
+                unsupported_instrument_terms = (
+                    "índice", "index", "cfd", "contract for difference",
+                    "futuro", "futures", "índice futuro", "index future",
+                    "commodity future", "derivativo de índice",
+                )
+                if any(term in instrument_description for term in unsupported_instrument_terms):
+                    raise ValueError(
+                        "este instrumento exige classificação fiscal própria e permanece pendente; "
+                        "a estimativa de 15% não pode ser aplicada automaticamente"
+                    )
+                custody_tokens = set(
+                    (custody_location + " " + str(item.get("jurisdiction") or "").casefold())
+                    .replace(",", " ").replace("/", " ").split()
+                )
+                if custody_tokens.intersection({"br", "brasil", "brazil", "brasileiro", "brasileira"}):
+                    raise ValueError("a aplicação financeira precisa estar efetivamente custodiada no exterior")
+                if data.get("financial_investment_location_confirmed") is not True:
+                    raise ValueError("confirme que a aplicação financeira e sua custódia efetiva estão localizadas no exterior")
+            if item.get("fx_conversion_status") == "CONVERTED_FOR_PLANNING_ONLY":
+                fx_source = str(item.get("fx_source") or "").casefold()
+                if item.get("fx_conversion_method") != "PTAX_SELL":
+                    raise ValueError("a estimativa exige cotação de fechamento para venda do BCB (PTAX)")
+                if item.get("fx_date") != item.get("occurred_on"):
+                    raise ValueError("a data da PTAX deve corresponder à data do evento tributável")
+                if "bcb" not in fx_source and "banco central" not in fx_source and "ptax" not in fx_source:
+                    raise ValueError("a fonte da cotação deve identificar o Banco Central do Brasil (PTAX)")
+            elif item.get("fx_conversion_status") != "ALREADY_BRL":
+                raise ValueError("cotação oficial documentada para conversão em reais é obrigatória")
+            original_currency = str(item.get("original_currency") or "").strip().upper()
+            acquisition_fx_evidence = {}
+            conversion_basis_label = "USER_DECLARED_EVENT_DATE_PTAX_SELL"
+            if original_currency != "BRL":
+                declared_result_brl = data.get("declared_result_brl")
+                if (
+                    isinstance(declared_result_brl, bool)
+                    or not isinstance(declared_result_brl, (int, float))
+                    or not math.isfinite(declared_result_brl)
+                    or abs(declared_result_brl) > 1_000_000_000_000
+                ):
+                    raise ValueError("resultado líquido em BRL declarado é obrigatório para moeda estrangeira")
+                if data.get("conversion_basis_confirmed") is not True:
+                    raise ValueError("confirme a base cambial declarada para o resultado em BRL")
+                requires_acquisition_basis = (
+                    candidate_classification != "FOREIGN_DERIVATIVE"
+                    and (
+                        item.get("income_nature") in {"CAPITAL_GAIN", "TRADING_RESULT"}
+                        or item.get("event_type") in {"DISPOSAL", "REDEMPTION"}
+                    )
+                )
+                if candidate_classification == "FOREIGN_DERIVATIVE":
+                    conversion_basis_label = "USER_DECLARED_FOREIGN_DERIVATIVE_RESULT_IN_BRL"
+                if requires_acquisition_basis:
+                    conversion_basis_label = "USER_DECLARED_SEPARATE_ACQUISITION_AND_LIQUIDATION_QUOTES"
+                    acquisition_cost = data.get("acquisition_cost", item.get("acquisition_cost"))
+                    if (
+                        isinstance(acquisition_cost, bool)
+                        or not isinstance(acquisition_cost, (int, float))
+                        or not math.isfinite(acquisition_cost)
+                        or acquisition_cost < 0
+                    ):
+                        raise ValueError("custo de aquisição na moeda original é obrigatório")
+                    acquisition_fx_rate = data.get("acquisition_fx_rate")
+                    if (
+                        isinstance(acquisition_fx_rate, bool)
+                        or not isinstance(acquisition_fx_rate, (int, float))
+                        or not math.isfinite(acquisition_fx_rate)
+                        or acquisition_fx_rate <= 0
+                    ):
+                        raise ValueError("PTAX de venda na data de aquisição é obrigatória")
+                    acquisition_fx_date = data.get("acquisition_fx_date")
+                    try:
+                        parsed_acquisition_date = datetime.strptime(acquisition_fx_date, "%Y-%m-%d").date()
+                    except (TypeError, ValueError):
+                        raise ValueError("data da PTAX de venda inválida")
+                    if parsed_acquisition_date.isoformat() != acquisition_fx_date or acquisition_fx_date > item.get("occurred_on", ""):
+                        raise ValueError("data da PTAX de venda deve ser válida e não posterior à liquidação")
+                    acquisition_fx_source = str(data.get("acquisition_fx_source") or "").casefold()
+                    if data.get("acquisition_fx_method") != "PTAX_SELL":
+                        raise ValueError("a conversão do custo exige PTAX de venda do BCB")
+                    if "bcb" not in acquisition_fx_source and "banco central" not in acquisition_fx_source and "ptax" not in acquisition_fx_source:
+                        raise ValueError("a fonte da PTAX de venda deve identificar o Banco Central do Brasil")
+                    acquisition_fx_evidence = {
+                        "acquisition_cost_original_currency": acquisition_cost,
+                        "acquisition_fx_rate": acquisition_fx_rate,
+                        "acquisition_fx_date": acquisition_fx_date,
+                        "acquisition_fx_source": data.get("acquisition_fx_source"),
+                        "acquisition_fx_method": "PTAX_SELL",
+                        "acquisition_fx_verification": "USER_DECLARED_NOT_VERIFIED",
+                    }
+                converted_result = float(declared_result_brl)
+            else:
+                converted_result = item.get("converted_result_brl_for_planning")
+                if isinstance(converted_result, bool) or not isinstance(converted_result, (int, float)):
+                    raise ValueError("resultado em BRL indisponível")
+            evidence = {
+                "tax_classification_status": "USER_DECLARED_PLANNING_ONLY",
+                "classification_source": "EXPLICIT_USER_CONFIRMATION",
+                "candidate_classification": candidate_classification,
+                "tax_residency_at_event": "BRAZIL",
+                "tax_liability_confirmed": False,
+                "reserve_semantics": "PLANNING_ESTIMATE_ONLY",
+                "source_pending_id": item["pending_id"],
+                "original_currency": item["original_currency"],
+                "original_result": item["original_result"],
+                "declared_result_brl": converted_result if original_currency != "BRL" else None,
+                "declared_result_brl_verification": "USER_DECLARED_NOT_VERIFIED" if original_currency != "BRL" else "NOT_APPLICABLE",
+                "conversion_basis": conversion_basis_label if original_currency != "BRL" else "ALREADY_BRL",
+                "financial_investment_location_confirmed": data.get("financial_investment_location_confirmed") is True if candidate_classification == "FOREIGN_FINANCIAL_INVESTMENT" else False,
+                "financial_investment_location_verification": "USER_DECLARED_NOT_VERIFIED" if candidate_classification == "FOREIGN_FINANCIAL_INVESTMENT" else "NOT_APPLICABLE",
+                "crypto_location_rule": "FOREIGN_INSTITUTION_CUSTODY_OR_TRADING_USER_DECLARED" if candidate_classification == "FOREIGN_CRYPTO" else None,
+                "crypto_location_verification": "USER_DECLARED_NOT_VERIFIED" if candidate_classification == "FOREIGN_CRYPTO" else "NOT_APPLICABLE",
+                "crypto_location_confirmed": data.get("crypto_location_confirmed") is True if candidate_classification == "FOREIGN_CRYPTO" else False,
+                "derivative_location_rule": "FOREIGN_INSTITUTION_AND_CONTRACT_JURISDICTION_USER_DECLARED" if candidate_classification == "FOREIGN_DERIVATIVE" else None,
+                "derivative_location_confirmed": data.get("derivative_location_confirmed") is True if candidate_classification == "FOREIGN_DERIVATIVE" else False,
+                "derivative_location_verification": "USER_DECLARED_NOT_VERIFIED" if candidate_classification == "FOREIGN_DERIVATIVE" else "NOT_APPLICABLE",
+                "derivative_result_basis_confirmed": data.get("derivative_result_basis_confirmed") is True if candidate_classification == "FOREIGN_DERIVATIVE" else False,
+                "conversion_basis_confirmed": data.get("conversion_basis_confirmed") is True,
+                **acquisition_fx_evidence,
+                "income_nature": item.get("income_nature"),
+                "event_type": item.get("event_type"),
+                "instrument": item.get("instrument"),
+                "jurisdiction": item.get("jurisdiction"),
+                "institution": item.get("institution"),
+                "custody_location": item.get("custody_location"),
+                "contract_type": item.get("contract_type"),
+                "fx_rate": item.get("fx_rate"),
+                "fx_rate_direction": item.get("fx_rate_direction"),
+                "fx_conversion_status": item.get("fx_conversion_status"),
+                "fx_date": item.get("fx_date"),
+                "fx_source": item.get("fx_source"),
+                "fx_conversion_method": item.get("fx_conversion_method"),
+                "fx_quote_verification": "USER_DECLARED_NOT_VERIFIED",
+                "fx_source_verification": "USER_DECLARED_NOT_VERIFIED",
+                "liquidation_fx_method": "PTAX_SELL" if original_currency != "BRL" else None,
+                "foreign_tax_credit_applied": False,
+                "loss_offsets_applied": False,
+                "legal_reference": "Lei 14.754/2023, art. 2º; Solução de Consulta Cosit 83/2024",
+                "legal_rate": 15.0,
+                "legal_period": "ANNUAL_ADJUSTMENT",
+            }
+            try:
+                entry = FISCAL_RESERVE.record_realized_result(fiscal_owner_id, {
+                    "category": "BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT",
+                    "realized_result_brl": converted_result,
+                    "reference": item["reference"],
+                    "occurred_on": item["occurred_on"],
+                    "notes": json.dumps(evidence, ensure_ascii=False, separators=(",", ":")),
+                })
+            except ValueError as exc:
+                if "já foi registrada" in str(exc):
+                    return _json_response(start_response, HTTPStatus.CONFLICT,
+                                          {"error": "Esta referência já possui estimativa de reserva registrada."},
+                                          request_id, environ)
+                raise
+            return _json_response(start_response, HTTPStatus.CREATED,
+                                  {"entry": entry,
+                                   "classification_status": "USER_DECLARED_PLANNING_ONLY",
+                                   "classification_source": "EXPLICIT_USER_CONFIRMATION",
+                                   "tax_liability_confirmed": False,
+                                   "reserve_is_estimate": True,
+                                   "reserve_calculated": True,
+                                   "annual_rule_reference": "Lei 14.754/2023, art. 2º; Solução de Consulta Cosit 83/2024",
+                                   "fx_quote_verified": False,
+                                   "fx_source_verified": False,
+                                   "execution_allowed": False},
                                   request_id, environ)
         if path.startswith("/api/fiscal-reserve/pending/") and path.endswith("/reviews"):
             pending_id = path[len("/api/fiscal-reserve/pending/"):-len("/reviews")].strip("/")
@@ -1055,6 +1344,7 @@ def application(environ, start_response):
             # Keep the legacy foreign setting internally for database compatibility,
             # but never expose its generic percentage through the public API.
             settings.pop("FOREIGN_FINANCIAL_ASSET", None)
+            settings.pop("BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT", None)
             return _json_response(start_response, HTTPStatus.OK, {"settings": settings}, request_id, environ)
         if path == "/api/fiscal-reserve/results" and method == "POST":
             data = _read_json(environ)

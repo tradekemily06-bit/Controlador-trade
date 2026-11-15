@@ -134,7 +134,8 @@ def test_streamlit_panel_explains_fiscal_catalog_automation_boundaries():
 
 def test_streamlit_fiscal_catalog_reuses_the_single_summary_request():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
-    assert source.count('api("/api/fiscal-reserve?limit=50&offset="') == 1
+    assert source.count('summary = api(summary_path + "?limit=50&offset="') == 1
+    assert 'summary_path = "/api/fiscal-reserve" if REMOTE_REQUIRED else "/api/fiscal-reserve/local"' in source
     assert 'api("/api/fiscal-reserve")' not in source
 
 def test_streamlit_keeps_brazilian_pending_items_separate_from_foreign_queue():
@@ -166,7 +167,7 @@ def test_streamlit_marks_mt5_tax_classification_as_user_declared_pending_review(
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert "DECLARAÇÃO DO USUÁRIO · REVISÃO PENDENTE" in source
     assert 'evidence.get("tax_classification_status") == "USER_DECLARED_PENDING_REVIEW"' in source
-    assert "fila brasileira separada, sem cálculo e fora dos totais" in source
+    assert "Operações MT5 sem elegibilidade verificada ficam em fila separada." in source
 
 
 def test_streamlit_unverified_mt5_history_never_displays_reserve_rate_or_amount():
@@ -174,7 +175,7 @@ def test_streamlit_unverified_mt5_history_never_displays_reserve_rate_or_amount(
     assert 'if not user_declared_pending:' in source
     assert "Percentual de planejamento (%)" in source
     assert "Reserva estimada (R$)" in source
-    assert "fila brasileira separada, sem cálculo e fora dos totais" in source
+    assert "Operações MT5 sem elegibilidade verificada ficam em fila separada." in source
 
 
 def test_streamlit_labels_user_declared_day_trade_planning_estimates():
@@ -278,16 +279,23 @@ def test_streamlit_foreign_pending_forms_capture_structured_evidence_and_display
     assert "Residência fiscal declarada na data" in source
     assert "Natureza do rendimento / valor" in source
     assert "Tipo de evento" in source
-    assert "Método de conversão cambial" in source
+    assert "Método cambial (obrigatório com cotação)" in source
+    assert "Forex segue a Solução de Consulta Cosit 83/2024 quando caracterizado como aplicação financeira" in source
+    assert "PTAX venda na data da aquisição" in source
+    assert "Resultado líquido apurado em BRL (após conversões separadas)" in source
     assert "Residência declarada" in source
     assert "Método declarado" in source
     assert "NOT_INFORMED" in source
+    assert "Confirmo que a aplicação financeira, sua jurisdição e sua custódia efetiva estão localizadas fora do Brasil." in source
+    assert '"financial_investment_location_confirmed"' in source
+    assert "Entidades controladas no exterior permanecem pendentes e fora dos totais." in source
 
 
 def test_streamlit_fiscal_summary_labels_accumulated_amount_as_planning_estimate():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
-    assert 'c.metric("Estimativa acumulada · Brasil"' in source
-    assert "percentual de planejamento {rate_source_label}" in source
+    assert 'c.metric("Estimativa acumulada · total"' in source
+    assert "alíquota legal de referência: 20%" in source
+    assert "Este campo ajusta somente sua margem de reserva financeira" in source
     assert '"DEFAULT": "padrão inicial do sistema"' in source
     assert '"USER_CONFIGURED": "configurado pelo usuário"' in source
     assert "ESTIMATIVA DE PLANEJAMENTO — não é imposto apurado ou devido." in source
@@ -311,6 +319,11 @@ def test_streamlit_foreign_pending_queue_exposes_auditable_professional_review()
     assert "FOREIGN_FINANCIAL_INVESTMENT" in source
     assert "FOREIGN_ENTITY_CONTROLLED" in source
     assert "FOREIGN_CRYPTO" in source
+    assert "FOREIGN_DERIVATIVE" in source
+    assert "derivative_location_confirmed" in source
+    assert "derivative_result_basis_confirmed" in source
+    assert "Lei 14.754/2023, art. 3º, § 1º" in source
+    assert "IN RFB 2.180/2024, art. 9º" in source
     assert "Identidade" in source
     assert "NÃO VERIFICADA" in source
     assert "A operação continua pendente, sem cálculo ou inclusão nos totais." in source
@@ -651,9 +664,25 @@ def test_streamlit_simulator_discloses_backtest_assumptions_and_no_execution():
     assert "Execução permitida: NÃO" in source
     assert "O backtest não integra o Risk Manager" in source
 
+def test_streamlit_foreign_reserve_requires_explicit_classification_and_confirmation():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'api("/api/fiscal-reserve/foreign-planning-estimate", "POST"' in source
+    assert '"FOREIGN_FINANCIAL_INVESTMENT"' in source
+    assert "Confirmo que a aplicação financeira, sua jurisdição e sua custódia efetiva estão localizadas fora do Brasil." in source
+    assert "Confirmo residência fiscal brasileira e evento realizado a partir de 2024." in source
+    assert '"planning_estimate_registered"' in source
+    assert "Registrar estimativa de 15%" in source
+
+
 def test_streamlit_foreign_pending_table_displays_fx_evidence_as_not_applied():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
-    assert '"Cotação informada (não aplicada)": item.get("fx_rate")' in source
+    assert '"Cotação (R$/unidade)": item.get("fx_rate")' in source
+    assert '"Valor convertido para planejamento (R$)": item.get("converted_result_brl_for_planning")' in source
+    assert '"Conversão cambial": item.get("fx_conversion_status")' in source
+    assert "converte somente o valor principal ou resultado na data informada" in source
+    assert "regras cambiais próprias sejam registradas" in source
+    assert '"Custo de aquisição convertido (R$)"' not in source
+    assert '"Imposto pago fora convertido (R$)"' not in source
     assert '"Data da cotação": item.get("fx_date")' in source
     assert '"Fonte da cotação": item.get("fx_source")' in source
     assert '"Método declarado": item.get("fx_conversion_method")' in source
@@ -1075,6 +1104,12 @@ def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid
                 "classification_status": "PENDING_CLASSIFICATION",
                 "rate_available": False,
             },
+            "BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT": {
+                "entries": 0,
+                "rate": 15.0,
+                "realized_result_brl": 0.0,
+                "reserve_amount_brl": 0.0,
+            },
         },
         "total_reserved_brl": 200.0,
         "as_of": "2026-11-05",
@@ -1116,6 +1151,7 @@ def test_fiscal_summary_write_guard_rejects_invalid_aggregates_and_accepts_valid
             "total": 3,
             "realized_results": 1,
             "asset_amounts": 2,
+            "planning_estimates_registered": 0,
             "evidence_completeness": {
                 "total": 3,
                 "missing_institution": 1,
@@ -1428,6 +1464,7 @@ def test_fiscal_reserve_writes_are_disabled_when_summary_read_fails_or_is_incomp
     assert "_valid_fiscal_history_page(summary" in fiscal
     assert "def _valid_fiscal_summary(summary: Any) -> bool:" in source
     assert 'categories.get("BR_DAY_TRADE")' in source
+    assert 'categories.get("BR_RESIDENT_FOREIGN_FINANCIAL_INVESTMENT")' in source
     assert 'semantics.get("kind") != "PLANNING_ESTIMATE_ONLY"' in source
     assert '("day", "week", "month", "year")' in source
     assert 'def _is_finite_number(value: Any) -> bool:' in source
@@ -1575,7 +1612,7 @@ def test_streamlit_foreign_fiscal_inputs_match_api_limits():
     api_source = (PANEL_DIR.parent / "finance" / "fiscal_pending_queue.py").read_text(encoding="utf-8")
 
     assert 'max_value=1_000_000_000_000.0' in source
-    assert 'placeholder="ETF, ação, Forex, CFD, cripto", max_chars=80' in source
+    assert 'placeholder="Ex.: ação, ETF ou Forex no exterior; CFD, índice, futuro e cripto exigem revisão", max_chars=80' in source
     assert 'placeholder="EUA, Brasil, outro", max_chars=80' in source
     assert 'instrument_signed = st.text_input("Instrumento", max_chars=80)' in source
     assert 'jurisdiction_signed = st.text_input("Jurisdição", max_chars=80)' in source
@@ -2093,5 +2130,23 @@ def test_streamlit_fiscal_monthly_planning_validates_and_labels_the_annual_estim
     assert '"Lançamentos": item["entries"]' in source
     assert '"Resultado registrado": money(item["realized_result_brl"])' in source
     assert '"Reserva estimada": money(item["reserve_amount_brl"])' in source
-    assert "não compensa prejuízos e não desconta créditos de IRRF" in source
+    assert "não compensa prejuízos nem créditos de imposto pago no exterior" in source
     assert "Os valores não foram estimados nem substituídos por zeros." in source
+
+
+
+def test_streamlit_shows_foreign_annual_loss_scenario_separately_from_gross_reserve():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert 'summary.get("foreign_annual_scenario", {})' in source
+    assert "Reserva bruta registrada · exterior" in source
+    assert "Simulação anual após perdas declaradas" in source
+    assert "sem validar documentos" in source
+    assert "não representa imposto apurado" in source
+
+
+def test_streamlit_fiscal_overview_and_review_selector_match_foreign_taxonomy():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert "derivativos efetivamente classificados como tais" in source
+    assert "criptoativos localizados no exterior por instituição estrangeira" in source
+    assert '["FOREIGN_FINANCIAL_INVESTMENT", "FOREIGN_ENTITY_CONTROLLED", "FOREIGN_CRYPTO", "FOREIGN_DERIVATIVE"]' in source
+    assert "CFDs, índices e futuros sem contrato e enquadramento confirmados" in source
