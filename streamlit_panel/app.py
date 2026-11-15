@@ -60,7 +60,7 @@ st.markdown("""
 [data-testid="stHeader"] { background: transparent; }
 .block-container { width: 100%; max-width: none; padding: 1rem clamp(.75rem, 2vw, 1.5rem) 6rem; }
 .st-key-panel-toggle { position: relative; width: min(100%, 360px); max-width: 100%; margin: 2rem 0 1rem; }
-.st-key-panel-toggle .stButton > button { width: 64px; min-width: 64px; height: 64px; min-height: 64px; padding: 0; border-radius: 50%; background: #080B0F; color: #46D6AD; border: 1px solid #46D6AD; box-shadow: 0 0 10px #46D6AD33; font-weight: 800; font-size: 1.25rem; }
+.st-key-panel-toggle .stButton > button { width: 64px; min-width: 64px; height: 64px; min-height: 64px; padding: 0; border-radius: 50%; background: #080B0F; color: #38DDF5; border: 1px solid #38DDF5; box-shadow: 0 0 12px #38DDF544; font-weight: 800; font-size: 1.25rem; }
 .st-key-panel-toggle .closed-status { color: #7F8B97; font-size: 10px; font-weight: 800; letter-spacing: .06em; padding-left: 0; }
 .st-key-panel-toggle .closed-signal { max-width: 190px; font-size: 13px; line-height: 1.25; font-weight: 900; letter-spacing: .025em; white-space: nowrap; }
 .st-key-panel-toggle .closed-score { color: #E9EEF3; font-size: 11px; line-height: 1.2; font-weight: 700; white-space: nowrap; }
