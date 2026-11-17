@@ -60,10 +60,59 @@ inline MouseInput TranslateMouseMessage(UINT message, WPARAM wParam) noexcept {
     return result;
 }
 
+struct MouseCaptureState {
+    bool captured{};
+    std::uint8_t pressedButtons{};
+};
+
+// A press that starts inside the clipped panel keeps routing move/up events to
+// WebView2 until every pressed button is released, even when the pointer leaves
+// the visible clip. This prevents a drag from becoming stuck in the web content.
 inline bool ShouldForwardMouseInput(
-    const PhysicalLayout& layout, POINT hostClientPoint, UINT message) noexcept {
+    const PhysicalLayout& layout,
+    POINT hostClientPoint,
+    UINT message,
+    MouseCaptureState& capture) noexcept {
     const MouseInput input = TranslateMouseMessage(message, 0);
-    return input.supported && IsInsideClip(layout, hostClientPoint);
+    if (!input.supported) return false;
+
+    constexpr std::uint8_t left = 1;
+    constexpr std::uint8_t right = 2;
+    constexpr std::uint8_t middle = 4;
+    const bool inside = IsInsideClip(layout, hostClientPoint);
+
+    auto buttonBit = [](UINT msg) -> std::uint8_t {
+        switch (msg) {
+        case WM_LBUTTONDOWN: case WM_LBUTTONUP: return left;
+        case WM_RBUTTONDOWN: case WM_RBUTTONUP: return right;
+        case WM_MBUTTONDOWN: case WM_MBUTTONUP: return middle;
+        default: return 0;
+        }
+    };
+
+    const bool isDown = message == WM_LBUTTONDOWN ||
+        message == WM_RBUTTONDOWN || message == WM_MBUTTONDOWN;
+    const bool isUp = message == WM_LBUTTONUP ||
+        message == WM_RBUTTONUP || message == WM_MBUTTONUP;
+    const std::uint8_t bit = buttonBit(message);
+
+    if (isDown && (inside || capture.captured)) {
+        capture.pressedButtons = static_cast<std::uint8_t>(capture.pressedButtons | bit);
+        capture.captured = true;
+        return true;
+    }
+
+    if (isUp && capture.captured) {
+        const bool forward = (capture.pressedButtons & bit) != 0 || inside;
+        capture.pressedButtons = static_cast<std::uint8_t>(capture.pressedButtons & ~bit);
+        capture.captured = capture.pressedButtons != 0;
+        return forward;
+    }
+
+    if (capture.captured &&
+        (message == WM_MOUSEMOVE || message == WM_MOUSELEAVE)) return true;
+
+    return inside;
 }
 
 } // namespace controlador::host
