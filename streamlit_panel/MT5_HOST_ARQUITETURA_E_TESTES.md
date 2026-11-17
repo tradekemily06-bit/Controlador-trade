@@ -121,3 +121,15 @@ Portanto, o sample só valida que existe uma rota de composição nativa a inves
 ### Próxima etapa técnica obrigatória
 
 Criar um protótipo mínimo independente, usando versão estável atual do SDK WebView2 e sem trazer dependências antigas do sample sem revisão. Primeiro provar alfa real em janela de teste quadriculada; depois validar mouse, roda, teclado e foco; só então tentar ancorar no gráfico MT5. Se qualquer etapa falhar, não instalar nem encobrir o problema com janela opaca. Manter a aplicação Streamlit original como única interface.
+
+
+## Nota complementar: transparência do WebView2 (documentação atual)
+
+A API `ICoreWebView2Controller2::DefaultBackgroundColor` aceita fundo totalmente transparente (alfa 0) ou totalmente opaco (alfa 255); valores semitransparentes não são aceitos. Fundo transparente significa que o WebView não pinta seu fundo padrão. Isso **não torna transparentes os elementos da página**: se o HTML/CSS do Streamlit pintar um fundo opaco em toda a área, esse conteúdo continuará cobrindo o que está atrás. Além disso, a documentação do Windows Visual Layer alerta que conteúdo externo como WebView2 tem limitações de composição/transparência e não pode ser tratado como um visual comum.
+
+Consequência para o painel: ainda é necessário provar, com a página original sem alteração, se o layout real deixa áreas externas transparentes. Não se deve injetar CSS ou reescrever o Streamlit para forçar transparência, pois isso violaria o requisito de preservar o app original. O teste de aceitação precisa mostrar o gráfico através das áreas vazias do painel, além de confirmar cliques, roda, teclado, foco, DPI, redimensionamento e comportamento ao trocar/minimizar gráficos.
+
+Referências oficiais consultadas em 17/11/2026:
+- WebView2 `DefaultBackgroundColor`: https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2controller2?view=webview2-1.0.3912.50
+- Visão geral das APIs WebView2 e composição: https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/overview-features-apis
+- Limitações da Visual Layer com conteúdo externo: https://learn.microsoft.com/en-us/windows/apps/develop/composition/visual-layer
