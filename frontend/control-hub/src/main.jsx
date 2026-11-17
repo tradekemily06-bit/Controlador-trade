@@ -2,10 +2,8 @@ import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
-// Navigation and module order transcribed from the supplied app.py.
-// The four visual reference tabs remain represented by CABINE DE COMANDO,
-// ANÁLISE, ESTUDO and CENTRAL. The two additional ecosystem areas stay
-// independent, as they are in the supplied application source.
+// Navigation order and module labels follow the supplied Streamlit source.
+// The first and last labels use the user's approved names.
 const AREAS = {
   "CABINE DE COMANDO": [
     "Operação",
@@ -51,41 +49,16 @@ function ControlHub() {
     setModule(AREAS[nextArea][0]);
   }
 
+  const singleModuleArea =
+    area === "RESERVA FISCAL" || area === "ASSISTENTE DO ECOSSISTEMA";
+
   return (
     <main className="chart-surface" aria-label="Controlador Trading">
-      {!open ? (
-        <section className="closed-control" aria-label="Painel recolhido">
-          <button
-            className="closed-trigger"
-            type="button"
-            aria-label="Abrir painel Controlador-Trader"
-            aria-expanded="false"
-            onClick={() => setOpen(true)}
-          >
-            C
-          </button>
-          <div className="closed-readout" aria-live="polite">
-            <div className="closed-signal">INDISPONÍVEL</div>
-            <div className="closed-score">—</div>
-            <div className="closed-status">INDISPONÍVEL</div>
-          </div>
-        </section>
-      ) : (
+      {open && (
         <section className="control-hub" aria-label="Painel Controlador-Trader">
           <header className="hub-header">
             <div className="hub-title">Controlador-Trader</div>
-            <div className="hub-header-actions">
-              <span className="demo-pill">DEMO</span>
-              <button
-                className="collapse-trigger"
-                type="button"
-                aria-label="Recolher painel"
-                aria-expanded="true"
-                onClick={() => setOpen(false)}
-              >
-                C
-              </button>
-            </div>
+            <span className="demo-pill">DEMO</span>
           </header>
 
           <div className="open-signal-strip" aria-live="polite">
@@ -107,7 +80,7 @@ function ControlHub() {
             ))}
           </nav>
 
-          {area !== "RESERVA FISCAL" && area !== "ASSISTENTE DO ECOSSISTEMA" && (
+          {!singleModuleArea && (
             <div className="module-navigation" aria-label="Módulos">
               {AREAS[area].map((name) => (
                 <button
@@ -140,6 +113,23 @@ function ControlHub() {
           </footer>
         </section>
       )}
+
+      <section className="panel-toggle" aria-label={open ? "Painel aberto" : "Painel recolhido"}>
+        <button
+          className="closed-trigger"
+          type="button"
+          aria-label={open ? "Recolher painel" : "Abrir painel Controlador-Trader"}
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+        >
+          C
+        </button>
+        <div className="closed-readout" aria-live="polite">
+          <div className="closed-signal">INDISPONÍVEL</div>
+          <div className="closed-score">—</div>
+          <div className="closed-status">INDISPONÍVEL</div>
+        </div>
+      </section>
     </main>
   );
 }
