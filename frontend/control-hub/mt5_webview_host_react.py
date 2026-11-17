@@ -62,7 +62,7 @@ def wait_for_preview() -> None:
     raise SystemExit("A prévia React não iniciou em 127.0.0.1:4173.")
 
 
-def attach_to_mt5(window: webview.Window, mt5_hwnd: int) -> None:
+def attach_to_mt5(window, mt5_hwnd: int) -> None:
     time.sleep(1)
     handles: list[int] = []
 
@@ -138,6 +138,10 @@ def main() -> None:
     npm = shutil.which("npm.cmd") or shutil.which("npm")
     if not npm:
         raise SystemExit("Node.js/npm não encontrado. Instale Node.js LTS antes de iniciar.")
+
+    if not (BASE / "node_modules").is_dir():
+        print("Instalando dependências da prévia React...")
+        subprocess.run(["cmd", "/c", npm, "install"], cwd=str(BASE), check=True)
 
     mt5_hwnd = find_mt5_window()
     if not mt5_hwnd:
