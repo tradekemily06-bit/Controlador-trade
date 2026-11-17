@@ -489,3 +489,25 @@ Execução: https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/
 Artefato repetido: `webview2-streamlit-clipped-viewport-poc`, ID `14380226452`, 55.496 bytes, SHA-256 do ZIP `4bcd2bc17b307d905087404aa12824007752f650fabad16879eb7add6898b23f`.
 
 Isso confirma reprodutibilidade da compilação do sample em uma segunda execução, não transforma o sample em host final nem substitui a prova interativa visual/de entrada no MT5.
+
+## Auditoria do CSS original e consequência para o recorte — 17/11/2026
+
+Leitura somente, sem modificar o arquivo streamlit_panel/app.py (hash aprovado preservado):
+
+- .stApp define fundo opaco #080B0F e grade de fundo.
+- .st-key-panel-toggle define o C com fundo próprio.
+- .st-key-control-hub-shell define o painel com posição fixa inferior esquerda, left: 16px, bottom: 16px, largura máxima de 420px e altura máxima de 460px.
+
+**Consequência importante:** configurar DefaultBackgroundColor do WebView2 como alfa zero não torna o documento transparente: o CSS original pinta o fundo opaco de toda a aplicação. Portanto, não se deve exibir o WebView inteiro sobre o gráfico esperando que o MT5 apareça através do fundo da página.
+
+A arquitetura correta continua sendo recortar a composição ao retângulo real medido de .st-key-control-hub-shell quando expandido e ocultar o WebView quando recolhido. O C recolhido deve ser desenhado pelo host nativo e não pode depender do fundo do WebView. O retângulo de recorte precisa vir da mensagem de layout do DOM bridge; 420×460 é somente limite de bancada e não pode ser tratado como geometria final.
+
+A medição deve validar viewport, DPR e retângulo finito/positivo, converter CSS px para coordenadas físicas e rejeitar mensagens antigas ou incompatíveis. Se a medição falhar, ocultar a composição e manter apenas o C nativo; nunca ampliar o recorte para a janela inteira.
+
+### Estado da auditoria de entrada
+
+- A execução CI 44199256895 compilou com sucesso o mapeamento explícito de mensagens Win32 para COREWEBVIEW2_MOUSE_EVENT_KIND.
+- A execução CI 44199479008 compilou com sucesso a conversão das coordenadas de tela da roda para coordenadas client da janela.
+- Esses testes compilam a alteração temporária aplicada ao sample Microsoft; não validam ainda o encaminhamento no MT5, captura durante arraste, teclado/foco, nem geometria dinâmica baseada no DOM bridge.
+
+Referência oficial da API de composição: https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2compositioncontroller
