@@ -58,8 +58,8 @@ function ControlHub() {
           </header>
 
           <div className="open-signal-strip" aria-live="polite">
-            <span className="open-signal">INDISPONÍVEL</span>
-            <span className="open-score">—</span>
+            <span className="open-signal">AGUARDAR</span>
+            <span className="open-score">—%</span>
           </div>
 
           <nav className="area-navigation" aria-label="Áreas principais">
@@ -119,9 +119,8 @@ function ControlHub() {
           C
         </button>
         <div className="closed-readout" aria-live="polite">
-          <div className="closed-signal">INDISPONÍVEL</div>
-          <div className="closed-score">—</div>
-          <div className="closed-status">INDISPONÍVEL</div>
+          <div className="closed-signal">AGUARDAR</div>
+          <div className="closed-score">—%</div>
         </div>
       </section>
     </main>
