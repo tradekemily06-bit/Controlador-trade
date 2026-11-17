@@ -309,3 +309,30 @@ O patch não é aplicado ao repositório Microsoft, não é código de produçã
 **Limitações deliberadas deste teste:** o retângulo é fixo, não é medido dinamicamente do DOM; o sample ainda abre janela própria; não acompanha o gráfico MT5; não prova alpha/hit testing fora da janela; não implementa roda, teclado, foco, captura, DPI ou ciclo de vida. Portanto, mesmo que compile, é somente uma etapa de engenharia, não uma integração utilizável.
 
 Próximo passo após a compilação: substituir o retângulo fixo por medidas DOM dos elementos `.st-key-panel-toggle` e `.st-key-control-hub-shell`, receber atualizações após reruns e validar coordenadas e input. Nenhuma alteração visual/CSS no app original é permitida.
+
+
+## Resultado do protótipo de recorte fixo — 17/11/2026
+
+Execução CI: https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/44195935805
+Commit: `87b9c0bc69d09eb8e9091b6e49b85bcd14059f72`.
+
+Os três jobs terminaram com sucesso:
+- `verify-original-app`: hash SHA-256 aprovado do `streamlit_panel/app.py`.
+- `windows-streamlit-smoke`: dependências instaladas, módulos Python compilados e Streamlit respondeu `ok` em `127.0.0.1:8501`.
+- `webview2-composition-build`: sample Microsoft Win32/WebView2 Composition compilou em Windows x64 Release com SDK estável WebView2 `1.0.4314.35` e WIL `1.0.260126.7`, agora com clip fixo 420×460 no canto inferior esquerdo e hit-test de mouse limitado à mesma região.
+
+Artefato de bancada: `webview2-streamlit-clipped-viewport-poc`, ID `14378388959`, SHA-256 do ZIP `9e5d80d91cfbbf5c5c3910d8b16b05f7ca67dd3cb3e1d7d53920e56045cdb5d0`. É somente o sample oficial modificado temporariamente no runner CI; não é host final nem instalador.
+
+### O que este resultado prova — e o que não prova
+
+Prova que a alteração de recorte fixo compila com a Composition Controller estável e que o Streamlit original inicia no runner Windows. Não prova que o retângulo realmente fica transparente sobre o MT5, que o C não congela, nem que os eventos de mouse, roda, teclado, foco, captura, resize e DPI funcionam em uso real. O teste de hit-test é apenas a implementação básica de mouse do protótipo e precisa ser ampliado.
+
+### Próxima implementação isolada
+
+1. Separar o botão C recolhido em uma camada de controle nativa independente do viewport/fundo do Streamlit.
+2. Fazer o C nativo e o estado de expansão da página Streamlit compartilharem um único estado abrir/fechar por mensagem explícita; evitar que o C dependa de uma superfície opaca ou de um retângulo cobrindo o gráfico.
+3. Substituir o clip fixo por retângulos DOM lidos dos elementos originais `.st-key-panel-toggle` e `.st-key-control-hub-shell`, com atualização após reruns e mudanças de estado.
+4. Implementar ciclo completo de entrada e vida da janela: mouse, roda, teclado, foco, captura, cursor, resize e DPI. Fora das regiões clicáveis, o MT5 deve continuar recebendo os eventos.
+5. Testar primeiro em janela quadriculada interativa; só então testar ancoragem e interação no gráfico MT5 em DEMO/SIMULAÇÃO.
+
+A separação do C é uma arquitetura a implementar, não uma função já entregue. Não alterar `app.py`, CSS, EA/MQL5, runtime/API, banco, regras fiscais, Assistente, autenticação ou proteções. Nenhuma instalação local, merge, deploy ou ordem foi realizada.
