@@ -271,6 +271,18 @@ jobs:
         shell: pwsh
         run: |
           nuget restore "webview2-samples/SampleApps/WebView2SampleWinComp/WebView2SampleWinComp.sln" -PackagesDirectory "webview2-samples/SampleApps/packages"
+      - name: Build standalone Controlador Win32 WebView2 bench host
+        shell: pwsh
+        run: |
+          $sdk = "webview2-samples/SampleApps/packages/Microsoft.Web.WebView2.1.0.4314.35/build/native"
+          $include = Join-Path $sdk "include"
+          $library = Join-Path $sdk "x64"
+          $output = "bench-host-output"
+          New-Item -ItemType Directory -Force -Path $output | Out-Null
+          cl /nologo /std:c++17 /EHsc /W4 /DUNICODE /D_UNICODE /I $include controlador-trade/streamlit_panel/mt5_host/bench_host.cpp /Fe:"$output/ControladorTradingBenchHost.exe" /link /SUBSYSTEM:WINDOWS /LIBPATH:$library WebView2LoaderStatic.lib dcomp.lib ole32.lib user32.lib
+          if ($LASTEXITCODE -ne 0) { throw "Standalone Win32/WebView2 bench host failed to compile or link." }
+          Copy-Item "controlador-trade/streamlit_panel/mt5_host/dom_bridge.js" "$output/dom_bridge.js"
+          Write-Host "Standalone bench host executable and DOM bridge packaged together."
       - name: Compile and run native WebView2 mouse input contract
         shell: pwsh
         run: |
@@ -291,6 +303,12 @@ jobs:
         shell: pwsh
         run: |
           msbuild "webview2-samples/SampleApps/WebView2SampleWinComp/WebView2SampleWinComp.sln" /m /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0
+      - name: Upload standalone Controlador Win32 bench host
+        uses: actions/upload-artifact@v4
+        with:
+          name: controlador-win32-webview2-bench-host
+          path: bench-host-output/*
+          if-no-files-found: error
       - name: Upload isolated composition prototype
         uses: actions/upload-artifact@v4
         with:
