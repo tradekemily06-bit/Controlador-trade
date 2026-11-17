@@ -1,4 +1,5 @@
 #define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
 #include <windows.h>
 #include <windowsx.h>
 #include <dcomp.h>
@@ -210,7 +211,7 @@ void InitializeWebView() {
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
-    case WM_CREATE:
+    case WM_CREATE: {
         g.window = hwnd;
         RECT client{};
         GetClientRect(hwnd, &client);
@@ -219,13 +220,14 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
             hwnd, reinterpret_cast<HMENU>(1001), GetModuleHandleW(nullptr), nullptr);
         InitializeWebView();
         return 0;
+    }
     case WM_COMMAND:
         if (LOWORD(wParam) == 1001 && g.webview) {
             g.webview->PostWebMessageAsJson(L"{\"type\":\"controlador.toggle\"}");
             return 0;
         }
         break;
-    case WM_SIZE:
+    case WM_SIZE: {
         if (g.controller) {
             HideWebView();
             RECT bounds{};
@@ -239,6 +241,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
                 kToggleSize, kToggleSize, SWP_NOZORDER | SWP_NOACTIVATE);
         }
         return 0;
+    }
     case WM_DPICHANGED:
         if (g.controller) {
             HideWebView();
