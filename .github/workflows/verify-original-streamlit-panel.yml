@@ -271,6 +271,14 @@ jobs:
         shell: pwsh
         run: |
           nuget restore "webview2-samples/SampleApps/WebView2SampleWinComp/WebView2SampleWinComp.sln" -PackagesDirectory "webview2-samples/SampleApps/packages"
+      - name: Compile and run native WebView2 mouse input contract
+        shell: pwsh
+        run: |
+          $include = "webview2-samples/SampleApps/packages/Microsoft.Web.WebView2.1.0.4314.35/build/native/include"
+          cl /nologo /std:c++17 /EHsc /W4 /WX /I $include controlador-trade/streamlit_panel/mt5_host/native_input_contract.test.cpp /Fe:native_input_contract.test.exe
+          if ($LASTEXITCODE -ne 0) { throw "Native WebView2 input contract did not compile." }
+          .\\native_input_contract.test.exe
+          if ($LASTEXITCODE -ne 0) { throw "Native WebView2 input contract tests failed." }
       - name: Build isolated WebView2 Composition proof of concept
         shell: pwsh
         run: |
