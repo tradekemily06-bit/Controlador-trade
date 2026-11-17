@@ -11,6 +11,7 @@
 
   let scheduled = false;
   let lastPayload = "";
+  let sequence = 0;
 
   const rectOf = (element) => {
     if (!element) return null;
@@ -42,17 +43,29 @@
       collapsedRoot.querySelector('[data-testid="stButton"] button, button');
     const expandedRoot = document.querySelector(".st-key-control-hub-shell");
     const expanded = isVisible(expandedRoot);
+    const viewportWidth = document.documentElement.clientWidth;
+    const viewportHeight = document.documentElement.clientHeight;
+    const devicePixelRatio = window.devicePixelRatio || 1;
+    const expandedShell = expanded ? rectOf(expandedRoot) : null;
+
+    // Keep the native contract flat and explicit. The nested viewport/state
+    // fields remain for bridge consumers and diagnostics.
     const payload = {
       type: "controlador.panel.layout",
       version: 1,
+      sequence: ++sequence,
+      expanded,
+      viewportWidth,
+      viewportHeight,
+      devicePixelRatio,
       state: expanded ? "expanded" : "collapsed",
       viewport: {
-        width: document.documentElement.clientWidth,
-        height: document.documentElement.clientHeight,
-        dpr: window.devicePixelRatio || 1
+        width: viewportWidth,
+        height: viewportHeight,
+        dpr: devicePixelRatio
       },
       collapsedButton: rectOf(collapsedButton),
-      expandedShell: expanded ? rectOf(expandedRoot) : null
+      expandedShell
     };
     const serialized = JSON.stringify(payload);
     if (serialized !== lastPayload) {
