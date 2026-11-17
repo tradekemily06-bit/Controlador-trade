@@ -43,10 +43,10 @@ jobs:
         shell: pwsh
         run: |
           $expected = "DCB0AF794CD28F4E6AE1B023095DC15FCB39EAA4CF393682E2DD0CB86F2960F7"
-          $actual = (Get-FileHash "streamlit_panel/app.py" -Algorithm SHA256).Hash
-          Write-Host "Expected: $expected"
-          Write-Host "Actual:   $actual"
-          if ($actual -ne $expected) { throw "The original approved app.py hash does not match." }
+          $actual = (python -c "import hashlib,pathlib; p=pathlib.Path('streamlit_panel/app.py'); b=p.read_bytes().replace(bytes([13,10]),bytes([10])); print(hashlib.sha256(b).hexdigest().upper())").Trim()
+          Write-Host "Expected (LF-normalized): $expected"
+          Write-Host "Actual (LF-normalized):   $actual"
+          if ($actual -ne $expected) { throw "The original approved app.py content does not match after Windows line-ending normalization." }
       - name: Install original Streamlit requirements
         shell: pwsh
         run: |
