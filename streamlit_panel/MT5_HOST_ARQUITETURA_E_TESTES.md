@@ -251,3 +251,23 @@ Artefato de bancada: `webview2-composition-streamlit-poc`, 58.164 bytes; SHA-256
 Este resultado confirma compilação do exemplo e inicialização do Streamlit em runner Windows. Não confirma transparência alfa sobre o gráfico, encaminhamento completo de mouse/roda/teclado/foco, ancoragem ao gráfico, comportamento do C recolhido/expandido ou preservação dos cliques BUY/SELL.
 
 O próximo teste válido exige Windows interativo com WebView2 Runtime e MetaTrader 5: primeiro janela quadriculada para provar alfa e eventos; depois gráfico MT5 em DEMO/SIMULAÇÃO. Até esses testes existirem, não criar instalador, não instalar, não alterar EA/MQL5, runtime, banco, regras fiscais, Assistente, autenticação ou o `app.py` original. REAL continua bloqueado e nenhuma ordem foi enviada.
+
+
+## Resultado confirmado da execução CI 44187162958 — 17/11/2026
+
+Execução: https://github.com/tradekemilly06-bit/Controlador-trade/actions/runs/44187162958
+
+Commit testado: `de4be4dcb88839c1469cee2df454b34a44772eb4`.
+
+Resultado: **success** nos três jobs:
+- `verify-original-app`: hash do arquivo original aprovado confirmado.
+- `windows-streamlit-smoke`: dependências instaladas, compilação Python aprovada e Streamlit iniciou em `127.0.0.1:8501`; o endpoint `/_stcore/health` respondeu `ok`.
+- `webview2-composition-build`: o exemplo oficial Microsoft Win32/WebView2 Composition, fixado no commit `06d49d546ba5dc0e2773798ee5b982f68275af4c`, compilou em Release x64 com WebView2 SDK estável `1.0.4314.35` e WIL `1.0.260126.7`.
+
+Artefato gerado: `webview2-composition-streamlit-poc`, ID `14374937169`, SHA-256 `782b057ea9cf1b183cae4306dea0258dcfc73d5a69eea7641af8a44067112ef4`. Disponível até 15/02/2027. Link da execução acima, seção Artifacts.
+
+**Escopo exato desta aprovação:** o artefato é o exemplo Microsoft adaptado apenas dentro do runner temporário do CI para navegar até o Streamlit local. Ele cria uma janela Win32 própria. Não é o host final, não está ancorado no gráfico MT5 e não prova transparência alfa real, foco, roda, teclado, captura de mouse ou ausência de bloqueio dos botões BUY/SELL.
+
+O workflow e os arquivos de documentação foram os únicos itens alterados nesta etapa de CI; `streamlit_panel/app.py` não foi modificado. Não houve alteração do EA/MQL5, runtime/API, banco, regras fiscais, Assistente, identidade ou proteções. Nenhuma instalação, merge, deploy ou ordem foi realizada.
+
+**Próxima etapa:** construir um host Win32 independente e específico para o painel, sem copiar a interface e sem alterar o Streamlit; primeiro demonstrar transparência e entrada em janela de teste, depois estudar ancoragem ao gráfico MT5. Os testes visuais e de interação precisam ocorrer em Windows com MT5 real e não podem ser substituídos por CI headless.
