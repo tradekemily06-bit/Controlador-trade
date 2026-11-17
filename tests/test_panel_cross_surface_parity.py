@@ -15,7 +15,7 @@ def test_streamlit_and_native_mt5_share_the_six_area_and_module_contract():
     native = EA_PATH.read_text(encoding="utf-8")
 
     expected_areas = [
-        "COCKPIT",
+        "CABINE DE COMANDO",
         "ANÁLISE",
         "ESTUDO",
         "RESERVA FISCAL",
@@ -40,7 +40,8 @@ def test_streamlit_and_native_mt5_share_the_six_area_and_module_contract():
     assert 'market_status = api("/api/market/status")' in streamlit
     assert 'Integridade dos dados de mercado' in streamlit
     area_definition = streamlit.split("AREAS = {", 1)[1].split('if "panel_open"', 1)[0]
-    assert 'for name in ("COCKPIT", "ANÁLISE", "ESTUDO")' in area_definition
+    assert '"CABINE DE COMANDO": "COCKPIT"' in streamlit
+    assert 'for label, source_name in AREA_SOURCE_NAMES.items()' in area_definition
     assert expected_areas[-1] == "CENTRAL"
 
     native_labels = 'string area_labels[6]={"COCKPIT","ANÁLISE","ESTUDO","FISCAL","ASSIST.","CENTRAL"};'
