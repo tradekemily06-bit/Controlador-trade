@@ -369,14 +369,14 @@ def test_streamlit_layout_uses_full_width_and_wraps_responsively():
 
 
 
-def test_streamlit_uses_non_overlapping_c_toggle_in_open_and_closed_states():
+def test_streamlit_uses_original_fixed_c_toggle_in_open_and_closed_states():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert 'st.container(key="panel-toggle")' in source
     assert 'st.button("C", key="open_control_hub", help="Abrir painel")' in source
-    assert 'st.button("Fechar painel", key="close_control_hub")' in source
-    assert ".st-key-panel-toggle { position: relative;" in source
+    assert 'st.button("C", key="close_control_hub", help="Recolher painel")' in source
+    assert ".st-key-panel-toggle { position: fixed; left: 18px; bottom: 14px;" in source
+    assert "width: 48px; min-width: 48px; height: 48px; min-height: 48px;" in source
     assert ".st-key-control-hub-shell" in source
-    assert "position: fixed;" not in source[source.index(".st-key-panel-toggle {"):source.index("*, *::before")]
     assert 'key="main_area_navigation"' in source
     assert 'key="module_navigation"' in source
 
@@ -451,7 +451,7 @@ def test_streamlit_open_and_closed_panel_share_the_latest_signal_and_score():
     assert "closed_panel_signal(latest_analysis)" in helper
     assert "closed-signal" in helper and "closed-score" in helper
     assert "open-signal" in helper and "open-score" in helper
-    assert "position: fixed;" not in source[source.index(".st-key-panel-toggle {"):source.index("*, *::before")]
+    assert "position: fixed;" in source[source.index(".st-key-panel-toggle {"):source.index("*, *::before")]
 
 def test_streamlit_does_not_fill_unimplemented_modules_with_placeholder_copy():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
