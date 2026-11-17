@@ -198,14 +198,35 @@ jobs:
               const LONG height = m_appBounds.bottom - m_appBounds.top;
               const LONG top = height > 460 ? height - 460 : 0;
               const LONG right = width > 420 ? 420 : width;
-              // Mirror the visible clip for hit testing: outside clicks are not sent to WebView2.
+              // Mirror the visible clip for hit testing: outside events are not sent to WebView2.
               if (point.x < 0 || point.x >= right || point.y < top || point.y >= height) return;
+              COREWEBVIEW2_MOUSE_EVENT_KIND kind;
+              UINT32 mouseData = 0;
+              switch (message)
+              {
+              case WM_MOUSEMOVE: kind = COREWEBVIEW2_MOUSE_EVENT_KIND_MOVE; break;
+              case WM_LBUTTONDOWN: kind = COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_DOWN; break;
+              case WM_LBUTTONUP: kind = COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_UP; break;
+              case WM_RBUTTONDOWN: kind = COREWEBVIEW2_MOUSE_EVENT_KIND_RIGHT_BUTTON_DOWN; break;
+              case WM_RBUTTONUP: kind = COREWEBVIEW2_MOUSE_EVENT_KIND_RIGHT_BUTTON_UP; break;
+              case WM_MBUTTONDOWN: kind = COREWEBVIEW2_MOUSE_EVENT_KIND_MIDDLE_BUTTON_DOWN; break;
+              case WM_MBUTTONUP: kind = COREWEBVIEW2_MOUSE_EVENT_KIND_MIDDLE_BUTTON_UP; break;
+              case WM_MOUSEWHEEL:
+                  kind = COREWEBVIEW2_MOUSE_EVENT_KIND_WHEEL;
+                  mouseData = static_cast<UINT32>(GET_WHEEL_DELTA_WPARAM(wParam));
+                  break;
+              case WM_MOUSEHWHEEL:
+                  kind = COREWEBVIEW2_MOUSE_EVENT_KIND_HORIZONTAL_WHEEL;
+                  mouseData = static_cast<UINT32>(GET_WHEEL_DELTA_WPARAM(wParam));
+                  break;
+              default: return;
+              }
               if (m_webViewVisual && m_compositionController)
               {
                   CHECK_FAILURE(m_compositionController->SendMouseInput(
-                      static_cast<COREWEBVIEW2_MOUSE_EVENT_KIND>(message),
+                      kind,
                       static_cast<COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS>(GET_KEYSTATE_WPARAM(wParam)),
-                      0, point));
+                      mouseData, point));
               }
           }
           '@
