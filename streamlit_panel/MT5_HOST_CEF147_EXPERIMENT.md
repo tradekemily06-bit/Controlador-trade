@@ -87,3 +87,20 @@ Referências técnicas:
 - Microsoft WebView2 composition/input: https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/overview-features-apis
 
 Decisão provisória: não aprovar o host diagnóstico antigo. Avaliar primeiro se a Composition Controller do WebView2 resolve o overlay com alpha e input forwarding; manter CEF off-screen como alternativa comparativa. Não instalar dependências nem alterar o host do usuário nesta etapa.
+
+
+## Estado consolidado após restauração do original — 17/11/2026
+
+A anotação histórica de bloqueio acima foi superada pela recuperação do ZIP descrita nesta página e pela restauração efetiva do arquivo na branch experimental.
+
+- `streamlit_panel/app.py` está presente na branch com o blob Git `b28e4e07130a727b231f3e29be542464e534a996`.
+- O arquivo-fonte recuperado foi conferido byte a byte contra o SHA-256 aprovado `DCB0AF794CD28F4E6AE1B023095DC15FCB39EAA4CF393682E2DD0CB86F2960F7`.
+- Commit que restaurou o arquivo: `e48bdf03fe12a161f13f7aace9ccd9f867828c24`.
+- O commit posterior atualiza apenas a documentação técnica; não modifica a aplicação original.
+- O supervisor do projeto usa a porta local 8501, que será a origem do host.
+- A branch continua experimental. Não há host executável, build Windows, teste de transparência/input no MT5 ou aprovação de instalação.
+- A execução CI específica do commit de restauração ainda não foi confirmada; status vazio não equivale a aprovação.
+
+Não reutilizar o host antigo de diagnóstico. A próxima implementação é uma prova de conceito nativa Win32/C++ isolada, baseada no exemplo oficial Microsoft WebView2SampleWinComp, e precisa demonstrar transparência alfa real e input forwarding antes de ser ligada ao gráfico MT5.
+
+Referência oficial: https://learn.microsoft.com/en-us/microsoft-edge/webview2/samples/webview2samplewincomp
