@@ -2,16 +2,17 @@ import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
-// Preserve the four original navigation groups from the supplied reference.
-// Reserva Fiscal and Assistente do Ecossistema are accessible inside MAIS / ADMIN
-// without adding new top-level tabs or changing the four-group structure.
+// Navigation and module order transcribed from the supplied app.py.
+// The four visual reference tabs remain represented by CABINE DE COMANDO,
+// ANÁLISE, ESTUDO and CENTRAL. The two additional ecosystem areas stay
+// independent, as they are in the supplied application source.
 const AREAS = {
-  "COCKPIT": [
+  "CABINE DE COMANDO": [
     "Operação",
     "Motor de Decisão",
     "Gestão de Risco",
     "Notificações",
-    "MT5 DEMO / Simulação",
+    "Ambiente MT5 DEMO",
     "Kill Switch",
   ],
   "ANÁLISE": [
@@ -28,10 +29,10 @@ const AREAS = {
     "Descobertas",
     "Escola / Tutorial / Onboarding",
   ],
-  "MAIS / ADMIN": [
+  "RESERVA FISCAL": ["Reserva Fiscal"],
+  "ASSISTENTE DO ECOSSISTEMA": ["Assistente do Ecossistema"],
+  "CENTRAL": [
     "Financeiro",
-    "Reserva Fiscal",
-    "Assistente do Ecossistema",
     "Configurações",
     "Auditoria",
     "Segurança",
@@ -42,8 +43,8 @@ const AREAS = {
 
 function ControlHub() {
   const [open, setOpen] = useState(false);
-  const [area, setArea] = useState("COCKPIT");
-  const [module, setModule] = useState(AREAS.COCKPIT[0]);
+  const [area, setArea] = useState("CABINE DE COMANDO");
+  const [module, setModule] = useState(AREAS["CABINE DE COMANDO"][0]);
 
   function selectArea(nextArea) {
     setArea(nextArea);
@@ -106,20 +107,22 @@ function ControlHub() {
             ))}
           </nav>
 
-          <div className="module-navigation" aria-label="Módulos">
-            {AREAS[area].map((name) => (
-              <button
-                type="button"
-                key={name}
-                className={module === name ? "module-row selected" : "module-row"}
-                aria-pressed={module === name}
-                onClick={() => setModule(name)}
-              >
-                <span>{name}</span>
-                <span className="chevron" aria-hidden="true">›</span>
-              </button>
-            ))}
-          </div>
+          {area !== "RESERVA FISCAL" && area !== "ASSISTENTE DO ECOSSISTEMA" && (
+            <div className="module-navigation" aria-label="Módulos">
+              {AREAS[area].map((name) => (
+                <button
+                  type="button"
+                  key={name}
+                  className={module === name ? "module-row selected" : "module-row"}
+                  aria-pressed={module === name}
+                  onClick={() => setModule(name)}
+                >
+                  <span>{name}</span>
+                  <span className="chevron" aria-hidden="true">›</span>
+                </button>
+              ))}
+            </div>
+          )}
 
           <footer className="hub-footer">
             <div className="footer-row">
