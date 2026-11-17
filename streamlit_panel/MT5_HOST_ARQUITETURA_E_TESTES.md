@@ -58,3 +58,40 @@ H. Comparar capturas do Streamlit original e do painel no MT5 em mesmo tamanho/D
 - pywebview changelog: https://pywebview.flowrl.com/changelog
 - CEF Python PR para CEF 147: https://github.com/cztomczak/cefpython/pull/691
 - PyPI cefpython3: https://pypi.org/project/cefpython3/
+
+
+## Atualização de integração — 17/11/2026
+
+### Estado confirmado no repositório
+
+- O arquivo `streamlit_panel/app.py` já foi restaurado nesta branch a partir do arquivo original aprovado.
+- SHA-256 esperado e validado no arquivo-fonte recuperado: `DCB0AF794CD28F4E6AE1B023095DC15FCB39EAA4CF393682E2DD0CB86F2960F7`.
+- Blob Git do arquivo restaurado: `b28e4e07130a727b231f3e29be542464e534a996`.
+- Commit de restauração: `e48bdf03fe12a161f13f7aace9ccd9f867828c24`.
+- O supervisor atual mantém o Streamlit em `127.0.0.1:8501`; o host deverá carregar exatamente essa origem. O runtime continua separado em `127.0.0.1:8000`.
+- A restauração alterou somente `streamlit_panel/app.py` em relação ao commit anterior da branch. Não houve alteração no EA, runtime, banco, autenticação ou regras fiscais.
+- O status de CI para o novo commit ainda não foi confirmado por uma execução consultável. O status combinado do commit não apresentou verificações; isso não deve ser interpretado como CI aprovado.
+
+### Refinamento da decisão WebView2
+
+A documentação Microsoft confirma que o Composition Controller é a API para composição visual e que o host precisa encaminhar eventos de entrada espacial, incluindo mouse, toque e caneta. Também existe um exemplo oficial Win32/C++ de visual composition, que requer Visual Studio com suporte C++ e SDK Windows compatível.
+
+Importante: a existência de Composition Controller **não comprova por si só** que o conteúdo web ficará realmente transparente sobre o gráfico MT5. A documentação de composição também descreve limitações para conteúdo externo/transparência em determinados modelos de composição. Portanto, transparência alfa sobre o gráfico permanece um teste eliminatório, não uma capacidade presumida.
+
+### Próximo trabalho de engenharia
+
+1. Criar uma prova de conceito Win32/C++ isolada, baseada no exemplo oficial Microsoft WebView2SampleWinComp, sem incorporar código no EA.
+2. Carregar somente `http://127.0.0.1:8501`; validar WebSocket, navegação e controles reais do Streamlit.
+3. Medir composição alfa sobre uma janela de teste e, separadamente, sobre uma janela de gráfico MT5. Se a transparência real falhar, não mascarar o problema com uma janela opaca.
+4. Implementar e medir encaminhamento de mouse, roda, teclado e foco; a área fora do painel deve continuar pertencendo ao gráfico.
+5. Só depois da prova de conceito independente, testar ancoragem ao gráfico MT5, posição inferior esquerda, estados C recolhido/expandido, DPI e resize.
+6. Fazer regressão funcional dos seis espaços do painel, inclusive Reserva Fiscal, Assistente do Ecossistema e CENTRAL/Financeiro.
+7. Manter DEMO/SIMULAÇÃO, REAL bloqueado e nenhuma ordem enviada durante todos os testes.
+
+### Limite de validação atual
+
+Este ambiente permite atualizar e auditar o repositório, mas não executa Visual Studio, WebView2 Runtime, Windows ou MetaTrader 5. Assim, ainda não há executável host compilado, prova de transparência, captura do painel no MT5 ou teste de clique no terminal real. Não declarar instalação concluída nem criar um instalador antes dessas evidências.
+
+Referências oficiais:
+- WebView2 APIs e composição: https://learn.microsoft.com/pt-br/microsoft-edge/webview2/concepts/overview-features-apis
+- Exemplo oficial Win32 com Visual Composition: https://learn.microsoft.com/en-us/microsoft-edge/webview2/samples/webview2samplewincomp
