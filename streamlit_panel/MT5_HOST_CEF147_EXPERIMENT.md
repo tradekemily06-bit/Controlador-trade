@@ -73,3 +73,17 @@ Esse host não deve ser executado nem ter seu hash simplesmente trocado. O diagn
 Preparar uma camada hospedeira separada que aponte para `127.0.0.1:8501`, sem injetar CSS que altere o layout original, sem editar `streamlit_panel/app.py`, sem substituir a interface e sem tocar no EA/runtime. A camada deve validar dinamicamente a saúde do Streamlit e a janela correta do MT5, encaminhar mouse/teclado, respeitar o retângulo real do painel e preservar o gráfico e os controles BUY/SELL. A escolha CEF/WebView2 permanece experimental até comprovar transparência, eventos de clique, DPI, redimensionamento e estabilidade no Windows/MT5 real.
 
 Nenhuma instalação local, compilação do EA, ordem, merge ou deploy foi realizada nesta etapa.
+
+
+### Evidência adicional sobre transparência e eventos de entrada
+
+A documentação atual do pywebview informa que a opção `transparent` não é suportada no Windows. O changelog do próprio projeto também registra que, no backend EdgeChromium transparente, mouse e teclado não são suportados. Isso torna a combinação atual de janela WebView2 transparente + reparenting uma hipótese fraca para um painel clicável; não é correto tratar transparência como comprovada.
+
+A documentação oficial Microsoft descreve uma alternativa de baixo nível: `CoreWebView2CompositionController`, que permite composição visual e exige encaminhamento explícito de entrada espacial (mouse/toque/caneta) pelo aplicativo hospedeiro. É tecnicamente possível investigar essa rota sem mudar o app.py, mas é uma implementação nativa mais complexa e ainda precisa ser testada com a janela/gráfico do MT5.
+
+Referências técnicas:
+- pywebview API: https://pywebview.idepy.com/en/guide/api
+- pywebview changelog: https://pywebview.flowrl.com/changelog
+- Microsoft WebView2 composition/input: https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/overview-features-apis
+
+Decisão provisória: não aprovar o host diagnóstico antigo. Avaliar primeiro se a Composition Controller do WebView2 resolve o overlay com alpha e input forwarding; manter CEF off-screen como alternativa comparativa. Não instalar dependências nem alterar o host do usuário nesta etapa.
