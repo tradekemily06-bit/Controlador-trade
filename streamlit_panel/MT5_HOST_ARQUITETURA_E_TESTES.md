@@ -221,3 +221,14 @@ A documentação oficial da Microsoft confirma que pacotes Release contêm somen
 **Implicação importante:** um build bem-sucedido com SDK Prerelease ainda não prova que a API funciona no WebView2 Runtime estável instalado no computador do usuário. A documentação Microsoft recomenda canal Edge Preview para APIs experimentais. Portanto, esse caminho é apenas investigação de protótipo; não será usado como dependência de produção sem promoção da API para Release ou uma alternativa baseada somente em APIs estáveis.
 
 Referência oficial: https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/versioning
+
+
+## Revisão da hipótese sobre o cabeçalho experimental — 17/11/2026
+
+A inspeção do código-fonte confirmou que o sample inclui `WebView2.h` no cabeçalho pré-compilado e usa os tipos `ICoreWebView2CompositionController` e `ICoreWebView2Environment3`, que a referência Win32 da Microsoft documenta como APIs estáveis desde WebView2 1.0.774.44. O include extra `WebView2Experimental.h` é legado do sample fixado, não prova por si só que a composição exija runtime Preview.
+
+Para evitar depender de API experimental sem necessidade, o workflow foi ajustado novamente: usa Release SDK `1.0.4314.35`, WIL `1.0.260126.7` e remove somente, no checkout temporário do sample, o include legado `WebView2Experimental.h`. A compilação agora vai confirmar se as declarações estáveis de `WebView2.h` bastam. Não foi feita alteração no código oficial do sample no repositório Microsoft nem no app aprovado.
+
+Esta revisão substitui a tentativa intermediária com SDK Prerelease como caminho de teste. O resultado de compilação do novo workflow ainda é necessário; se falhar por símbolos realmente ausentes, será reavaliada a versão/API com base no erro exato.
+
+Referências: https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2compositioncontroller e https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2environment3
