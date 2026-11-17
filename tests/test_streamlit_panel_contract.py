@@ -439,7 +439,7 @@ def test_streamlit_open_and_closed_panel_share_the_latest_signal_and_score():
     closed_end = source.index("st.stop()", closed_start)
     closed = source[closed_start:closed_end]
     open_start = source.index('with st.container(key="control-hub-shell"):')
-    open_end = source.index('if st.button("Fechar painel"', open_start)
+    open_end = source.index('with st.container(key="panel-toggle"):', open_start)
     opened = source[open_start:open_end]
     helper_start = source.index("def render_latest_signal(")
     helper_end = source.index("# Keep the supplied Figma reference JSON untouched", helper_start)
