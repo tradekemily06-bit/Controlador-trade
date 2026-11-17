@@ -480,3 +480,12 @@ Artefato: `webview2-streamlit-clipped-viewport-poc`, ID `14379472889`, 55.492 by
 **Interpretação correta:** é uma prova de compilação do sample temporário Microsoft, não do host próprio Controlador Trading. A compilação não prova que o retângulo recortado corresponde ao shell dinâmico em runtime, que o padrão de fundo fica visível fora dele, que a entrada completa funciona ou que a janela se ancora ao MT5. Nenhum executável foi instalado no computador do usuário.
 
 A execução seguinte `44197911247` já aprovou integridade/contrato e o smoke test Windows; no último acompanhamento, o job de build WebView2 ainda estava em execução. A branch continua experimental.
+
+
+### Segunda execução integral de CI — 17/11/2026
+
+Execução: https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/44197911247 — **3/3 jobs concluídos com sucesso**: integridade/contrato, Streamlit Windows e compilação do sample WebView2 Composition.
+
+Artefato repetido: `webview2-streamlit-clipped-viewport-poc`, ID `14380226452`, 55.496 bytes, SHA-256 do ZIP `4bcd2bc17b307d905087404aa12824007752f650fabad16879eb7add6898b23f`.
+
+Isso confirma reprodutibilidade da compilação do sample em uma segunda execução, não transforma o sample em host final nem substitui a prova interativa visual/de entrada no MT5.
