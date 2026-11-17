@@ -104,3 +104,26 @@ A anotação histórica de bloqueio acima foi superada pela recuperação do ZIP
 Não reutilizar o host antigo de diagnóstico. A próxima implementação é uma prova de conceito nativa Win32/C++ isolada, baseada no exemplo oficial Microsoft WebView2SampleWinComp, e precisa demonstrar transparência alfa real e input forwarding antes de ser ligada ao gráfico MT5.
 
 Referência oficial: https://learn.microsoft.com/en-us/microsoft-edge/webview2/samples/webview2samplewincomp
+
+
+## Auditoria do exemplo oficial WinComp — 17/11/2026 (revisão)
+
+O exemplo oficial foi inspecionado diretamente no repositório MicrosoftEdge/WebView2Samples, commit `06d49d546ba5dc0e2773798ee5b982f68275af4c`. Arquivos examinados: `README.md`, `AppWindow.cpp`, `AppWindow.h`, `CompositionHost.cpp`, `CompositionHost.h`, `pch.h` e `.vcxproj`.
+
+**O exemplo NÃO é uma integração pronta para este painel.** Ele demonstra composição Win32 e instancia `ICoreWebView2CompositionController`, mas:
+
+- carrega uma página HTML local de demonstração, não o Streamlit;
+- cria visuais coloridos opacos como demonstração; não demonstra transparência alfa do conteúdo web sobre outra janela;
+- encaminha eventos de mouse básicos, mas não implementa aqui o conjunto completo necessário (roda, teclado, foco/captura e PointerInput);
+- posiciona o WebView em uma janela Win32 própria, não ancora o conteúdo à área do gráfico MT5;
+- usa dependências NuGet antigas, incluindo WebView2 `1.0.1056-prerelease` e WIL `1.0.200902.2`, que não devem ser copiadas para uma build de produção sem atualização e auditoria.
+
+Logo, o sample confirma a API de composição e serve como referência de código, mas NÃO resolve os requisitos de overlay, transparência e interação. Não copiar o projeto inteiro como host final e não afirmar compatibilidade MT5.
+
+### Próxima prova eliminatória
+
+Antes de integrar ao terminal, desenvolver um protótipo Win32 mínimo e isolado com SDK WebView2 estável atual, URL configurável com padrão `http://127.0.0.1:8501`, fundo alfa verificável e encaminhamento de mouse/roda/teclado/foco. O teste deve usar uma janela de fundo com padrão quadriculado e capturas para provar transparência; em seguida, testar a janela de gráfico MT5. Se alfa real ou entrada correta falhar, interromper essa rota e comparar CEF off-screen. O Streamlit original, EA, runtime e regras permanecem intocados.
+
+### Correção de estado consolidado
+
+As seções históricas anteriores que dizem que o app.py original ainda não foi inserido, que está bloqueado para recuperação ou que o arquivo não bate com o hash estão superadas. Estado atual verificado: app.py está restaurado na branch com blob `b28e4e07130a727b231f3e29be542464e534a996`, SHA-256 aprovado `DCB0AF794CD28F4E6AE1B023095DC15FCB39EAA4CF393682E2DD0CB86F2960F7`. O host ainda não existe/compilado e não foi testado no MT5. Nenhuma instalação, merge, deploy ou alteração do EA foi feita.
