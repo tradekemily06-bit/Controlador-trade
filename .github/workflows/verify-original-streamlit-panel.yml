@@ -169,10 +169,10 @@ jobs:
               m_webViewVisual.Size({ width, height });
               m_webViewVisual.Offset({ 0.0f, 0.0f, 0.0f });
               auto clip = m_compositor.CreateInsetClip();
-              clip.Left(0.0f);
-              clip.Top(height > 460.0f ? height - 460.0f : 0.0f);
-              clip.Right(width > 420.0f ? width - 420.0f : 0.0f);
-              clip.Bottom(0.0f);
+              clip.LeftInset(0.0f);
+              clip.TopInset(height > 460.0f ? height - 460.0f : 0.0f);
+              clip.RightInset(width > 420.0f ? width - 420.0f : 0.0f);
+              clip.BottomInset(0.0f);
               m_webViewVisual.Clip(clip);
               // Keep the browser viewport at the full client size so fixed-position
               // Streamlit elements retain their original bottom-left coordinates.
