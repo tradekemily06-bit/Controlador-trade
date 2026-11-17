@@ -23,6 +23,9 @@ jobs:
       - name: Exercise DOM bridge state and toggle contract
         shell: bash
         run: node streamlit_panel/mt5_host/dom_bridge.test.cjs
+      - name: Guard approved Streamlit panel structure and behavior contract
+        shell: bash
+        run: node streamlit_panel/mt5_host/panel_contract.test.cjs
       - name: Verify approved app.py SHA-256
         shell: bash
         run: |
