@@ -17,6 +17,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+      - name: Syntax-check read-only native-host DOM bridge
+        shell: bash
+        run: node --check streamlit_panel/mt5_host/dom_bridge.js
       - name: Verify approved app.py SHA-256
         shell: bash
         run: |
