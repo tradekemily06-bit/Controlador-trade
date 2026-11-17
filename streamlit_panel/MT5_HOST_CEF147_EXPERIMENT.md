@@ -39,3 +39,37 @@ A implementação experimental deverá priorizar renderização off-screen com t
 ## Limitação conhecida
 
 O GitHub permite preservar e distribuir os arquivos, mas não fornece acesso ao Windows/MT5 do usuário. Testes automatizados de CI não substituem a validação final no terminal real. Até essa validação, o host será experimental e não deve ser tratado como instalador pronto.
+
+
+## Recuperação do ZIP original — 17/11/2026
+
+O ZIP localizado na Biblioteca é `Controlador-trade_PAINEL_CABINE_CENTRAL_ORDEM_CORRIGIDA.zip` (1.878.997 bytes). Foi materializado e inspecionado localmente, sem alterar seu conteúdo.
+
+- Caminho de trabalho da cópia recuperada: `/mnt/data/mt5_original_zip/Controlador-trade_PAINEL_CABINE_CENTRAL_ORDEM_CORRIGIDA.zip`.
+- Entrada exata: `streamlit_panel/app.py`.
+- Tamanho: 197.038 bytes.
+- SHA-256 calculado diretamente dos bytes extraídos: `DCB0AF794CD28F4E6AE1B023095DC15FCB39EAA4CF393682E2DD0CB86F2960F7`.
+- **RESULTADO: correspondência exata com o hash aprovado.** O bloqueio de recuperação do app.py foi resolvido. O arquivo do ZIP é agora a referência aprovada para a integração. Não substituir por app.py de outro branch ou PR.
+
+### O que o ZIP contém e o que falta
+
+O ZIP contém a aplicação Streamlit original, dependências, runtime, EA e o supervisor Streamlit. A configuração oficial do supervisor inicia o painel em `127.0.0.1:8501` (health em `/_stcore/health`). O README também documenta a porta 8501.
+
+O ZIP **não contém** `mt5_webview_host.py` nem outro host de navegador embutido no gráfico MT5. Portanto, o arquivo da aplicação está recuperado, mas a integração gráfica continua pendente.
+
+### Host antigo encontrado na Biblioteca — não reutilizar diretamente
+
+Foi recuperado `mt5_webview_host_DIAGNOSTICO.py` (8.880 bytes; SHA-256 `09BD4668E1E329DA45AF9EDCC61B187770E1AF027799C4A36E74C2684ABCB02F`). É uma versão de diagnóstico WebView2 que:
+
+- fixa URL em `http://127.0.0.1:8503`, enquanto o supervisor deste ZIP usa a porta 8501;
+- exige um hash antigo `A3AA...`, diferente do app.py agora aprovado;
+- injeta CSS que altera a posição vertical do painel (`bottom: 46px`) e aplica recorte fixo de 436×476, sem validação para o viewport atual;
+- depende de pywebview/EdgeChromium e inclui monitor de eventos para investigar perda de clique.
+
+Esse host não deve ser executado nem ter seu hash simplesmente trocado. O diagnóstico antigo é uma pista para investigar o problema de clique, não uma integração pronta.
+
+### Próxima etapa técnica
+
+Preparar uma camada hospedeira separada que aponte para `127.0.0.1:8501`, sem injetar CSS que altere o layout original, sem editar `streamlit_panel/app.py`, sem substituir a interface e sem tocar no EA/runtime. A camada deve validar dinamicamente a saúde do Streamlit e a janela correta do MT5, encaminhar mouse/teclado, respeitar o retângulo real do painel e preservar o gráfico e os controles BUY/SELL. A escolha CEF/WebView2 permanece experimental até comprovar transparência, eventos de clique, DPI, redimensionamento e estabilidade no Windows/MT5 real.
+
+Nenhuma instalação local, compilação do EA, ordem, merge ou deploy foi realizada nesta etapa.
