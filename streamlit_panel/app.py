@@ -60,8 +60,8 @@ st.markdown("""
 .stApp { background: #080B0F; color: #E9EEF3; background-image: linear-gradient(rgb(255 255 255 / .025) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / .025) 1px, transparent 1px); background-size: 3rem 3rem; }
 [data-testid="stHeader"] { background: transparent; }
 .block-container { width: 100%; max-width: none; padding: 1rem clamp(.75rem, 2vw, 1.5rem) 6rem; }
-.st-key-panel-toggle { position: relative; width: min(100%, 360px); max-width: 100%; margin: 2rem 0 1rem; }
-.st-key-panel-toggle .stButton > button { width: 64px; min-width: 64px; height: 64px; min-height: 64px; padding: 0; border-radius: 50%; background: #080B0F; color: #46D6AD; border: 1px solid #46D6AD; box-shadow: 0 0 10px #46D6AD33; font-weight: 800; font-size: 1.25rem; }
+.st-key-panel-toggle { position: fixed; left: 18px; bottom: 14px; z-index: 1000; width: 220px; display: flex; flex-direction: row; align-items: center; gap: 8px; }
+.st-key-panel-toggle .stButton > button { width: 48px; min-width: 48px; height: 48px; min-height: 48px; padding: 0; border-radius: 50%; background: #080B0F; color: #46D6AD; border: 1px solid #46D6AD; box-shadow: 0 0 10px #46D6AD33; font-weight: 800; }
 .st-key-panel-toggle .closed-status { color: #7F8B97; font-size: 10px; font-weight: 800; letter-spacing: .06em; padding-left: 0; }
 .st-key-panel-toggle .closed-signal { max-width: 190px; font-size: 13px; line-height: 1.25; font-weight: 900; letter-spacing: .025em; white-space: nowrap; }
 .st-key-panel-toggle .closed-score { color: #E9EEF3; font-size: 11px; line-height: 1.2; font-weight: 700; white-space: nowrap; }
@@ -3190,12 +3190,17 @@ def render_latest_signal(closed: bool = False) -> None:
 # "MT5 DEMO / Simulação" in the reference is operational environment/recovery,
 # not the historical Simulador module already housed under ESTUDO.
 _REFERENCE_TABS = CONFIG["open_state"]["tabs"]
+AREA_SOURCE_NAMES = {
+    "CABINE DE COMANDO": "COCKPIT",
+    "ANÁLISE": "ANÁLISE",
+    "ESTUDO": "ESTUDO",
+}
 AREAS = {
-    name: [
+    label: [
         "Ambiente MT5 DEMO" if module == "MT5 DEMO / Simulação" else module
-        for module in _REFERENCE_TABS[name]
+        for module in _REFERENCE_TABS[source_name]
     ]
-    for name in ("COCKPIT", "ANÁLISE", "ESTUDO")
+    for label, source_name in AREA_SOURCE_NAMES.items()
 }
 AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]
 AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]
@@ -3203,7 +3208,7 @@ AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]
 # seventh top-level area. Keep the original Figma JSON unchanged.
 AREAS["CENTRAL"] = ["Financeiro", "Diário Operacional", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]
 if "panel_open" not in st.session_state:
-    st.session_state.panel_open = True
+    st.session_state.panel_open = False
 
 if not st.session_state.panel_open:
     with st.container(key="panel-toggle"):
@@ -3283,6 +3288,11 @@ with st.container(key="control-hub-shell"):
         if st.session_state.get("leverage_preference_error"):
             st.warning("Preferência de alavancagem não sincronizada com o runtime.")
 
-    if st.button("Fechar painel", key="close_control_hub"):
-        st.session_state.panel_open = False
-        st.rerun()
+with st.container(key="panel-toggle"):
+    toggle_col, signal_col = st.columns([1, 3], vertical_alignment="center")
+    with toggle_col:
+        if st.button("C", key="close_control_hub", help="Recolher painel"):
+            st.session_state.panel_open = False
+            st.rerun()
+    with signal_col:
+        render_latest_signal(closed=True)
