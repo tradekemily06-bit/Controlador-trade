@@ -1,5 +1,6 @@
 #pragma once
 
+#include "layout_contract.h"
 #include <windows.h>
 #include <WebView2.h>
 #include <cstdint>
