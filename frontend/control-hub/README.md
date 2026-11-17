@@ -5,11 +5,13 @@ Esta pasta é uma nova frente de interface. Não substitui nem altera o painel S
 ## Fonte visual usada
 
 - `streamlit_panel/app.py` fornecido no pacote de auditoria: tokens CSS e geometria do estado recolhido/expandido.
-- `streamlit_panel/controlador_trader_referencia_visual.json`: nomes de áreas, módulos e tokens visuais.
+- `streamlit_panel/controlador_trader_referencia_visual.json`: quatro grupos de navegação, nomes de módulos e tokens visuais.
 - O pacote recebido não contém as cinco imagens originais `8870.jpg`, `8871.jpg`, `8872.jpg`, `8873.jpg` e `8878.jpg`; a comparação pixel a pixel permanece pendente até essas imagens serem fornecidas.
 
 ## Regras de preservação
 
+- Manter os quatro grupos originais: COCKPIT, ANÁLISE, ESTUDO e MAIS / ADMIN.
+- Reserva Fiscal e Assistente do Ecossistema ficam acessíveis dentro de MAIS / ADMIN, sem criar abas principais adicionais nem deslocar os quatro grupos.
 - Estado recolhido: botão C circular de 64 × 64 px, fixado a 16 px da esquerda e 16 px da base.
 - Estado expandido: painel fixado à esquerda e à base, largura `min(34vw, 420px)`, largura máxima `calc(100vw - 32px)`, altura máxima `min(84vh, 460px)`.
 - Cores extraídas do código de referência: fundo `#080B0F`, painel `#10151B`, módulos `#161C24`, borda `#25303B`, texto `#E9EEF3`, texto secundário `#7F8B97`, destaque `#46D6AD`.
