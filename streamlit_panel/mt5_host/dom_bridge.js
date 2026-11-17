@@ -53,7 +53,6 @@
     const payload = {
       type: "controlador.panel.layout",
       version: 1,
-      sequence: ++sequence,
       expanded,
       viewportWidth,
       viewportHeight,
@@ -70,6 +69,7 @@
     const serialized = JSON.stringify(payload);
     if (serialized !== lastPayload) {
       lastPayload = serialized;
+      payload.sequence = ++sequence;
       bridge.postMessage(payload);
     }
   };
