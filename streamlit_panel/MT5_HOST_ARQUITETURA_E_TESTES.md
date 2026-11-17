@@ -336,3 +336,32 @@ Prova que a alteração de recorte fixo compila com a Composition Controller est
 5. Testar primeiro em janela quadriculada interativa; só então testar ancoragem e interação no gráfico MT5 em DEMO/SIMULAÇÃO.
 
 A separação do C é uma arquitetura a implementar, não uma função já entregue. Não alterar `app.py`, CSS, EA/MQL5, runtime/API, banco, regras fiscais, Assistente, autenticação ou proteções. Nenhuma instalação local, merge, deploy ou ordem foi realizada.
+
+
+## Ponte DOM somente leitura para controle nativo C — 17/11/2026
+
+Foi criado `streamlit_panel/mt5_host/dom_bridge.js` no commit `450c3bb7a097aae96b7475d8bac299a9f71a4aa2`. O arquivo é um script que o futuro host WebView2 deverá registrar com `AddScriptToExecuteOnDocumentCreated`.
+
+### Comportamento implementado no script
+
+- Observa os seletores já existentes no `app.py`: `.st-key-panel-toggle` e `.st-key-control-hub-shell`.
+- Mede o botão C real quando recolhido e a caixa real do painel quando expandido, usando `getBoundingClientRect()`.
+- Informa ao host estado, retângulos, tamanho do viewport e `devicePixelRatio` via `window.chrome.webview.postMessage`.
+- Usa MutationObserver, resize e scroll para atualizar medidas após reruns e mudanças de layout.
+- Recebe `{type:"controlador.toggle"}` do host e aciona o botão C do Streamlit correspondente ao estado atual.
+- Não injeta CSS, não oculta elementos, não modifica o DOM nem altera `app.py`.
+
+### Limites e próximos passos
+
+O script é apenas a ponte de observação/comando. Ele não cria a janela nativa C, não desenha o botão, não aplica clip, não faz composição alfa e não corrige sozinho congelamentos. O host C++ ainda precisa:
+1. Criar e manter um controle C nativo independente da superfície WebView2.
+2. Registrar a ponte antes de carregar `http://127.0.0.1:8501` e receber mensagens `WebMessageReceived`.
+3. Converter coordenadas CSS para pixels físicos usando DPR e coordenadas do cliente da janela.
+4. Aplicar clip dinâmico à visual do WebView2 para mostrar apenas a caixa expandida; no estado recolhido, mostrar somente o C nativo e não a área de fundo do Streamlit.
+5. Enviar `controlador.toggle` ao receber clique no C nativo, com proteção contra cliques repetidos enquanto o Streamlit processa o rerun.
+6. Implementar mouse, roda, teclado, foco, captura e cursor apenas dentro da área expandida; fora dela, o gráfico MT5 recebe os eventos.
+7. Testar em janela quadriculada interativa e, depois, em MT5 DEMO.
+
+Foi adicionado ao CI o passo `node --check streamlit_panel/mt5_host/dom_bridge.js`. Esse passo valida sintaxe JavaScript, não comportamento DOM nem integração WebView2. A aprovação do CI não deve ser interpretada como prova de ausência de congelamento ou transparência real.
+
+O arquivo `app.py` permanece sem alterações e deve continuar correspondendo ao SHA-256 aprovado `DCB0AF794CD28F4E6AE1B023095DC15FCB39EAA4CF393682E2DD0CB86F2960F7`. Nenhuma instalação, merge, deploy, alteração EA/MQL5, runtime, banco, identidade ou regra operacional foi feita.
