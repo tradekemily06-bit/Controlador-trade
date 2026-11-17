@@ -114,9 +114,9 @@ button {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: min(34vw, 560px);
+  width: min(34vw, 420px);
   max-width: calc(100vw - 32px);
-  max-height: calc(100vh - 32px);
+  max-height: min(84vh, 460px);
   overflow-y: auto;
   margin: 0;
   padding: clamp(0.65rem, 1vw, 1rem);
@@ -271,7 +271,7 @@ button {
 
 @media (max-width: 720px) {
   .control-hub {
-    width: min(560px, calc(100vw - 32px));
+    width: min(420px, calc(100vw - 32px));
     padding: 0.8rem;
     border-radius: 18px;
   }
