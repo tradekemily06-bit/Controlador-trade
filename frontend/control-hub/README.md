@@ -44,7 +44,7 @@ A nomenclatura e a ordem foram conferidas no bloco `AREAS` do `app.py`. A interf
 
 - C fechado: botão circular de 64 × 64 px, 16 px da esquerda e 16 px da base; leitura do sinal/score/estado ao lado.
 - C permanece no mesmo ponto e acima da janela do painel também no estado aberto, conforme a regra de sobreposição do host e a posição aprovada pelo usuário.
-- Painel: posição fixa à esquerda e à base, `left: 16px`, `bottom: 16px`, `width: min(34vw, 560px)`, `max-width: calc(100vw - 32px)`, `max-height: calc(100vh - 32px)`.
+- Painel: posição fixa à esquerda e à base, `left: 16px`, `bottom: 16px`, `width: min(34vw, 420px)`, `max-width: calc(100vw - 32px)`, `max-height: min(84vh, 460px)`.
 - Cores: fundo `#080B0F`, painel `#10151B`, módulos `#161C24`, borda `#25303B`, texto `#E9EEF3`, texto secundário `#7F8B97`, destaque `#46D6AD`.
 - Cabeçalho: `Controlador-Trader` e selo `DEMO`.
 - Linhas dos módulos: cartões horizontais escuros, texto à esquerda e chevron à direita.
