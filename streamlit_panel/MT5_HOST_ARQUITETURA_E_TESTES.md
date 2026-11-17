@@ -412,3 +412,55 @@ Referências Microsoft:
 - Win32 C++ Composition Controller: https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2compositioncontroller
 - CoreWebView2CompositionController e detalhes de mouse/pointer/cursor: https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/winrt/microsoft-web-webview2-core/corewebview2compositioncontroller
 - Visão geral de APIs e composição: https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/overview-features-apis
+
+
+## Correção de inconsistências históricas e desenho de implementação do host — 17/11/2026
+
+Esta seção prevalece sobre qualquer trecho anterior desta página que diga que o app.py aprovado não foi recuperado/inserido. O arquivo está restaurado na branch experimental; o hash esperado é `DCB0AF794CD28F4E6AE1B023095DC15FCB39EAA4CF393682E2DD0CB86F2960F7`, e os jobs recentes de integridade/contrato passaram. A aplicação original permanece intocada.
+
+### Estado real, sem confundir protótipo com entrega
+- Existe uma ponte JavaScript somente de leitura que mede o C e o shell e comunica o estado ao host.
+- Existem testes automatizados da ponte DOM e do contrato estrutural do app original.
+- O CI inicia o Streamlit em Windows e compila um checkout temporário do exemplo Microsoft WebView2 Composition.
+- **Ainda não existe código C++ próprio do host do Controlador Trading.** O EXE produzido pelo CI é um sample temporário da Microsoft, não o painel integrado.
+- Não existe teste interativo de transparência, entrada ou ancoragem no MT5 real.
+
+### Decisão de composição que deve orientar o host
+
+Não tentar tornar transparente o fundo da página Streamlit. O app original pinta seu próprio fundo, e o arquivo não pode ser alterado. Em vez disso, o host deve limitar a superfície visual do WebView ao retângulo medido do shell original enquanto expandido. Assim, o WebView pode continuar com seu fundo original dentro do retângulo e não desenha fora dele; o gráfico permanece visível fora da área recortada.
+
+O C recolhido deve ser uma janela/visual Win32 nativo independente. No estado recolhido, ocultar o visual WebView e manter somente o C nativo. No estado expandido, mostrar o visual WebView recortado ao retângulo real recebido pela ponte e manter o C nativo como controle de fechar/recolher. Não depender do fundo opaco da página para desenhar ou detectar o C.
+
+A geometria de recorte e hit-test deve ter uma única fonte: `expandedShell` publicado pela ponte. O host deve validar a mensagem (tipo, versão, dimensões finitas, retângulo dentro do viewport e tamanho máximo razoável), converter CSS pixels para o espaço físico esperado pelo controller usando DPI/escala da janela correta e aplicar exatamente o mesmo retângulo ao clip e ao hit-test. Mensagem ausente, inválida, obsoleta ou viewport incompatível deve falhar fechado: ocultar WebView, manter C nativo disponível e não capturar eventos do gráfico.
+
+### Máquina de estados mínima
+
+| Estado | C nativo | Visual WebView | Entrada |
+|---|---|---|---|
+| Iniciando / sem health | visível e clicável | oculto | apenas C |
+| Recolhido | visível | oculto | clique no C inicia/solicita abertura do Streamlit |
+| Expandido | visível | visível, recortado ao shell | somente dentro do shell |
+| Rerun / layout inválido | visível | oculto até nova medição válida | nenhum evento capturado pelo WebView |
+| MT5 minimizado/fechado | oculto ou encerrado de forma limpa | oculto | sem processos órfãos |
+
+A ponte não pode alternar estado por conta própria com base em mensagens duplicadas. O host mantém um identificador/geração de layout, rejeita retângulos antigos e só considera expandido depois de receber uma medição válida após o clique e o rerun do Streamlit.
+
+### Ordem de implementação do código nativo
+
+1. **Host de bancada Win32 próprio:** janela de teste com padrão quadriculado, C nativo, inicialização/encerramento WebView2, URL local configurável com padrão `http://127.0.0.1:8501`, log e health check. Nenhuma ligação ao MT5 nesta etapa.
+2. **Ponte e recorte dinâmico:** registrar `dom_bridge.js` com `AddScriptToExecuteOnDocumentCreated`, validar `WebMessageReceived`, atualizar clip e visibilidade com o estado e o retângulo reais. Medir DPI e conversão de coordenadas.
+3. **Entrada completa:** mouse (incluindo movimento, botões, duplo clique, X buttons, roda vertical/horizontal e leave), captura/liberação, cursor, foco/teclas e PointerInput. Eventos fora do retângulo não são consumidos.
+4. **Teste interativo de bancada:** comprovar com capturas que o padrão quadriculado aparece fora do retângulo e que controles reais Streamlit funcionam sem congelar.
+5. **Ancoragem MT5:** somente depois da bancada aprovada, criar adaptador para localizar e acompanhar a janela/área do gráfico MT5, incluindo troca de gráfico, resize, DPI, minimize/restore e encerramento. Não modificar EA.
+6. **Regressão e pacote reversível:** testar módulos e ciclo de vida; produzir logs, versão, checksums e rollback. Instalação só com autorização explícita.
+
+### Condições de bloqueio
+- Não chamar o sample Microsoft de host próprio.
+- Não afirmar transparência real apenas porque `DefaultBackgroundColor` é alfa zero: a estratégia é recorte visual do conteúdo opaco ao retângulo DOM, e isso também precisa ser comprovado visualmente.
+- Não instalar, fazer merge, alterar EA ou habilitar REAL.
+- Se a prova de bancada demonstrar que Composition Controller não permite o recorte/input necessários, parar e comparar outra tecnologia antes de reescrever arquitetura.
+
+Referências primárias:
+- https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2compositioncontroller
+- https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2controller2
+- https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/overview-features-apis
