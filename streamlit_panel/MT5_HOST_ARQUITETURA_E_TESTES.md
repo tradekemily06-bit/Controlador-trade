@@ -271,3 +271,25 @@ Artefato gerado: `webview2-composition-streamlit-poc`, ID `14374937169`, SHA-256
 O workflow e os arquivos de documentação foram os únicos itens alterados nesta etapa de CI; `streamlit_panel/app.py` não foi modificado. Não houve alteração do EA/MQL5, runtime/API, banco, regras fiscais, Assistente, identidade ou proteções. Nenhuma instalação, merge, deploy ou ordem foi realizada.
 
 **Próxima etapa:** construir um host Win32 independente e específico para o painel, sem copiar a interface e sem alterar o Streamlit; primeiro demonstrar transparência e entrada em janela de teste, depois estudar ancoragem ao gráfico MT5. Os testes visuais e de interação precisam ocorrer em Windows com MT5 real e não podem ser substituídos por CI headless.
+
+
+## Análise do DOM original e estratégia de recorte — 17/11/2026
+
+Inspeção somente de leitura do início de `streamlit_panel/app.py` confirmou:
+- O fundo global `.stApp` é explicitamente opaco (`#080B0F`) e tem grade CSS.
+- O botão C recolhido e a área expandida são elementos fixos separados: `.st-key-panel-toggle` e `.st-key-control-hub-shell`, ambos ancorados a 16 px da esquerda e de baixo.
+- A área expandida tem largura máxima de 420 px e altura máxima de 460 px; o botão C tem 64×64 px.
+- Logo, deixar o WebView transparente não resolve o fundo opaco da página. Não é permitido alterar CSS nem injetar estilos no painel para forçar transparência.
+
+### Nova hipótese técnica a testar (sem mudar o app)
+Em vez de exigir transparência alfa da página inteira, investigar um **recorte visual do WebView2 Composition**:
+1. Manter o viewport do navegador no tamanho integral da área do gráfico, para que os elementos `position: fixed` continuem ancorados ao canto inferior esquerdo correto.
+2. Consultar, por leitura do DOM, os retângulos reais de `.st-key-panel-toggle` e `.st-key-control-hub-shell`.
+3. Aplicar um clip à visual tree do WebView2 para mostrar somente a união desses retângulos. O fundo global opaco ficaria fora da região renderizada, sem editar o CSS ou o arquivo original.
+4. Encaminhar entrada apenas dentro da região visível; fora dela, os cliques continuam pertencendo ao MT5.
+5. Recalcular o clip após rerun Streamlit, expansão/recolhimento, scroll, mudança de DPI e resize.
+
+Esta hipótese pode contornar a necessidade de transparência CSS da página, mas **ainda não está comprovada**. É necessário verificar se o Composition Controller permite manter viewport integral e clip dinâmico sem distorcer layout, se o hit testing acompanha o clip e se os eventos do Streamlit continuam íntegros. Se não funcionar, parar e documentar; não aplicar CSS, não alterar `app.py` e não instalar janela opaca.
+
+### Segurança de escopo
+A inspeção foi somente de leitura. Nenhum arquivo da aplicação, EA/MQL5, runtime/API, banco, regras fiscais, identidade ou proteções foi alterado. O app continua sendo a única interface. A branch é experimental e não foi instalada no MT5.
