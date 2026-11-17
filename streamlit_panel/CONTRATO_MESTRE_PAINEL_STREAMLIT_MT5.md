@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Preservar o painel Streamlit aprovado como interface operacional do Ecossistema Controlador Trading e fazê-lo abrir/recolher normalmente pelo botão **C** quando exibido dentro do MetaTrader 5 (MT5), usando WebView2. Este documento consolida os requisitos conhecidos para orientar revisão, implementação e testes.
+Preservar o painel Streamlit aprovado como interface operacional do Ecossistema Controlador Trading e fazê-lo abrir/recolher normalmente pelo botão **C** dentro do MetaTrader 5 (MT5), substituindo a atual camada de exibição baseada em WebView2 por uma alternativa mais estável, após avaliação técnica. Este documento consolida os requisitos conhecidos para orientar revisão, implementação e testes.
 
 **Regra central:** corrigir a integração sem redesenhar o painel, sem substituir a aplicação por uma imagem/preview, sem apagar módulos, sem simplificar funcionalidades e sem alterar regras de negócio ou segurança.
 
@@ -10,7 +10,7 @@ Preservar o painel Streamlit aprovado como interface operacional do Ecossistema 
 
 - A aplicação ativa é o Streamlit em `streamlit_panel/app.py`. O Figma e o JSON visual são apenas referências; não são o painel operacional.
 - O arquivo de referência `streamlit_panel/controlador_trader_referencia_visual.json` e as cinco imagens indicadas nele devem permanecer intactos.
-- A versão local aprovada de `app.py` foi identificada pelo SHA-256 `DCB0AF794CD28F4E6AE1B023095DC15FCB39EAA4CF393682E2DD0CB86F2960F7`. Antes de qualquer alteração nesse arquivo, comparar com essa referência e explicar a diferença. A preferência é não alterar `app.py`; concentrar correções de incorporação no host WebView2 e em testes de integração.
+- A versão local aprovada de `app.py` foi identificada pelo SHA-256 `DCB0AF794CD28F4E6AE1B023095DC15FCB39EAA4CF393682E2DD0CB86F2960F7`. Antes de qualquer alteração nesse arquivo, comparar com essa referência e explicar a diferença. A preferência é não alterar `app.py`; concentrar a substituição na camada de incorporação/exibição e em testes de integração.
 - Não alterar EA/MQL5, runtime/API, banco, Reserva Fiscal, Assistente, dados, lógica de execução, identidade, isolamento por titular ou proteções para resolver um problema visual/de clique.
 - Não fazer merge, deploy, instalação no terminal local, sincronização/compilação do EA ou ativação REAL como parte desta tarefa.
 - Qualquer mudança deve ficar em branch/PR isolada, com diff revisável. Nunca sobrescrever a branch principal.
@@ -121,18 +121,21 @@ Preservar a identidade visual escura do painel. Tokens documentados no JSON:
 - Score de 1 a 100: 1–69 FRACA; 70–79 MODERADA; 80–100 FORTE.
 - Preservar o dado de origem; não inventar sinal, percentual ou score quando indisponível.
 
-## Integração WebView2 e diagnóstico do clique
+## Substituição da camada de exibição no MT5 e diagnóstico do clique
 
-- Streamlit funciona no navegador; o host WebView2 é a camada que o exibe dentro da janela MT5. Não confundir painel web com overlay nativo MQL5.
-- O host não deve iniciar ordens, conectar-se à corretora por conta própria, alterar o runtime nem sincronizar EA.
-- O endereço/porta de saúde usados pelo host devem corresponder ao processo Streamlit realmente iniciado pelo supervisor. O README da branch descreve 8501; houve execução local reportada em 8503. Não deixar launcher e host com portas divergentes ou assumir uma porta sem verificar o processo ativo.
-- O host deve localizar o MT5 e o Streamlit, validar `/_stcore/health`, anexar a janela WebView2 e manter a área de exibição limitada ao canto inferior esquerdo.
-- Investigar a hierarquia HWND, janela pai/filha, estilos, bounds, região de recorte, hit-test e entrega de eventos de mouse. Distinguir: clique não chega ao HWND; chega ao WebView mas não ao DOM; chega ao DOM mas o Streamlit não reroda.
-- Não considerar “WebView visível/enabled” prova de que o clique funciona.
-- Instrumentar pointerdown/click e logs do host sem expor dados sensíveis. O teste decisivo é clicar no C dentro do MT5 e observar a mudança real de estado; clicar no C no Chrome não valida a integração.
+- O painel Streamlit original continua sendo a aplicação e a fonte de verdade da interface. O objetivo não é voltar a depender do site aberto no Chrome: o painel deve ser exibido e operado dentro do MT5.
+- A integração atual baseada em WebView2 deve ser substituída; não insistir em corrigir indefinidamente essa camada como solução final.
+- Antes de escolher a substituta, comparar alternativas tecnicamente viáveis para incorporar a interface no MT5/Windows, considerando estabilidade, compatibilidade, manutenção, desempenho, interação de mouse/teclado, rolagem, transparência e distribuição. Não presumir que uma alternativa funciona sem protótipo e teste.
+- A alternativa escolhida deve continuar renderizando a aplicação Streamlit original e suas funcionalidades reais. Não trocar o painel por imagem, mockup, HTML estático, React refeito ou outra interface que apenas imite sua aparência.
+- Não abrir o Chrome como solução operacional permanente nem exigir que o usuário acesse um site externo para usar o painel.
+- Registrar claramente se a alternativa exige um processo local, serviço local ou componente adicional. O painel deve continuar funcionando dentro do MT5 e não depender de notebook/servidor externo ligado.
+- O endereço/porta de saúde usados pela integração devem corresponder ao processo Streamlit realmente iniciado pelo supervisor. O README da branch descreve 8501; houve execução local reportada em 8503. Não deixar launcher e host com portas divergentes ou assumir uma porta sem verificar o processo ativo.
+- Investigar a hierarquia HWND, janela pai/filha, estilos, bounds, região de recorte, hit-test e entrega de eventos de mouse da solução atual, para identificar por que o C não responde no MT5 e evitar reproduzir o mesmo defeito na alternativa.
+- Distinguir: clique não chega à janela hospedeira; chega à camada de exibição mas não ao DOM; chega ao DOM mas o Streamlit não reroda. Não considerar “janela visível/enabled” prova de que o clique funciona.
+- Instrumentar eventos e logs sem expor dados sensíveis. O teste decisivo é clicar no C dentro do MT5 e observar a mudança real de estado; clicar no C no Chrome não valida a integração no terminal.
 - Evitar soluções que façam a janela inteira capturar cliques, bloqueiem o gráfico, cubram BUY/SELL ou tornem o overlay click-through.
-- Se o clique não chegar ao DOM, corrigir a integração nativa do host; não reescrever o estado `panel_open` do Streamlit sem evidência de defeito nele.
-
+- Não reescrever o estado `panel_open` do Streamlit sem evidência de defeito nele. Preservar a lógica aprovada do painel.
+- Se nenhuma alternativa conseguir hospedar o Streamlit original com estabilidade, apresentar evidências e opções antes de propor qualquer mudança de tecnologia do próprio painel.
 ## Segurança e operação
 
 - Permanecer em DEMO/SIMULAÇÃO. REAL continua DESABILITADO.
@@ -158,4 +161,4 @@ Preservar a identidade visual escura do painel. Tokens documentados no JSON:
 
 ## Prompt mestre para implementação
 
-> Trabalhe no repositório Controlador-trade respeitando integralmente este contrato. Primeiro audite a branch, o diff e os arquivos atuais. Não presuma que um PR anterior está correto só porque existe ou porque a CI passou. Preserve os arquivos originais e suas funções; não reescreva o painel, não recrie o Figma, não substitua Streamlit por React, imagem estática ou preview. Mantenha exatamente as seis áreas, seus nomes, ordem, módulos, cores, dados, lógica e proteções descritos aqui. O problema prioritário é o C não expandir/recolher dentro do MT5, embora funcione no navegador. Investigue o host WebView2, HWND pai/filho, recorte, hit-test e eventos de mouse. Corrija somente a camada responsável, preferindo alterações isoladas no host e testes. Verifique a porta real do Streamlit e alinhe launcher/host. Não declare correção sem teste real de clique no MT5 DEMO. Não altere EA/MQL5, runtime, dados fiscais, Assistente, identidade ou execução. Não habilite REAL, não envie ordens, não faça instalação local, deploy ou merge. Entregue diff, testes, evidências e limitações; se qualquer requisito não puder ser provado, declare-o pendente em vez de inventar sucesso.
+> Trabalhe no repositório Controlador-trade respeitando integralmente este contrato. Primeiro audite a branch, o diff e os arquivos atuais. Não presuma que um PR anterior está correto só porque existe ou porque a CI passou. Preserve os arquivos originais e suas funções; não reescreva o painel, não recrie o Figma, não substitua Streamlit por React, imagem estática ou preview. Mantenha exatamente as seis áreas, seus nomes, ordem, módulos, cores, dados, lógica e proteções descritos aqui. O problema prioritário é o C não expandir/recolher e a tela branca/preta dentro do MT5, embora o painel funcione no Chrome. Substitua a camada de exibição baseada em WebView2 por uma alternativa tecnicamente validada que hospede o Streamlit original dentro do MT5. Compare alternativas, faça protótipo e testes de compatibilidade, clique, rolagem, estabilidade e desempenho antes de escolher. Investigue também HWND, recorte, hit-test e eventos de mouse da integração atual para não repetir o defeito. Não use o Chrome como solução operacional permanente. Verifique a porta real do Streamlit e alinhe launcher/integração. Não declare correção sem teste real de clique no MT5 DEMO. Não altere EA/MQL5, runtime, dados fiscais, Assistente, identidade ou execução. Não habilite REAL, não envie ordens, não faça instalação local, deploy ou merge. Entregue diff, testes, evidências e limitações; se qualquer requisito não puder ser provado, declare-o pendente em vez de inventar sucesso.
