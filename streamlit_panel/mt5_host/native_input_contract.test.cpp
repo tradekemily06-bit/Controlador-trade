@@ -39,5 +39,30 @@ int main() {
     const auto unsupported = TranslateMouseMessage(WM_KEYDOWN, 0);
     assert(!unsupported.supported);
 
+
+    PhysicalLayout layout{};
+    layout.accepted = true;
+    layout.webViewVisible = true;
+    layout.clip = {10, 10, 110, 110};
+    MouseCaptureState capture{};
+    POINT inside{50, 50};
+    POINT outside{150, 150};
+
+    assert(ShouldForwardMouseInput(layout, inside, WM_LBUTTONDOWN, capture));
+    assert(capture.captured);
+    assert(ShouldForwardMouseInput(layout, outside, WM_MOUSEMOVE, capture));
+    assert(ShouldForwardMouseInput(layout, outside, WM_LBUTTONUP, capture));
+    assert(!capture.captured);
+    assert(!ShouldForwardMouseInput(layout, outside, WM_MOUSEMOVE, capture));
+
+    // A second button pressed during a captured drag must also be released
+    // before routing returns to the host application.
+    assert(ShouldForwardMouseInput(layout, inside, WM_LBUTTONDOWN, capture));
+    assert(ShouldForwardMouseInput(layout, inside, WM_RBUTTONDOWN, capture));
+    assert(ShouldForwardMouseInput(layout, outside, WM_LBUTTONUP, capture));
+    assert(capture.captured);
+    assert(ShouldForwardMouseInput(layout, outside, WM_RBUTTONUP, capture));
+    assert(!capture.captured);
+
     return 0;
 }
