@@ -8,6 +8,7 @@ on:
     paths:
       - streamlit_panel/app.py
       - streamlit_panel/MT5_HOST_CEF147_EXPERIMENT.md
+      - streamlit_panel/MT5_HOST_ARQUITETURA_E_TESTES.md
       - .github/workflows/verify-original-streamlit-panel.yml
 
 jobs:
