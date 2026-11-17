@@ -464,3 +464,19 @@ Referências primárias:
 - https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2compositioncontroller
 - https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2controller2
 - https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/overview-features-apis
+
+
+## Resultado confirmado da prova Windows de composição recortada — 17/11/2026
+
+Execução CI: https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/44197855019
+
+Os três jobs concluíram com sucesso:
+- `verify-original-app`: sintaxe e testes da ponte DOM, contrato do painel e hash do app aprovado.
+- `windows-streamlit-smoke`: dependências, compilação Python e health check do Streamlit em Windows.
+- `webview2-composition-build`: o sample Microsoft Win32/WebView2, temporariamente apontado para `127.0.0.1:8501` e com experimento de viewport recortado, compilou x64 Release.
+
+Artefato: `webview2-streamlit-clipped-viewport-poc`, ID `14379472889`, 55.492 bytes, SHA-256 do ZIP `6110dc6275bf7c8c8b915e3e0f18f8d97141e034ed8899487f62d5445552cb8f`.
+
+**Interpretação correta:** é uma prova de compilação do sample temporário Microsoft, não do host próprio Controlador Trading. A compilação não prova que o retângulo recortado corresponde ao shell dinâmico em runtime, que o padrão de fundo fica visível fora dele, que a entrada completa funciona ou que a janela se ancora ao MT5. Nenhum executável foi instalado no computador do usuário.
+
+A execução seguinte `44197911247` já aprovou integridade/contrato e o smoke test Windows; no último acompanhamento, o job de build WebView2 ainda estava em execução. A branch continua experimental.
