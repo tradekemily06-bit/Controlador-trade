@@ -169,7 +169,7 @@ void InitializeWebView() {
                             GetClientRect(g.window, &bounds);
                             g.controller->put_Bounds(bounds);
 
-                            g.composition->add_WebMessageReceived(
+                            g.webview->add_WebMessageReceived(
                                 Callback<ICoreWebView2WebMessageReceivedEventHandler>(
                                     [](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT {
                                         LPWSTR raw{};
@@ -197,7 +197,13 @@ void InitializeWebView() {
                             const int chars = MultiByteToWideChar(CP_UTF8, 0, script.c_str(), -1, nullptr, 0);
                             std::wstring wide(chars > 0 ? chars : 1, L'\0');
                             if (chars > 0) MultiByteToWideChar(CP_UTF8, 0, script.c_str(), -1, wide.data(), chars);
-                            return g.webview->AddScriptToExecuteOnDocumentCreated(wide.c_str(), nullptr);
+                            return g.webview->AddScriptToExecuteOnDocumentCreated(
+                                wide.c_str(),
+                                Callback<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>(
+                                    [](HRESULT scriptResult, LPCWSTR) -> HRESULT {
+                                        if (FAILED(scriptResult)) { HideWebView(); return scriptResult; }
+                                        return g.webview->Navigate(kStreamlitUrl);
+                                    }).Get());
                         }).Get());
             }).Get());
 }
@@ -206,9 +212,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
     switch (message) {
     case WM_CREATE:
         g.window = hwnd;
+        RECT client{};
+        GetClientRect(hwnd, &client);
         g.toggle = CreateWindowExW(0, L"BUTTON", L"C", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-            12, 12, kToggleSize, kToggleSize, hwnd, reinterpret_cast<HMENU>(1001),
-            GetModuleHandleW(nullptr), nullptr);
+            12, std::max(12L, client.bottom - kToggleSize - 12), kToggleSize, kToggleSize,
+            hwnd, reinterpret_cast<HMENU>(1001), GetModuleHandleW(nullptr), nullptr);
         InitializeWebView();
         return 0;
     case WM_COMMAND:
@@ -219,13 +227,21 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
         break;
     case WM_SIZE:
         if (g.controller) {
+            HideWebView();
             RECT bounds{};
             GetClientRect(hwnd, &bounds);
             g.controller->put_Bounds(bounds);
         }
+        if (g.toggle) {
+            RECT client{};
+            GetClientRect(hwnd, &client);
+            SetWindowPos(g.toggle, nullptr, 12, std::max(12L, client.bottom - kToggleSize - 12),
+                kToggleSize, kToggleSize, SWP_NOZORDER | SWP_NOACTIVATE);
+        }
         return 0;
     case WM_DPICHANGED:
         if (g.controller) {
+            HideWebView();
             RECT bounds{};
             GetClientRect(hwnd, &bounds);
             g.controller->put_Bounds(bounds);
@@ -233,7 +249,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
         return 0;
     case WM_CLOSE:
         HideWebView();
-        if (g.composition) g.composition->remove_WebMessageReceived(g.messageToken);
+        if (g.webview) g.webview->remove_WebMessageReceived(g.messageToken);
         if (g.controller) g.controller->Close();
         DestroyWindow(hwnd);
         return 0;
