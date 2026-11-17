@@ -511,3 +511,22 @@ A medição deve validar viewport, DPR e retângulo finito/positivo, converter C
 - Esses testes compilam a alteração temporária aplicada ao sample Microsoft; não validam ainda o encaminhamento no MT5, captura durante arraste, teclado/foco, nem geometria dinâmica baseada no DOM bridge.
 
 Referência oficial da API de composição: https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2compositioncontroller
+
+
+## Evidência CI mais recente e limite do artefato — 17/11/2026
+
+Execução: https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/44199728637
+Commit: `3969521d01bde25c1aa9da057a7c12e316d1d56e`.
+
+Os três jobs concluíram com sucesso:
+- `verify-original-app`: SHA-256 do `streamlit_panel/app.py` confere exatamente com o original aprovado.
+- `windows-streamlit-smoke`: dependências instaladas, compilação Python aprovada e Streamlit respondeu `ok` em `http://127.0.0.1:8501/_stcore/health`.
+- `webview2-composition-build`: compilação x64 Release do sample Win32/C++ da Microsoft concluída.
+
+Artefato gerado: `webview2-streamlit-clipped-viewport-poc`, 55.724 bytes, SHA-256 `fd316ec6515c5dd730fa40ee11bde63e130dc8cc503b503d64dae1effb2cf58c`. Ele continua sendo o sample Microsoft modificado apenas durante o job: a navegação aponta para Streamlit local e o clip/hit-test são fixos em 420x460 para bancada. Não é o host Controlador Trading, não usa ainda o retângulo dinâmico enviado pelo DOM e não comprova transparência real, entrada completa ou integração com MT5.
+
+### Próximo gate de implementação
+
+Não promover esse artefato nem chamá-lo de host. O próximo incremento deve ser um projeto Win32/C++ próprio, com fonte versionado no repositório e build x64 reproduzível no CI, que substitua o sample como unidade de compilação. O projeto deve começar com janela de bancada independente e separar explicitamente: criação do Composition Controller, visual/clip, controle C nativo, protocolo de mensagens DOM e roteamento de entrada. A geometria fixa 420x460 do sample é somente teste temporário; a integração final precisa consumir `expandedShell` e `viewport.dpr` reais, rejeitar mensagens inválidas/obsoletas e manter o WebView oculto quando recolhido.
+
+O host próprio ainda não foi implementado nesta atualização. A próxima implementação não deve alterar `app.py`, EA/MQL5, runtime, banco, identidade, Reserva Fiscal, Assistente ou bloqueio REAL.
