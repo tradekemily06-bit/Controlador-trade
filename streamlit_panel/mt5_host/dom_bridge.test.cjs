@@ -19,7 +19,7 @@ const toggleButton = {
   getBoundingClientRect: () => collapsedRect,
   click() { clickCount += 1; expanded = !expanded; }
 };
-const collapsedRoot = {querySelector: () => toggleButton};
+const collapsedRoot = {querySelector: () => toggleButton, querySelectorAll: () => [toggleButton]};
 const expandedRoot = {
   querySelectorAll: () => [toggleButton],
   getBoundingClientRect: () => expandedRect
