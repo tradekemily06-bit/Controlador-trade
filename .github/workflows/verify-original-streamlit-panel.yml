@@ -29,3 +29,61 @@ jobs:
             exit 1
           fi
           echo "Original Streamlit app.py integrity confirmed."
+
+  windows-streamlit-smoke:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify approved app.py SHA-256
+        shell: pwsh
+        run: |
+          $expected = "DCB0AF794CD28F4E6AE1B023095DC15FCB39EAA4CF393682E2DD0CB86F2960F7"
+          $actual = (Get-FileHash "streamlit_panel/app.py" -Algorithm SHA256).Hash
+          Write-Host "Expected: $expected"
+          Write-Host "Actual:   $actual"
+          if ($actual -ne $expected) { throw "The original approved app.py hash does not match." }
+      - name: Install original Streamlit requirements
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r streamlit_panel/requirements.txt
+      - name: Compile-check original app and local modules
+        shell: pwsh
+        run: |
+          python -m py_compile streamlit_panel/app.py streamlit_panel/trusted_identity.py streamlit_panel/presentation.py
+      - name: Start Streamlit and verify local health endpoint
+        shell: pwsh
+        run: |
+          $env:CONTROLADOR_API_BASE_URL = "http://127.0.0.1:8000"
+          $env:CONTROLADOR_REMOTE_ACCESS_REQUIRED = "false"
+          $process = Start-Process -FilePath python -ArgumentList @(
+            "-m", "streamlit", "run", "streamlit_panel/app.py",
+            "--server.headless", "true",
+            "--server.address", "127.0.0.1",
+            "--server.port", "8501",
+            "--browser.gatherUsageStats", "false"
+          ) -PassThru -NoNewWindow
+          try {
+            $healthy = $false
+            for ($i = 0; $i -lt 60; $i++) {
+              if ($process.HasExited) { throw "Streamlit exited before health check." }
+              try {
+                $response = Invoke-WebRequest -Uri "http://127.0.0.1:8501/_stcore/health" -TimeoutSec 2
+                if ($response.StatusCode -eq 200 -and $response.Content.Trim() -eq "ok") {
+                  $healthy = $true
+                  break
+                }
+              } catch {}
+              Start-Sleep -Seconds 2
+            }
+            if (-not $healthy) { throw "Streamlit health endpoint did not become ready." }
+            Write-Host "Original Streamlit app is serving successfully on 127.0.0.1:8501."
+          }
+          finally {
+            if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+          }
