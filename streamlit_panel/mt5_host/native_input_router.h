@@ -3,6 +3,7 @@
 #include "native_input_contract.h"
 
 #include <windows.h>
+#include <windowsx.h>
 #include <WebView2.h>
 
 namespace controlador::host {
