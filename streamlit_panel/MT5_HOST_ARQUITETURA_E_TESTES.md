@@ -169,3 +169,29 @@ Foi adicionada ao workflow de CI uma etapa Windows isolada que:
 **Limite desta prova:** o exemplo oficial ainda abre sua própria janela Win32. Isso testa compilação e carregamento do Streamlit dentro de um WebView2 Composition Controller, mas não implementa a janela transparente sobre o gráfico MT5, a ancoragem ao gráfico nem o encaminhamento completo de entrada. O artefato, se gerado, é somente protótipo de bancada e não instalador do Controlador Trading.
 
 O job foi adicionado ao workflow; até consultar resultado success e inspecionar o artefato, não declarar compilação aprovada. Mesmo com build verde, a integração MT5 ainda depende dos testes alfa/input e ancoragem em Windows com o MetaTrader real.
+
+
+## Resultado CI Windows após correção de hash — 17/11/2026
+
+Execução: https://github.com/tradekemilly06-bit/Controlador-trade/actions/runs/44185706018
+Commit testado: `3f729da4b12ad5a2f392ef90a964ceac9da3d6e2`.
+
+Os três jobs terminaram com sucesso:
+- `verify-original-app`: hash byte a byte no runner Linux aprovado.
+- `windows-streamlit-smoke`: hash normalizado para CRLF/LF aprovado, dependências instaladas, `py_compile` aprovado e Streamlit iniciou em `127.0.0.1:8501`; endpoint `/_stcore/health` respondeu `ok`.
+- `webview2-composition-build`: dependências restauradas e exemplo Win32/C++ oficial WebView2 Composition compilado em x64 Release.
+
+Artefato gerado: `webview2-composition-streamlit-poc`, 55.515 bytes, SHA-256 `0a24fbe13e22eb4c71575277e69ec50add2608589531b708cebc2b74e8f504b0`. É o executável de prova de conceito do exemplo Microsoft apontado ao Streamlit local durante o job. Não é o host MT5 final nem instalador.
+
+### O que este resultado comprova
+- O arquivo original está íntegro e não foi modificado.
+- O app Streamlit inicia em runner Windows e responde ao health check local.
+- O sample WebView2 Composition compila em runner Windows x64.
+
+### O que NÃO comprova
+- Que a janela é transparente sobre outra janela/processo.
+- Que o painel está ancorado ao gráfico MT5.
+- Que mouse, roda, teclado, foco e eventos fora do painel funcionam corretamente no MT5.
+- Que o executável pode ser instalado ou usado como painel final.
+
+Próxima etapa obrigatória: executar a prova visual e de entrada em Windows interativo, primeiro em janela de teste com fundo quadriculado, depois em MT5 DEMO. Sem acesso a uma sessão Windows/MT5 interativa neste ambiente, esses critérios continuam pendentes e não devem ser simulados por CI headless.
