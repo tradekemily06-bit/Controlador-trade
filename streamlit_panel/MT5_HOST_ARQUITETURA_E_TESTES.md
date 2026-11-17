@@ -232,3 +232,22 @@ Para evitar depender de API experimental sem necessidade, o workflow foi ajustad
 Esta revisão substitui a tentativa intermediária com SDK Prerelease como caminho de teste. O resultado de compilação do novo workflow ainda é necessário; se falhar por símbolos realmente ausentes, será reavaliada a versão/API com base no erro exato.
 
 Referências: https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2compositioncontroller e https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2environment3
+
+
+## Resultado da compilação estável WebView2 — 17/11/2026
+
+Execução CI: https://github.com/tradekemilly06-bit/Controlador-trade/actions/runs/44187162958
+Commit testado: `de4be4dcb88839c1469cee2df454b34a44772eb4`.
+
+Os três jobs terminaram com sucesso:
+- `verify-original-app`: hash do `app.py` aprovado.
+- `windows-streamlit-smoke`: dependências instaladas, compilação Python aprovada e health check do Streamlit respondeu `ok` em `127.0.0.1:8501`.
+- `webview2-composition-build`: o exemplo oficial WebView2 Composition compilou em Windows x64 Release usando WebView2 SDK estável `1.0.4314.35` e WIL `1.0.260126.7`.
+
+Artefato de bancada: `webview2-composition-streamlit-poc`, 58.164 bytes; SHA-256 `782b057ea9cf1b183cae4306dea0258dcfc73d5a69eea7641af8a44067112ef4`. O executável é o exemplo Microsoft em uma janela Win32 própria, apontado para o Streamlit local durante o job. Não é o host Controlador Trading, não está ancorado ao MT5 e não deve ser instalado como painel.
+
+### Limites que continuam bloqueando a integração
+
+Este resultado confirma compilação do exemplo e inicialização do Streamlit em runner Windows. Não confirma transparência alfa sobre o gráfico, encaminhamento completo de mouse/roda/teclado/foco, ancoragem ao gráfico, comportamento do C recolhido/expandido ou preservação dos cliques BUY/SELL.
+
+O próximo teste válido exige Windows interativo com WebView2 Runtime e MetaTrader 5: primeiro janela quadriculada para provar alfa e eventos; depois gráfico MT5 em DEMO/SIMULAÇÃO. Até esses testes existirem, não criar instalador, não instalar, não alterar EA/MQL5, runtime, banco, regras fiscais, Assistente, autenticação ou o `app.py` original. REAL continua bloqueado e nenhuma ordem foi enviada.
