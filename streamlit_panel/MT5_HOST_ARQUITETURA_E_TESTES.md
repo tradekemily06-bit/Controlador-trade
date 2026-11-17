@@ -195,3 +195,18 @@ Artefato gerado: `webview2-composition-streamlit-poc`, 55.515 bytes, SHA-256 `0a
 - Que o executável pode ser instalado ou usado como painel final.
 
 Próxima etapa obrigatória: executar a prova visual e de entrada em Windows interativo, primeiro em janela de teste com fundo quadriculado, depois em MT5 DEMO. Sem acesso a uma sessão Windows/MT5 interativa neste ambiente, esses critérios continuam pendentes e não devem ser simulados por CI headless.
+
+
+## Atualização de dependências para a próxima prova Windows — 17/11/2026
+
+A auditoria do projeto oficial mostrou que o sample fixado usa WebView2 `1.0.1056-prerelease` e WIL `1.0.200902.2`, versões antigas que não devem ser tratadas como base de distribuição.
+
+Foi atualizado o workflow experimental para, somente no checkout temporário do sample Microsoft durante o CI, testar:
+- Microsoft WebView2 SDK estável `1.0.4314.35`;
+- Microsoft Windows Implementation Library estável `1.0.260126.7`.
+
+O código original do sample permanece fixado no commit Microsoft `06d49d546ba5dc0e2773798ee5b982f68275af4c`; a troca de versões é feita no runner, não altera o repositório do fornecedor nem o `app.py` aprovado. O objetivo é verificar se o exemplo de composição ainda compila com dependências atuais antes de escrever o host próprio.
+
+**Estado desta alteração:** workflow atualizado no commit `0e5cf376efa763d34a2f52a9f0767548be4a24e4`. A execução CI correspondente ainda precisa ser consultada; não declarar o build com SDK atualizado como aprovado até o resultado aparecer.
+
+**Limite mantido:** mesmo que a compilação passe, ainda será apenas o sample de janela própria. Isso não entrega ancoragem ao MT5, transparência real da página Streamlit, nem encaminhamento completo de eventos. O host específico do Controlador Trading continua por implementar e validar em Windows interativo.
