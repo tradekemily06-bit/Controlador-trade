@@ -279,6 +279,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Native WebView2 input contract did not compile." }
           .\\native_input_contract.test.exe
           if ($LASTEXITCODE -ne 0) { throw "Native WebView2 input contract tests failed." }
+      - name: Compile and run Win32 mouse routing and cursor bridge contract
+        shell: pwsh
+        run: |
+          $include = "webview2-samples/SampleApps/packages/Microsoft.Web.WebView2.1.0.4314.35/build/native/include"
+          cl /nologo /std:c++17 /EHsc /W4 /WX /I $include controlador-trade/streamlit_panel/mt5_host/native_input_router.test.cpp /Fe:native_input_router.test.exe
+          if ($LASTEXITCODE -ne 0) { throw "Native Win32 input router did not compile." }
+          .\\native_input_router.test.exe
+          if ($LASTEXITCODE -ne 0) { throw "Native Win32 input router tests failed." }
       - name: Build isolated WebView2 Composition proof of concept
         shell: pwsh
         run: |
