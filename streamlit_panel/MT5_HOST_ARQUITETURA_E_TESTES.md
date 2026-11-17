@@ -95,3 +95,29 @@ Este ambiente permite atualizar e auditar o repositório, mas não executa Visua
 Referências oficiais:
 - WebView2 APIs e composição: https://learn.microsoft.com/pt-br/microsoft-edge/webview2/concepts/overview-features-apis
 - Exemplo oficial Win32 com Visual Composition: https://learn.microsoft.com/en-us/microsoft-edge/webview2/samples/webview2samplewincomp
+
+
+## Revisão técnica após inspeção do sample oficial — 17/11/2026
+
+O sample WinComp da Microsoft foi lido no commit `06d49d546ba5dc0e2773798ee5b982f68275af4c`. Ele é uma demonstração de WebView2 Composition Controller em uma janela Win32 própria, não um exemplo de overlay transparente no gráfico de outro processo.
+
+Achados concretos:
+- `AppWindow.cpp` cria Composition Controller e carrega `WebView2SamplePage.html` local.
+- `CompositionHost.cpp` cria vários visuais com brushes de cor alfa 255; isso não comprova transparência do WebView sobre o MT5.
+- O código de entrada encaminha mensagens de mouse ao `SendMouseInput`, mas não constitui implementação completa de roda, teclado, foco/captura e pointer input para o nosso caso.
+- O projeto usa WebView2 `1.0.1056-prerelease` e WIL `1.0.200902.2`; atualizar e validar dependências é obrigatório antes de reutilização.
+- A janela hospedeira é própria; não existe ancoragem ou sincronização com o gráfico MT5.
+
+Portanto, o sample só valida que existe uma rota de composição nativa a investigar. Não prova transparência alfa real, clique integral, nem compatibilidade MT5. A arquitetura continua experimental e o host final ainda não foi implementado.
+
+### Estado atual corrigido
+
+- app.py original está presente na branch, com blob Git `b28e4e07130a727b231f3e29be542464e534a996` e SHA-256 aprovado `DCB0AF794CD28F4E6AE1B023095DC15FCB39EAA4CF393682E2DD0CB86F2960F7`.
+- URL local do Streamlit: `http://127.0.0.1:8501`.
+- Não há host executável nem build validada; não há captura no MT5 nem teste local de transparência/cliques.
+- Status CI consultado para o commit então verificado veio sem checks; não equivale a aprovação.
+- EA/MQL5, runtime/API, banco, regras fiscais, Assistente, identidade e proteções não foram alterados. REAL permanece bloqueado; nenhuma ordem foi enviada.
+
+### Próxima etapa técnica obrigatória
+
+Criar um protótipo mínimo independente, usando versão estável atual do SDK WebView2 e sem trazer dependências antigas do sample sem revisão. Primeiro provar alfa real em janela de teste quadriculada; depois validar mouse, roda, teclado e foco; só então tentar ancorar no gráfico MT5. Se qualquer etapa falhar, não instalar nem encobrir o problema com janela opaca. Manter a aplicação Streamlit original como única interface.
