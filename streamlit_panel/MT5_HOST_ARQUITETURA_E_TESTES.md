@@ -293,3 +293,19 @@ Esta hipótese pode contornar a necessidade de transparência CSS da página, ma
 
 ### Segurança de escopo
 A inspeção foi somente de leitura. Nenhum arquivo da aplicação, EA/MQL5, runtime/API, banco, regras fiscais, identidade ou proteções foi alterado. O app continua sendo a única interface. A branch é experimental e não foi instalada no MT5.
+
+
+## Protótipo de recorte visual no CI — 17/11/2026
+
+Foi atualizado o workflow para aplicar, **somente no checkout temporário do exemplo Microsoft dentro do runner Windows**, uma prova de conceito de recorte:
+- manter o WebView2 com o viewport integral da janela de teste;
+- reduzir a árvore visual a um único visual WebView;
+- aplicar `InsetClip` de 420×460 px no canto inferior esquerdo;
+- restringir o encaminhamento de mouse à mesma região visível;
+- continuar navegando para o Streamlit original em `127.0.0.1:8501`.
+
+O patch não é aplicado ao repositório Microsoft, não é código de produção e não altera o `app.py`. O objetivo imediato é apenas verificar se a API de recorte compila junto com a Composition Controller estável. A execução CI deste novo commit ainda precisa ser consultada.
+
+**Limitações deliberadas deste teste:** o retângulo é fixo, não é medido dinamicamente do DOM; o sample ainda abre janela própria; não acompanha o gráfico MT5; não prova alpha/hit testing fora da janela; não implementa roda, teclado, foco, captura, DPI ou ciclo de vida. Portanto, mesmo que compile, é somente uma etapa de engenharia, não uma integração utilizável.
+
+Próximo passo após a compilação: substituir o retângulo fixo por medidas DOM dos elementos `.st-key-panel-toggle` e `.st-key-control-hub-shell`, receber atualizações após reruns e validar coordenadas e input. Nenhuma alteração visual/CSS no app original é permitida.
