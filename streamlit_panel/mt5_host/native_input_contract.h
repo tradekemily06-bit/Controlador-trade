@@ -81,7 +81,7 @@ inline bool ShouldForwardMouseInput(
     constexpr std::uint8_t middle = 4;
     const bool inside = IsInsideClip(layout, hostClientPoint);
 
-    auto buttonBit = [](UINT msg) -> std::uint8_t {
+    auto buttonBit = [=](UINT msg) -> std::uint8_t {
         switch (msg) {
         case WM_LBUTTONDOWN: case WM_LBUTTONUP: return left;
         case WM_RBUTTONDOWN: case WM_RBUTTONUP: return right;
