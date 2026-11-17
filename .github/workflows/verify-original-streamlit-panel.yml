@@ -20,6 +20,9 @@ jobs:
       - name: Syntax-check read-only native-host DOM bridge
         shell: bash
         run: node --check streamlit_panel/mt5_host/dom_bridge.js
+      - name: Exercise DOM bridge state and toggle contract
+        shell: bash
+        run: node streamlit_panel/mt5_host/dom_bridge.test.cjs
       - name: Verify approved app.py SHA-256
         shell: bash
         run: |
