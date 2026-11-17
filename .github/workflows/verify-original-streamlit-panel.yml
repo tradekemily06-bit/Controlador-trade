@@ -1,0 +1,30 @@
+name: Verify original Streamlit panel integrity
+
+on:
+  push:
+    branches:
+      - experiment/mt5-streamlit-cef147-host-20261117
+  pull_request:
+    paths:
+      - streamlit_panel/app.py
+      - streamlit_panel/MT5_HOST_CEF147_EXPERIMENT.md
+      - .github/workflows/verify-original-streamlit-panel.yml
+
+jobs:
+  verify-original-app:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Verify approved app.py SHA-256
+        shell: bash
+        run: |
+          expected="DCB0AF794CD28F4E6AE1B023095DC15FCB39EAA4CF393682E2DD0CB86F2960F7"
+          actual="$(sha256sum streamlit_panel/app.py | awk '{print toupper($1)}')"
+          echo "Expected approved app.py SHA-256: $expected"
+          echo "Actual app.py SHA-256:             $actual"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "::error::app.py is not byte-for-byte identical to the approved Streamlit original. Stop; do not install this branch."
+            exit 1
+          fi
+          echo "Original Streamlit app.py integrity confirmed."
