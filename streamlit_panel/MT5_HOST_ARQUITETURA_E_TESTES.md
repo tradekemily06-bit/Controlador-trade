@@ -133,3 +133,27 @@ Referências oficiais consultadas em 17/11/2026:
 - WebView2 `DefaultBackgroundColor`: https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2controller2?view=webview2-1.0.3912.50
 - Visão geral das APIs WebView2 e composição: https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/overview-features-apis
 - Limitações da Visual Layer com conteúdo externo: https://learn.microsoft.com/en-us/windows/apps/develop/composition/visual-layer
+
+
+## Correção de estado e pendências reais — 17/11/2026
+
+Esta seção prevalece sobre afirmações históricas anteriores neste documento que estejam em conflito com ela.
+
+### Estado verificado
+- `streamlit_panel/app.py` está restaurado na branch e seu blob Git é `b28e4e07130a727b231f3e29be542464e534a996`; o SHA-256 aprovado é `DCB0AF794CD28F4E6AE1B023095DC15FCB39EAA4CF393682E2DD0CB86F2960F7`.
+- A aplicação original não foi editada para esta integração.
+- O Streamlit é servido em `http://127.0.0.1:8501`; runtime separado em `http://127.0.0.1:8000`.
+- A branch permanece experimental. Ainda não existe host nativo implementado/compilado, nem instalador, nem validação visual/funcional no MT5.
+- A ausência de status/checks consultáveis não significa CI aprovado.
+
+### Trabalho ainda necessário — sem atalhos
+1. Implementar um host Windows nativo isolado com WebView2 Composition Controller, sem alterar `app.py`, EA ou runtime.
+2. Compilar em Windows com SDK e WebView2 Runtime suportados; fixar versões e registrar artefatos/checksums.
+3. Provar transparência alfa com a página original e fundo quadriculado. Fundo transparente do controller, isoladamente, não prova transparência do HTML/CSS do Streamlit.
+4. Implementar e testar encaminhamento de clique, roda, teclado, foco/captura e cursor; garantir que eventos fora do painel continuem no gráfico.
+5. Testar ancoragem à janela de gráfico MT5, DPI, resize, minimização/restauração, troca de gráfico e encerramento.
+6. Validar os seis espaços originais e todos os controles, incluindo o C recolhido/expandido, sem bloquear BUY/SELL.
+7. Executar somente em DEMO/SIMULAÇÃO, confirmar REAL bloqueado e ausência de envio de ordens.
+8. Só depois gerar pacote reversível e solicitar autorização específica para instalação. Não fazer merge/deploy automaticamente.
+
+**Critério de honestidade:** até haver build Windows, logs, capturas e testes reproduzíveis no MT5 real, não afirmar que a integração está concluída ou instalada. Este repositório/ambiente não tem acesso à sessão Windows/MT5 do usuário.
