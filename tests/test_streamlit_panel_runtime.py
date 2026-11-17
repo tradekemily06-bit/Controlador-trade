@@ -13,14 +13,38 @@ def _open_panel(monkeypatch):
     monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "false")
     app = AppTest.from_file(str(PANEL_APP)).run(timeout=30)
     assert not app.exception
+    if any(item.key == "open_control_hub" for item in app.button):
+        app.button(key="open_control_hub").click().run(timeout=30)
+    assert not app.exception
     return app
 
+
+
+
+def test_streamlit_c_button_opens_and_closes_panel_by_default(monkeypatch):
+    monkeypatch.setenv("CONTROLADOR_API_BASE_URL", "http://127.0.0.1:1")
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "false")
+    monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "false")
+    app = AppTest.from_file(str(PANEL_APP)).run(timeout=30)
+    assert not app.exception
+    assert app.session_state["panel_open"] is False
+    assert any(item.key == "open_control_hub" for item in app.button)
+
+    app.button(key="open_control_hub").click().run(timeout=30)
+    assert not app.exception
+    assert app.session_state["panel_open"] is True
+    assert any(item.key == "close_control_hub" for item in app.button)
+
+    app.button(key="close_control_hub").click().run(timeout=30)
+    assert not app.exception
+    assert app.session_state["panel_open"] is False
+    assert any(item.key == "open_control_hub" for item in app.button)
 
 def test_streamlit_panel_starts_and_exposes_the_expected_main_areas(monkeypatch):
     app = _open_panel(monkeypatch)
     area = next(item for item in app.radio if item.label == "Áreas principais")
     assert list(area.options) == [
-        "COCKPIT",
+        "CABINE DE COMANDO",
         "ANÁLISE",
         "ESTUDO",
         "RESERVA FISCAL",
