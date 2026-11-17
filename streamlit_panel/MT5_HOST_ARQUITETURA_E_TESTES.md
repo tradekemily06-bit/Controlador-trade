@@ -365,3 +365,29 @@ O script é apenas a ponte de observação/comando. Ele não cria a janela nativ
 Foi adicionado ao CI o passo `node --check streamlit_panel/mt5_host/dom_bridge.js`. Esse passo valida sintaxe JavaScript, não comportamento DOM nem integração WebView2. A aprovação do CI não deve ser interpretada como prova de ausência de congelamento ou transparência real.
 
 O arquivo `app.py` permanece sem alterações e deve continuar correspondendo ao SHA-256 aprovado `DCB0AF794CD28F4E6AE1B023095DC15FCB39EAA4CF393682E2DD0CB86F2960F7`. Nenhuma instalação, merge, deploy, alteração EA/MQL5, runtime, banco, identidade ou regra operacional foi feita.
+
+
+## Escopo fechado de conclusão e evidências — 17/11/2026
+
+Esta lista consolida os critérios já definidos acima. Ela não autoriza alterar a interface original nem ampliar o produto. O trabalho de integração só será considerado concluído quando todos os portões abaixo tiverem evidência reproduzível:
+
+1. **Integridade:** SHA-256 de `streamlit_panel/app.py` igual ao aprovado; teste automatizado de contrato do C recolhido/expandido e dos seletores originais.
+2. **Inicialização:** Streamlit original inicia no Windows, health check responde e o host não cria processos duplicados; recuperação e encerramento não fecham o MT5.
+3. **Host próprio:** executável Win32 x64 do Controlador Trading, código-fonte versionado, SDK/runtime WebView2 identificados e build reproduzível. O sample Microsoft sozinho não satisfaz este item.
+4. **Composição/recorte:** página original carregada sem alteração; viewport integral; C nativo independente; clip dinâmico baseado nos retângulos DOM reais; fora das regiões do painel o gráfico permanece visível.
+5. **Entrada:** clique, roda, teclado, foco, captura/liberação e cursor testados; hit testing respeita o recorte e os eventos fora do painel chegam ao MT5.
+6. **Ancoragem:** painel acompanha gráfico/janela, posição, resize, DPI, minimização/restauração, troca de gráfico e encerramento.
+7. **Regressão visual e funcional:** comparação com o Streamlit original; navegação e controles de todos os módulos/áreas existentes continuam funcionais; C recolhido mostra apenas o controle/sinal previsto; expandido não cobre BUY/SELL.
+8. **Estabilidade e segurança:** teste de sessão prolongada, reruns/reconexão, reinício dos serviços e ausência de congelamento/processos órfãos; DEMO/SIMULAÇÃO apenas, REAL bloqueado e nenhuma ordem enviada.
+9. **Entrega reversível:** logs, instruções de inicialização/recuperação, pacote e procedimento de reversão; só depois pedir autorização específica para instalar no MT5.
+
+### O que não será apresentado como conclusão
+- CI verde de hash, sintaxe, health check ou compilação do sample não substitui os testes visuais/interativos.
+- O protótipo de clip fixo não substitui o clip DOM dinâmico.
+- A ponte JavaScript não substitui o host C++.
+- Não serão criados requisitos de redesign, migração do app, alteração do EA/runtime/banco ou liberação de REAL como condição para esta integração.
+
+### Critério de transparência sobre imprevistos
+Se um dos testes revelar defeito técnico necessário para cumprir qualquer portão acima, ele será registrado como correção dentro desse mesmo portão, com causa e evidência. Se surgir dependência realmente fora do escopo (por exemplo, limitação incompatível do WebView2/Windows/MT5), ela será comunicada antes de qualquer mudança de arquitetura ou pedido de alteração. Não será escondida nem declarada como concluída por aproximação.
+
+**Estado no momento desta atualização:** o teste de contrato do painel foi adicionado ao CI. Na execução `44197528022`, a verificação de hash, sintaxe e ponte DOM terminou com sucesso; os jobs de instalação/health do Streamlit e compilação do sample WebView2 ainda estavam em andamento quando consultados. O host nativo próprio e os testes interativos no Windows/MT5 continuam pendentes.
