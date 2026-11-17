@@ -2,13 +2,16 @@ import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
+// Preserve the four original navigation groups from the supplied reference.
+// Reserva Fiscal and Assistente do Ecossistema are accessible inside MAIS / ADMIN
+// without adding new top-level tabs or changing the four-group structure.
 const AREAS = {
-  "CABINE DE COMANDO": [
+  "COCKPIT": [
     "Operação",
     "Motor de Decisão",
     "Gestão de Risco",
     "Notificações",
-    "Ambiente MT5 DEMO",
+    "MT5 DEMO / Simulação",
     "Kill Switch",
   ],
   "ANÁLISE": [
@@ -25,10 +28,10 @@ const AREAS = {
     "Descobertas",
     "Escola / Tutorial / Onboarding",
   ],
-  "RESERVA FISCAL": ["Reserva Fiscal"],
-  "ASSISTENTE DO ECOSSISTEMA": ["Assistente do Ecossistema"],
-  "CENTRAL": [
+  "MAIS / ADMIN": [
     "Financeiro",
+    "Reserva Fiscal",
+    "Assistente do Ecossistema",
     "Configurações",
     "Auditoria",
     "Segurança",
@@ -39,8 +42,8 @@ const AREAS = {
 
 function ControlHub() {
   const [open, setOpen] = useState(false);
-  const [area, setArea] = useState("CABINE DE COMANDO");
-  const [module, setModule] = useState(AREAS["CABINE DE COMANDO"][0]);
+  const [area, setArea] = useState("COCKPIT");
+  const [module, setModule] = useState(AREAS.COCKPIT[0]);
 
   function selectArea(nextArea) {
     setArea(nextArea);
@@ -132,9 +135,6 @@ function ControlHub() {
               <strong>DESABILITADO</strong>
             </div>
           </footer>
-          <div className="module-content-note">
-            {module} · interface visual em construção. A lógica original será conectada após o mapeamento funcional.
-          </div>
         </section>
       )}
     </main>
