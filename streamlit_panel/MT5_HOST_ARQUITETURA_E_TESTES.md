@@ -530,3 +530,24 @@ Artefato gerado: `webview2-streamlit-clipped-viewport-poc`, 55.724 bytes, SHA-25
 Não promover esse artefato nem chamá-lo de host. O próximo incremento deve ser um projeto Win32/C++ próprio, com fonte versionado no repositório e build x64 reproduzível no CI, que substitua o sample como unidade de compilação. O projeto deve começar com janela de bancada independente e separar explicitamente: criação do Composition Controller, visual/clip, controle C nativo, protocolo de mensagens DOM e roteamento de entrada. A geometria fixa 420x460 do sample é somente teste temporário; a integração final precisa consumir `expandedShell` e `viewport.dpr` reais, rejeitar mensagens inválidas/obsoletas e manter o WebView oculto quando recolhido.
 
 O host próprio ainda não foi implementado nesta atualização. A próxima implementação não deve alterar `app.py`, EA/MQL5, runtime, banco, identidade, Reserva Fiscal, Assistente ou bloqueio REAL.
+
+
+## Roteador nativo de entrada compilado no Windows CI — 17/11/2026
+
+Execução: https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/44202688816
+Commit do workflow: `1aab00ada6e696ac066b70aec8766968ede5e223`.
+
+Os três jobs terminaram com sucesso. No job Windows de composição, foram concluídos:
+- compilação e execução dos contratos de geometria/DPI/hit-test;
+- compilação e execução do contrato de entrada WebView2;
+- compilação e execução de `native_input_router.test.cpp`, incluindo o header `native_input_router.h`;
+- compilação x64 Release do sample oficial WebView2 Composition temporariamente apontado ao Streamlit local;
+- publicação do artefato de prova de conceito.
+
+O teste do roteador verifica a tradução das mensagens e as decisões de roteamento/captura contra o contrato. A compilação confirma compatibilidade do helper com MSVC e o SDK WebView2 fixado. **Não** comprova captura real no desktop, funcionamento de cursor em uma janela viva, teclado/foco, composição visual ou ancoragem ao MT5: o roteador ainda não está conectado a um host próprio.
+
+O arquivo `streamlit_panel/app.py` continuou protegido pelo teste de hash aprovado. Nenhuma alteração foi feita no EA/MQL5, runtime/API, banco, Reserva Fiscal, Assistente, identidade ou bloqueio REAL. Nenhuma instalação, merge ou envio de ordem foi realizado.
+
+### Gate seguinte
+
+Implementar e compilar um executável Win32 próprio, inicialmente como janela de bancada independente. Somente depois de validar ciclo de vida, Composition Controller, C nativo, clip DOM dinâmico e entrada completa em bancada será razoável iniciar a etapa de ancoragem ao gráfico MT5. A prova atual não autoriza afirmar que o painel já aparece no MT5.
