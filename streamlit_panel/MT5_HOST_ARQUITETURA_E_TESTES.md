@@ -391,3 +391,24 @@ Esta lista consolida os critérios já definidos acima. Ela não autoriza altera
 Se um dos testes revelar defeito técnico necessário para cumprir qualquer portão acima, ele será registrado como correção dentro desse mesmo portão, com causa e evidência. Se surgir dependência realmente fora do escopo (por exemplo, limitação incompatível do WebView2/Windows/MT5), ela será comunicada antes de qualquer mudança de arquitetura ou pedido de alteração. Não será escondida nem declarada como concluída por aproximação.
 
 **Estado no momento desta atualização:** o teste de contrato do painel foi adicionado ao CI. Na execução `44197528022`, a verificação de hash, sintaxe e ponte DOM terminou com sucesso; os jobs de instalação/health do Streamlit e compilação do sample WebView2 ainda estavam em andamento quando consultados. O host nativo próprio e os testes interativos no Windows/MT5 continuam pendentes.
+
+
+## Matriz de entrada WebView2 — requisitos de implementação confirmados na API — 17/11/2026
+
+A leitura da referência Win32 atual da Microsoft detalha que a integração não pode encaminhar apenas `WM_LBUTTONDOWN`:
+
+- **Mouse:** mapear cada evento Win32 para `COREWEBVIEW2_MOUSE_EVENT_KIND`, converter coordenadas para o espaço cliente do WebView e enviar os modificadores/botões em `virtualKeys`.
+- **Roda vertical/horizontal:** encaminhar `WM_MOUSEWHEEL` e `WM_MOUSEHWHEEL` como `COREWEBVIEW2_MOUSE_EVENT_KIND_WHEEL` / `HORIZONTAL_WHEEL`; `mouseData` precisa preservar o delta assinado, em unidades de `WHEEL_DELTA=120`.
+- **Captura:** se um arrasto começar dentro do painel e o ponteiro sair da janela hospedeira, usar `SetCapture` / `ReleaseCapture` e continuar enviando os eventos até liberar o botão; cancelar captura corretamente se a janela perder foco ou for destruída.
+- **Saída do ponteiro:** enviar `COREWEBVIEW2_MOUSE_EVENT_KIND_LEAVE` quando o ponteiro sair da região WebView para encerrar hover/popups corretamente.
+- **Cursor:** registrar `CursorChanged`, consultar `get_Cursor` e aplicar o cursor no HWND hospedeiro via `WM_SETCURSOR`; manter cópia válida do handle quando necessário.
+- **Toque/caneta:** se forem suportados pelo terminal e pelo host, converter mensagens de ponteiro do Windows em `COREWEBVIEW2_POINTER_INFO` e chamar `SendPointerInput`. Caso não sejam implementados, registrar explicitamente como não suportados, sem afirmar entrada integral.
+- **Foco/teclado:** o Composition Controller também implementa `ICoreWebView2Controller`; usar as APIs herdadas de foco/visibilidade e tratar `GotFocus`, `LostFocus`, `MoveFocusRequested` e `AcceleratorKeyPressed`. Não presumir que encaminhar apenas mouse faz teclado funcionar.
+- **Área fora do painel:** o hit-test do host deve usar exatamente a mesma geometria física usada pelo clip. Evento fora da região não deve ser consumido pelo host; deve seguir para a janela/gráfico MT5.
+
+Esses requisitos são extraídos da API, não significam que já estejam implementados. A matriz passa a fazer parte do critério de aceite de entrada e estabilidade.
+
+Referências Microsoft:
+- Win32 C++ Composition Controller: https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2compositioncontroller
+- CoreWebView2CompositionController e detalhes de mouse/pointer/cursor: https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/winrt/microsoft-web-webview2-core/corewebview2compositioncontroller
+- Visão geral de APIs e composição: https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/overview-features-apis
