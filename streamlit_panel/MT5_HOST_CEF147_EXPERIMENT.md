@@ -15,7 +15,7 @@ Substituir somente a camada hospedeira WebView2 por uma camada Chromium Embedded
 
 ## Candidato técnico
 
-O CEF Python oficial recebeu a atualização CEF 147 e suporte declarado a Python 3.10–3.14, incluindo Windows 10+ x64, em PR integrado em 2 de novembro de 2026. Isso torna CEF uma opção tecnicamente plausível para o Python 3.12 deste ambiente, mas não prova compatibilidade com este painel ou com o MT5.
+O CEF Python oficial recebeu uma atualização para CEF 147 e suporte declarado a Python 3.10–3.14, incluindo Windows 10+ x64, em PR integrado em 2 de novembro de 2026 na branch `cefpython147`. Porém, a página oficial do PyPI ainda lista somente a versão 66.1, publicada em 2021. Portanto, a atualização moderna ainda não é uma dependência de instalação simples e estável via PyPI. Isso torna CEF uma opção de protótipo, não uma escolha aprovada para distribuição. Antes de fixar dependência, será necessário verificar release oficial, origem, assinatura/checksum, compatibilidade Python 3.12 x64 e licença. Nada disso prova compatibilidade com este painel ou com o MT5.
 
 A implementação experimental deverá priorizar renderização off-screen com transparência alfa real e encaminhamento explícito de mouse/teclado. Não deverá simplesmente colocar uma janela opaca sobre o gráfico. O recorte, a posição inferior esquerda, o C e os botões BUY/SELL precisam ser preservados. Não usar HTML estático, React, imagem, mockup ou reconstrução da interface.
 
