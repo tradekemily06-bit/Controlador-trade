@@ -144,6 +144,66 @@ jobs:
           }
           Set-Content -Path $header -Value $source -Encoding utf8
           Write-Host "Using stable composition interfaces declared by WebView2.h."
+      - name: Apply isolated clipped-viewport experiment to temporary Microsoft sample
+        shell: pwsh
+        run: |
+          $sourcePath = "webview2-samples/SampleApps/WebView2SampleWinComp/CompositionHost.cpp"
+          $source = Get-Content $sourcePath -Raw
+          $createPattern = '(?s)void CompositionHost::CreateVisuals\(\)\s*\{.*?\n\}'
+          $createReplacement = @'
+          void CompositionHost::CreateVisuals()
+          {
+              // One full-viewport WebView visual; only its lower-left panel rectangle is clipped.
+              CreateWebViewVisual();
+          }
+          '@
+          $source2 = [regex]::Replace($source, $createPattern, $createReplacement, 1)
+          if ($source2 -eq $source) { throw "Could not isolate CreateVisuals for clipped-viewport experiment." }
+          $resizePattern = '(?s)void CompositionHost::ResizeAllVisuals\(\)\s*\{.*?\n\}'
+          $resizeReplacement = @'
+          void CompositionHost::ResizeAllVisuals()
+          {
+              if (!m_webViewVisual || !m_rootVisual) return;
+              const float width = static_cast<float>(m_appBounds.right - m_appBounds.left);
+              const float height = static_cast<float>(m_appBounds.bottom - m_appBounds.top);
+              m_webViewVisual.Size({ width, height });
+              m_webViewVisual.Offset({ 0.0f, 0.0f, 0.0f });
+              auto clip = m_compositor.CreateInsetClip();
+              clip.Left(0.0f);
+              clip.Top(height > 460.0f ? height - 460.0f : 0.0f);
+              clip.Right(width > 420.0f ? width - 420.0f : 0.0f);
+              clip.Bottom(0.0f);
+              m_webViewVisual.Clip(clip);
+              // Keep the browser viewport at the full client size so fixed-position
+              // Streamlit elements retain their original bottom-left coordinates.
+              SetWebViewVisualBounds();
+          }
+          '@
+          $source3 = [regex]::Replace($source2, $resizePattern, $resizeReplacement, 1)
+          if ($source3 -eq $source2) { throw "Could not isolate ResizeAllVisuals for clipped-viewport experiment." }
+          $mousePattern = '(?s)void CompositionHost::UpdateVisual\(POINT point, UINT message, WPARAM wParam\)\s*\{.*?\n\}'
+          $mouseReplacement = @'
+          void CompositionHost::UpdateVisual(POINT point, UINT message, WPARAM wParam)
+          {
+              const LONG width = m_appBounds.right - m_appBounds.left;
+              const LONG height = m_appBounds.bottom - m_appBounds.top;
+              const LONG top = height > 460 ? height - 460 : 0;
+              const LONG right = width > 420 ? 420 : width;
+              // Mirror the visible clip for hit testing: outside clicks are not sent to WebView2.
+              if (point.x < 0 || point.x >= right || point.y < top || point.y >= height) return;
+              if (m_webViewVisual && m_compositionController)
+              {
+                  CHECK_FAILURE(m_compositionController->SendMouseInput(
+                      static_cast<COREWEBVIEW2_MOUSE_EVENT_KIND>(message),
+                      static_cast<COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS>(GET_KEYSTATE_WPARAM(wParam)),
+                      0, point));
+              }
+          }
+          '@
+          $source4 = [regex]::Replace($source3, $mousePattern, $mouseReplacement, 1)
+          if ($source4 -eq $source3) { throw "Could not isolate UpdateVisual for clipped hit testing." }
+          Set-Content -Path $sourcePath -Value $source4 -Encoding utf8
+          Write-Host "Temporary sample now tests full viewport + lower-left 420x460 visual clip and matching mouse hit test."
       - name: Restore pinned sample dependencies
         shell: pwsh
         run: |
@@ -155,6 +215,6 @@ jobs:
       - name: Upload isolated composition prototype
         uses: actions/upload-artifact@v4
         with:
-          name: webview2-composition-streamlit-poc
+          name: webview2-streamlit-clipped-viewport-poc
           path: webview2-samples/SampleApps/WebView2SampleWinComp/Release/x64/*.exe
           if-no-files-found: error
