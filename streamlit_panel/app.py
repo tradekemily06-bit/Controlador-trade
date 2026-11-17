@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import csv
 import hashlib
@@ -6,8 +6,7 @@ import ipaddress
 import io
 import json
 import os
-from datetime import date, datetime
-from zoneinfo import ZoneInfo
+from datetime import date
 from math import isfinite
 import urllib.error
 import urllib.parse
@@ -60,12 +59,12 @@ st.markdown("""
 .stApp { background: #080B0F; color: #E9EEF3; background-image: linear-gradient(rgb(255 255 255 / .025) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / .025) 1px, transparent 1px); background-size: 3rem 3rem; }
 [data-testid="stHeader"] { background: transparent; }
 .block-container { width: 100%; max-width: none; padding: 1rem clamp(.75rem, 2vw, 1.5rem) 6rem; }
-.st-key-panel-toggle { position: relative; width: min(100%, 360px); max-width: 100%; margin: 2rem 0 1rem; }
+.st-key-panel-toggle { position: fixed; left: 16px; bottom: 16px; z-index: 999999; width: min(100%, 360px); max-width: calc(100vw - 32px); margin: 0; }
 .st-key-panel-toggle .stButton > button { width: 64px; min-width: 64px; height: 64px; min-height: 64px; padding: 0; border-radius: 50%; background: #080B0F; color: #46D6AD; border: 1px solid #46D6AD; box-shadow: 0 0 10px #46D6AD33; font-weight: 800; font-size: 1.25rem; }
 .st-key-panel-toggle .closed-status { color: #7F8B97; font-size: 10px; font-weight: 800; letter-spacing: .06em; padding-left: 0; }
 .st-key-panel-toggle .closed-signal { max-width: 190px; font-size: 13px; line-height: 1.25; font-weight: 900; letter-spacing: .025em; white-space: nowrap; }
 .st-key-panel-toggle .closed-score { color: #E9EEF3; font-size: 11px; line-height: 1.2; font-weight: 700; white-space: nowrap; }
-.st-key-control-hub-shell { width: 100%; max-width: none; margin: 1rem 0 2rem; padding: clamp(1rem, 2vw, 1.5rem); background: #10151B; border: 1px solid #25303B; border-radius: 24px; }
+.st-key-control-hub-shell { position: fixed; left: 16px; bottom: 16px; z-index: 999998; width: min(34vw, 420px); max-width: calc(100vw - 32px); max-height: min(84vh, 460px); overflow-y: auto; margin: 0; padding: clamp(.65rem, 1vw, 1rem); background: #10151B; border: 1px solid #25303B; border-radius: 24px; }
 .st-key-control-hub-shell .hub-title { color: #E9EEF3; font-size: 1.35rem; font-weight: 800; padding: .35rem 0 .9rem; }
 .st-key-control-hub-shell .demo-pill-wrap { display: flex; justify-content: flex-end; padding-top: .3rem; }
 .st-key-control-hub-shell .system-state-value { color: #7F8B97; text-align: right; font-size: .78rem; font-weight: 800; }
@@ -87,7 +86,7 @@ st.markdown("""
 .st-key-control-hub-shell [data-testid="stMetric"] { min-width: 0; }
 .st-key-control-hub-shell [data-testid="stButton"] > button { min-height: 44px; }
 @media (max-width: 720px) {
-  .st-key-control-hub-shell { padding: .8rem; margin: .4rem auto 1rem; border-radius: 18px; }
+  .st-key-control-hub-shell { padding: .8rem; margin: 0; border-radius: 18px; }
   .st-key-control-hub-shell [data-testid="stRadio"] [role="radiogroup"] { gap: .35rem; }
   .st-key-control-hub-shell [data-testid="stRadio"] label { padding: .5rem .55rem; }
 }
@@ -111,6 +110,20 @@ section[data-testid="stSidebar"] { background:#10151B; border-right:1px solid #2
 .status-card { border:1px solid #25303B; border-radius:14px; padding:12px 16px; background:#10151B; }
 .demo-pill { display:inline-block; color:#46D6AD; border:1px solid #46D6AD66; background:#46D6AD12; border-radius:30px; padding:5px 12px; font-weight:800; font-size:12px; }
 .muted { color:#7F8B97; }
+
+/* C visível nos estados recolhido e expandido */
+.st-key-open_control_hub button,
+.st-key-close_control_hub_top button {
+    background: #101820 !important;
+    color: #f2f6fa !important;
+    border: 1px solid #42b8ad !important;
+    border-radius: 10px !important;
+    min-width: 42px !important;
+    min-height: 42px !important;
+    padding: 0 !important;
+    font-weight: 900 !important;
+    font-size: 18px !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1030,7 +1043,6 @@ def show_fiscal() -> None:
             col.metric(label, money(item.get("reserve_amount_brl")))
             col.caption("Resultado: " + money(item.get("realized_result_brl")))
     except Exception as exc:
-        summary_available = False
         st.error("Não foi possível concluir esta operação. Confira os dados e a disponibilidade do serviço; os detalhes técnicos não são exibidos no painel.")
         summary = {}
 
@@ -1223,13 +1235,13 @@ def show_fiscal() -> None:
     fx_method_options = {"NOT_INFORMED": "Não informado", "NOT_CONVERTED": "Ainda não convertido", "PTAX_SELL": "PTAX venda", "PTAX_BUY": "PTAX compra", "BROKER_STATEMENT": "Extrato da corretora", "BANK_RECEIPT": "Comprovante bancário", "OTHER_DOCUMENTED": "Outro método documentado"}
     with st.form("foreign_pending_form"):
         col1, col2 = st.columns(2)
-        reference = col1.text_input("Referência / comprovante", max_chars=160, key="foreign_pending_reference")
+        reference = col1.text_input("Referência / comprovante", max_chars=160)
         amount = col2.number_input("Valor original", min_value=0.00000001, max_value=1_000_000_000_000.0, step=1.0, format="%.8f")
         col3, col4 = st.columns(2)
         currency = col3.text_input("Código da moeda (3 letras)", value="USD", max_chars=3).strip().upper()
-        instrument = col4.text_input("Instrumento", placeholder="ETF, ação, Forex, CFD, cripto", max_chars=80, key="foreign_pending_instrument")
+        instrument = col4.text_input("Instrumento", placeholder="ETF, ação, Forex, CFD, cripto", max_chars=80)
         col5, col6 = st.columns(2)
-        jurisdiction = col5.text_input("Jurisdição", placeholder="EUA, Brasil, outro", max_chars=80, key="foreign_pending_jurisdiction")
+        jurisdiction = col5.text_input("Jurisdição", placeholder="EUA, Brasil, outro", max_chars=80)
         occurred_on = col6.date_input("Data da operação", key="foreign_date")
         tax_residency = st.selectbox("Residência fiscal declarada na data", list(residency_options), format_func=lambda value: residency_options[value], key="foreign_tax_residency")
         income_nature = st.selectbox("Natureza do rendimento / valor", list(income_options), format_func=lambda value: income_options[value], key="foreign_income_nature")
@@ -1268,11 +1280,11 @@ def show_fiscal() -> None:
     st.markdown("#### Resultado realizado no exterior")
     st.caption("Informe lucro positivo ou prejuízo negativo. O valor original fica pendente e não entra na reserva.")
     with st.form("foreign_signed_result"):
-        ref_signed = st.text_input("Referência do extrato", max_chars=160, key="foreign_signed_reference")
+        ref_signed = st.text_input("Referência do extrato", max_chars=160)
         amount_signed = st.number_input("Resultado original (+ lucro / - prejuízo)", min_value=-1000000000000.0, max_value=1000000000000.0, value=0.0, format="%.8f")
         currency_signed = st.text_input("Código da moeda original (3 letras)", value="USD", max_chars=3).strip().upper()
-        instrument_signed = st.text_input("Instrumento", max_chars=80, key="foreign_signed_instrument")
-        jurisdiction_signed = st.text_input("Jurisdição", max_chars=80, key="foreign_signed_jurisdiction")
+        instrument_signed = st.text_input("Instrumento", max_chars=80)
+        jurisdiction_signed = st.text_input("Jurisdição", max_chars=80)
         date_signed = st.date_input("Data do resultado", key="signed_foreign_date")
         residency_signed = st.selectbox("Residência fiscal declarada na data", list(residency_options), format_func=lambda value: residency_options[value], key="signed_tax_residency")
         income_signed = st.selectbox("Natureza do resultado", list(income_options), format_func=lambda value: income_options[value], key="signed_income_nature")
@@ -1514,19 +1526,6 @@ def show_fiscal() -> None:
 
 def show_market_analysis() -> None:
     st.subheader("Análise de Mercado")
-    st.caption("Disponibilidade de ativos e sessões consultada no MT5 DEMO. Capacidade de negociar no fim de semana não significa mercado aberto agora. Esta tela não envia ordens.")
-    try:
-        market_status = api("/api/market/status")
-        st.markdown("#### Integridade dos dados de mercado")
-        status_cols = st.columns(4)
-        status_cols[0].metric("Estado", str(market_status.get("health") or "NOT_CONNECTED"))
-        status_cols[1].metric("Seguro para análise", "SIM" if market_status.get("safe_for_analysis") is True else "NÃO")
-        status_cols[2].metric("Candles", str(market_status.get("candle_count") if market_status.get("candle_count") is not None else "—"))
-        status_cols[3].metric("Lacunas", str(market_status.get("gap_count") if market_status.get("gap_count") is not None else "—"))
-        st.caption(str(market_status.get("message") or "Estado de integridade sem mensagem adicional."))
-        st.caption("Este estado descreve a qualidade/frescor do último snapshot recebido; não autoriza execução nem confirma mercado aberto.")
-    except Exception:
-        st.warning("Estado de integridade do mercado indisponível. Trate os dados como não confirmados.")
     try:
         assets_payload = api("/api/market/assets")
         raw_assets = assets_payload.get("assets", [])
@@ -1537,52 +1536,9 @@ def show_market_analysis() -> None:
                 symbols.append(asset)
             elif isinstance(asset, dict) and asset.get("symbol"):
                 symbols.append(str(asset["symbol"]))
-        st.caption(f"Fonte declarada: {assets_payload.get('source', '—')} · {int(assets_payload.get('count', len(raw_assets) if isinstance(raw_assets, list) else 0))} ativo(s) retornado(s)")
-        if assets:
-            st.markdown("#### Universo de ativos e disponibilidade")
-            asset_rows = [{
-                "Ativo": item.get("symbol") or "—",
-                "Classe": item.get("asset_class") or "—",
-                "Moeda base": item.get("currency_base") or "—",
-                "Moeda de resultado": item.get("currency_profit") or "—",
-                "Moeda de margem": item.get("currency_margin") or "—",
-                "Tamanho do contrato": item.get("contract_size") if item.get("contract_size") is not None else "—",
-                "Dígitos": item.get("digits") if item.get("digits") is not None else "—",
-                "Tick size": item.get("trade_tick_size") if item.get("trade_tick_size") is not None else "—",
-                "Visível": "SIM" if item.get("visible") is True else "NÃO",
-                "Negociável": "SIM" if item.get("tradeable") is True else "NÃO",
-                "Cotação": "DISPONÍVEL" if item.get("quote_available") is True else "INDISPONÍVEL",
-                "Estado da sessão": item.get("state") or "DESCONHECIDO",
-                "Pode operar 24/7": "SIM · capacidade" if item.get("is_24_7_capable") is True or item.get("weekend_capable") is True else "NÃO CONFIRMADO",
-                "Adequação": item.get("suitability") or "NÃO AVALIADA",
-                "Motivo": item.get("suitability_rationale") or item.get("reason") or "—",
-                "Lacunas": "; ".join(str(value) for value in (item.get("suitability_gaps") or [])) or "—",
-            } for item in assets]
-            st.dataframe(asset_rows, use_container_width=True, hide_index=True)
-            st.caption("A indicação 24/7 representa capacidade cadastrada do instrumento, não garantia de cotação, liquidez ou execução contínua. Confirme o estado da sessão e a cotação atuais.")
-        elif symbols:
-            st.dataframe([{"Ativo": symbol, "Disponibilidade": "Retornado pelo runtime; detalhes não fornecidos"} for symbol in symbols], use_container_width=True, hide_index=True)
         if not symbols:
             st.warning("O runtime não disponibilizou ativos do MT5 DEMO. Verifique a conexão e a fonte de candles.")
             return
-        try:
-            news = api("/api/news?limit=10")
-            st.markdown("#### Notícias e eventos")
-            if str(news.get("provider") or "").upper() == "UNCONFIGURED" or news.get("live") is not True:
-                st.info("Feed de notícias em tempo real não está configurado. Não considere filtro de notícias como ativo.")
-            items = news.get("items", [])
-            if items:
-                st.dataframe([{
-                    "Título": item.get("title") or item.get("headline") or "—",
-                    "Fonte": item.get("source") or "—",
-                    "Horário": item.get("timestamp") or item.get("published_at") or "—",
-                    "Impacto": item.get("impact") or item.get("severity") or "—",
-                    "Ativo": item.get("symbol") or "—",
-                } for item in items if isinstance(item, dict)], use_container_width=True, hide_index=True)
-            else:
-                st.caption("Nenhum item de notícia disponível.")
-        except Exception as exc:
-            st.warning(f"Feed de notícias indisponível: {exc}. A ausência do feed não confirma que eventos foram filtrados.")
         with st.form("market_analysis_form"):
             symbol = st.selectbox("Ativo para análise", sorted(set(symbols)))
             timeframe = st.selectbox("Período gráfico", ["1m", "5m", "15m", "30m", "1h", "4h", "1d"], index=1)
@@ -1602,7 +1558,7 @@ def show_market_analysis() -> None:
         result = st.session_state.get("market_analysis_result")
         if result:
             analysis = result.get("analysis", {})
-            signal = str(result.get("signal") or "AGUARDAR").upper()
+            signal = str(result.get("signal") or "INDISPONÍVEL").upper()
             cols = st.columns(4)
             cols[0].metric("Sinal", signal)
             cols[1].metric("Pontuação", f"{analysis.get('score', '—')}/100")
@@ -1782,144 +1738,6 @@ def show_finance_overview() -> None:
         )
 
 
-def _kill_switch_activation_payload(reason: Any, confirmed: Any) -> dict[str, Any]:
-    """Require an explicit confirmation and a bounded operator reason."""
-    if confirmed is not True:
-        raise ValueError("Confirme explicitamente a ativação do Kill Switch.")
-    if not isinstance(reason, str) or not reason.strip() or len(reason.strip()) > 240:
-        raise ValueError("Informe um motivo de até 240 caracteres.")
-    return dict([("confirmed", True), ("reason", reason.strip())])
-
-
-def show_kill_switch() -> None:
-    """Expose only the guarded activation path; deactivation is intentionally absent."""
-    st.subheader("Proteção operacional · Kill Switch")
-    st.caption(
-        "A ativação bloqueia novas execuções. Ela não cancela solicitações já encaminhadas; "
-        "essas solicitações precisam ter seus estados reconciliados."
-    )
-    try:
-        status = api("/api/health")
-        observability = status.get("operational_observability", {})
-        kill = observability.get("kill_switch", {}) if isinstance(observability, dict) else {}
-        enabled = kill.get("enabled") is True if isinstance(kill, dict) else None
-        kill_state = kill.get("state") if isinstance(kill, dict) else None
-        if enabled is True or kill_state == "ACTIVE":
-            st.error("KILL SWITCH ATIVO · novas execuções bloqueadas")
-            reason = kill.get("reason")
-            if isinstance(reason, str) and reason.strip():
-                st.caption(f"Motivo registrado: {reason}")
-        elif enabled is False and kill_state == "CLEAR":
-            st.success("Kill Switch confirmado como inativo pelo runtime.")
-        else:
-            st.warning(
-                "Estado do Kill Switch não confirmado pelo runtime. "
-                "Não interprete ausência de conexão como proteção inativa."
-            )
-        execution = observability.get("execution", {}) if isinstance(observability, dict) else {}
-        st.caption(
-            "Estado de execução: "
-            + str(execution.get("state", "não informado"))
-            + " · REAL: DESABILITADO"
-        )
-    except Exception:
-        st.error(
-            "Não foi possível consultar o estado atual. A ativação continuará protegida "
-            "pela confirmação do servidor; confira a conectividade antes de prosseguir."
-        )
-
-    st.markdown("#### Reconciliação de fechamento · consulta protegida")
-    try:
-        real_status = api("/api/runtime/real/status")
-        st.caption(
-            "Estado REAL reportado: "
-            + str(real_status.get("real_execution_allowed", False))
-            + " · autorização ativa: "
-            + str(real_status.get("authorization_active", False))
-            + " · despacho: "
-            + str(real_status.get("real_dispatch", "não informado"))
-        )
-        recovery_items = real_status.get("position_close_recovery_items", [])
-        recovery_items = [
-            item for item in recovery_items
-            if isinstance(item, dict)
-            and isinstance(item.get("request_id"), str)
-            and item.get("request_id").strip()
-            and isinstance(item.get("external_id"), str)
-            and item.get("external_id").strip()
-        ] if isinstance(recovery_items, list) else []
-        if recovery_items:
-            item_by_request = {item["request_id"]: item for item in recovery_items}
-            selected_request = st.selectbox(
-                "Fechamento pendente/desconhecido",
-                options=list(item_by_request),
-                format_func=lambda request_id: (
-                    request_id + " · " + str(item_by_request[request_id].get("state") or "UNKNOWN")
-                    + " · " + str(item_by_request[request_id].get("external_id") or "sem referência")
-                ),
-                key="real_close_reconcile_request",
-            )
-            selected_item = item_by_request[selected_request]
-            st.caption("A reconciliação consulta evidência do broker e atualiza o estado persistido. Não envia ordem de abertura ou fechamento.")
-            with st.form("real_close_reconcile_form"):
-                confirm_read = st.checkbox(
-                    "Confirmo consultar o broker e reconciliar somente este fechamento já registrado."
-                )
-                reconcile_submit = st.form_submit_button("CONSULTAR E RECONCILIAR")
-            if reconcile_submit:
-                if confirm_read is not True:
-                    st.error("Confirme explicitamente a consulta antes de reconciliar.")
-                else:
-                    try:
-                        result = api(
-                            "/api/runtime/real/close/reconcile",
-                            "POST",
-                            {
-                                "request_id": selected_request,
-                                "external_id": selected_item["external_id"],
-                            },
-                        )
-                        reconciliation = result.get("close_reconciliation", {})
-                        st.success("Estado consultado: " + str(reconciliation.get("state") or "NÃO CONFIRMADO"))
-                        st.caption(str(reconciliation.get("message") or "Sem mensagem adicional do adaptador."))
-                        st.rerun()
-                    except Exception:
-                        st.error("Não foi possível reconciliar. Nenhuma ordem de abertura/fechamento foi enviada.")
-        else:
-            st.info("Nenhum fechamento REAL pendente/desconhecido foi reportado pelo runtime.")
-    except Exception:
-        st.warning("Status REAL e reconciliação indisponíveis ou não autorizados. Não interprete ausência de dados como ausência de pendências.")
-
-    with st.form("guarded_kill_switch_activation_form"):
-        reason = st.text_input("Motivo obrigatório da ativação", max_chars=240)
-        confirmed = st.checkbox(
-            "Confirmo que quero bloquear novas execuções neste runtime."
-        )
-        submitted = st.form_submit_button("Ativar Kill Switch")
-    if not submitted:
-        return
-    try:
-        payload = _kill_switch_activation_payload(reason, confirmed)
-        result = api("/api/runtime/kill-switch/activate", "POST", payload)
-        if result.get("activated") is True and result.get("execution_allowed") is False:
-            st.success("Kill Switch ativado. Novas execuções estão bloqueadas.")
-            st.warning(
-                "Solicitações já encaminhadas não foram canceladas. "
-                "Reconcilie os identificadores pendentes/desconhecidos antes de qualquer retomada."
-            )
-            pending = result.get("pending_request_ids", [])
-            unknown = result.get("unknown_request_ids", [])
-            if pending or unknown:
-                st.write("Solicitações pendentes:", pending)
-                st.write("Solicitações com estado desconhecido:", unknown)
-        else:
-            st.error("O runtime não confirmou a ativação. Verifique o estado operacional.")
-    except ValueError as exc:
-        st.error(str(exc))
-    except Exception:
-        st.error("Não foi possível confirmar a ativação. Consulte o estado do runtime antes de repetir.")
-
-
 def show_readonly_module(module_name: str) -> None:
     """Render mapped runtime views and guarded controls for the selected module."""
     if module_name == "Financeiro":
@@ -1927,27 +1745,24 @@ def show_readonly_module(module_name: str) -> None:
         return
     views = {
         "Operação": ("Estado operacional", "/api/health"),
-        "Motor de Decisão": ("Motor de Decisão · última análise", "/api/runtime/analysis/latest"),
+        "Motor de Decisão": ("Motor de Decisão · última análise", ""), 
         "Gestão de Risco": ("Gestão de Risco", "/api/risk"),
         "Notificações": ("Central de Notificações", "/api/notifications"),
         "Ambiente MT5 DEMO": ("Conexões e ambiente", "/api/connections"),
+        "Kill Switch": ("Proteção operacional", "/api/health"),
         "Memória": ("Memória de decisões", "/api/memory?limit=50"),
-        "Diário Operacional": ("Diário operacional · registros persistidos", "/api/journal"),
         "Estatísticas": ("Estatísticas operacionais", "/api/statistics"),
-        "Relatórios": ("Resumo operacional", "/api/reports"),
+        "Relatórios": ("Resumo operacional", "/api/statistics"),
         "Laboratório": ("Laboratório de aprendizado", "/api/learning"),
         "Aprendizado": ("Aprendizado validado", "/api/learning"),
         "Descobertas": ("Descobertas registradas", "/api/learning"),
         "Escola / Tutorial / Onboarding": ("Primeiros passos", "/api/onboarding"),
         "Configurações": ("Preferências do Ecossistema", "/api/preferences"),
+        "Segurança": ("Segurança do Ecossistema", "/api/health"),
         "Conexões": ("Conexões disponíveis", "/api/connections"),
-        "Multi-Broker": ("Visão de provedores · somente leitura", "/api/connections"),
-        "Segurança": ("Postura de segurança do runtime", "/api/health"),
+        "Multi-Broker": ("Disponibilidade de conexões", "/api/connections"),
         "Auditoria": ("Auditoria operacional", "/api/security/audit"),
     }
-    if module_name == "Kill Switch":
-        show_kill_switch()
-        return
     if module_name == "Análise de Mercado":
         show_market_analysis()
         return
@@ -1967,40 +1782,11 @@ def show_readonly_module(module_name: str) -> None:
         st.subheader(heading)
 
     try:
-        if module_name == "Diário Operacional":
-            selected_day = st.date_input(
-                "Data do diário",
-                value=datetime.now(ZoneInfo("America/Sao_Paulo")).date(),
-                key="operational_journal_day",
-            )
-            data = api(f"/api/journal?date={selected_day.isoformat()}&limit=100")
-            summary = data.get("today_summary", {}) if isinstance(data, dict) else {}
-            entries = data.get("entries", []) if isinstance(data, dict) else []
-            entries = [item for item in entries if isinstance(item, dict)] if isinstance(entries, list) else []
-            st.caption("Registros da memória operacional persistente do runtime, filtrados pelo dia de São Paulo. Não é extrato bancário nem confirmação independente de execução pela corretora.")
-            metrics = st.columns(5)
-            metrics[0].metric("Registros", int(summary.get("total", 0) or 0))
-            metrics[1].metric("WIN", int(summary.get("win", 0) or 0))
-            metrics[2].metric("LOSS", int(summary.get("loss", 0) or 0))
-            metrics[3].metric("AMBOS", int(summary.get("ambos", 0) or 0))
-            metrics[4].metric("Pendentes", int(summary.get("pending", 0) or 0))
-            if entries:
-                rows = [{
-                    "Data/hora": item.get("timestamp", "—"),
-                    "Ativo": item.get("symbol") or "—",
-                    "Timeframe": item.get("timeframe") or "—",
-                    "Sinal": item.get("signal") or "—",
-                    "Decisão": item.get("decision") or "—",
-                    "Score": item.get("score", "—"),
-                    "Resultado": item.get("result") or "—",
-                    "Motivo": item.get("reason") or "—",
-                } for item in entries]
-                st.dataframe(rows, use_container_width=True, hide_index=True)
-            else:
-                st.info("Nenhum registro operacional persistido para esta data.")
-            st.caption("Somente leitura · autoridade de execução: NÃO · execução permitida por esta tela: NÃO · REAL: DESABILITADO")
-            return
-        data = api(endpoint)
+        if module_name == "Motor de Decisão":
+            last_analysis = st.session_state.get("market_analysis_result")
+            data = {"available": isinstance(last_analysis, dict), "analysis": last_analysis}
+        else:
+            data = api(endpoint)
         if module_name == "Configurações":
             prefs = data.get("preferences", {}) if isinstance(data, dict) else {}
             candle = prefs.get("candle", {}) if isinstance(prefs.get("candle"), dict) else {}
@@ -2280,13 +2066,13 @@ def show_readonly_module(module_name: str) -> None:
             st.markdown("#### Estado operacional · última consulta")
             st.caption("Os indicadores abaixo são consultados ao abrir esta tela ou ao clicar em Atualizar; não representam transmissão contínua.")
             if st.button("Atualizar painel de operação", key="refresh_operation_overview"):
-                for cache_key in ("operation_health", "operation_connections", "operation_risk", "latest_operation_analysis"):
+                for cache_key in ("operation_health", "operation_connections", "operation_risk"):
                     st.session_state.pop(cache_key, None)
             read_models = (
                 ("operation_health", "/api/health"),
                 ("operation_connections", "/api/connections"),
                 ("operation_risk", "/api/risk"),
-                ("latest_operation_analysis", "/api/runtime/analysis/latest"),
+
             )
             for cache_key, route in read_models:
                 if cache_key not in st.session_state:
@@ -2299,7 +2085,8 @@ def show_readonly_module(module_name: str) -> None:
             health = st.session_state.get("operation_health") or {}
             connections = st.session_state.get("operation_connections") or {}
             risk = st.session_state.get("operation_risk") or {}
-            latest_payload = st.session_state.get("latest_operation_analysis")
+            last_analysis = st.session_state.get("market_analysis_result")
+            latest_payload = {"available": True, "analysis": last_analysis} if isinstance(last_analysis, dict) else {"available": False}
             observability = health.get("operational_observability") or {}
             market_data = observability.get("market_data") or {}
             execution = observability.get("execution") or {}
@@ -2353,7 +2140,7 @@ def show_readonly_module(module_name: str) -> None:
             elif risk:
                 st.info("A avaliação da barreira de risco está positiva, mas isso não autoriza execução neste painel.")
             st.markdown("#### Último sinal recebido")
-            latest_error = st.session_state.get("latest_operation_analysis_error", "")
+            latest_error = ""
             if latest_error:
                 st.warning("Último sinal indisponível: " + latest_error)
             elif not isinstance(latest_payload, dict) or latest_payload.get("available") is not True:
@@ -2609,7 +2396,6 @@ def show_readonly_module(module_name: str) -> None:
             st.metric("Integração MT5 DEMO", str(data.get("ic_markets_mt5_demo", "NÃO CONFIRMADO")))
             st.metric("cTrader", str(data.get("cTrader", "FUTURO_NAO_BLOQUEANTE")))
             st.warning("Não há evidência nesta resposta de uma segunda corretora conectada e validada. Não trate a arquitetura multi-broker como integração concluída.")
-            st.caption("Execução multi-broker: NÃO IMPLEMENTADA · nenhum roteamento de ordens foi ativado.")
             st.caption("A conexão com outras corretoras exige adaptador próprio, credenciais configuradas com segurança e testes DEMO por corretora.")
             st.caption("Nenhuma ordem é enviada por esta tela. REAL permanece DESABILITADO.")
             return
@@ -3067,25 +2853,19 @@ def show_readonly_module(module_name: str) -> None:
             return
 
         if module_name == "Relatórios":
-            report_summary = data.get("summary", {}) if isinstance(data, dict) else {}
-            if not isinstance(report_summary, dict):
-                report_summary = {}
-            periods = report_summary.get("periods", {})
-            breakdowns = report_summary.get("breakdowns", {})
-            records = data.get("records", []) if isinstance(data, dict) else []
-            records = [item for item in records if isinstance(item, dict)] if isinstance(records, list) else []
-            st.caption("Relatório consolidado da memória de decisões do runtime. Não representa extrato financeiro, apuração fiscal ou garantia de resultado.")
-            st.caption("Gerado em: " + str(data.get("generated_at") or "data não informada") + " · Fonte: " + str(data.get("source") or "não informada") + " · Registros detalhados: " + str(data.get("record_count", len(records))))
+            periods = data.get("periods", {})
+            breakdowns = data.get("breakdowns", {})
+            st.caption("Relatório consolidado dos registros disponíveis no runtime. Não representa extrato financeiro, apuração fiscal ou garantia de resultado.")
             st.markdown("#### Resumo executivo")
             st.write(
-                f"Base analisada: {report_summary.get('total', 0)} registro(s), "
-                f"{report_summary.get('actionable', 0)} acionável(is), "
-                f"{report_summary.get('wins', 0)} vitória(s), {report_summary.get('losses', 0)} derrota(s) "
-                f"e {report_summary.get('draws', 0)} empate(s)."
+                f"Base analisada: {data.get('total', 0)} registro(s), "
+                f"{data.get('actionable', 0)} acionável(is), "
+                f"{data.get('wins', 0)} vitória(s), {data.get('losses', 0)} derrota(s) "
+                f"e {data.get('draws', 0)} empate(s)."
             )
-            st.metric("Taxa de vitória · operações encerradas", f"{float(report_summary.get('win_rate', 0.0)):.1f}%")
+            st.metric("Taxa de vitória · operações encerradas", f"{float(data.get('win_rate', 0.0)):.1f}%")
             report_rows = []
-            for key, label in (("daily", "Hoje"), ("weekly", "Semana"), ("monthly", "Mês")):
+            for key, label in (("daily", "Hoje · UTC"), ("weekly", "Semana · UTC"), ("monthly", "Mês · UTC")):
                 item = periods.get(key, {})
                 report_rows.append({
                     "Seção": "Período",
@@ -3131,12 +2911,8 @@ def show_readonly_module(module_name: str) -> None:
                 )
             else:
                 st.info("Ainda não há dados para compor o relatório.")
-            if records:
-                st.markdown("#### Registros recentes")
-                detail_rows = [{"Data/hora": item.get("created_at") or "—", "Ativo": item.get("symbol") or "—", "Período": item.get("timeframe") or "—", "Sinal": item.get("signal") or "—", "Pontuação": item.get("score", "—"), "Resultado": item.get("outcome") or "EM ABERTO / NÃO INFORMADO"} for item in records]
-                st.dataframe(detail_rows, use_container_width=True, hide_index=True)
             st.caption("O relatório usa somente estatísticas agregadas; não inclui credenciais, dados bancários ou ordens.")
-            st.caption("Somente leitura · execução permitida: NÃO · REAL: DESABILITADO")
+            st.caption("Execução permitida: NÃO · REAL: DESABILITADO")
             return
 
     except Exception:
@@ -3148,15 +2924,7 @@ def show_readonly_module(module_name: str) -> None:
 @st.fragment(run_every="15s")
 def render_latest_signal(closed: bool = False) -> None:
     """Refresh the shared signal strip periodically without rerunning the full panel."""
-    try:
-        latest_payload = api("/api/runtime/analysis/latest")
-        latest_analysis = (
-            latest_payload.get("analysis")
-            if isinstance(latest_payload, dict) and latest_payload.get("available") is True
-            else None
-        )
-    except Exception:
-        latest_analysis = None
+    latest_analysis = st.session_state.get("market_analysis_result")
     signal_label, score_label, signal_color = closed_panel_signal(latest_analysis)
     if closed:
         try:
@@ -3190,20 +2958,109 @@ def render_latest_signal(closed: bool = False) -> None:
 # "MT5 DEMO / Simulação" in the reference is operational environment/recovery,
 # not the historical Simulador module already housed under ESTUDO.
 _REFERENCE_TABS = CONFIG["open_state"]["tabs"]
-AREAS = {
-    name: [
+def _area_modules(reference_name: str) -> list[str]:
+    return [
         "Ambiente MT5 DEMO" if module == "MT5 DEMO / Simulação" else module
-        for module in _REFERENCE_TABS[name]
+        for module in _REFERENCE_TABS[reference_name]
     ]
-    for name in ("COCKPIT", "ANÁLISE", "ESTUDO")
+
+# Ordem principal solicitada: manter Reserva Fiscal e Assistente como áreas
+# próprias, sem deslocar módulos existentes nem alterar as setas funcionais.
+AREAS = {
+    "CABINE DE COMANDO": _area_modules("COCKPIT"),
+    "ANÁLISE": _area_modules("ANÁLISE"),
+    "ESTUDO": _area_modules("ESTUDO"),
+    "RESERVA FISCAL": ["Reserva Fiscal"],
+    "ASSISTENTE DO ECOSSISTEMA": ["Assistente do Ecossistema"],
+    "CENTRAL": list(_REFERENCE_TABS["MAIS / ADMIN"]),
 }
-AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]
-AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]
-# CENTRAL is the final main area. Financeiro belongs inside it, not as a
-# seventh top-level area. Keep the original Figma JSON unchanged.
-AREAS["CENTRAL"] = ["Financeiro", "Diário Operacional", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]
+
+# Prévia visual exclusiva do navegador: não faz parte do EA/MT5.
+try:
+    _preview_mode = st.query_params.get("preview") == "1"
+except Exception:
+    _preview_mode = False
+
+if _preview_mode:
+    st.markdown("""
+    <style>
+    .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
+        background: transparent !important;
+    }
+    #controlador-preview-chart {
+        position: fixed; inset: 0; z-index: 0; pointer-events: none;
+        overflow: hidden; color: #dce5ef;
+        background:
+          linear-gradient(rgba(125,150,175,.07) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(125,150,175,.07) 1px, transparent 1px),
+          #080d13;
+        background-size: 48px 48px;
+        font-family: Arial, sans-serif;
+    }
+    #controlador-preview-chart .chart-head {
+        position:absolute; top:22px; left:28px; right:28px;
+        display:flex; justify-content:space-between; align-items:center;
+        color:#aebdca; font-size:13px;
+    }
+    #controlador-preview-chart .mock-orders {
+        display:flex; gap:8px; align-items:center;
+    }
+    #controlador-preview-chart .mock-orders span {
+        padding:10px 18px; border-radius:5px; color:white;
+        font-weight:700; letter-spacing:.5px;
+    }
+    #controlador-preview-chart .buy { background:#087c55; }
+    #controlador-preview-chart .sell { background:#b73542; }
+    #controlador-preview-chart .mock-tag {
+        color:#e2b85c; border:1px solid #806a3b;
+        border-radius:4px; padding:5px 8px; font-size:10px;
+    }
+    #controlador-preview-chart svg {
+        position:absolute; inset:65px 38px 35px 20px;
+        width:calc(100% - 58px); height:calc(100% - 100px);
+    }
+    </style>
+    <div id="controlador-preview-chart">
+      <div class="chart-head">
+        <div><b>EURUSD</b> &nbsp; M5 &nbsp; <span style="color:#718397">Gráfico ilustrativo</span></div>
+        <div class="mock-orders">
+          <span class="mock-tag">SIMULAÇÃO VISUAL</span>
+          <span class="buy">BUY</span><span class="sell">SELL</span>
+        </div>
+      </div>
+      <svg viewBox="0 0 1400 760" preserveAspectRatio="none" aria-hidden="true">
+        <g stroke="#263442" stroke-width="1" opacity=".8">
+          <path d="M0 100H1400 M0 200H1400 M0 300H1400 M0 400H1400 M0 500H1400 M0 600H1400 M0 700H1400"/>
+          <path d="M150 0V760 M300 0V760 M450 0V760 M600 0V760 M750 0V760 M900 0V760 M1050 0V760 M1200 0V760"/>
+        </g>
+        <path d="M0 510 L90 480 L170 520 L250 430 L330 455 L410 370 L490 400 L570 330 L650 360 L730 280 L810 315 L890 245 L970 290 L1050 210 L1130 250 L1210 175 L1290 210 L1400 130"
+          fill="none" stroke="#4e9d88" stroke-width="3" opacity=".7"/>
+        <g stroke-width="3">
+          <path d="M80 440V535 M130 430V500 M180 460V555 M230 390V480 M280 400V500 M330 350V455 M380 365V450 M430 315V420 M480 335V435 M530 285V390 M580 300V405 M630 250V365 M680 270V385 M730 220V330 M780 235V350 M830 185V300 M880 205V325 M930 155V275 M980 175V295 M1030 130V250 M1080 150V270 M1130 105V225 M1180 120V245 M1230 85V205 M1280 100V220"
+            stroke="#39a889"/>
+        </g>
+        <g fill="#39a889">
+          <rect x="72" y="465" width="16" height="38"/><rect x="122" y="450" width="16" height="35"/>
+          <rect x="172" y="480" width="16" height="40"/><rect x="222" y="410" width="16" height="45"/>
+          <rect x="272" y="420" width="16" height="42"/><rect x="322" y="365" width="16" height="48"/>
+          <rect x="372" y="380" width="16" height="40"/><rect x="422" y="330" width="16" height="45"/>
+          <rect x="472" y="350" width="16" height="48"/><rect x="522" y="300" width="16" height="45"/>
+          <rect x="572" y="315" width="16" height="50"/><rect x="622" y="265" width="16" height="45"/>
+          <rect x="672" y="285" width="16" height="50"/><rect x="722" y="235" width="16" height="45"/>
+          <rect x="772" y="250" width="16" height="48"/><rect x="822" y="200" width="16" height="45"/>
+          <rect x="872" y="220" width="16" height="50"/><rect x="922" y="170" width="16" height="45"/>
+          <rect x="972" y="190" width="16" height="48"/><rect x="1022" y="145" width="16" height="45"/>
+          <rect x="1072" y="165" width="16" height="48"/><rect x="1122" y="120" width="16" height="45"/>
+          <rect x="1172" y="135" width="16" height="50"/><rect x="1222" y="100" width="16" height="45"/>
+        </g>
+      </svg>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+
 if "panel_open" not in st.session_state:
-    st.session_state.panel_open = True
+    st.session_state.panel_open = False
 
 if not st.session_state.panel_open:
     with st.container(key="panel-toggle"):
@@ -3221,68 +3078,32 @@ with st.container(key="control-hub-shell"):
     with header_left:
         st.markdown('<div class="hub-title">Controlador-Trader</div>', unsafe_allow_html=True)
     with header_right:
-        st.markdown('<div class="demo-pill-wrap"><span class="demo-pill">NÃO CONFIRMADO</span></div>', unsafe_allow_html=True)
+        if st.button("C", key="close_control_hub_top", help="Recolher painel"):
+            st.session_state.panel_open = False
+            st.rerun()
+        st.markdown('<div class="demo-pill-wrap"><span class="demo-pill">DEMO</span></div>', unsafe_allow_html=True)
 
     # The same periodically refreshed signal and score appear in both panel states.
     with st.container(key="open-signal-strip"):
         render_latest_signal(closed=False)
 
+    if st.session_state.get("main_area_navigation") not in AREAS:
+        st.session_state["main_area_navigation"] = "CABINE DE COMANDO"
     area = st.radio("Áreas principais", list(AREAS), horizontal=True, key="main_area_navigation", label_visibility="collapsed")
     st.divider()
-    # Every one of the six main areas uses the same module-navigation
-    # contract. Single-module areas remain visible and selectable too.
-    if st.session_state.get("module_navigation") not in AREAS[area]:
-        st.session_state["module_navigation"] = AREAS[area][0]
-    module = st.radio("Módulos", AREAS[area], horizontal=False, key="module_navigation", label_visibility="collapsed")
+    if area in {"RESERVA FISCAL", "ASSISTENTE DO ECOSSISTEMA"}:
+        module = AREAS[area][0]
+    else:
+        # The previous Financeiro selector may remain in Streamlit session state
+        # after navigation changes; normalize it before rendering the new options.
+        if st.session_state.get("module_navigation") not in AREAS[area]:
+            st.session_state["module_navigation"] = AREAS[area][0]
+        module = st.radio("Módulos", AREAS[area], horizontal=False, key="module_navigation", label_visibility="collapsed")
 
     if module == "Reserva Fiscal":
         show_fiscal()
     elif module == "Assistente do Ecossistema":
         show_assistant()
-    elif module == "Kill Switch":
-        show_kill_switch()
     else:
         show_readonly_module(module)
 
-    st.divider()
-    st.markdown("**Estado do sistema**")
-    try:
-        runtime_status = api("/api/health")
-        components = runtime_status.get("components", {})
-        health_state = str(runtime_status.get("health") or "UNKNOWN").upper()
-        mt5_state = str(components.get("mt5_demo") or runtime_status.get("mt5_demo") or "UNKNOWN").upper()
-        mode_state = str(runtime_status.get("mode") or "UNKNOWN").upper()
-        real_state = str(runtime_status.get("real") or "DESABILITADO").upper()
-        health_label = {"OK": "SISTEMA ONLINE", "WARNING": "INDISPONÍVEL", "CRITICAL": "INDISPONÍVEL"}.get(health_state, "INDISPONÍVEL")
-        state_left, state_right = st.columns([3, 1])
-        with state_left:
-            st.caption("Estado do sistema")
-        with state_right:
-            st.markdown(f'<div class="system-state-value">{health_label}</div>', unsafe_allow_html=True)
-        if runtime_status.get("execution_allowed") is not False or real_state not in {"DESABILITADO", "DISABLED"}:
-            st.error("Estado de segurança inesperado. Operações bloqueadas na interface; verifique o runtime antes de continuar.")
-        if runtime_status.get("alerts"):
-            with st.expander("Alertas do sistema", expanded=health_state == "CRITICAL"):
-                for alert in runtime_status["alerts"]:
-                    st.write(f"- **{alert.get('severity', 'INFO')} · {alert.get('component', 'Sistema')}** — {alert.get('message', 'Verificar componente')}")
-    except Exception:
-        st.warning("Runtime indisponível. Estado do MT5 e do sistema não confirmado.")
-
-    leverage_left, leverage_right = st.columns([3, 1])
-    with leverage_left:
-        st.button("REAL — DESABILITADO", key="real_mode_disabled", disabled=True, use_container_width=True)
-        st.caption("Execução REAL permanece bloqueada.")
-    with leverage_right:
-        if "leverage_enabled" not in st.session_state:
-            try:
-                saved_preferences = api("/api/preferences").get("preferences", {})
-                st.session_state.leverage_enabled = saved_preferences.get("leverage_enabled") is True
-            except Exception:
-                st.session_state.leverage_enabled = False
-        st.checkbox("Alavancagem", key="leverage_enabled", on_change=save_leverage_preference, help="Salva somente a preferência. Não ativa ordens, não altera margem e não concede autorização de execução.")
-        if st.session_state.get("leverage_preference_error"):
-            st.warning("Preferência de alavancagem não sincronizada com o runtime.")
-
-    if st.button("Fechar painel", key="close_control_hub"):
-        st.session_state.panel_open = False
-        st.rerun()
