@@ -157,3 +157,15 @@ Esta seção prevalece sobre afirmações históricas anteriores neste documento
 8. Só depois gerar pacote reversível e solicitar autorização específica para instalação. Não fazer merge/deploy automaticamente.
 
 **Critério de honestidade:** até haver build Windows, logs, capturas e testes reproduzíveis no MT5 real, não afirmar que a integração está concluída ou instalada. Este repositório/ambiente não tem acesso à sessão Windows/MT5 do usuário.
+
+## Prova de compilação WebView2 — preparação automatizada — 17/11/2026
+
+Foi adicionada ao workflow de CI uma etapa Windows isolada que:
+- verifica o hash original, a sintaxe Python e tenta iniciar o Streamlit em 127.0.0.1:8501, consultando /_stcore/health;
+- baixa o exemplo oficial Microsoft WebView2 Composition em commit fixo 06d49d546ba5dc0e2773798ee5b982f68275af4c;
+- altera somente a navegação do exemplo temporário, durante o job, para apontar para o Streamlit local; não altera o código do exemplo no repositório nem o app.py;
+- tenta compilar o protótipo isolado x64 e publica o executável como artefato de CI se a compilação for bem-sucedida.
+
+**Limite desta prova:** o exemplo oficial ainda abre sua própria janela Win32. Isso testa compilação e carregamento do Streamlit dentro de um WebView2 Composition Controller, mas não implementa a janela transparente sobre o gráfico MT5, a ancoragem ao gráfico nem o encaminhamento completo de entrada. O artefato, se gerado, é somente protótipo de bancada e não instalador do Controlador Trading.
+
+O job foi adicionado ao workflow; até consultar resultado success e inspecionar o artefato, não declarar compilação aprovada. Mesmo com build verde, a integração MT5 ainda depende dos testes alfa/input e ancoragem em Windows com o MetaTrader real.
