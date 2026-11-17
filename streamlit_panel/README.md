@@ -6,7 +6,7 @@ Esta é a interface Streamlit do Controlador-Trader destinada a reunir o painel 
 
 A navegação principal do painel tem exatamente seis áreas, nesta ordem:
 
-1. COCKPIT — Operação, Motor de Decisão, Gestão de Risco, Notificações, MT5 DEMO / Simulação e Kill Switch.
+1. CABINE DE COMANDO — Operação, Motor de Decisão, Gestão de Risco, Notificações, MT5 DEMO / Simulação e Kill Switch.
 2. ANÁLISE — Análise de Mercado, Memória, Estatísticas e Relatórios.
 3. ESTUDO — Laboratório, Replay, Simulador, Aprendizado, Descobertas e Escola / Tutorial / Onboarding.
 4. RESERVA FISCAL — permanece visível enquanto o módulo é concluído; estados indisponíveis devem ser explícitos.
@@ -45,6 +45,16 @@ No diretório raiz do repositório:
 
 A URL local padrão será `http://127.0.0.1:8501`. Mantenha os dois terminais abertos enquanto estiver usando o painel: um executa a API/runtime na porta 8000 e o outro executa a interface Streamlit na porta 8501.
 
+### Exibição local dentro do gráfico MT5 (host WebView2)
+
+O arquivo `streamlit_panel/mt5_webview_host.py` é somente a camada de exibição do painel Streamlit dentro da janela do MT5. Ele não substitui o EA, não inicia ordens e não altera o runtime.
+
+1. Inicie o runtime e o Streamlit pelos processos oficiais; o host verifica a saúde em `127.0.0.1:8501/_stcore/health`.
+2. No Windows, instale as dependências opcionais do host no mesmo Python 3.12: `py -3.12 -m pip install pywebview pywin32`.
+3. Com o MT5 aberto, execute: `py -3.12 streamlit_panel/mt5_webview_host.py`.
+
+O host usa WebView2, preserva o C em 48×48 px na posição fixa original e mantém uma área de exibição limitada no canto inferior esquerdo. O conteúdo do painel pode rolar dentro dessa área. A validação visual e de cliques no MT5 real continua obrigatória antes de considerar a integração concluída.
+
 A autorização local acima é somente para desenvolvimento no próprio computador. Não use essas variáveis como configuração de acesso remoto e não exponha as portas 8000 ou 8501 à internet.
 
 No host Windows remoto, `deployment/bootstrap_windows_runtime.ps1` também instala `streamlit_panel/requirements.txt`. Depois, `deployment/install_windows_autostart.ps1` registra três tarefas supervisionadas: MT5, API/runtime e Streamlit. O supervisor Streamlit mantém a interface em `127.0.0.1:8501`, encaminha chamadas à API privada em `127.0.0.1:8000` e grava estado/logs em `.runtime`. A tarefa não cria nem configura o Cloudflare Tunnel; a rota pública protegida deve apontar somente para a porta 8501.
@@ -67,7 +77,7 @@ No host Windows remoto, `deployment/bootstrap_windows_runtime.ps1` também insta
 - Memória permite anotar manualmente WIN/LOSS/DRAW/OPEN/VOID para decisões direcionais confirmadas. Essas anotações são de estudo e não são resultados financeiros confirmados pela corretora.
 - A fila estrangeira registra instituição, custódia, tipo de contrato, custo de aquisição, taxas e imposto pago no exterior na moeda original quando informados. Esses campos são evidências declaradas para triagem; não confirmam localização fiscal, enquadramento, conversão cambial ou crédito tributário e não geram cálculo automático.
 - O Assistente do Ecossistema fica disponível como área principal independente. A interface lista até 30 conversas salvas, permite abrir o histórico recente e excluir uma conversa somente após ação explícita do usuário.
-- No COCKPIT, **Ambiente MT5 DEMO** mostra a integração/estado operacional do terminal DEMO, saídas temporizadas e recuperação/reconciliação de posições. Não é o simulador histórico: **Replay** e **Simulador** permanecem em ESTUDO.
+- Na CABINE DE COMANDO, **Ambiente MT5 DEMO** mostra a integração/estado operacional do terminal DEMO, saídas temporizadas e recuperação/reconciliação de posições. Não é o simulador histórico: **Replay** e **Simulador** permanecem em ESTUDO.
 - A pergunta, as mensagens recentes da conversa e um resumo operacional filtrado são enviados à OpenAI quando o usuário envia uma consulta. As mensagens também ficam armazenadas no histórico local do Assistente no servidor do Ecossistema. A chave OpenAI permanece no servidor; não envie senhas, códigos de acesso ou dados bancários sensíveis.
 - A consulta de status do Assistente verifica a configuração local do cliente, mas não testa conectividade nem validade da chave. O botão **Testar conexão com a OpenAI** envia somente uma mensagem técnica fixa, sem pergunta, histórico ou dados fiscais; o teste não substitui o consentimento explícito exigido para cada consulta com contexto.
 - Replay e Simulador têm limitações descritas na própria interface. O backtest atual não integra Risk Manager, margem, alavancagem, swap ou conversão para a moeda da conta. Não o trate como previsão nem como backtest financeiro completo.

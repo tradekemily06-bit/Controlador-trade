@@ -13,14 +13,46 @@ def _open_panel(monkeypatch):
     monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "false")
     app = AppTest.from_file(str(PANEL_APP)).run(timeout=30)
     assert not app.exception
+    if any(item.key == "open_control_hub" for item in app.button):
+        app.button(key="open_control_hub").click().run(timeout=30)
+    assert not app.exception
     return app
 
+
+def _run_open_panel():
+    app = AppTest.from_file(str(PANEL_APP))
+    app.session_state["panel_open"] = True
+    app.run(timeout=30)
+    assert not app.exception
+    return app
+
+
+
+
+def test_streamlit_c_button_opens_and_closes_panel_by_default(monkeypatch):
+    monkeypatch.setenv("CONTROLADOR_API_BASE_URL", "http://127.0.0.1:1")
+    monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "false")
+    monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "false")
+    app = AppTest.from_file(str(PANEL_APP)).run(timeout=30)
+    assert not app.exception
+    assert app.session_state["panel_open"] is False
+    assert any(item.key == "open_control_hub" for item in app.button)
+
+    app.button(key="open_control_hub").click().run(timeout=30)
+    assert not app.exception
+    assert app.session_state["panel_open"] is True
+    assert any(item.key == "close_control_hub" for item in app.button)
+
+    app.button(key="close_control_hub").click().run(timeout=30)
+    assert not app.exception
+    assert app.session_state["panel_open"] is False
+    assert any(item.key == "open_control_hub" for item in app.button)
 
 def test_streamlit_panel_starts_and_exposes_the_expected_main_areas(monkeypatch):
     app = _open_panel(monkeypatch)
     area = next(item for item in app.radio if item.label == "Áreas principais")
     assert list(area.options) == [
-        "COCKPIT",
+        "CABINE DE COMANDO",
         "ANÁLISE",
         "ESTUDO",
         "RESERVA FISCAL",
@@ -95,7 +127,7 @@ def test_streamlit_financeiro_is_a_module_inside_central(monkeypatch):
 def test_kill_switch_panel_requires_reason_and_explicit_confirmation(monkeypatch):
     app = _open_panel(monkeypatch)
     area = next(item for item in app.radio if item.label == "Áreas principais")
-    area.set_value("COCKPIT").run(timeout=30)
+    area.set_value("CABINE DE COMANDO").run(timeout=30)
     module = next(item for item in app.radio if item.label == "Módulos")
     assert "Kill Switch" in list(module.options)
     module.set_value("Kill Switch").run(timeout=30)
@@ -113,7 +145,7 @@ def test_kill_switch_panel_requires_reason_and_explicit_confirmation(monkeypatch
 
 def test_all_streamlit_module_destinations_render_without_uncaught_exceptions(monkeypatch):
     app = _open_panel(monkeypatch)
-    for area_name in ("COCKPIT", "ANÁLISE", "ESTUDO", "RESERVA FISCAL", "ASSISTENTE DO ECOSSISTEMA", "CENTRAL"):
+    for area_name in ("CABINE DE COMANDO", "ANÁLISE", "ESTUDO", "RESERVA FISCAL", "ASSISTENTE DO ECOSSISTEMA", "CENTRAL"):
         area = next(item for item in app.radio if item.label == "Áreas principais")
         area.set_value(area_name).run(timeout=30)
         assert not app.exception, f"area failed to render: {area_name}"
@@ -197,7 +229,7 @@ def test_assistant_provider_connection_button_calls_runtime_and_reports_success(
         monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "test-owner")
         monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "false")
 
-        app = AppTest.from_file(str(PANEL_APP)).run(timeout=30)
+        app = _run_open_panel()
         area = next(item for item in app.radio if item.label == "Áreas principais")
         area.set_value("ASSISTENTE DO ECOSSISTEMA").run(timeout=30)
 
@@ -281,7 +313,7 @@ def test_assistant_question_requires_consent_and_posts_only_after_explicit_autho
         monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "test-owner")
         monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "false")
 
-        app = AppTest.from_file(str(PANEL_APP)).run(timeout=30)
+        app = _run_open_panel()
         area = next(item for item in app.radio if item.label == "Áreas principais")
         area.set_value("ASSISTENTE DO ECOSSISTEMA").run(timeout=30)
 
@@ -368,7 +400,7 @@ def test_assistant_saved_conversation_can_be_opened_and_deleted_from_panel(monke
         monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "test-owner")
         monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "false")
 
-        app = AppTest.from_file(str(PANEL_APP)).run(timeout=30)
+        app = _run_open_panel()
         area = next(item for item in app.radio if item.label == "Áreas principais")
         area.set_value("ASSISTENTE DO ECOSSISTEMA").run(timeout=30)
         assert not app.exception
@@ -492,7 +524,7 @@ def test_fiscal_rate_form_posts_only_configured_brazil_day_trade_rate(monkeypatc
         monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "test-owner")
         monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "false")
 
-        app = AppTest.from_file(str(PANEL_APP)).run(timeout=30)
+        app = _run_open_panel()
         area = next(item for item in app.radio if item.label == "Áreas principais")
         area.set_value("RESERVA FISCAL").run(timeout=30)
         assert not app.exception
@@ -616,7 +648,7 @@ def test_fiscal_result_requires_confirmation_and_complete_fields_before_posting(
         monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "test-owner")
         monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "false")
 
-        app = AppTest.from_file(str(PANEL_APP)).run(timeout=30)
+        app = _run_open_panel()
         area = next(item for item in app.radio if item.label == "Áreas principais")
         area.set_value("RESERVA FISCAL").run(timeout=30)
         assert not app.exception
@@ -774,7 +806,7 @@ def test_domestic_pending_intake_and_review_forms_call_runtime_without_calculati
         monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "test-owner")
         monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "false")
 
-        app = AppTest.from_file(str(PANEL_APP)).run(timeout=30)
+        app = _run_open_panel()
         area = next(item for item in app.radio if item.label == "Áreas principais")
         area.set_value("RESERVA FISCAL").run(timeout=30)
         assert not app.exception
@@ -962,7 +994,7 @@ def test_foreign_pending_review_form_posts_and_refreshes_history_without_booking
         monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "test-owner")
         monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "false")
 
-        app = AppTest.from_file(str(PANEL_APP)).run(timeout=30)
+        app = _run_open_panel()
         area = next(item for item in app.radio if item.label == "Áreas principais")
         area.set_value("RESERVA FISCAL").run(timeout=30)
         assert not app.exception

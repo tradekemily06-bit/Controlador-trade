@@ -22,7 +22,9 @@ def test_streamlit_operational_navigation_has_six_areas_and_central_last():
     assert 'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]' in source
     assert 'AREAS["CENTRAL"] = ["Financeiro", "Diário Operacional", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]' in source
     area_order = source.split("area = st.radio(\"Áreas principais\", list(AREAS)", 1)[0]
-    assert 'for name in ("COCKPIT", "ANÁLISE", "ESTUDO")' in area_order
+    assert 'AREA_SOURCE_NAMES = {' in area_order
+    assert '"CABINE DE COMANDO": "COCKPIT"' in area_order
+    assert 'for label, source_name in AREA_SOURCE_NAMES.items()' in area_order
     assert "NÃO CONFIRMADO" in source
 
 
@@ -369,14 +371,29 @@ def test_streamlit_layout_uses_full_width_and_wraps_responsively():
 
 
 
-def test_streamlit_uses_non_overlapping_c_toggle_in_open_and_closed_states():
+
+
+def test_mt5_webview_host_matches_streamlit_port_and_original_c_anchor():
+    host_path = PANEL_DIR / "mt5_webview_host.py"
+    host = host_path.read_text(encoding="utf-8")
+    assert 'URL = "http://127.0.0.1:8501"' in host
+    assert 'HEALTH_URL = URL + "/_stcore/health"' in host
+    assert "VISIBLE_WIDTH = 436" in host
+    assert "VISIBLE_HEIGHT = 476" in host
+    assert "bottom: 14px" in host
+    assert "bottom: 76px" in host
+    assert "bottom: 46px" not in host
+    assert "REQUIRED_APP_MARKERS" in host
+    assert 'st.button("C", key="open_control_hub", help="Abrir painel")' in host
+
+def test_streamlit_uses_original_fixed_c_toggle_in_open_and_closed_states():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert 'st.container(key="panel-toggle")' in source
     assert 'st.button("C", key="open_control_hub", help="Abrir painel")' in source
-    assert 'st.button("Fechar painel", key="close_control_hub")' in source
-    assert ".st-key-panel-toggle { position: relative;" in source
+    assert 'st.button("C", key="close_control_hub", help="Recolher painel")' in source
+    assert ".st-key-panel-toggle { position: fixed; left: 18px; bottom: 14px;" in source
+    assert "width: 48px; min-width: 48px; height: 48px; min-height: 48px;" in source
     assert ".st-key-control-hub-shell" in source
-    assert "position: fixed;" not in source[source.index(".st-key-panel-toggle {"):source.index("*, *::before")]
     assert 'key="main_area_navigation"' in source
     assert 'key="module_navigation"' in source
 
@@ -439,7 +456,7 @@ def test_streamlit_open_and_closed_panel_share_the_latest_signal_and_score():
     closed_end = source.index("st.stop()", closed_start)
     closed = source[closed_start:closed_end]
     open_start = source.index('with st.container(key="control-hub-shell"):')
-    open_end = source.index('if st.button("Fechar painel"', open_start)
+    open_end = source.index('with st.container(key="panel-toggle"):', open_start)
     opened = source[open_start:open_end]
     helper_start = source.index("def render_latest_signal(")
     helper_end = source.index("# Keep the supplied Figma reference JSON untouched", helper_start)
@@ -451,7 +468,7 @@ def test_streamlit_open_and_closed_panel_share_the_latest_signal_and_score():
     assert "closed_panel_signal(latest_analysis)" in helper
     assert "closed-signal" in helper and "closed-score" in helper
     assert "open-signal" in helper and "open-score" in helper
-    assert "position: fixed;" not in source[source.index(".st-key-panel-toggle {"):source.index("*, *::before")]
+    assert "position: fixed;" in source[source.index(".st-key-panel-toggle {"):source.index("*, *::before")]
 
 def test_streamlit_does_not_fill_unimplemented_modules_with_placeholder_copy():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
@@ -487,7 +504,8 @@ def test_streamlit_uses_exactly_six_main_areas_in_the_approved_order():
     assert 'AREAS["CENTRAL"] = ["Financeiro", "Diário Operacional", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]' in source
     assert "list(AREAS)" in source
     ordered_area_markers = [
-        'for name in ("COCKPIT", "ANÁLISE", "ESTUDO")',
+        'AREA_SOURCE_NAMES = {',
+        '"CABINE DE COMANDO": "COCKPIT"',
         'AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]',
         'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]',
         'AREAS["CENTRAL"] = ["Financeiro", "Diário Operacional", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]',

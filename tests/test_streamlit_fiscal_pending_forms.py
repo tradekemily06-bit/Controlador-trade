@@ -86,7 +86,9 @@ def _panel_with_http(monkeypatch):
     monkeypatch.setenv("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "false")
     monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "test-owner")
     monkeypatch.setenv("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "false")
-    app = AppTest.from_file(str(PANEL_APP)).run(timeout=30)
+    app = AppTest.from_file(str(PANEL_APP))
+    app.session_state["panel_open"] = True
+    app.run(timeout=30)
     area = next(item for item in app.radio if item.label == "Áreas principais")
     area.set_value("RESERVA FISCAL").run(timeout=30)
     assert not app.exception
