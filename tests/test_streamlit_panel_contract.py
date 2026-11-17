@@ -22,7 +22,9 @@ def test_streamlit_operational_navigation_has_six_areas_and_central_last():
     assert 'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]' in source
     assert 'AREAS["CENTRAL"] = ["Financeiro", "Diário Operacional", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]' in source
     area_order = source.split("area = st.radio(\"Áreas principais\", list(AREAS)", 1)[0]
-    assert 'for name in ("COCKPIT", "ANÁLISE", "ESTUDO")' in area_order
+    assert 'AREA_SOURCE_NAMES = {' in area_order
+    assert '"CABINE DE COMANDO": "COCKPIT"' in area_order
+    assert 'for label, source_name in AREA_SOURCE_NAMES.items()' in area_order
     assert "NÃO CONFIRMADO" in source
 
 
@@ -487,7 +489,8 @@ def test_streamlit_uses_exactly_six_main_areas_in_the_approved_order():
     assert 'AREAS["CENTRAL"] = ["Financeiro", "Diário Operacional", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]' in source
     assert "list(AREAS)" in source
     ordered_area_markers = [
-        'for name in ("COCKPIT", "ANÁLISE", "ESTUDO")',
+        'AREA_SOURCE_NAMES = {',
+        '"CABINE DE COMANDO": "COCKPIT"',
         'AREAS["RESERVA FISCAL"] = ["Reserva Fiscal"]',
         'AREAS["ASSISTENTE DO ECOSSISTEMA"] = ["Assistente do Ecossistema"]',
         'AREAS["CENTRAL"] = ["Financeiro", "Diário Operacional", *_REFERENCE_TABS["MAIS / ADMIN"][1:]]',
