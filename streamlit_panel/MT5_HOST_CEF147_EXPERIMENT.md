@@ -6,8 +6,11 @@ Este experimento NÃO altera, copia, reescreve, redesenha ou substitui a aplica�
 
 - Base do experimento: `fix/mt5-order-state-reconciliation-20261110`, commit `fef6e3d33658160e8f519175d5c107220783b531`.
 - Blob de `streamlit_panel/app.py` na base: `3e27419ffee9d175bc2984ce6348e9be8f2dc957`.
-- SHA-256 de referência aprovada registrado no contrato mestre: `DCB0AF794CD28F4E6AE1B023095DC15FCB39EAA4CF393682E2DD0CB86F2960F7`.
+- SHA-256 de referência aprovada registrado no relatório local de 16/11: `DCB0AF794CD28F4E6AE1B023095DC15FCB39EAA4CF393682E2DD0CB86F2960F7`.
+- Conferência independente do `app.py` da base Git: `C6011F3AB3B3EBD8ACA4CDE7F328BB802635F1EBA86A24B96AA6919C57F6109B` — NÃO corresponde à referência aprovada.
+- O `app.py` recuperado da Biblioteca também não corresponde: `2E4FD51CD371FF17A35E7D413944112C31E696BC4D9FA2119EEB976C265C4A13`.
 - O PR #528 contém alterações em `app.py`; por isso ele não é a base deste experimento. Nenhuma alteração daquele arquivo será trazida para cá.
+- **BLOQUEIO ATUAL:** o arquivo binário exato que gerou o hash aprovado `DCB0...` ainda não foi recuperado do GitHub nem da Biblioteca. Esta branch é somente uma preparação isolada e NÃO deve ser instalada. É necessário recuperar o `app.py` original exato ou seu ZIP e confirmar o SHA-256 antes de qualquer integração.
 
 ## Objetivo
 
@@ -21,16 +24,17 @@ A implementação experimental deverá priorizar renderização off-screen com t
 
 ## Verificações obrigatórias antes de qualquer instalação
 
-1. A verificação SHA-256 deve confirmar que `app.py` é exatamente a versão aprovada. Se falhar, interromper: não substituir a referência por outra versão.
-2. Validar o Streamlit original no host CEF com a mesma URL local e a porta efetivamente usada pelo supervisor.
-3. Confirmar que CSS, JavaScript, WebSocket, navegação, formulários, gráficos, Reserva Fiscal e Assistente continuam operacionais.
-4. Confirmar transparência real: o gráfico MT5 deve permanecer visível fora dos elementos do painel.
-5. Confirmar que clique no C chega ao Streamlit, expande e recolhe sem travar.
-6. Confirmar scroll, foco, teclado, redimensionamento, DPI, minimização/restauração e fechamento do MT5.
-7. Confirmar que o overlay não bloqueia o gráfico nem os botões BUY/SELL fora de sua área.
-8. Executar apenas em MT5 DEMO/SIMULAÇÃO; REAL permanece bloqueado e nenhuma ordem pode ser enviada.
-9. Produzir capturas comparativas do Streamlit original e do painel dentro do MT5. Só declarar fidelidade após comparação visual.
-10. Não fazer merge, instalação local, deploy ou alteração do EA sem autorização específica.
+1. **Bloqueio atual:** recuperar o arquivo `app.py` que produziu o SHA-256 aprovado `DCB0...`; as duas cópias examinadas não correspondem. Não instalar nem adaptar o painel até obter correspondência exata.
+2. A verificação SHA-256 deve confirmar que `app.py` é exatamente a versão aprovada. Se falhar, interromper: não substituir a referência por outra versão.
+3. Validar o Streamlit original no host CEF com a mesma URL local e a porta efetivamente usada pelo supervisor.
+4. Confirmar que CSS, JavaScript, WebSocket, navegação, formulários, gráficos, Reserva Fiscal e Assistente continuam operacionais.
+5. Confirmar transparência real: o gráfico MT5 deve permanecer visível fora dos elementos do painel.
+6. Confirmar que clique no C chega ao Streamlit, expande e recolhe sem travar.
+7. Confirmar scroll, foco, teclado, redimensionamento, DPI, minimização/restauração e fechamento do MT5.
+8. Confirmar que o overlay não bloqueia o gráfico nem os botões BUY/SELL fora de sua área.
+9. Executar apenas em MT5 DEMO/SIMULAÇÃO; REAL permanece bloqueado e nenhuma ordem pode ser enviada.
+10. Produzir capturas comparativas do Streamlit original e do painel dentro do MT5. Só declarar fidelidade após comparação visual.
+11. Não fazer merge, instalação local, deploy ou alteração do EA sem autorização específica.
 
 ## Limitação conhecida
 
