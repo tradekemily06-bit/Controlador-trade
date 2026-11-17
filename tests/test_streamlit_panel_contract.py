@@ -371,6 +371,21 @@ def test_streamlit_layout_uses_full_width_and_wraps_responsively():
 
 
 
+
+
+def test_mt5_webview_host_matches_streamlit_port_and_original_c_anchor():
+    host_path = PANEL_DIR / "mt5_webview_host.py"
+    host = host_path.read_text(encoding="utf-8")
+    assert 'URL = "http://127.0.0.1:8501"' in host
+    assert 'HEALTH_URL = URL + "/_stcore/health"' in host
+    assert "VISIBLE_WIDTH = 436" in host
+    assert "VISIBLE_HEIGHT = 476" in host
+    assert "bottom: 14px" in host
+    assert "bottom: 76px" in host
+    assert "bottom: 46px" not in host
+    assert "REQUIRED_APP_MARKERS" in host
+    assert 'st.button("C", key="open_control_hub", help="Abrir painel")' in host
+
 def test_streamlit_uses_original_fixed_c_toggle_in_open_and_closed_states():
     source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
     assert 'st.container(key="panel-toggle")' in source
