@@ -113,24 +113,37 @@ jobs:
           if (-not $source.Contains($needle)) { throw "Pinned Microsoft sample navigation point changed; stop for manual review." }
           $source = $source.Replace($needle, $replacement)
           Set-Content -Path $sample -Value $source -Encoding utf8
-      - name: Upgrade temporary sample to current stable WebView2 and WIL SDKs
+      - name: Pin temporary sample to stable WebView2 and WIL SDKs
         shell: pwsh
         run: |
           $project = "webview2-samples/SampleApps/WebView2SampleWinComp/WebView2SampleWinComp.vcxproj"
           $packages = "webview2-samples/SampleApps/WebView2SampleWinComp/packages.config"
           $projectText = Get-Content $project -Raw
           $packageText = Get-Content $packages -Raw
-          $projectText = $projectText.Replace("1.0.1056-prerelease", "1.0.4365-prerelease").Replace("1.0.200902.2", "1.0.260126.7")
-          $packageText = $packageText.Replace("1.0.1056-prerelease", "1.0.4365-prerelease").Replace("1.0.200902.2", "1.0.260126.7")
+          $projectText = $projectText.Replace("1.0.1056-prerelease", "1.0.4314.35").Replace("1.0.200902.2", "1.0.260126.7")
+          $packageText = $packageText.Replace("1.0.1056-prerelease", "1.0.4314.35").Replace("1.0.200902.2", "1.0.260126.7")
           if ($projectText.Contains("1.0.1056-prerelease") -or $projectText.Contains("1.0.200902.2") -or $packageText.Contains("1.0.1056-prerelease") -or $packageText.Contains("1.0.200902.2")) {
             throw "Old WebView2/WIL dependency reference remains; stop."
           }
-          if (-not $projectText.Contains("1.0.4365-prerelease") -or -not $projectText.Contains("1.0.260126.7") -or -not $packageText.Contains("1.0.4365-prerelease") -or -not $packageText.Contains("1.0.260126.7")) {
-            throw "Prerelease WebView2 SDK / WIL dependency replacement did not complete; stop."
+          if (-not $projectText.Contains("1.0.4314.35") -or -not $projectText.Contains("1.0.260126.7") -or -not $packageText.Contains("1.0.4314.35") -or -not $packageText.Contains("1.0.260126.7")) {
+            throw "Stable WebView2 SDK / WIL dependency replacement did not complete; stop."
           }
           Set-Content -Path $project -Value $projectText -Encoding utf8
           Set-Content -Path $packages -Value $packageText -Encoding utf8
-          Write-Host "Temporary Microsoft sample pinned to WebView2 1.0.4365-prerelease and WIL 1.0.260126.7."
+          Write-Host "Temporary Microsoft sample pinned to stable WebView2 1.0.4314.35 and WIL 1.0.260126.7."
+      - name: Use stable Composition API declarations from WebView2.h
+        shell: pwsh
+        run: |
+          $header = "webview2-samples/SampleApps/WebView2SampleWinComp/CompositionHost.h"
+          $source = Get-Content $header -Raw
+          $experimentalInclude = '#include "WebView2Experimental.h"'
+          if (-not $source.Contains($experimentalInclude)) { throw "Expected legacy experimental header include not found; stop." }
+          $source = $source.Replace($experimentalInclude, "")
+          if ($source.Contains("WebView2Experimental.h") -or $source.Contains("ICoreWebView2Experimental")) {
+            throw "Experimental API reference remains in CompositionHost.h; stop."
+          }
+          Set-Content -Path $header -Value $source -Encoding utf8
+          Write-Host "Using stable composition interfaces declared by WebView2.h."
       - name: Restore pinned sample dependencies
         shell: pwsh
         run: |
