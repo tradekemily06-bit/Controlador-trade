@@ -107,6 +107,17 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: controlador-trade
+      - name: Initialize MSVC x64 compiler for native layout contract
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Compile and run native layout, DPI, stale-message, and hit-test contract
+        shell: pwsh
+        run: |
+          cl /nologo /std:c++17 /EHsc /W4 /WX controlador-trade/streamlit_panel/mt5_host/layout_contract.test.cpp /Fe:layout_contract.test.exe
+          if ($LASTEXITCODE -ne 0) { throw "Native layout contract did not compile." }
+          .\\layout_contract.test.exe
+          if ($LASTEXITCODE -ne 0) { throw "Native layout contract tests failed." }
       - name: Check out pinned official Microsoft WebView2 sample
         uses: actions/checkout@v4
         with:
