@@ -2,8 +2,7 @@ import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
-// The exact four areas and module destinations follow the current app.py.
-// The requested labels CABINE DE COMANDO and CENTRAL are preserved.
+// Preserve the six user-defined areas, their order, names and module ownership.
 const AREAS = {
   "CABINE DE COMANDO": [
     "Operação",
@@ -12,7 +11,6 @@ const AREAS = {
     "Notificações",
     "Ambiente MT5 DEMO",
     "Kill Switch",
-    "Assistente do Ecossistema",
   ],
   "ANÁLISE": [
     "Análise de Mercado",
@@ -28,6 +26,8 @@ const AREAS = {
     "Descobertas",
     "Escola / Tutorial / Onboarding",
   ],
+  "RESERVA FISCAL": ["Reserva Fiscal"],
+  "ASSISTENTE DO ECOSSISTEMA": ["Assistente do Ecossistema"],
   "CENTRAL": [
     "Financeiro",
     "Configurações",
@@ -35,7 +35,6 @@ const AREAS = {
     "Segurança",
     "Conexões",
     "Multi-Broker",
-    "Reserva Fiscal",
   ],
 };
 
