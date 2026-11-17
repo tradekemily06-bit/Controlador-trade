@@ -210,3 +210,14 @@ O código original do sample permanece fixado no commit Microsoft `06d49d546ba5d
 **Estado desta alteração:** workflow atualizado no commit `0e5cf376efa763d34a2f52a9f0767548be4a24e4`. A execução CI correspondente ainda precisa ser consultada; não declarar o build com SDK atualizado como aprovado até o resultado aparecer.
 
 **Limite mantido:** mesmo que a compilação passe, ainda será apenas o sample de janela própria. Isso não entrega ancoragem ao MT5, transparência real da página Streamlit, nem encaminhamento completo de eventos. O host específico do Controlador Trading continua por implementar e validar em Windows interativo.
+
+
+## Correção técnica após falha do SDK estável — 17/11/2026
+
+O CI com WebView2 Release SDK `1.0.4314.35` compilou o restante do sample, mas falhou em `CompositionHost.h` porque o include `WebView2Experimental.h` não existe no pacote Release. O erro não é uma falha do Streamlit nem do WIL.
+
+A documentação oficial da Microsoft confirma que pacotes Release contêm somente APIs estáveis, enquanto APIs experimentais exigem SDK Prerelease e runtime de preview. Por isso, o teste experimental foi corrigido para usar WebView2 `1.0.4365-prerelease` com WIL `1.0.260126.7`. A alteração está isolada no workflow, sem modificar o app original ou qualquer componente operacional.
+
+**Implicação importante:** um build bem-sucedido com SDK Prerelease ainda não prova que a API funciona no WebView2 Runtime estável instalado no computador do usuário. A documentação Microsoft recomenda canal Edge Preview para APIs experimentais. Portanto, esse caminho é apenas investigação de protótipo; não será usado como dependência de produção sem promoção da API para Release ou uma alternativa baseada somente em APIs estáveis.
+
+Referência oficial: https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/versioning
