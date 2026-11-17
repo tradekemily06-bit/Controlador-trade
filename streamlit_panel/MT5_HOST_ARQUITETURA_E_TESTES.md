@@ -551,3 +551,30 @@ O arquivo `streamlit_panel/app.py` continuou protegido pelo teste de hash aprova
 ### Gate seguinte
 
 Implementar e compilar um executável Win32 próprio, inicialmente como janela de bancada independente. Somente depois de validar ciclo de vida, Composition Controller, C nativo, clip DOM dinâmico e entrada completa em bancada será razoável iniciar a etapa de ancoragem ao gráfico MT5. A prova atual não autoriza afirmar que o painel já aparece no MT5.
+
+
+## Primeiro host Win32 próprio de bancada — 17/11/2026
+
+Foi criado `streamlit_panel/mt5_host/bench_host.cpp` como primeiro executável nativo independente do sample Microsoft. O host usa janela Win32 própria, botão C nativo, WebView2 Composition Controller, visual DirectComposition e ponte DOM em arquivo externo ao `app.py`.
+
+Comportamento implementado no scaffold:
+- inicia uma janela de bancada independente (não acoplada ao MT5);
+- cria o C como controle Win32 nativo no canto inferior esquerdo;
+- cria o ambiente e o Composition Controller WebView2;
+- injeta `dom_bridge.js` antes de navegar para Streamlit em `127.0.0.1:8501`;
+- recebe mensagens de layout, valida viewport/DPR/retângulo e sequência crescente;
+- mantém o WebView oculto quando recolhido ou quando a geometria é inválida;
+- aplica recorte DirectComposition ao retângulo reportado pelo DOM quando expandido;
+- encaminha o clique no C nativo como mensagem de toggle para o bridge.
+
+O workflow agora tenta compilar e linkar esse executável x64 com o SDK WebView2 fixado e publica executável + bridge como artefato de bancada. A execução CI correspondente é a primeira validação desse código; até sua conclusão, compilação não está confirmada.
+
+**Limites conhecidos — não é host final nem integração MT5:**
+- não inicia nem supervisiona o processo Streamlit; exige o serviço em `127.0.0.1:8501`;
+- não implementa ainda roteamento completo de mouse/teclado/foco/captura/cursor no WndProc;
+- a janela é independente, não acompanha o gráfico/terminal MT5;
+- o botão C é um controle Win32 de bancada e sua interação ainda precisa de teste visual real;
+- não há teste interativo de composição, scroll, DPI, minimização, troca de gráfico, reconnect ou sessão longa;
+- o protocolo de layout está em validação inicial e deve ser endurecido antes de qualquer integração.
+
+O host de bancada não modifica `app.py`, EA/MQL5, runtime/API, banco, Reserva Fiscal, Assistente, identidade ou bloqueio REAL. Não instalar, não fazer merge e não conectar ao MT5 antes de todos os gates de bancada e aprovação explícita.
