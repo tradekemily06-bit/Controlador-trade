@@ -158,6 +158,25 @@ jobs:
         run: |
           $sourcePath = "webview2-samples/SampleApps/WebView2SampleWinComp/CompositionHost.cpp"
           $source = Get-Content $sourcePath -Raw
+          $wheelPointPattern = '(?s)void CompositionHost::OnMouseMessage\(UINT message, WPARAM wParam, LPARAM lParam\)\s*\{.*?\n\}'
+          $wheelPointReplacement = @'
+          void CompositionHost::OnMouseMessage(UINT message, WPARAM wParam, LPARAM lParam)
+          {
+              if (m_rootVisual && m_compositionController)
+              {
+                  POINT point{ GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+                  // Wheel messages carry screen coordinates; convert them to host-client coordinates.
+                  if (message == WM_MOUSEWHEEL || message == WM_MOUSEHWHEEL)
+                  {
+                      ScreenToClient(m_appWindow->GetMainWindow(), &point);
+                  }
+                  UpdateVisual(point, message, wParam);
+              }
+          }
+          '@
+          $sourceWithWheelCoordinates = [regex]::Replace($source, $wheelPointPattern, $wheelPointReplacement, 1)
+          if ($sourceWithWheelCoordinates -eq $source) { throw "Could not patch wheel coordinate conversion." }
+          $source = $sourceWithWheelCoordinates
           $createPattern = '(?s)void CompositionHost::CreateVisuals\(\)\s*\{.*?\n\}'
           $createReplacement = @'
           void CompositionHost::CreateVisuals()
