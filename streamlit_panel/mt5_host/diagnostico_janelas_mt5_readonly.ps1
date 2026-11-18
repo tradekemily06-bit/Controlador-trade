@@ -46,15 +46,17 @@ public static class Mt5WindowReadOnlyProbe
         return _mdiClient;
     }
 
-    public static IntPtr GetActiveMdiChild(IntPtr mdiClient)
+    public static IntPtr GetActiveMdiChild(IntPtr mdiClient, out bool timedOut)
     {
         const uint WM_MDIGETACTIVE = 0x0229;
         const uint SMTO_ABORTIFHUNG = 0x0002;
+        timedOut = false;
         if (mdiClient == IntPtr.Zero) return IntPtr.Zero;
         IntPtr activeChild;
         IntPtr completed = SendMessageTimeout(mdiClient, WM_MDIGETACTIVE, IntPtr.Zero, IntPtr.Zero,
             SMTO_ABORTIFHUNG, 1000, out activeChild);
-        return completed == IntPtr.Zero ? IntPtr.Zero : activeChild;
+        timedOut = completed == IntPtr.Zero;
+        return timedOut ? IntPtr.Zero : activeChild;
     }
 
     public static string WindowLine(IntPtr hwnd, string kind, int depth)
@@ -108,8 +110,11 @@ foreach ($p in $mt5) {
             $mdi = [Mt5WindowReadOnlyProbe]::FindMdiClient($hwnd)
             if ($mdi -ne [IntPtr]::Zero) {
                 $lines.Add([Mt5WindowReadOnlyProbe]::WindowLine($mdi, 'MDICLIENT', 1))
-                $activeChart = [Mt5WindowReadOnlyProbe]::GetActiveMdiChild($mdi)
-                if ($activeChart -ne [IntPtr]::Zero) {
+                $mdiTimedOut = $false
+                $activeChart = [Mt5WindowReadOnlyProbe]::GetActiveMdiChild($mdi, [ref]$mdiTimedOut)
+                if ($mdiTimedOut) {
+                    $lines.Add('  ACTIVE_MDI_CHILD: indisponivel (timeout da thread de interface do MT5).')
+                } elseif ($activeChart -ne [IntPtr]::Zero) {
                     $lines.Add([Mt5WindowReadOnlyProbe]::WindowLine($activeChart, 'ACTIVE_MDI_CHILD', 2))
                 } else {
                     $lines.Add('  ACTIVE_MDI_CHILD: nenhum filho MDI ativo foi retornado.')
