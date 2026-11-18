@@ -735,12 +735,14 @@ BOOL CALLBACK ProbeTopLevelWindow(HWND hwnd, LPARAM parameter) {
         const LRESULT response = SendMessageTimeoutW(
             mdi, WM_MDIGETACTIVE, 0, 0,
             SMTO_ABORTIFHUNG | SMTO_BLOCK, 1000, &activeResult);
-        if (response && activeResult) {
+        if (!response) {
+            *output << L"ACTIVE MDI CHILD: unavailable (MT5 UI thread timeout)\n";
+        } else if (!activeResult) {
+            *output << L"ACTIVE MDI CHILD: no active MDI child returned\n";
+        } else {
             HWND active = reinterpret_cast<HWND>(activeResult);
             *output << L"ACTIVE MDI CHILD:\n";
             WriteWindowProbeLine(*output, active, L"ACTIVE", 2);
-        } else {
-            *output << L"ACTIVE MDI CHILD: unavailable (timeout or no active child)\n";
         }
     }
     WindowProbeContext context{ output, hwnd };
