@@ -71,6 +71,10 @@ struct MouseCaptureState {
     std::uint8_t pressedButtons{};
 };
 
+inline void ResetMouseCaptureState(MouseCaptureState& capture) noexcept {
+    capture = {};
+}
+
 // A press that starts inside the clipped panel keeps routing move/up events to
 // WebView2 until every pressed button is released, even when the pointer leaves
 // the visible clip. This prevents a drag from becoming stuck in the web content.
