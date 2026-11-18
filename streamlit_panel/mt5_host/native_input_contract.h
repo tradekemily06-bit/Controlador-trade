@@ -60,6 +60,12 @@ inline MouseInput TranslateMouseMessage(UINT message, WPARAM wParam) noexcept {
     return result;
 }
 
+inline bool ShouldForwardMouseLeave(const PhysicalLayout& layout) noexcept {
+    // WM_MOUSELEAVE has no useful coordinates; clear hover state for any
+    // currently visible WebView clip instead of hit-testing (0, 0).
+    return layout.accepted && layout.webViewVisible;
+}
+
 struct MouseCaptureState {
     bool captured{};
     std::uint8_t pressedButtons{};
