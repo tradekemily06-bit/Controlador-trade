@@ -34,5 +34,16 @@ int main() {
     LayoutMessage mismatch{5, 1280.0, 720.0, 1.0, true, {0, 0, 100, 100}};
     assert(!ValidateLayout(mismatch, 2, 1278.0, 720.0).accepted);
 
-    std::cout << "Native layout validation, DPI conversion, stale-message rejection, and hit-test contract: OK\n";
+    const RECT toggleClient{12, 620, 76, 684};
+    const RECT shellClient{16, 200, 436, 660};
+    const auto collapsedRegion = BuildWindowRegionRects(toggleClient, shellClient, false, 8, 31);
+    assert(collapsedRegion.toggle.left == 20 && collapsedRegion.toggle.top == 651);
+    assert(collapsedRegion.toggle.right == 84 && collapsedRegion.toggle.bottom == 715);
+    assert(!collapsedRegion.includeShell);
+    const auto expandedRegion = BuildWindowRegionRects(toggleClient, shellClient, true, 8, 31);
+    assert(expandedRegion.includeShell);
+    assert(expandedRegion.shell.left == 24 && expandedRegion.shell.top == 231);
+    assert(expandedRegion.shell.right == 444 && expandedRegion.shell.bottom == 691);
+
+    std::cout << "Native layout validation, DPI conversion, stale-message rejection, hit-test, and window-region geometry contract: OK\\n";
 }
