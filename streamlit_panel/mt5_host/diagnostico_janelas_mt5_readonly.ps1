@@ -28,7 +28,8 @@ public static class Mt5WindowReadOnlyProbe
     public static string WindowLine(IntPtr hwnd, string kind, int depth)
     {
         uint pid;
-        GetWindowThreadProcessId(hwnd, out pid);
+        uint threadId = GetWindowThreadProcessId(hwnd, out pid);
+        IntPtr parent = GetParent(hwnd);
         var cls = new StringBuilder(256);
         var title = new StringBuilder(512);
         RECT r;
@@ -40,6 +41,8 @@ public static class Mt5WindowReadOnlyProbe
         return new string(' ', Math.Max(0, depth) * 2) + kind +
             " hwnd=0x" + hwnd.ToInt64().ToString("X") +
             " pid=" + pid +
+            " tid=" + threadId +
+            " parent=0x" + parent.ToInt64().ToString("X") +
             " visible=" + (IsWindowVisible(hwnd) ? "1" : "0") +
             " rect=(" + r.Left + "," + r.Top + "," + r.Right + "," + r.Bottom + ")" +
             " style=0x" + style.ToInt64().ToString("X") +
@@ -85,4 +88,4 @@ $path = Join-Path $env:TEMP 'ControladorTrading-MT5-window-tree-PS.txt'
 [System.IO.File]::WriteAllLines($path, $lines, [System.Text.Encoding]::UTF8)
 Write-Host 'Relatorio somente leitura salvo em:'
 Write-Host $path
-Write-Host 'Abra o arquivo e compartilhe o conteudo. Ele contem classes, titulos, PID, estilos e coordenadas de janelas.'
+Write-Host 'Abra o arquivo e compartilhe o conteudo. Ele contem HWND, parent HWND, PID/TID, classes, titulos, estilos e coordenadas.'
