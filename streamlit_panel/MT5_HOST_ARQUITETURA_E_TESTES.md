@@ -612,3 +612,12 @@ Commits de implementação: c634dc43be384531bcc6371474d7dc40a2de3b1a e ac9aefa59
 
 
 A rotina também trata falha imediata ao enfileirar a primeira navegação (HRESULT de Navigate): o host permanece oculto e agenda nova tentativa, sem abrir outro processo Streamlit. A alteração está no commit 7235633139fc7d919e40f8311700bcc33dfa67b0 e aguarda compilação/CI.
+
+
+## Janela de composição sem fundo opaco — 18/11/2026
+
+A auditoria do host encontrou um risco visual: a classe Win32 ainda usava o pincel COLOR_WINDOW, que poderia preencher o client area com fundo opaco atrás do painel. O host agora cria a janela com WS_EX_NOREDIRECTIONBITMAP, deixa hbrBackground nulo e trata WM_ERASEBKGND sem pintar uma cor de fundo. A intenção é deixar a árvore DirectComposition ser o conteúdo visual da janela e permitir que a área não ocupada pelo WebView revele o conteúdo que está atrás.
+
+Esta alteração corrige a configuração da janela para o caminho de composição transparente, mas a transparência ainda não foi comprovada visualmente em desktop real. Além disso, transparência visual não significa passagem de clique: uma janela sem redirection bitmap ainda pode receber hit-test em toda a sua área. Antes de acoplar o host ao gráfico MT5, será necessário restringir a região de janela ao C e ao shell expandido (ou implementar mecanismo equivalente de hit-test cross-process) e comprovar que cliques fora do painel chegam ao gráfico MT5. O host continua sendo apenas bancada e não está acoplado ao terminal.
+
+Commit: daa585dfb410130d600ed4f684ee463c876ec258. CI e validação visual pendentes. Referências Microsoft: [DirectComposition CreateTargetForHwnd](https://learn.microsoft.com/en-us/windows/win32/api/dcomp/nf-dcomp-idcompositiondesktopdevice-createtargetforhwnd), [WS_EX_NOREDIRECTIONBITMAP](https://learn.microsoft.com/en-us/windows/win32/winmsg/extended-window-styles) e [WM_ERASEBKGND](https://learn.microsoft.com/en-us/windows/win32/winmsg/wm-erasebkgnd).
