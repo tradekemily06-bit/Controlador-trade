@@ -152,14 +152,14 @@ void HideWebView() {
 }
 
 void ScheduleWebViewRecovery(HRESULT reason) {
+    ++g.generation; // Invalidate outstanding callbacks even when retries are exhausted.
+    g.initializationInProgress = false;
     if (!g.window || !IsWindow(g.window) || g.recoveryAttempt >= 6) {
         OutputDebugStringW(L"Controlador WebView2 recovery stopped: retry limit reached or host unavailable.\\n");
         return;
     }
     const UINT delay = std::min<UINT>(60000, 5000u << std::min(g.recoveryAttempt, 3u));
     ++g.recoveryAttempt;
-    ++g.generation; // Invalidate outstanding callbacks before rebuilding COM state.
-    g.initializationInProgress = false;
     wchar_t message[160]{};
     swprintf_s(message, L"Controlador WebView2 recovery scheduled in %u ms; HRESULT=0x%08X; attempt=%u\\n", delay, static_cast<unsigned>(reason), g.recoveryAttempt);
     OutputDebugStringW(message);
