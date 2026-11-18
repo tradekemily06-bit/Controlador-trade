@@ -20,7 +20,7 @@ public static class Mt5WindowReadOnlyProbe
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
     [DllImport("user32.dll")] public static extern IntPtr GetParent(IntPtr hwnd);
-    [DllImport("user32.dll", EntryPoint="SendMessageW")] public static extern IntPtr SendMessage(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", SetLastError=true)] public static extern IntPtr SendMessageTimeout(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam, uint flags, uint timeout, out IntPtr result);
     [DllImport("user32.dll", EntryPoint="GetWindowLongPtrW")] public static extern IntPtr GetWindowLongPtr64(IntPtr hwnd, int index);
     [DllImport("user32.dll", EntryPoint="GetWindowLongW")] public static extern IntPtr GetWindowLong32(IntPtr hwnd, int index);
 
@@ -49,7 +49,12 @@ public static class Mt5WindowReadOnlyProbe
     public static IntPtr GetActiveMdiChild(IntPtr mdiClient)
     {
         const uint WM_MDIGETACTIVE = 0x0229;
-        return mdiClient == IntPtr.Zero ? IntPtr.Zero : SendMessage(mdiClient, WM_MDIGETACTIVE, IntPtr.Zero, IntPtr.Zero);
+        const uint SMTO_ABORTIFHUNG = 0x0002;
+        if (mdiClient == IntPtr.Zero) return IntPtr.Zero;
+        IntPtr activeChild;
+        IntPtr completed = SendMessageTimeout(mdiClient, WM_MDIGETACTIVE, IntPtr.Zero, IntPtr.Zero,
+            SMTO_ABORTIFHUNG, 1000, out activeChild);
+        return completed == IntPtr.Zero ? IntPtr.Zero : activeChild;
     }
 
     public static string WindowLine(IntPtr hwnd, string kind, int depth)
