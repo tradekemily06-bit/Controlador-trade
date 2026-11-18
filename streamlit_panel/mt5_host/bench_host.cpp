@@ -31,6 +31,7 @@ constexpr wchar_t kStreamlitUrl[] = L"http://127.0.0.1:8501";
 constexpr int kToggleSize = 64;
 constexpr UINT_PTR kNavigationRetryTimer = 8501;
 constexpr UINT kLayoutMessage = WM_APP + 41;
+constexpr UINT kWebViewRecoveryMessage = WM_APP + 42;
 
 struct HostState {
     HWND window{};
@@ -54,6 +55,9 @@ struct HostState {
     bool acceleratorKeyHandlerRegistered{};
     bool navigationCompletedHandlerRegistered{};
     bool webviewProcessFailed{};
+    bool recoveryQueued{};
+    bool initializationInProgress{};
+    std::uint64_t generation{};
     std::uint64_t lastSequence{};
     bool layoutValid{};
     bool expanded{};
@@ -247,25 +251,31 @@ void ApplyLayout(const std::string& json) {
 }
 
 void InitializeWebView() {
+    if (g.initializationInProgress || !g.window || !IsWindow(g.window)) return;
+    g.initializationInProgress = true;
+    g.webviewProcessFailed = false;
+    const std::uint64_t generation = ++g.generation;
     CreateCoreWebView2EnvironmentWithOptions(
         nullptr, nullptr, nullptr,
         Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
-            [](HRESULT result, ICoreWebView2Environment* environment) -> HRESULT {
-                if (FAILED(result) || !environment) { HideWebView(); return result; }
+            [generation](HRESULT result, ICoreWebView2Environment* environment) -> HRESULT {
+                if (generation != g.generation) return S_OK;
+                if (FAILED(result) || !environment) { g.initializationInProgress = false; HideWebView(); return FAILED(result) ? result : E_POINTER; }
                 g.environment = environment;
                 ComPtr<ICoreWebView2Environment3> environment3;
                 HRESULT environmentQuery = g.environment.As(&environment3);
-                if (FAILED(environmentQuery)) return environmentQuery;
+                if (FAILED(environmentQuery)) { g.initializationInProgress = false; return environmentQuery; }
                 return environment3->CreateCoreWebView2CompositionController(
                     g.window,
                     Callback<ICoreWebView2CreateCoreWebView2CompositionControllerCompletedHandler>(
-                        [](HRESULT hr, ICoreWebView2CompositionController* composition) -> HRESULT {
-                            if (FAILED(hr) || !composition) { HideWebView(); return hr; }
+                        [generation](HRESULT hr, ICoreWebView2CompositionController* composition) -> HRESULT {
+                            if (generation != g.generation) return S_OK;
+                            if (FAILED(hr) || !composition) { g.initializationInProgress = false; HideWebView(); return FAILED(hr) ? hr : E_POINTER; }
                             g.composition = composition;
                             HRESULT query = g.composition.As(&g.controller);
-                            if (FAILED(query)) return query;
+                            if (FAILED(query)) { g.initializationInProgress = false; return query; }
                             query = g.controller->get_CoreWebView2(&g.webview);
-                            if (FAILED(query)) return query;
+                            if (FAILED(query)) { g.initializationInProgress = false; return query; }
 
                             query = DCompositionCreateDevice(nullptr, IID_PPV_ARGS(&g.dcomp));
                             if (FAILED(query)) return query;
@@ -284,6 +294,7 @@ void InitializeWebView() {
                             if (FAILED(query)) return query;
 
                             g.controller->put_IsVisible(FALSE);
+                            g.initializationInProgress = false;
                             RECT bounds{};
                             GetClientRect(g.window, &bounds);
                             g.controller->put_Bounds(bounds);
@@ -292,12 +303,17 @@ void InitializeWebView() {
                             // never leave stale WebView pixels or input capture over the host.
                             query = g.webview->add_ProcessFailed(
                                 Callback<ICoreWebView2ProcessFailedEventHandler>(
-                                    [](ICoreWebView2*, ICoreWebView2ProcessFailedEventArgs* args) -> HRESULT {
+                                    [generation](ICoreWebView2*, ICoreWebView2ProcessFailedEventArgs* args) -> HRESULT {
+                                        if (generation != g.generation) return S_OK;
                                         COREWEBVIEW2_PROCESS_FAILED_KIND kind{};
                                         const HRESULT hr = args->get_ProcessFailedKind(&kind);
                                         HideWebView();
                                         g.webviewProcessFailed = true;
                                         KillTimer(g.window, kNavigationRetryTimer);
+                                        if (!g.recoveryQueued && g.window && IsWindow(g.window)) {
+                                            g.recoveryQueued = PostMessageW(g.window, kWebViewRecoveryMessage, 0, 0) != FALSE;
+                                            if (!g.recoveryQueued) OutputDebugStringW(L"Controlador WebView2 recovery message could not be queued.\n");
+                                        }
                                         if (SUCCEEDED(hr)) {
                                             wchar_t message[128]{};
                                             swprintf_s(message, L"Controlador WebView2 ProcessFailed kind=%d\\n",
@@ -417,7 +433,8 @@ void InitializeWebView() {
                             const HRESULT scriptRegistration = g.webview->AddScriptToExecuteOnDocumentCreated(
                                 wide.c_str(),
                                 Callback<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>(
-                                    [](HRESULT scriptResult, LPCWSTR) -> HRESULT {
+                                    [generation](HRESULT scriptResult, LPCWSTR) -> HRESULT {
+                                        if (generation != g.generation) return S_OK;
                                         if (FAILED(scriptResult)) { RemoveWebViewEventHandlers(); HideWebView(); return scriptResult; }
                                         const HRESULT navigation = g.webview->Navigate(kStreamlitUrl);
                                         if (FAILED(navigation)) {
@@ -458,6 +475,26 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
             return 0;
         }
         break;
+    case kWebViewRecoveryMessage:
+        if (g.recoveryQueued) {
+            g.recoveryQueued = false;
+            HideWebView();
+            RemoveWebViewEventHandlers();
+            if (g.controller) g.controller->Close();
+            g.webview.Reset();
+            g.controller.Reset();
+            g.composition.Reset();
+            g.environment.Reset();
+            g.clip.Reset();
+            g.root.Reset();
+            g.target.Reset();
+            g.dcomp.Reset();
+            g.initializationInProgress = false;
+            g.webviewProcessFailed = false;
+            OutputDebugStringW(L"Controlador WebView2 recreating environment after process failure.\\n");
+            InitializeWebView();
+        }
+        return 0;
     case WM_TIMER:
         if (wParam == kNavigationRetryTimer) {
             KillTimer(hwnd, kNavigationRetryTimer);
