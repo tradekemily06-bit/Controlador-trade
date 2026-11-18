@@ -42,6 +42,7 @@ struct HostState {
     ComPtr<IDCompositionRectangleClip> clip;
     EventRegistrationToken messageToken{};
     EventRegistrationToken moveFocusToken{};
+    EventRegistrationToken processFailedToken{};
     std::uint64_t lastSequence{};
     bool layoutValid{};
     bool expanded{};
@@ -187,6 +188,26 @@ void InitializeWebView() {
                             RECT bounds{};
                             GetClientRect(g.window, &bounds);
                             g.controller->put_Bounds(bounds);
+
+                            // Fail closed on renderer/browser crashes or unresponsiveness:
+                            // never leave stale WebView pixels or input capture over the host.
+                            query = g.webview->add_ProcessFailed(
+                                Callback<ICoreWebView2ProcessFailedEventHandler>(
+                                    [](ICoreWebView2*, ICoreWebView2ProcessFailedEventArgs* args) -> HRESULT {
+                                        COREWEBVIEW2_PROCESS_FAILED_KIND kind{};
+                                        const HRESULT hr = args->get_ProcessFailedKind(&kind);
+                                        HideWebView();
+                                        if (SUCCEEDED(hr)) {
+                                            wchar_t message[128]{};
+                                            swprintf_s(message, L"Controlador WebView2 ProcessFailed kind=%d\\n",
+                                                static_cast<int>(kind));
+                                            OutputDebugStringW(message);
+                                        } else {
+                                            OutputDebugStringW(L"Controlador WebView2 ProcessFailed (kind unavailable)\\n");
+                                        }
+                                        return S_OK;
+                                    }).Get(), &g.processFailedToken);
+                            if (FAILED(query)) return query;
 
                             // When Tab leaves the WebView, return focus to the native C control.
                             // Normal text/navigation keys remain handled by WebView2 while it owns focus.
@@ -340,7 +361,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
     case WM_CLOSE:
         HideWebView();
         if (g.controller) g.controller->remove_MoveFocusRequested(g.moveFocusToken);
-        if (g.webview) g.webview->remove_WebMessageReceived(g.messageToken);
+        if (g.webview) {
+            g.webview->remove_WebMessageReceived(g.messageToken);
+            g.webview->remove_ProcessFailed(g.processFailedToken);
+        }
         if (g.controller) g.controller->Close();
         DestroyWindow(hwnd);
         return 0;
