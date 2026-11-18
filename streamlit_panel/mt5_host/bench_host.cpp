@@ -142,6 +142,29 @@ void HideWebView() {
     ApplyInteractiveWindowRegion(false);
 }
 
+void RemoveWebViewEventHandlers() {
+    if (g.controller && g.moveFocusToken.value) {
+        g.controller->remove_MoveFocusRequested(g.moveFocusToken);
+        g.moveFocusToken = {};
+    }
+    if (g.controller && g.acceleratorKeyToken.value) {
+        g.controller->remove_AcceleratorKeyPressed(g.acceleratorKeyToken);
+        g.acceleratorKeyToken = {};
+    }
+    if (g.webview && g.messageToken.value) {
+        g.webview->remove_WebMessageReceived(g.messageToken);
+        g.messageToken = {};
+    }
+    if (g.webview && g.navigationCompletedToken.value) {
+        g.webview->remove_NavigationCompleted(g.navigationCompletedToken);
+        g.navigationCompletedToken = {};
+    }
+    if (g.webview && g.processFailedToken.value) {
+        g.webview->remove_ProcessFailed(g.processFailedToken);
+        g.processFailedToken = {};
+    }
+}
+
 void ApplyLayout(const std::string& json) {
     double sequence{}, vw{}, vh{}, dpr{}, x{}, y{}, width{}, height{};
     bool expanded{};
@@ -275,7 +298,7 @@ void InitializeWebView() {
                                         }
                                         return S_OK;
                                     }).Get(), &g.processFailedToken);
-                            if (FAILED(query)) return query;
+                            if (FAILED(query)) { RemoveWebViewEventHandlers(); return query; }
 
                             // Streamlit is supervised separately by the existing Windows
                             // scheduled task. Retry only the loopback navigation while that
@@ -302,7 +325,7 @@ void InitializeWebView() {
                                         }
                                         return S_OK;
                                     }).Get(), &g.navigationCompletedToken);
-                            if (FAILED(query)) return query;
+                            if (FAILED(query)) { RemoveWebViewEventHandlers(); return query; }
 
                             // WebView2 receives ordinary keyboard input while focused.
                             // Accelerator keys are surfaced here; leave Handled=false so
@@ -312,7 +335,7 @@ void InitializeWebView() {
                                     [](ICoreWebView2Controller*, ICoreWebView2AcceleratorKeyPressedEventArgs*) -> HRESULT {
                                         return S_OK;
                                     }).Get(), &g.acceleratorKeyToken);
-                            if (FAILED(query)) return query;
+                            if (FAILED(query)) { RemoveWebViewEventHandlers(); return query; }
 
                             // When Tab leaves the WebView, return focus to the native C control.
                             // Normal text/navigation keys remain handled by WebView2 while it owns focus.
@@ -329,7 +352,7 @@ void InitializeWebView() {
                                         }
                                         return S_OK;
                                     }).Get(), &g.moveFocusToken);
-                            if (FAILED(query)) return query;
+                            if (FAILED(query)) { RemoveWebViewEventHandlers(); return query; }
 
                             query = g.webview->add_WebMessageReceived(
                                 Callback<ICoreWebView2WebMessageReceivedEventHandler>(
@@ -357,6 +380,7 @@ void InitializeWebView() {
                                         return S_OK;
                                     }).Get(), &g.messageToken);
                             if (FAILED(query)) {
+                                RemoveWebViewEventHandlers();
                                 HideWebView();
                                 OutputDebugStringW(L"Controlador WebMessageReceived handler registration failed.\\n");
                                 return query;
@@ -369,7 +393,7 @@ void InitializeWebView() {
                             bridgePath.resize(slash == std::wstring::npos ? 0 : slash + 1);
                             bridgePath += L"dom_bridge.js";
                             std::ifstream file(bridgePath, std::ios::binary);
-                            if (!file) { HideWebView(); return HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND); }
+                            if (!file) { RemoveWebViewEventHandlers(); HideWebView(); return HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND); }
                             std::string script((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
                             const int chars = MultiByteToWideChar(CP_UTF8, 0, script.c_str(), -1, nullptr, 0);
                             std::wstring wide(chars > 0 ? chars : 1, L'\0');
@@ -378,7 +402,7 @@ void InitializeWebView() {
                                 wide.c_str(),
                                 Callback<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>(
                                     [](HRESULT scriptResult, LPCWSTR) -> HRESULT {
-                                        if (FAILED(scriptResult)) { HideWebView(); return scriptResult; }
+                                        if (FAILED(scriptResult)) { RemoveWebViewEventHandlers(); HideWebView(); return scriptResult; }
                                         const HRESULT navigation = g.webview->Navigate(kStreamlitUrl);
                                         if (FAILED(navigation)) {
                                             HideWebView();
@@ -505,13 +529,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
         break;
     case WM_CLOSE:
         HideWebView();
-        if (g.controller) g.controller->remove_MoveFocusRequested(g.moveFocusToken);
-        if (g.webview) {
-            g.webview->remove_WebMessageReceived(g.messageToken);
-            g.webview->remove_ProcessFailed(g.processFailedToken);
-            g.controller->remove_AcceleratorKeyPressed(g.acceleratorKeyToken);
-            g.webview->remove_NavigationCompleted(g.navigationCompletedToken);
-        }
+        RemoveWebViewEventHandlers();
         if (g.controller) g.controller->Close();
         DestroyWindow(hwnd);
         return 0;
