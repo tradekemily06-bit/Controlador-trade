@@ -56,6 +56,9 @@ for (const token of [
   'EnumWindows(ProbeTopLevelWindow',
   'EnumChildWindows(hwnd, ProbeChildWindow',
   'MDIClient',
+  'SendMessageTimeoutW(',
+  'SMTO_ABORTIFHUNG | SMTO_BLOCK, 1000, &activeResult)',
+  'ACTIVE MDI CHILD: unavailable (timeout or no active child)',
   'SetWindowRgn(g.window, region, TRUE)',
   'ApplyInteractiveWindowRegion(false)',
   'ApplyInteractiveWindowRegion(true)',
@@ -76,6 +79,17 @@ for (const token of [
 ]) {
   assert.ok(host.includes(token), `Missing native host lifecycle contract: ${token}`);
 }
+
+
+// A hung terminal UI thread must not block the read-only MDI probe.
+const probeStart = host.indexOf('BOOL CALLBACK ProbeTopLevelWindow');
+const probeEnd = host.indexOf('\nint RunMt5WindowProbe()', probeStart);
+assert.ok(probeStart >= 0 && probeEnd > probeStart, 'MT5 top-level probe callback must exist');
+const probe = host.slice(probeStart, probeEnd);
+assert.ok(probe.includes('SendMessageTimeoutW('), 'MDI active-child query must have a bounded wait');
+assert.ok(probe.includes('SMTO_ABORTIFHUNG | SMTO_BLOCK, 1000, &activeResult)'), 'MDI query must abort after a 1-second timeout');
+assert.ok(!probe.includes('SendMessageW('), 'Do not use an unbounded synchronous message in the MT5 probe');
+assert.ok(probe.includes('ACTIVE MDI CHILD: unavailable (timeout or no active child)'), 'Probe must report timeout/no active child without blocking');
 
 // The existing Windows scheduled task owns Streamlit startup/restart.
 // The WebView host must not spawn or terminate a second server process.
