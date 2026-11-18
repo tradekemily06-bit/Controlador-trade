@@ -59,25 +59,24 @@ $lines.Add('')
 
 foreach ($p in $mt5) {
     $lines.Add('=== PROCESSO: ' + $p.ProcessName + ' PID=' + $p.Id + ' ===')
-    if ($p.MainWindowHandle -ne [IntPtr]::Zero) {
-        $lines.Add([Mt5WindowReadOnlyProbe]::WindowLine($p.MainWindowHandle, 'MAIN', 0))
-        $parent = $p.MainWindowHandle
-        $callback = [Mt5WindowReadOnlyProbe+EnumWindowsProc] {
-            param([IntPtr]$hwnd, [IntPtr]$unused)
-            $pidValue = [uint32]0
-            [void][Mt5WindowReadOnlyProbe]::GetWindowThreadProcessId($hwnd, [ref]$pidValue)
-            if ($pidValue -eq [uint32]$p.Id) {
-                $lines.Add([Mt5WindowReadOnlyProbe]::WindowLine($hwnd, 'CHILD', 1))
-            }
-            return $true
-        }
-        [void][Mt5WindowReadOnlyProbe]::EnumChildWindows($parent, $callback, [IntPtr]::Zero)
-    } else {
-        $lines.Add('O processo nao expoe MainWindowHandle neste momento.')
+    $childCallback = [Mt5WindowReadOnlyProbe+EnumWindowsProc] {
+        param([IntPtr]$hwnd, [IntPtr]$unused)
+        $lines.Add([Mt5WindowReadOnlyProbe]::WindowLine($hwnd, 'CHILD', 1))
+        return $true
     }
+    $topCallback = [Mt5WindowReadOnlyProbe+EnumWindowsProc] {
+        param([IntPtr]$hwnd, [IntPtr]$unused)
+        $pidValue = [uint32]0
+        [void][Mt5WindowReadOnlyProbe]::GetWindowThreadProcessId($hwnd, [ref]$pidValue)
+        if ($pidValue -eq [uint32]$p.Id) {
+            $lines.Add([Mt5WindowReadOnlyProbe]::WindowLine($hwnd, 'TOP', 0))
+            [void][Mt5WindowReadOnlyProbe]::EnumChildWindows($hwnd, $childCallback, [IntPtr]::Zero)
+        }
+        return $true
+    }
+    [void][Mt5WindowReadOnlyProbe]::EnumWindows($topCallback, [IntPtr]::Zero)
     $lines.Add('')
 }
-
 if ($mt5.Count -eq 0) {
     $lines.Add('Nenhum processo terminal64.exe ou terminal.exe foi encontrado. Abra o MT5 e execute novamente.')
 }
