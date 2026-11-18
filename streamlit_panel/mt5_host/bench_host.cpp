@@ -142,11 +142,13 @@ bool ReadBool(const std::string& json, const char* key, bool& value) {
 }
 
 void HideWebView() {
+    // Release any buttons still held by the WebView before invalidating the
+    // layout or dropping native capture.
+    controlador::host::CancelMouseCapture(
+        g.window, g.composition.Get(), g.mouseCapture);
     g.layoutValid = false;
     g.expanded = false;
     g.physicalLayout = {};
-    g.mouseCapture = {};
-    if (GetCapture() == g.window) ReleaseCapture();
     if (g.controller) g.controller->put_IsVisible(FALSE);
     ApplyInteractiveWindowRegion(false);
 }
@@ -225,7 +227,8 @@ void ApplyLayout(const std::string& json) {
         g.physicalLayout.accepted = true;
         g.physicalLayout.sequence = g.lastSequence;
         g.physicalLayout.webViewVisible = false;
-        g.mouseCapture = {};
+        controlador::host::CancelMouseCapture(
+            g.window, g.composition.Get(), g.mouseCapture);
         g.controller->put_IsVisible(FALSE);
         ApplyInteractiveWindowRegion(false);
         return;
@@ -587,6 +590,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
                 hwnd, g.composition.Get(), g.physicalLayout, message,
                 wParam, lParam, g.mouseCapture);
             if (routed == S_OK) return 0;
+            if (FAILED(routed)) {
+                controlador::host::CancelMouseCapture(
+                    hwnd, g.composition.Get(), g.mouseCapture);
+            }
         }
         break;
     case WM_SETFOCUS:
@@ -605,14 +612,16 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
         }
         break;
     case WM_CANCELMODE:
-        // Windows is cancelling the current interaction; never keep a stale
-        // drag/button state or native capture after the cancellation.
-        controlador::host::ResetMouseCaptureState(g.mouseCapture);
-        if (GetCapture() == hwnd) ReleaseCapture();
+        // Send matching BUTTON_UP events before releasing native capture so
+        // WebView2's DOM cannot retain a stuck mouse button.
+        controlador::host::CancelMouseCapture(
+            hwnd, g.composition.Get(), g.mouseCapture);
         return 0;
     case WM_CAPTURECHANGED:
-        if (reinterpret_cast<HWND>(lParam) != hwnd)
-            controlador::host::ResetMouseCaptureState(g.mouseCapture);
+        if (reinterpret_cast<HWND>(lParam) != hwnd) {
+            controlador::host::CancelMouseCapture(
+                hwnd, g.composition.Get(), g.mouseCapture);
+        }
         break;
     case WM_CLOSE:
         DestroyWindow(hwnd);
