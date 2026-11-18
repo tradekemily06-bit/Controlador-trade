@@ -4,6 +4,19 @@ const fs = require('node:fs');
 const assert = require('node:assert/strict');
 
 const host = fs.readFileSync('streamlit_panel/mt5_host/bench_host.cpp', 'utf8');
+const diagnostic = fs.readFileSync('streamlit_panel/mt5_host/diagnostico_janelas_mt5_readonly.ps1', 'utf8');
+for (const token of [
+  'GetActiveMdiChild(IntPtr mdiClient, out bool timedOut)',
+  'SMTO_ABORTIFHUNG, 1000, out activeChild',
+  'timedOut = completed == IntPtr.Zero',
+  'ACTIVE_MDI_CHILD: indisponivel (timeout da thread de interface do MT5).',
+  'ACTIVE_MDI_CHILD: nenhum filho MDI ativo foi retornado.'
+]) {
+  assert.ok(diagnostic.includes(token), `Read-only MT5 diagnostic must preserve distinct MDI outcomes: ${token}`);
+}
+assert.ok(!diagnostic.includes('SetParent('), 'Read-only diagnostic must never reparent MT5 windows');
+assert.ok(!diagnostic.includes('SetWindowRgn('), 'Read-only diagnostic must never change window regions');
+
 
 for (const token of [
   'query = g.webview->add_WebMessageReceived(',
