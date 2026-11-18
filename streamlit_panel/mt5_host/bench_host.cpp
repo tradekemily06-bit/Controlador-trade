@@ -201,6 +201,8 @@ void InitializeWebView() {
                                         COREWEBVIEW2_PROCESS_FAILED_KIND kind{};
                                         const HRESULT hr = args->get_ProcessFailedKind(&kind);
                                         HideWebView();
+                                        g.webviewProcessFailed = true;
+                                        KillTimer(g.window, kNavigationRetryTimer);
                                         if (SUCCEEDED(hr)) {
                                             wchar_t message[128]{};
                                             swprintf_s(message, L"Controlador WebView2 ProcessFailed kind=%d\\n",
