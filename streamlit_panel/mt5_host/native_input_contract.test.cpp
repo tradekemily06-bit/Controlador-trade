@@ -44,6 +44,11 @@ int main() {
     layout.accepted = true;
     layout.webViewVisible = true;
     layout.clip = {10, 10, 110, 110};
+    assert(ShouldForwardMouseLeave(layout));
+    auto collapsedLayout = layout;
+    collapsedLayout.webViewVisible = false;
+    assert(!ShouldForwardMouseLeave(collapsedLayout));
+
     MouseCaptureState capture{};
     POINT inside{50, 50};
     POINT outside{150, 150};
