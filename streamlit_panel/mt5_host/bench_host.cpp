@@ -51,12 +51,59 @@ struct HostState {
     std::uint64_t lastSequence{};
     bool layoutValid{};
     bool expanded{};
+    // Enabled only by a future chart-attached mode. The standalone bench keeps its title bar.
+    bool restrictWindowRegion{};
     RECT shell{};
     controlador::host::PhysicalLayout physicalLayout{};
     controlador::host::MouseCaptureState mouseCapture{};
 };
 
 HostState g;
+
+bool ApplyInteractiveWindowRegion(bool includeShell) {
+    if (!g.restrictWindowRegion || !g.window || !g.toggle) return true;
+
+    RECT toggleScreen{}, windowScreen{}, clientOrigin{};
+    if (!GetWindowRect(g.toggle, &toggleScreen) ||
+        !GetWindowRect(g.window, &windowScreen)) return false;
+    POINT origin{0, 0};
+    if (!ClientToScreen(g.window, &origin)) return false;
+
+    const RECT toggleWindow{
+        toggleScreen.left - windowScreen.left,
+        toggleScreen.top - windowScreen.top,
+        toggleScreen.right - windowScreen.left,
+        toggleScreen.bottom - windowScreen.top
+    };
+    RECT shellWindow{};
+    if (includeShell && g.layoutValid && g.expanded) {
+        shellWindow = {
+            g.shell.left + origin.x - windowScreen.left,
+            g.shell.top + origin.y - windowScreen.top,
+            g.shell.right + origin.x - windowScreen.left,
+            g.shell.bottom + origin.y - windowScreen.top
+        };
+    }
+
+    HRGN region = CreateRectRgn(toggleWindow.left, toggleWindow.top,
+        toggleWindow.right, toggleWindow.bottom);
+    if (!region) return false;
+    if (includeShell && g.layoutValid && g.expanded) {
+        HRGN shell = CreateRectRgn(shellWindow.left, shellWindow.top,
+            shellWindow.right, shellWindow.bottom);
+        if (!shell) { DeleteObject(region); return false; }
+        const int combined = CombineRgn(region, region, shell, RGN_OR);
+        DeleteObject(shell);
+        if (combined == ERROR) { DeleteObject(region); return false; }
+    }
+
+    // SetWindowRgn transfers ownership of the HRGN to Windows on success.
+    if (!SetWindowRgn(g.window, region, TRUE)) {
+        DeleteObject(region);
+        return false;
+    }
+    return true;
+}
 
 bool ReadNumber(const std::string& json, const char* key, double& value) {
     const std::regex pattern(std::string("\"") + key + R"("\s*:\s*(-?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?))");
@@ -81,6 +128,7 @@ void HideWebView() {
     g.mouseCapture = {};
     if (GetCapture() == g.window) ReleaseCapture();
     if (g.controller) g.controller->put_IsVisible(FALSE);
+    ApplyInteractiveWindowRegion(false);
 }
 
 void ApplyLayout(const std::string& json) {
@@ -115,6 +163,7 @@ void ApplyLayout(const std::string& json) {
         g.physicalLayout.webViewVisible = false;
         g.mouseCapture = {};
         g.controller->put_IsVisible(FALSE);
+        ApplyInteractiveWindowRegion(false);
         return;
     }
 
@@ -150,6 +199,7 @@ void ApplyLayout(const std::string& json) {
     g.layoutValid = true;
     g.expanded = true;
     g.controller->put_IsVisible(TRUE);
+    ApplyInteractiveWindowRegion(true);
 }
 
 void InitializeWebView() {
@@ -357,6 +407,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
             GetClientRect(hwnd, &bounds);
             g.controller->put_Bounds(bounds);
         }
+        ApplyInteractiveWindowRegion(false);
         if (g.toggle) {
             RECT client{};
             GetClientRect(hwnd, &client);
@@ -383,6 +434,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
             GetClientRect(hwnd, &bounds);
             g.controller->put_Bounds(bounds);
         }
+        ApplyInteractiveWindowRegion(false);
         return 0;
     }
     case WM_MOUSEMOVE:
