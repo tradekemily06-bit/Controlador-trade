@@ -277,6 +277,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
     case WM_MBUTTONUP:
     case WM_MOUSEWHEEL:
     case WM_MOUSEHWHEEL:
+        if (message == WM_LBUTTONDOWN && g.controller && g.layoutValid &&
+            controlador::host::IsInsideClip(g.physicalLayout,
+                POINT{ GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) })) {
+            SetFocus(hwnd);
+        }
         if (g.composition && g.layoutValid && g.expanded) {
             const HRESULT routed = controlador::host::RouteMouseMessage(
                 hwnd, g.composition.Get(), g.physicalLayout, message,
@@ -284,6 +289,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
             if (routed == S_OK) return 0;
         }
         break;
+    case WM_SETFOCUS:
+        if (g.controller && g.layoutValid && g.expanded) {
+            g.controller->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
+        }
+        return 0;
     case WM_SETCURSOR:
         if (LOWORD(lParam) == HTCLIENT && g.composition && g.layoutValid && g.expanded) {
             POINT cursor{};
