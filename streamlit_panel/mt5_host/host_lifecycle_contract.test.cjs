@@ -26,6 +26,7 @@ for (const token of [
   'generation != g.generation',
   'recreating environment after failure',
   'recovery scheduled in %u ms',
+  'g.recoveryAttempt = 0;',
   'HideWebView();',
   'add_NavigationCompleted',
   'remove_NavigationCompleted',
