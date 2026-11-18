@@ -580,3 +580,10 @@ O WndProc passou a conectar o roteador nativo de mouse ao Composition Controller
 - o protocolo de layout e o roteamento ainda precisam de validação visual e de interação em Windows real antes de qualquer integração.
 
 O host de bancada não modifica `app.py`, EA/MQL5, runtime/API, banco, Reserva Fiscal, Assistente, identidade ou bloqueio REAL. Não instalar, não fazer merge e não conectar ao MT5 antes de todos os gates de bancada e aprovação explícita.
+
+
+## Correção de redimensionamento por DPI — 18/11/2026
+
+A revisão do WndProc encontrou um defeito concreto: `WM_DPICHANGED` apenas relia o client rect atual e não aplicava o retângulo sugerido pelo Windows. Isso podia deixar a janela de bancada com tamanho/posição antigos ao atravessar monitores com escalas diferentes. O host agora aplica o retângulo sugerido via `SetWindowPos`; a mensagem `WM_SIZE` subsequente atualiza os limites do WebView e reposiciona o controle C. O WebView permanece oculto até receber um novo layout DOM válido, mantendo a política fail-closed.
+
+A alteração está na branch experimental, commit `42e6bd0bf1301c4541c03b1dbca99472ed65218e`. A compilação/CI dessa revisão ainda precisa ser confirmada. Isto corrige a lógica de tratamento de DPI no host de bancada, mas não substitui o teste visual em Windows com monitores de escalas diferentes, nem comprova ancoragem ao MT5.
