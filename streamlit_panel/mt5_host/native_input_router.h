@@ -29,7 +29,11 @@ inline HRESULT RouteMouseMessage(
         if (!ScreenToClient(hostWindow, &point)) return HRESULT_FROM_WIN32(GetLastError());
     }
 
-    const bool forward = ShouldForwardMouseInput(layout, point, message, capture);
+    // WM_MOUSELEAVE has no meaningful client coordinates; deliver it whenever
+    // the clipped WebView is active so hover state cannot remain stuck.
+    const bool forward = message == WM_MOUSELEAVE
+        ? (layout.accepted && layout.webViewVisible)
+        : ShouldForwardMouseInput(layout, point, message, capture);
     if (!forward) return S_FALSE;
 
     if ((message == WM_LBUTTONDOWN || message == WM_RBUTTONDOWN ||
