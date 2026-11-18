@@ -279,7 +279,7 @@ jobs:
           $library = Join-Path $sdk "x64"
           $output = "bench-host-output"
           New-Item -ItemType Directory -Force -Path $output | Out-Null
-          cl /nologo /std:c++17 /EHsc /W4 /DUNICODE /D_UNICODE /I $include controlador-trade/streamlit_panel/mt5_host/bench_host.cpp /Fe:"$output/ControladorTradingBenchHost.exe" /link /SUBSYSTEM:WINDOWS /LIBPATH:$library WebView2LoaderStatic.lib dcomp.lib ole32.lib user32.lib
+          cl /nologo /std:c++17 /EHsc /W4 /DUNICODE /D_UNICODE /I $include controlador-trade/streamlit_panel/mt5_host/bench_host.cpp /Fe:"$output/ControladorTradingBenchHost.exe" /link /SUBSYSTEM:WINDOWS /LIBPATH:$library WebView2LoaderStatic.lib dcomp.lib ole32.lib user32.lib advapi32.lib
           if ($LASTEXITCODE -ne 0) { throw "Standalone Win32/WebView2 bench host failed to compile or link." }
           Copy-Item "controlador-trade/streamlit_panel/mt5_host/dom_bridge.js" "$output/dom_bridge.js"
           Write-Host "Standalone bench host executable and DOM bridge packaged together."
