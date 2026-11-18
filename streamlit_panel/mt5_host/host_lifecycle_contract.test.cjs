@@ -16,6 +16,18 @@ for (const token of [
 }
 assert.ok(!diagnostic.includes('SetParent('), 'Read-only diagnostic must never reparent MT5 windows');
 assert.ok(!diagnostic.includes('SetWindowRgn('), 'Read-only diagnostic must never change window regions');
+for (const token of [
+  'GetClientRect(IntPtr hwnd, out RECT rect)',
+  'ClientToScreen(IntPtr hwnd, ref POINT point)',
+  'GetDpiForWindowNative(IntPtr hwnd)',
+  'IsIconic(hwnd)',
+  'client_screen_origin=',
+  'dpi='
+]) {
+  assert.ok(diagnostic.includes(token), `Read-only diagnostic must expose client geometry and DPI: ${token}`);
+}
+assert.ok(!diagnostic.includes('SetWindowPos('), 'Read-only diagnostic must never reposition MT5 windows');
+assert.ok(!diagnostic.includes('SendInput('), 'Read-only diagnostic must never inject input');
 
 
 for (const token of [
