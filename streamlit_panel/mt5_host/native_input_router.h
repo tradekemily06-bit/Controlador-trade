@@ -29,6 +29,11 @@ inline HRESULT RouteMouseMessage(
         if (!ScreenToClient(hostWindow, &point)) return HRESULT_FROM_WIN32(GetLastError());
     }
 
+    // Preserve the pre-event state until WebView2 confirms that the event was
+    // accepted. In particular, a failed BUTTON_UP must remain eligible for a
+    // cancellation release; a failed BUTTON_DOWN must not create a phantom press.
+    const MouseCaptureState previousCapture = capture;
+
     // WM_MOUSELEAVE has no meaningful client coordinates; deliver it whenever
     // the clipped WebView is active so hover state cannot remain stuck.
     const bool forward = message == WM_MOUSELEAVE
@@ -52,8 +57,9 @@ inline HRESULT RouteMouseMessage(
     const HRESULT sent = composition->SendMouseInput(
         input.kind, input.virtualKeys, input.mouseData, point);
     if (FAILED(sent)) {
-        // Preserve the pressed-button mask so the caller can send matching
-        // BUTTON_UP events to WebView2 before native capture is released.
+        // Roll back speculative bookkeeping. The caller can then release any
+        // button that WebView2 may still consider pressed.
+        capture = previousCapture;
         return sent;
     }
 
