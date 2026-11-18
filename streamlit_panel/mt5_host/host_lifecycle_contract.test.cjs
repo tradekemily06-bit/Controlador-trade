@@ -16,6 +16,7 @@ for (const token of [
   'SetTimer(g.window, kNavigationRetryTimer, 5000, nullptr)',
   'case WM_TIMER:',
   'g.webview->Navigate(kStreamlitUrl)',
+  'initial Streamlit navigation could not be queued',
   'add_AcceleratorKeyPressed',
   'remove_AcceleratorKeyPressed',
   'add_MoveFocusRequested',
