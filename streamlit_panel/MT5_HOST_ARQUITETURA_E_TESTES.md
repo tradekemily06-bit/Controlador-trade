@@ -600,3 +600,12 @@ O caminho de teclado foi esclarecido pela API oficial:
 - Isso comprova o uso das interfaces oficiais e a compilação, mas não substitui teste interativo de digitação, atalhos, Tab/Shift+Tab, foco ao alternar entre MT5 e painel, nem teste de acessibilidade.
 
 A implementação foi atualizada nos commits 714331a8c934cdf03adce24108e5ddf07f4dacd0 e 2f7862c3414d42a1d8a6885537d89af46ef978e8. O primeiro CI ainda estava em execução na última consulta; o segundo commit também precisa de sua própria execução. Fontes oficiais: [ProcessFailed](https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2) e [AcceleratorKeyPressed / foco](https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2controller).
+
+
+## Inicialização e recuperação da navegação Streamlit — 18/11/2026
+
+A inicialização do Streamlit continua sendo responsabilidade exclusiva da tarefa Windows já existente (ControladorTrading-Streamlit), que executa deployment/start_streamlit_panel.ps1 e supervisiona a porta loopback 8501. O host WebView2 não inicia outro Streamlit nem encerra esse serviço, evitando processos duplicados e evitando interferir no MT5 ou no runtime.
+
+O host agora observa NavigationCompleted. Se a porta 8501 ainda não estiver pronta ou uma navegação falhar, oculta a composição, registra o status no OutputDebugString e tenta novamente a URL local após cinco segundos. Quando a navegação conclui com sucesso, cancela a repetição. Se o próprio processo WebView2 falhar, a navegação automática é interrompida e o host permanece fail-closed; a recuperação desse processo ainda exige reiniciar o host, até que a recriação seja implementada e testada.
+
+Commits de implementação: c634dc43be384531bcc6371474d7dc40a2de3b1a e ac9aefa594f203ee5b5b4c82b740142476da0caf. A compilação e os testes do novo ciclo de navegação dependem do CI desses commits. A tarefa agendada e o supervisor existentes não foram alterados.
