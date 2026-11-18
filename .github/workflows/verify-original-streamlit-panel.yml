@@ -29,6 +29,9 @@ jobs:
       - name: Guard native WebView2 mouse and wheel input mapping
         shell: bash
         run: node streamlit_panel/mt5_host/native_input_contract.test.cjs
+      - name: Guard native host lifecycle and supervisor boundary
+        shell: bash
+        run: node streamlit_panel/mt5_host/host_lifecycle_contract.test.cjs
       - name: Verify approved app.py SHA-256
         shell: bash
         run: |
