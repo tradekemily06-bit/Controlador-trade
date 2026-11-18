@@ -31,6 +31,10 @@ for (const token of [
   'EnumWindows(ProbeTopLevelWindow',
   'EnumChildWindows(hwnd, ProbeChildWindow',
   'MDIClient',
+  'SetWindowRgn(g.window, region, TRUE)',
+  'ApplyInteractiveWindowRegion(false)',
+  'ApplyInteractiveWindowRegion(true)',
+  'bool restrictWindowRegion{}',
 ]) {
   assert.ok(host.includes(token), `Missing native host lifecycle contract: ${token}`);
 }
