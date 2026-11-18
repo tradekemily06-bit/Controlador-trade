@@ -131,7 +131,7 @@ foreach ($p in $mt5) {
     $lines.Add('=== PROCESSO: ' + $p.ProcessName + ' PID=' + $p.Id + ' ===')
     $childCallback = [Mt5WindowReadOnlyProbe+EnumWindowsProc] {
         param([IntPtr]$hwnd, [IntPtr]$unused)
-        $depth = [Mt5WindowReadOnlyProbe]::GetWindowDepth($hwnd, $topWindow)
+        $depth = [Mt5WindowReadOnlyProbe]::GetWindowDepth($hwnd, $script:mt5DiagnosticRootHwnd)
         if ($depth -ge 1) {
             $lines.Add([Mt5WindowReadOnlyProbe]::WindowLine($hwnd, 'CHILD', $depth))
         }
@@ -158,6 +158,7 @@ foreach ($p in $mt5) {
             } else {
                 $lines.Add('  MDICLIENT: nao encontrado nesta janela de topo.')
             }
+            $script:mt5DiagnosticRootHwnd = $hwnd
             [void][Mt5WindowReadOnlyProbe]::EnumChildWindows($hwnd, $childCallback, [IntPtr]::Zero)
         }
         return $true
