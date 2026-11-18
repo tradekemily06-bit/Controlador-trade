@@ -48,6 +48,11 @@ struct HostState {
     EventRegistrationToken processFailedToken{};
     EventRegistrationToken acceleratorKeyToken{};
     EventRegistrationToken navigationCompletedToken{};
+    bool messageHandlerRegistered{};
+    bool moveFocusHandlerRegistered{};
+    bool processFailedHandlerRegistered{};
+    bool acceleratorKeyHandlerRegistered{};
+    bool navigationCompletedHandlerRegistered{};
     bool webviewProcessFailed{};
     std::uint64_t lastSequence{};
     bool layoutValid{};
@@ -143,26 +148,31 @@ void HideWebView() {
 }
 
 void RemoveWebViewEventHandlers() {
-    if (g.controller && g.moveFocusToken.value) {
+    if (g.controller && g.moveFocusHandlerRegistered) {
         g.controller->remove_MoveFocusRequested(g.moveFocusToken);
-        g.moveFocusToken = {};
     }
-    if (g.controller && g.acceleratorKeyToken.value) {
+    g.moveFocusHandlerRegistered = false;
+    g.moveFocusToken = {};
+    if (g.controller && g.acceleratorKeyHandlerRegistered) {
         g.controller->remove_AcceleratorKeyPressed(g.acceleratorKeyToken);
-        g.acceleratorKeyToken = {};
     }
-    if (g.webview && g.messageToken.value) {
+    g.acceleratorKeyHandlerRegistered = false;
+    g.acceleratorKeyToken = {};
+    if (g.webview && g.messageHandlerRegistered) {
         g.webview->remove_WebMessageReceived(g.messageToken);
-        g.messageToken = {};
     }
-    if (g.webview && g.navigationCompletedToken.value) {
+    g.messageHandlerRegistered = false;
+    g.messageToken = {};
+    if (g.webview && g.navigationCompletedHandlerRegistered) {
         g.webview->remove_NavigationCompleted(g.navigationCompletedToken);
-        g.navigationCompletedToken = {};
     }
-    if (g.webview && g.processFailedToken.value) {
+    g.navigationCompletedHandlerRegistered = false;
+    g.navigationCompletedToken = {};
+    if (g.webview && g.processFailedHandlerRegistered) {
         g.webview->remove_ProcessFailed(g.processFailedToken);
-        g.processFailedToken = {};
     }
+    g.processFailedHandlerRegistered = false;
+    g.processFailedToken = {};
 }
 
 void ApplyLayout(const std::string& json) {
@@ -299,6 +309,7 @@ void InitializeWebView() {
                                         return S_OK;
                                     }).Get(), &g.processFailedToken);
                             if (FAILED(query)) { RemoveWebViewEventHandlers(); return query; }
+                            g.processFailedHandlerRegistered = true;
 
                             // Streamlit is supervised separately by the existing Windows
                             // scheduled task. Retry only the loopback navigation while that
@@ -326,6 +337,7 @@ void InitializeWebView() {
                                         return S_OK;
                                     }).Get(), &g.navigationCompletedToken);
                             if (FAILED(query)) { RemoveWebViewEventHandlers(); return query; }
+                            g.navigationCompletedHandlerRegistered = true;
 
                             // WebView2 receives ordinary keyboard input while focused.
                             // Accelerator keys are surfaced here; leave Handled=false so
@@ -336,6 +348,7 @@ void InitializeWebView() {
                                         return S_OK;
                                     }).Get(), &g.acceleratorKeyToken);
                             if (FAILED(query)) { RemoveWebViewEventHandlers(); return query; }
+                            g.acceleratorKeyHandlerRegistered = true;
 
                             // When Tab leaves the WebView, return focus to the native C control.
                             // Normal text/navigation keys remain handled by WebView2 while it owns focus.
@@ -353,6 +366,7 @@ void InitializeWebView() {
                                         return S_OK;
                                     }).Get(), &g.moveFocusToken);
                             if (FAILED(query)) { RemoveWebViewEventHandlers(); return query; }
+                            g.moveFocusHandlerRegistered = true;
 
                             query = g.webview->add_WebMessageReceived(
                                 Callback<ICoreWebView2WebMessageReceivedEventHandler>(
@@ -385,6 +399,8 @@ void InitializeWebView() {
                                 OutputDebugStringW(L"Controlador WebMessageReceived handler registration failed.\\n");
                                 return query;
                             }
+
+                            g.messageHandlerRegistered = true;
 
                             wchar_t module[MAX_PATH]{};
                             GetModuleFileNameW(nullptr, module, MAX_PATH);
