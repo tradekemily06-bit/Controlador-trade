@@ -23,6 +23,41 @@ struct LayoutMessage {
     CssRect expandedShell{};
 };
 
+
+struct WindowRegionRects {
+    RECT toggle{}; // Window-relative physical pixels.
+    RECT shell{};  // Window-relative physical pixels; ignored while collapsed.
+    bool includeShell{};
+};
+
+// Convert client-relative DOM geometry to the top-level HWND's region coordinate space.
+// The native C child is always interactive; the Streamlit shell is included only when expanded.
+inline WindowRegionRects BuildWindowRegionRects(
+    RECT toggleClient,
+    RECT shellClient,
+    bool expanded,
+    LONG clientOriginInWindowX,
+    LONG clientOriginInWindowY) noexcept
+{
+    WindowRegionRects result{};
+    result.toggle = {
+        toggleClient.left + clientOriginInWindowX,
+        toggleClient.top + clientOriginInWindowY,
+        toggleClient.right + clientOriginInWindowX,
+        toggleClient.bottom + clientOriginInWindowY
+    };
+    if (expanded) {
+        result.shell = {
+            shellClient.left + clientOriginInWindowX,
+            shellClient.top + clientOriginInWindowY,
+            shellClient.right + clientOriginInWindowX,
+            shellClient.bottom + clientOriginInWindowY
+        };
+        result.includeShell = true;
+    }
+    return result;
+}
+
 struct PhysicalLayout {
     bool accepted{};
     bool webViewVisible{};
