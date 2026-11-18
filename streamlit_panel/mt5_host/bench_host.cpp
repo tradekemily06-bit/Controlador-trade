@@ -302,7 +302,13 @@ void InitializeWebView() {
                                 Callback<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>(
                                     [](HRESULT scriptResult, LPCWSTR) -> HRESULT {
                                         if (FAILED(scriptResult)) { HideWebView(); return scriptResult; }
-                                        return g.webview->Navigate(kStreamlitUrl);
+                                        const HRESULT navigation = g.webview->Navigate(kStreamlitUrl);
+                                        if (FAILED(navigation)) {
+                                            HideWebView();
+                                            OutputDebugStringW(L"Controlador initial Streamlit navigation could not be queued; retry in 5s.\\n");
+                                            SetTimer(g.window, kNavigationRetryTimer, 5000, nullptr);
+                                        }
+                                        return S_OK;
                                     }).Get());
                         }).Get());
             }).Get());
