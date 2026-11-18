@@ -30,8 +30,8 @@ constexpr wchar_t kWindowTitle[] = L"Controlador Trading - Host de bancada";
 constexpr wchar_t kStreamlitUrl[] = L"http://127.0.0.1:8501";
 constexpr int kToggleSize = 64;
 constexpr UINT_PTR kNavigationRetryTimer = 8501;
+constexpr UINT_PTR kWebViewRecoveryTimer = 8502;
 constexpr UINT kLayoutMessage = WM_APP + 41;
-constexpr UINT kWebViewRecoveryMessage = WM_APP + 42;
 
 struct HostState {
     HWND window{};
@@ -55,7 +55,7 @@ struct HostState {
     bool acceleratorKeyHandlerRegistered{};
     bool navigationCompletedHandlerRegistered{};
     bool webviewProcessFailed{};
-    bool recoveryQueued{};
+    unsigned recoveryAttempt{};
     bool initializationInProgress{};
     std::uint64_t generation{};
     std::uint64_t lastSequence{};
@@ -149,6 +149,21 @@ void HideWebView() {
     if (GetCapture() == g.window) ReleaseCapture();
     if (g.controller) g.controller->put_IsVisible(FALSE);
     ApplyInteractiveWindowRegion(false);
+}
+
+void ScheduleWebViewRecovery(HRESULT reason) {
+    if (!g.window || !IsWindow(g.window) || g.recoveryAttempt >= 6) {
+        OutputDebugStringW(L"Controlador WebView2 recovery stopped: retry limit reached or host unavailable.\\n");
+        return;
+    }
+    const UINT delay = std::min<UINT>(60000, 5000u << std::min(g.recoveryAttempt, 3u));
+    ++g.recoveryAttempt;
+    g.initializationInProgress = false;
+    wchar_t message[160]{};
+    swprintf_s(message, L"Controlador WebView2 recovery scheduled in %u ms; HRESULT=0x%08X; attempt=%u\\n", delay, static_cast<unsigned>(reason), g.recoveryAttempt);
+    OutputDebugStringW(message);
+    KillTimer(g.window, kWebViewRecoveryTimer);
+    if (!SetTimer(g.window, kWebViewRecoveryTimer, delay, nullptr)) OutputDebugStringW(L"Controlador WebView2 recovery timer could not be created.\\n");
 }
 
 void RemoveWebViewEventHandlers() {
@@ -260,22 +275,22 @@ void InitializeWebView() {
         Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
             [generation](HRESULT result, ICoreWebView2Environment* environment) -> HRESULT {
                 if (generation != g.generation) return S_OK;
-                if (FAILED(result) || !environment) { g.initializationInProgress = false; HideWebView(); return FAILED(result) ? result : E_POINTER; }
+                if (FAILED(result) || !environment) { const HRESULT failure = FAILED(result) ? result : E_POINTER; HideWebView(); ScheduleWebViewRecovery(failure); return failure; }
                 g.environment = environment;
                 ComPtr<ICoreWebView2Environment3> environment3;
                 HRESULT environmentQuery = g.environment.As(&environment3);
-                if (FAILED(environmentQuery)) { g.initializationInProgress = false; return environmentQuery; }
+                if (FAILED(environmentQuery)) { ScheduleWebViewRecovery(environmentQuery); return environmentQuery; }
                 return environment3->CreateCoreWebView2CompositionController(
                     g.window,
                     Callback<ICoreWebView2CreateCoreWebView2CompositionControllerCompletedHandler>(
                         [generation](HRESULT hr, ICoreWebView2CompositionController* composition) -> HRESULT {
                             if (generation != g.generation) return S_OK;
-                            if (FAILED(hr) || !composition) { g.initializationInProgress = false; HideWebView(); return FAILED(hr) ? hr : E_POINTER; }
+                            if (FAILED(hr) || !composition) { const HRESULT failure = FAILED(hr) ? hr : E_POINTER; HideWebView(); ScheduleWebViewRecovery(failure); return failure; }
                             g.composition = composition;
                             HRESULT query = g.composition.As(&g.controller);
-                            if (FAILED(query)) { g.initializationInProgress = false; return query; }
+                            if (FAILED(query)) { ScheduleWebViewRecovery(query); return query; }
                             query = g.controller->get_CoreWebView2(&g.webview);
-                            if (FAILED(query)) { g.initializationInProgress = false; return query; }
+                            if (FAILED(query)) { ScheduleWebViewRecovery(query); return query; }
 
                             query = DCompositionCreateDevice(nullptr, IID_PPV_ARGS(&g.dcomp));
                             if (FAILED(query)) return query;
@@ -310,10 +325,7 @@ void InitializeWebView() {
                                         HideWebView();
                                         g.webviewProcessFailed = true;
                                         KillTimer(g.window, kNavigationRetryTimer);
-                                        if (!g.recoveryQueued && g.window && IsWindow(g.window)) {
-                                            g.recoveryQueued = PostMessageW(g.window, kWebViewRecoveryMessage, 0, 0) != FALSE;
-                                            if (!g.recoveryQueued) OutputDebugStringW(L"Controlador WebView2 recovery message could not be queued.\n");
-                                        }
+                                        ScheduleWebViewRecovery(FAILED(hr) ? hr : HRESULT_FROM_WIN32(ERROR_PROCESS_ABORTED));
                                         if (SUCCEEDED(hr)) {
                                             wchar_t message[128]{};
                                             swprintf_s(message, L"Controlador WebView2 ProcessFailed kind=%d\\n",
@@ -324,7 +336,7 @@ void InitializeWebView() {
                                         }
                                         return S_OK;
                                     }).Get(), &g.processFailedToken);
-                            if (FAILED(query)) { RemoveWebViewEventHandlers(); return query; }
+                            if (FAILED(query)) { RemoveWebViewEventHandlers(); ScheduleWebViewRecovery(query); return query; }
                             g.processFailedHandlerRegistered = true;
 
                             // Streamlit is supervised separately by the existing Windows
@@ -425,7 +437,7 @@ void InitializeWebView() {
                             bridgePath.resize(slash == std::wstring::npos ? 0 : slash + 1);
                             bridgePath += L"dom_bridge.js";
                             std::ifstream file(bridgePath, std::ios::binary);
-                            if (!file) { RemoveWebViewEventHandlers(); HideWebView(); return HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND); }
+                            if (!file) { RemoveWebViewEventHandlers(); HideWebView(); const HRESULT failure = HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND); ScheduleWebViewRecovery(failure); return failure; }
                             std::string script((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
                             const int chars = MultiByteToWideChar(CP_UTF8, 0, script.c_str(), -1, nullptr, 0);
                             std::wstring wide(chars > 0 ? chars : 1, L'\0');
@@ -435,10 +447,11 @@ void InitializeWebView() {
                                 Callback<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>(
                                     [generation](HRESULT scriptResult, LPCWSTR) -> HRESULT {
                                         if (generation != g.generation) return S_OK;
-                                        if (FAILED(scriptResult)) { RemoveWebViewEventHandlers(); HideWebView(); return scriptResult; }
+                                        if (FAILED(scriptResult)) { RemoveWebViewEventHandlers(); HideWebView(); ScheduleWebViewRecovery(scriptResult); return scriptResult; }
                                         const HRESULT navigation = g.webview->Navigate(kStreamlitUrl);
                                         if (FAILED(navigation)) {
                                             HideWebView();
+                                            ScheduleWebViewRecovery(navigation);
                                             OutputDebugStringW(L"Controlador initial Streamlit navigation could not be queued; retry in 5s.\\n");
                                             SetTimer(g.window, kNavigationRetryTimer, 5000, nullptr);
                                         }
@@ -447,6 +460,7 @@ void InitializeWebView() {
                             if (FAILED(scriptRegistration)) {
                                 RemoveWebViewEventHandlers();
                                 HideWebView();
+                                ScheduleWebViewRecovery(scriptRegistration);
                             }
                             return scriptRegistration;
                         }).Get());
@@ -475,9 +489,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
             return 0;
         }
         break;
-    case kWebViewRecoveryMessage:
-        if (g.recoveryQueued) {
-            g.recoveryQueued = false;
+    case WM_TIMER:
+        if (wParam == kWebViewRecoveryTimer) {
+            KillTimer(hwnd, kWebViewRecoveryTimer);
             HideWebView();
             RemoveWebViewEventHandlers();
             if (g.controller) g.controller->Close();
@@ -492,10 +506,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
             g.initializationInProgress = false;
             g.webviewProcessFailed = false;
             OutputDebugStringW(L"Controlador WebView2 recreating environment after process failure.\\n");
+            OutputDebugStringW(L"Controlador WebView2 recreating environment after failure.\\n");
             InitializeWebView();
+            return 0;
         }
-        return 0;
-    case WM_TIMER:
         if (wParam == kNavigationRetryTimer) {
             KillTimer(hwnd, kNavigationRetryTimer);
             if (g.webview && !g.webviewProcessFailed) {
