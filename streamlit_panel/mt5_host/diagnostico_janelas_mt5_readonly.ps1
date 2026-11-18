@@ -21,6 +21,9 @@ public static class Mt5WindowReadOnlyProbe
     [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hwnd, out RECT rect);
     [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hwnd, ref POINT point);
     [DllImport("user32.dll", EntryPoint="GetDpiForWindow")] private static extern uint GetDpiForWindowNative(IntPtr hwnd);
+    [DllImport("user32.dll", EntryPoint="GetWindowDpiAwarenessContext")] private static extern IntPtr GetWindowDpiAwarenessContextNative(IntPtr hwnd);
+    [DllImport("user32.dll", EntryPoint="GetThreadDpiAwarenessContext")] private static extern IntPtr GetThreadDpiAwarenessContextNative();
+    [DllImport("user32.dll", EntryPoint="GetAwarenessFromDpiAwarenessContext")] private static extern int GetAwarenessFromDpiAwarenessContextNative(IntPtr context);
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hwnd);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
     [DllImport("user32.dll")] public static extern IntPtr GetParent(IntPtr hwnd);
@@ -38,6 +41,34 @@ public static class Mt5WindowReadOnlyProbe
     {
         try { return GetDpiForWindowNative(hwnd); }
         catch (EntryPointNotFoundException) { return 0; }
+    }
+
+    private static string DpiAwarenessName(IntPtr context)
+    {
+        if (context == IntPtr.Zero) return "unavailable";
+        try
+        {
+            switch (GetAwarenessFromDpiAwarenessContextNative(context))
+            {
+                case 0: return "unaware";
+                case 1: return "system";
+                case 2: return "per-monitor";
+                default: return "invalid-or-unknown";
+            }
+        }
+        catch (EntryPointNotFoundException) { return "unsupported"; }
+    }
+
+    public static string GetWindowDpiAwareness(IntPtr hwnd)
+    {
+        try { return DpiAwarenessName(GetWindowDpiAwarenessContextNative(hwnd)); }
+        catch (EntryPointNotFoundException) { return "unsupported"; }
+    }
+
+    public static string GetCallerThreadDpiAwareness()
+    {
+        try { return DpiAwarenessName(GetThreadDpiAwarenessContextNative()); }
+        catch (EntryPointNotFoundException) { return "unsupported"; }
     }
 
     private static bool FindMdiClientCallback(IntPtr hwnd, IntPtr lParam)
@@ -99,6 +130,8 @@ public static class Mt5WindowReadOnlyProbe
         bool hasClient = GetClientRect(hwnd, out client);
         bool hasClientOrigin = ClientToScreen(hwnd, ref clientOrigin);
         uint dpi = GetWindowDpi(hwnd);
+        string windowDpiAwareness = GetWindowDpiAwareness(hwnd);
+        string callerThreadDpiAwareness = GetCallerThreadDpiAwareness();
         IntPtr style = IntPtr.Size == 8 ? GetWindowLongPtr64(hwnd, -16) : GetWindowLong32(hwnd, -16);
         IntPtr ex = IntPtr.Size == 8 ? GetWindowLongPtr64(hwnd, -20) : GetWindowLong32(hwnd, -20);
         return new string(' ', Math.Max(0, depth) * 2) + kind +
@@ -112,6 +145,8 @@ public static class Mt5WindowReadOnlyProbe
             " client=" + (hasClient ? "(" + client.Left + "," + client.Top + "," + client.Right + "," + client.Bottom + ")" : "[unavailable]") +
             " client_screen_origin=" + (hasClientOrigin ? "(" + clientOrigin.X + "," + clientOrigin.Y + ")" : "[unavailable]") +
             " dpi=" + dpi +
+            " dpi_awareness=" + windowDpiAwareness +
+            " caller_thread_dpi_awareness=" + callerThreadDpiAwareness +
             " style=0x" + style.ToInt64().ToString("X") +
             " ex=0x" + ex.ToInt64().ToString("X") +
             " class=[" + cls + "] title=[" + title + "]";
