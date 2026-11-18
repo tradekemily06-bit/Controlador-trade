@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cwchar>
 #include <fstream>
 #include <iterator>
 #include <regex>
@@ -444,7 +445,97 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
 }
 }
 
-int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
+struct WindowProbeContext {
+    std::wofstream* output{};
+    HWND terminal{};
+};
+
+void WriteWindowProbeLine(std::wofstream& output, HWND hwnd, const wchar_t* kind, int depth) {
+    wchar_t className[256]{};
+    wchar_t title[512]{};
+    RECT rect{};
+    DWORD processId{};
+    GetClassNameW(hwnd, className, static_cast<int>(std::size(className)));
+    GetWindowTextW(hwnd, title, static_cast<int>(std::size(title)));
+    GetWindowRect(hwnd, &rect);
+    GetWindowThreadProcessId(hwnd, &processId);
+    const auto style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+    const auto exStyle = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+    output << std::wstring(static_cast<size_t>(depth) * 2, L' ')
+           << kind << L" hwnd=0x" << std::hex << reinterpret_cast<std::uintptr_t>(hwnd)
+           << L" pid=" << std::dec << processId
+           << L" visible=" << (IsWindowVisible(hwnd) ? 1 : 0)
+           << L" rect=(" << rect.left << L"," << rect.top << L"," << rect.right << L"," << rect.bottom << L")"
+           << L" style=0x" << std::hex << style << L" ex=0x" << exStyle
+           << L" class=[" << className << L"] title=[" << title << L"]\n";
+}
+
+BOOL CALLBACK ProbeChildWindow(HWND hwnd, LPARAM parameter) {
+    auto* context = reinterpret_cast<WindowProbeContext*>(parameter);
+    int depth = 1;
+    HWND parent = GetParent(hwnd);
+    while (parent && parent != context->terminal && depth < 32) {
+        ++depth;
+        parent = GetParent(parent);
+    }
+    WriteWindowProbeLine(*context->output, hwnd, L"CHILD", depth);
+    return TRUE;
+}
+
+BOOL CALLBACK ProbeTopLevelWindow(HWND hwnd, LPARAM parameter) {
+    auto* output = reinterpret_cast<std::wofstream*>(parameter);
+    DWORD processId{};
+    GetWindowThreadProcessId(hwnd, &processId);
+    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, processId);
+    if (!process) return TRUE;
+
+    wchar_t imagePath[1024]{};
+    DWORD imagePathLength = static_cast<DWORD>(std::size(imagePath));
+    const BOOL queried = QueryFullProcessImageNameW(process, 0, imagePath, &imagePathLength);
+    CloseHandle(process);
+    if (!queried) return TRUE;
+
+    const wchar_t* executable = wcsrchr(imagePath, L'\\');
+    executable = executable ? executable + 1 : imagePath;
+    if (_wcsicmp(executable, L"terminal64.exe") != 0 &&
+        _wcsicmp(executable, L"terminal.exe") != 0) return TRUE;
+
+    *output << L"\n=== MT5 PROCESS: " << imagePath << L" ===\n";
+    WriteWindowProbeLine(*output, hwnd, L"TOP", 0);
+    HWND mdi = FindWindowExW(hwnd, nullptr, L"MDIClient", nullptr);
+    if (mdi) {
+        WriteWindowProbeLine(*output, mdi, L"MDI", 1);
+        HWND active = reinterpret_cast<HWND>(SendMessageW(mdi, WM_MDIGETACTIVE, 0, 0));
+        if (active) {
+            *output << L"ACTIVE MDI CHILD:\n";
+            WriteWindowProbeLine(*output, active, L"ACTIVE", 2);
+        }
+    }
+    WindowProbeContext context{ output, hwnd };
+    EnumChildWindows(hwnd, ProbeChildWindow, reinterpret_cast<LPARAM>(&context));
+    return TRUE;
+}
+
+int RunMt5WindowProbe() {
+    wchar_t tempPath[MAX_PATH]{};
+    const DWORD length = GetTempPathW(static_cast<DWORD>(std::size(tempPath)), tempPath);
+    if (length == 0 || length >= std::size(tempPath)) return 10;
+    std::wstring reportPath(tempPath);
+    reportPath += L"ControladorTrading-MT5-window-tree.txt";
+    std::wofstream output(reportPath);
+    if (!output.is_open()) return 11;
+
+    output << L"Read-only MetaTrader 5 HWND diagnostic. No windows are changed.\n";
+    EnumWindows(ProbeTopLevelWindow, reinterpret_cast<LPARAM>(&output));
+    output.flush();
+    output.close();
+    MessageBoxW(nullptr, (L"Relatorio salvo em:\n" + reportPath).c_str(),
+        L"Controlador Trading - diagnostico MT5", MB_OK | MB_ICONINFORMATION);
+    return 0;
+}
+
+int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR commandLine, int show) {
+    if (commandLine && std::wcsstr(commandLine, L"--inspect-mt5")) return RunMt5WindowProbe();
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     if (FAILED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED))) return 1;
 
