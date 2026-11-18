@@ -604,8 +604,15 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
             }
         }
         break;
+    case WM_CANCELMODE:
+        // Windows is cancelling the current interaction; never keep a stale
+        // drag/button state or native capture after the cancellation.
+        controlador::host::ResetMouseCaptureState(g.mouseCapture);
+        if (GetCapture() == hwnd) ReleaseCapture();
+        return 0;
     case WM_CAPTURECHANGED:
-        if (reinterpret_cast<HWND>(lParam) != hwnd) g.mouseCapture = {};
+        if (reinterpret_cast<HWND>(lParam) != hwnd)
+            controlador::host::ResetMouseCaptureState(g.mouseCapture);
         break;
     case WM_CLOSE:
         DestroyWindow(hwnd);
