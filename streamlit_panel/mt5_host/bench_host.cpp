@@ -426,7 +426,7 @@ void InitializeWebView() {
                                             SetTimer(g.window, kNavigationRetryTimer, 5000, nullptr);
                                         }
                                         return S_OK;
-            
+                                    }).Get());
                             if (FAILED(scriptRegistration)) {
                                 RemoveWebViewEventHandlers();
                                 HideWebView();
