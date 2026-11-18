@@ -9,6 +9,7 @@ on:
       - streamlit_panel/app.py
       - streamlit_panel/MT5_HOST_CEF147_EXPERIMENT.md
       - streamlit_panel/MT5_HOST_ARQUITETURA_E_TESTES.md
+      - streamlit_panel/mt5_host/diagnostico_janelas_mt5_readonly.ps1
       - .github/workflows/verify-original-streamlit-panel.yml
 
 jobs:
@@ -50,6 +51,18 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+      - name: Parse read-only MT5 window diagnostic with PowerShell AST
+        shell: pwsh
+        run: |
+          $path = "streamlit_panel/mt5_host/diagnostico_janelas_mt5_readonly.ps1"
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            throw "Read-only MT5 diagnostic script has PowerShell syntax errors."
+          }
+          Write-Host "Read-only MT5 diagnostic PowerShell syntax validated."
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
