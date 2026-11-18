@@ -27,6 +27,7 @@ constexpr wchar_t kClassName[] = L"ControladorTradingBenchHost";
 constexpr wchar_t kWindowTitle[] = L"Controlador Trading - Host de bancada";
 constexpr wchar_t kStreamlitUrl[] = L"http://127.0.0.1:8501";
 constexpr int kToggleSize = 64;
+constexpr UINT_PTR kNavigationRetryTimer = 8501;
 constexpr UINT kLayoutMessage = WM_APP + 41;
 
 struct HostState {
@@ -44,6 +45,8 @@ struct HostState {
     EventRegistrationToken moveFocusToken{};
     EventRegistrationToken processFailedToken{};
     EventRegistrationToken acceleratorKeyToken{};
+    EventRegistrationToken navigationCompletedToken{};
+    bool webviewProcessFailed{};
     std::uint64_t lastSequence{};
     bool layoutValid{};
     bool expanded{};
@@ -210,6 +213,33 @@ void InitializeWebView() {
                                     }).Get(), &g.processFailedToken);
                             if (FAILED(query)) return query;
 
+                            // Streamlit is supervised separately by the existing Windows
+                            // scheduled task. Retry only the loopback navigation while that
+                            // service is starting/restarting; never launch a duplicate server.
+                            query = g.webview->add_NavigationCompleted(
+                                Callback<ICoreWebView2NavigationCompletedEventHandler>(
+                                    [](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT {
+                                        BOOL success = FALSE;
+                                        COREWEBVIEW2_WEB_ERROR_STATUS error = COREWEBVIEW2_WEB_ERROR_STATUS_UNKNOWN;
+                                        HRESULT hr = args->get_IsSuccess(&success);
+                                        if (FAILED(hr)) return hr;
+                                        if (success) {
+                                            KillTimer(g.window, kNavigationRetryTimer);
+                                            OutputDebugStringW(L"Controlador Streamlit navigation ready\\n");
+                                        } else {
+                                            args->get_WebErrorStatus(&error);
+                                            HideWebView();
+                                            wchar_t message[160]{};
+                                            swprintf_s(message, L"Controlador Streamlit navigation failed; WebErrorStatus=%d. Retry in 5s.\\n",
+                                                static_cast<int>(error));
+                                            OutputDebugStringW(message);
+                                            if (!g.webviewProcessFailed)
+                                                SetTimer(g.window, kNavigationRetryTimer, 5000, nullptr);
+                                        }
+                                        return S_OK;
+                                    }).Get(), &g.navigationCompletedToken);
+                            if (FAILED(query)) return query;
+
                             // WebView2 receives ordinary keyboard input while focused.
                             // Accelerator keys are surfaced here; leave Handled=false so
                             // WebView2 keeps its documented default keyboard behavior.
@@ -291,6 +321,19 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
     case WM_COMMAND:
         if (LOWORD(wParam) == 1001 && g.webview) {
             g.webview->PostWebMessageAsJson(L"{\"type\":\"controlador.toggle\"}");
+            return 0;
+        }
+        break;
+    case WM_TIMER:
+        if (wParam == kNavigationRetryTimer) {
+            KillTimer(hwnd, kNavigationRetryTimer);
+            if (g.webview && !g.webviewProcessFailed) {
+                const HRESULT retry = g.webview->Navigate(kStreamlitUrl);
+                if (FAILED(retry)) {
+                    OutputDebugStringW(L"Controlador Streamlit navigation retry could not be queued.\\n");
+                    SetTimer(hwnd, kNavigationRetryTimer, 5000, nullptr);
+                }
+            }
             return 0;
         }
         break;
@@ -376,6 +419,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
             g.webview->remove_WebMessageReceived(g.messageToken);
             g.webview->remove_ProcessFailed(g.processFailedToken);
             g.controller->remove_AcceleratorKeyPressed(g.acceleratorKeyToken);
+            g.webview->remove_NavigationCompleted(g.navigationCompletedToken);
         }
         if (g.controller) g.controller->Close();
         DestroyWindow(hwnd);
