@@ -26,6 +26,11 @@ for (const token of [
   'WS_EX_NOREDIRECTIONBITMAP',
   'wc.hbrBackground = nullptr',
   'case WM_ERASEBKGND:',
+  '--inspect-mt5',
+  'RunMt5WindowProbe()',
+  'EnumWindows(ProbeTopLevelWindow',
+  'EnumChildWindows(hwnd, ProbeChildWindow',
+  'CHART',
 ]) {
   assert.ok(host.includes(token), `Missing native host lifecycle contract: ${token}`);
 }
