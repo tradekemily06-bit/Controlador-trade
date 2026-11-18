@@ -63,7 +63,7 @@ for (const token of [
   'const auto failClosed = []()',
   'ShowWindow(g.window, SW_HIDE)',
   'if (!IsWindowVisible(g.window)) ShowWindow(g.window, SW_SHOWNOACTIVATE)',
-  'case WM_CLOSE:\\n        DestroyWindow(hwnd);',
+  'case WM_CLOSE:\n        DestroyWindow(hwnd);',
   'case WM_DESTROY:',
   'KillTimer(hwnd, kNavigationRetryTimer);',
   'KillTimer(hwnd, kWebViewRecoveryTimer);',
