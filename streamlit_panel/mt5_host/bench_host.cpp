@@ -63,7 +63,7 @@ HostState g;
 bool ApplyInteractiveWindowRegion(bool includeShell) {
     if (!g.restrictWindowRegion || !g.window || !g.toggle) return true;
 
-    RECT toggleScreen{}, windowScreen{}, clientOrigin{};
+    RECT toggleScreen{}, windowScreen{};
     if (!GetWindowRect(g.toggle, &toggleScreen) ||
         !GetWindowRect(g.window, &windowScreen)) return false;
     POINT origin{0, 0};
@@ -407,13 +407,13 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
             GetClientRect(hwnd, &bounds);
             g.controller->put_Bounds(bounds);
         }
-        ApplyInteractiveWindowRegion(false);
         if (g.toggle) {
             RECT client{};
             GetClientRect(hwnd, &client);
             SetWindowPos(g.toggle, nullptr, 12, std::max(12L, client.bottom - kToggleSize - 12),
                 kToggleSize, kToggleSize, SWP_NOZORDER | SWP_NOACTIVATE);
         }
+        ApplyInteractiveWindowRegion(false);
         return 0;
     }
     case WM_DPICHANGED: {
