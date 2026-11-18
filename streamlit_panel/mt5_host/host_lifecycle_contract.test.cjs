@@ -17,6 +17,10 @@ for (const token of [
 assert.ok(!diagnostic.includes('SetParent('), 'Read-only diagnostic must never reparent MT5 windows');
 assert.ok(!diagnostic.includes('SetWindowRgn('), 'Read-only diagnostic must never change window regions');
 for (const token of [
+  'GetWindowDepth(IntPtr hwnd, IntPtr root)',
+  'return current == root ? depth : -1;',
+  '$script:mt5DiagnosticRootHwnd = $hwnd',
+  'GetWindowDepth($hwnd, $script:mt5DiagnosticRootHwnd)',
   'GetClientRect(IntPtr hwnd, out RECT rect)',
   'ClientToScreen(IntPtr hwnd, ref POINT point)',
   'GetDpiForWindowNative(IntPtr hwnd)',
