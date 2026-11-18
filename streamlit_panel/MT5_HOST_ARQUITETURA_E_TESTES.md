@@ -634,7 +634,7 @@ Commit do probe: b53d5d07bfe2501597370f2ed046a5e87fcaad53. Compilação CI e exe
 
 ## Região interativa do host — 18/11/2026
 
-Foi implementada uma rotina opt-in de SetWindowRgn para restringir a área interativa/visível do host à união do botão C nativo e do shell Streamlit medido pelo DOM. A geometria do shell é convertida do client area para coordenadas relativas à janela; o botão C é obtido diretamente do HWND filho. No estado recolhido, a região mantém somente o C; no expandido, inclui também o shell. A rotina fica desativada no host de bancada independente para não recortar sua barra de título. Falha de layout volta à região C-only.
+Foi implementada uma rotina opt-in de SetWindowRgn para restringir a área interativa/visível do host à união do botão C nativo e do shell Streamlit medido pelo DOM. A geometria do shell é convertida do client area para coordenadas relativas à janela; o botão C é obtido diretamente do HWND filho. No estado recolhido, a região mantém somente o C; no expandido, inclui também o shell. A rotina fica desativada no host de bancada independente para não recortar sua barra de título. Falha de layout volta à região C-only. Em modo anexado, qualquer falha ao medir ou instalar a região agora oculta a janela inteira do host; ela só volta a aparecer depois que uma região segura (C-only ou C+shell) for aplicada com sucesso. Isso evita que uma janela transparente em tamanho de gráfico intercepte cliques do MT5 quando SetWindowRgn falhar.
 
 O contrato de geometria tem teste nativo para as posições recolhida e expandida. CI 44355644140 concluiu 3/3 jobs em sucesso: integridade do app original, smoke test Streamlit Windows e compilação/testes nativos WebView2/MSVC x64. Artefato do host: controlador-win32-webview2-bench-host.
 
