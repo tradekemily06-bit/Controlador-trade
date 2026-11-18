@@ -414,7 +414,7 @@ void InitializeWebView() {
                             const int chars = MultiByteToWideChar(CP_UTF8, 0, script.c_str(), -1, nullptr, 0);
                             std::wstring wide(chars > 0 ? chars : 1, L'\0');
                             if (chars > 0) MultiByteToWideChar(CP_UTF8, 0, script.c_str(), -1, wide.data(), chars);
-                            return g.webview->AddScriptToExecuteOnDocumentCreated(
+                            const HRESULT scriptRegistration = g.webview->AddScriptToExecuteOnDocumentCreated(
                                 wide.c_str(),
                                 Callback<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>(
                                     [](HRESULT scriptResult, LPCWSTR) -> HRESULT {
@@ -426,7 +426,13 @@ void InitializeWebView() {
                                             SetTimer(g.window, kNavigationRetryTimer, 5000, nullptr);
                                         }
                                         return S_OK;
-                                    }).Get());
+            
+                            if (FAILED(scriptRegistration)) {
+                                RemoveWebViewEventHandlers();
+                                HideWebView();
+                            }
+                            return scriptRegistration;
+                        }).Get());
                         }).Get());
             }).Get());
 }
