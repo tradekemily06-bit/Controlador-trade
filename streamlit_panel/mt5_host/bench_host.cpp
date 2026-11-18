@@ -326,6 +326,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
         InitializeWebView();
         return 0;
     }
+    case WM_ERASEBKGND:
+        // WS_EX_NOREDIRECTIONBITMAP leaves the client area to DirectComposition.
+        // Do not let DefWindowProc fill it with an opaque class brush.
+        return 1;
     case WM_COMMAND:
         if (LOWORD(wParam) == 1001 && g.webview) {
             g.webview->PostWebMessageAsJson(L"{\"type\":\"controlador.toggle\"}");
@@ -448,11 +452,12 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     wc.lpfnWndProc = WindowProc;
     wc.hInstance = instance;
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+    // The HWND must not paint an opaque client background behind the DirectComposition tree.
+    wc.hbrBackground = nullptr;
     wc.lpszClassName = kClassName;
     if (!RegisterClassExW(&wc)) return 2;
 
-    HWND window = CreateWindowExW(0, kClassName, kWindowTitle, WS_OVERLAPPEDWINDOW,
+    HWND window = CreateWindowExW(WS_EX_NOREDIRECTIONBITMAP, kClassName, kWindowTitle, WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT, 1100, 760, nullptr, nullptr, instance, nullptr);
     if (!window) return 3;
     ShowWindow(window, show);
