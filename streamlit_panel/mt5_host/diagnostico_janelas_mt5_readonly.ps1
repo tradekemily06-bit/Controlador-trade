@@ -18,6 +18,10 @@ public static class Mt5WindowReadOnlyProbe
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr hwnd, StringBuilder name, int max);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int max);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
+    [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hwnd, out RECT rect);
+    [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hwnd, ref POINT point);
+    [DllImport("user32.dll", EntryPoint="GetDpiForWindow")] private static extern uint GetDpiForWindowNative(IntPtr hwnd);
+    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hwnd);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
     [DllImport("user32.dll")] public static extern IntPtr GetParent(IntPtr hwnd);
     [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", SetLastError=true)] public static extern IntPtr SendMessageTimeout(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam, uint flags, uint timeout, out IntPtr result);
@@ -26,6 +30,15 @@ public static class Mt5WindowReadOnlyProbe
 
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct POINT { public int X, Y; }
+
+    public static uint GetWindowDpi(IntPtr hwnd)
+    {
+        try { return GetDpiForWindowNative(hwnd); }
+        catch (EntryPointNotFoundException) { return 0; }
+    }
 
     private static bool FindMdiClientCallback(IntPtr hwnd, IntPtr lParam)
     {
@@ -66,10 +79,14 @@ public static class Mt5WindowReadOnlyProbe
         IntPtr parent = GetParent(hwnd);
         var cls = new StringBuilder(256);
         var title = new StringBuilder(512);
-        RECT r;
+        RECT r, client;
+        POINT clientOrigin = new POINT { X = 0, Y = 0 };
         GetClassName(hwnd, cls, cls.Capacity);
         GetWindowText(hwnd, title, title.Capacity);
         GetWindowRect(hwnd, out r);
+        bool hasClient = GetClientRect(hwnd, out client);
+        bool hasClientOrigin = ClientToScreen(hwnd, ref clientOrigin);
+        uint dpi = GetWindowDpi(hwnd);
         IntPtr style = IntPtr.Size == 8 ? GetWindowLongPtr64(hwnd, -16) : GetWindowLong32(hwnd, -16);
         IntPtr ex = IntPtr.Size == 8 ? GetWindowLongPtr64(hwnd, -20) : GetWindowLong32(hwnd, -20);
         return new string(' ', Math.Max(0, depth) * 2) + kind +
@@ -78,7 +95,11 @@ public static class Mt5WindowReadOnlyProbe
             " tid=" + threadId +
             " parent=0x" + parent.ToInt64().ToString("X") +
             " visible=" + (IsWindowVisible(hwnd) ? "1" : "0") +
+            " iconic=" + (IsIconic(hwnd) ? "1" : "0") +
             " rect=(" + r.Left + "," + r.Top + "," + r.Right + "," + r.Bottom + ")" +
+            " client=" + (hasClient ? "(" + client.Left + "," + client.Top + "," + client.Right + "," + client.Bottom + ")" : "[unavailable]") +
+            " client_screen_origin=" + (hasClientOrigin ? "(" + clientOrigin.X + "," + clientOrigin.Y + ")" : "[unavailable]") +
+            " dpi=" + dpi +
             " style=0x" + style.ToInt64().ToString("X") +
             " ex=0x" + ex.ToInt64().ToString("X") +
             " class=[" + cls + "] title=[" + title + "]";
