@@ -62,13 +62,21 @@ struct HostState {
 HostState g;
 
 bool ApplyInteractiveWindowRegion(bool includeShell) {
-    if (!g.restrictWindowRegion || !g.window || !g.toggle) return true;
+    if (!g.restrictWindowRegion) return true;
+
+    // In chart-attached mode, any inability to constrain the HWND must fail closed.
+    // A transparent full-chart host can still intercept input from the MT5 process.
+    const auto failClosed = []() {
+        if (g.window && IsWindow(g.window)) ShowWindow(g.window, SW_HIDE);
+        return false;
+    };
+    if (!g.window || !g.toggle) return failClosed();
 
     RECT toggleScreen{}, windowScreen{};
     if (!GetWindowRect(g.toggle, &toggleScreen) ||
-        !GetWindowRect(g.window, &windowScreen)) return false;
+        !GetWindowRect(g.window, &windowScreen)) return failClosed();
     POINT origin{0, 0};
-    if (!ClientToScreen(g.window, &origin)) return false;
+    if (!ClientToScreen(g.window, &origin)) return failClosed();
 
     const RECT toggleWindow{
         toggleScreen.left - windowScreen.left,
@@ -88,21 +96,23 @@ bool ApplyInteractiveWindowRegion(bool includeShell) {
 
     HRGN region = CreateRectRgn(toggleWindow.left, toggleWindow.top,
         toggleWindow.right, toggleWindow.bottom);
-    if (!region) return false;
+    if (!region) return failClosed();
     if (includeShell && g.layoutValid && g.expanded) {
         HRGN shell = CreateRectRgn(shellWindow.left, shellWindow.top,
             shellWindow.right, shellWindow.bottom);
-        if (!shell) { DeleteObject(region); return false; }
+        if (!shell) { DeleteObject(region); return failClosed(); }
         const int combined = CombineRgn(region, region, shell, RGN_OR);
         DeleteObject(shell);
-        if (combined == ERROR) { DeleteObject(region); return false; }
+        if (combined == ERROR) { DeleteObject(region); return failClosed(); }
     }
 
     // SetWindowRgn transfers ownership of the HRGN to Windows on success.
     if (!SetWindowRgn(g.window, region, TRUE)) {
         DeleteObject(region);
-        return false;
+        return failClosed();
     }
+    // Restore the host only after the safe C-only or C+shell region is installed.
+    if (!IsWindowVisible(g.window)) ShowWindow(g.window, SW_SHOWNOACTIVATE);
     return true;
 }
 
