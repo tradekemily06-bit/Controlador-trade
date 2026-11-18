@@ -6,6 +6,9 @@ const assert = require('node:assert/strict');
 const host = fs.readFileSync('streamlit_panel/mt5_host/bench_host.cpp', 'utf8');
 
 for (const token of [
+  'query = g.webview->add_WebMessageReceived(',
+  'if (FAILED(query)) {',
+  'WebMessageReceived handler registration failed.',
   'add_ProcessFailed',
   'remove_ProcessFailed',
   'g.webviewProcessFailed = true',
