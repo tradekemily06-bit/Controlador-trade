@@ -630,3 +630,14 @@ Foi acrescentado ao executável de bancada o modo --inspect-mt5. Ele enumera, se
 Esse diagnóstico é apenas leitura. Não chama SetParent, SetWindowPos, SetWindowRgn, não injeta DLL e não altera o terminal. A ancoragem só deve ser implementada depois de examinar a hierarquia real e selecionar o HWND do gráfico correto. A referência MQL5 confirma que CHART_WINDOW_HANDLE é um HWND, mas a API MQL5 para obtê-lo pertence ao terminal; neste trabalho não será alterado o EA para expor esse valor. Referências: [MQL5 Chart Properties](https://www.mql5.com/en/docs/constants/chartconstants/enum_chart_property) e [MQL5 Chart identification](https://www.mql5.com/en/book/applications/charts/charts_id).
 
 Commit do probe: b53d5d07bfe2501597370f2ed046a5e87fcaad53. Compilação CI e execução em Windows/MT5 real ainda pendentes.
+
+
+## Região interativa do host — 18/11/2026
+
+Foi implementada uma rotina opt-in de SetWindowRgn para restringir a área interativa/visível do host à união do botão C nativo e do shell Streamlit medido pelo DOM. A geometria do shell é convertida do client area para coordenadas relativas à janela; o botão C é obtido diretamente do HWND filho. No estado recolhido, a região mantém somente o C; no expandido, inclui também o shell. A rotina fica desativada no host de bancada independente para não recortar sua barra de título. Falha de layout volta à região C-only.
+
+O contrato de geometria tem teste nativo para as posições recolhida e expandida. CI 44355644140 concluiu 3/3 jobs em sucesso: integridade do app original, smoke test Streamlit Windows e compilação/testes nativos WebView2/MSVC x64. Artefato do host: controlador-win32-webview2-bench-host.
+
+Limite atual: o código de região foi compilado e seu contrato geométrico foi testado, mas o modo de anexação ao gráfico MT5 ainda não foi implementado nem executado no terminal real. A região não está ativada na janela de bancada. O próximo passo obrigatório é executar o diagnóstico read-only --inspect-mt5 no Windows do usuário, analisar a hierarquia/estilos/retângulos do terminal e só então escolher e implementar a estratégia de ancoragem compatível com a janela real, incluindo o comportamento de DPI e foco. Não presumir HWND ou classe do gráfico.
+
+CI: https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/44355644140
