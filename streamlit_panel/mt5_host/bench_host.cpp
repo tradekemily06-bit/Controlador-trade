@@ -336,11 +336,21 @@ void InitializeWebView() {
                                     [](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT {
                                         LPWSTR raw{};
                                         HRESULT hr = args->get_WebMessageAsJson(&raw);
-                                        if (FAILED(hr) || !raw) return FAILED(hr) ? hr : E_POINTER;
+                                        if (FAILED(hr) || !raw) {
+                                            if (raw) CoTaskMemFree(raw);
+                                            return FAILED(hr) ? hr : E_POINTER;
+                                        }
                                         const int count = WideCharToMultiByte(CP_UTF8, 0, raw, -1, nullptr, 0, nullptr, nullptr);
-                                        std::string json(count > 0 ? count : 1, '\0');
-                                        if (count > 0) WideCharToMultiByte(CP_UTF8, 0, raw, -1, json.data(), count, nullptr, nullptr);
+                                        if (count <= 0) {
+                                            CoTaskMemFree(raw);
+                                            return E_FAIL;
+                                        }
+                                        std::string json(static_cast<std::size_t>(count), '\0');
+                                        const int converted = WideCharToMultiByte(
+                                            CP_UTF8, 0, raw, -1, json.data(), count, nullptr, nullptr);
                                         CoTaskMemFree(raw);
+                                        if (converted != count) return E_FAIL;
+                                        json.resize(static_cast<std::size_t>(count - 1));
                                         if (json.find("controlador.panel.layout") != std::string::npos) {
                                             ApplyLayout(json);
                                         }
