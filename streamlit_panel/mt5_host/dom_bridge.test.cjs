@@ -85,6 +85,17 @@ observerCallback();
 flush();
 assert.equal(posted.at(-1).state, "expanded");
 assert.equal(posted.at(-1).expandedShell.width, 420);
+assert.equal(posted.at(-1).x, 16);
+assert.equal(posted.at(-1).y, 300);
+assert.equal(posted.at(-1).width, 420);
+assert.equal(posted.at(-1).height, 460);
+
+// Cross-check the exact top-level coordinate contract consumed by native ApplyLayout.
+const nativeHost = fs.readFileSync(path.join(__dirname, "bench_host.cpp"), "utf8");
+for (const field of ["x", "y", "width", "height"]) {
+  assert.match(nativeHost, new RegExp('ReadNumber\\\\(json, "' + field + '"'));
+  assert.equal(typeof posted.at(-1)[field], "number");
+}
 
 // Updated viewport and DPR are reflected in the next layout message.
 document.documentElement.clientWidth = 1440;
