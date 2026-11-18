@@ -331,12 +331,12 @@ void InitializeWebView() {
                                     }).Get(), &g.moveFocusToken);
                             if (FAILED(query)) return query;
 
-                            g.webview->add_WebMessageReceived(
+                            query = g.webview->add_WebMessageReceived(
                                 Callback<ICoreWebView2WebMessageReceivedEventHandler>(
                                     [](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT {
                                         LPWSTR raw{};
                                         HRESULT hr = args->get_WebMessageAsJson(&raw);
-                                        if (FAILED(hr) || !raw) return hr;
+                                        if (FAILED(hr) || !raw) return FAILED(hr) ? hr : E_POINTER;
                                         const int count = WideCharToMultiByte(CP_UTF8, 0, raw, -1, nullptr, 0, nullptr, nullptr);
                                         std::string json(count > 0 ? count : 1, '\0');
                                         if (count > 0) WideCharToMultiByte(CP_UTF8, 0, raw, -1, json.data(), count, nullptr, nullptr);
@@ -346,6 +346,11 @@ void InitializeWebView() {
                                         }
                                         return S_OK;
                                     }).Get(), &g.messageToken);
+                            if (FAILED(query)) {
+                                HideWebView();
+                                OutputDebugStringW(L"Controlador WebMessageReceived handler registration failed.\\n");
+                                return query;
+                            }
 
                             wchar_t module[MAX_PATH]{};
                             GetModuleFileNameW(nullptr, module, MAX_PATH);
