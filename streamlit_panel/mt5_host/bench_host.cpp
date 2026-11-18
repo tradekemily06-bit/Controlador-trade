@@ -19,6 +19,7 @@
 #pragma comment(lib, "dcomp.lib")
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "user32.lib")
+#pragma comment(lib, "gdi32.lib")
 
 using Microsoft::WRL::Callback;
 using Microsoft::WRL::ComPtr;
