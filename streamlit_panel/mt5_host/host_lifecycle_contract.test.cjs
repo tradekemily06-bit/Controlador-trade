@@ -58,7 +58,8 @@ for (const token of [
   'MDIClient',
   'SendMessageTimeoutW(',
   'SMTO_ABORTIFHUNG | SMTO_BLOCK, 1000, &activeResult)',
-  'ACTIVE MDI CHILD: unavailable (timeout or no active child)',
+  'ACTIVE MDI CHILD: unavailable (MT5 UI thread timeout)',
+  'ACTIVE MDI CHILD: no active MDI child returned',
   'SetWindowRgn(g.window, region, TRUE)',
   'ApplyInteractiveWindowRegion(false)',
   'ApplyInteractiveWindowRegion(true)',
@@ -89,7 +90,8 @@ const probe = host.slice(probeStart, probeEnd);
 assert.ok(probe.includes('SendMessageTimeoutW('), 'MDI active-child query must have a bounded wait');
 assert.ok(probe.includes('SMTO_ABORTIFHUNG | SMTO_BLOCK, 1000, &activeResult)'), 'MDI query must abort after a 1-second timeout');
 assert.ok(!probe.includes('SendMessageW('), 'Do not use an unbounded synchronous message in the MT5 probe');
-assert.ok(probe.includes('ACTIVE MDI CHILD: unavailable (timeout or no active child)'), 'Probe must report timeout/no active child without blocking');
+assert.ok(probe.includes('ACTIVE MDI CHILD: unavailable (MT5 UI thread timeout)'), 'Probe must distinguish a hung MT5 UI thread');
+assert.ok(probe.includes('ACTIVE MDI CHILD: no active MDI child returned'), 'Probe must distinguish an empty MDI state from a timeout');
 
 // The existing Windows scheduled task owns Streamlit startup/restart.
 // The WebView host must not spawn or terminate a second server process.
