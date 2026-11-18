@@ -1,0 +1,89 @@
+$ErrorActionPreference = 'Stop'
+
+# Diagnostico somente leitura da hierarquia de janelas do MetaTrader 5.
+# Nao altera janelas, processos, arquivos do MT5, EA, registro ou politicas do Windows.
+$source = @'
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+
+public static class Mt5WindowReadOnlyProbe
+{
+    public delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
+
+    [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+    [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr parent, EnumWindowsProc callback, IntPtr lParam);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr hwnd, StringBuilder name, int max);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int max);
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
+    [DllImport("user32.dll")] public static extern IntPtr GetParent(IntPtr hwnd);
+    [DllImport("user32.dll", EntryPoint="GetWindowLongPtrW")] public static extern IntPtr GetWindowLongPtr64(IntPtr hwnd, int index);
+    [DllImport("user32.dll", EntryPoint="GetWindowLongW")] public static extern IntPtr GetWindowLong32(IntPtr hwnd, int index);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT { public int Left, Top, Right, Bottom; }
+
+    public static string WindowLine(IntPtr hwnd, string kind, int depth)
+    {
+        uint pid;
+        GetWindowThreadProcessId(hwnd, out pid);
+        var cls = new StringBuilder(256);
+        var title = new StringBuilder(512);
+        RECT r;
+        GetClassName(hwnd, cls, cls.Capacity);
+        GetWindowText(hwnd, title, title.Capacity);
+        GetWindowRect(hwnd, out r);
+        IntPtr style = IntPtr.Size == 8 ? GetWindowLongPtr64(hwnd, -16) : GetWindowLong32(hwnd, -16);
+        IntPtr ex = IntPtr.Size == 8 ? GetWindowLongPtr64(hwnd, -20) : GetWindowLong32(hwnd, -20);
+        return new string(' ', Math.Max(0, depth) * 2) + kind +
+            " hwnd=0x" + hwnd.ToInt64().ToString("X") +
+            " pid=" + pid +
+            " visible=" + (IsWindowVisible(hwnd) ? "1" : "0") +
+            " rect=(" + r.Left + "," + r.Top + "," + r.Right + "," + r.Bottom + ")" +
+            " style=0x" + style.ToInt64().ToString("X") +
+            " ex=0x" + ex.ToInt64().ToString("X") +
+            " class=[" + cls + "] title=[" + title + "]";
+    }
+}
+'@
+
+Add-Type -TypeDefinition $source -Language CSharp
+
+$mt5 = @(Get-Process -Name terminal64, terminal -ErrorAction SilentlyContinue)
+$lines = New-Object System.Collections.Generic.List[string]
+$lines.Add('Diagnostico read-only MT5. Nenhuma janela ou processo foi modificado.')
+$lines.Add('Data local: ' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'))
+$lines.Add('')
+
+foreach ($p in $mt5) {
+    $lines.Add('=== PROCESSO: ' + $p.ProcessName + ' PID=' + $p.Id + ' ===')
+    if ($p.MainWindowHandle -ne [IntPtr]::Zero) {
+        $lines.Add([Mt5WindowReadOnlyProbe]::WindowLine($p.MainWindowHandle, 'MAIN', 0))
+        $parent = $p.MainWindowHandle
+        $callback = [Mt5WindowReadOnlyProbe+EnumWindowsProc] {
+            param([IntPtr]$hwnd, [IntPtr]$unused)
+            $pidValue = [uint32]0
+            [void][Mt5WindowReadOnlyProbe]::GetWindowThreadProcessId($hwnd, [ref]$pidValue)
+            if ($pidValue -eq [uint32]$p.Id) {
+                $lines.Add([Mt5WindowReadOnlyProbe]::WindowLine($hwnd, 'CHILD', 1))
+            }
+            return $true
+        }
+        [void][Mt5WindowReadOnlyProbe]::EnumChildWindows($parent, $callback, [IntPtr]::Zero)
+    } else {
+        $lines.Add('O processo nao expoe MainWindowHandle neste momento.')
+    }
+    $lines.Add('')
+}
+
+if ($mt5.Count -eq 0) {
+    $lines.Add('Nenhum processo terminal64.exe ou terminal.exe foi encontrado. Abra o MT5 e execute novamente.')
+}
+
+$path = Join-Path $env:TEMP 'ControladorTrading-MT5-window-tree-PS.txt'
+[System.IO.File]::WriteAllLines($path, $lines, [System.Text.Encoding]::UTF8)
+Write-Host 'Relatorio somente leitura salvo em:'
+Write-Host $path
+Write-Host 'Abra o arquivo e compartilhe o conteudo. Ele contem classes, titulos, PID, estilos e coordenadas de janelas.'
