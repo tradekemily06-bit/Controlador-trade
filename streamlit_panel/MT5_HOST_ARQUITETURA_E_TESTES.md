@@ -609,3 +609,6 @@ A inicialização do Streamlit continua sendo responsabilidade exclusiva da tare
 O host agora observa NavigationCompleted. Se a porta 8501 ainda não estiver pronta ou uma navegação falhar, oculta a composição, registra o status no OutputDebugString e tenta novamente a URL local após cinco segundos. Quando a navegação conclui com sucesso, cancela a repetição. Se o próprio processo WebView2 falhar, a navegação automática é interrompida e o host permanece fail-closed; a recuperação desse processo ainda exige reiniciar o host, até que a recriação seja implementada e testada.
 
 Commits de implementação: c634dc43be384531bcc6371474d7dc40a2de3b1a e ac9aefa594f203ee5b5b4c82b740142476da0caf. A compilação e os testes do novo ciclo de navegação dependem do CI desses commits. A tarefa agendada e o supervisor existentes não foram alterados.
+
+
+A rotina também trata falha imediata ao enfileirar a primeira navegação (HRESULT de Navigate): o host permanece oculto e agenda nova tentativa, sem abrir outro processo Streamlit. A alteração está no commit 7235633139fc7d919e40f8311700bcc33dfa67b0 e aguarda compilação/CI.
