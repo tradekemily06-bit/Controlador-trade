@@ -19,7 +19,7 @@ for (const token of [
   'if (FAILED(environmentCreation)) ScheduleWebViewRecovery(environmentCreation)',
   'const HRESULT compositionCreation = environment3->CreateCoreWebView2CompositionController(',
   'if (FAILED(compositionCreation)) ScheduleWebViewRecovery(compositionCreation)',
-  'Invalidate outstanding callbacks before rebuilding COM state.',
+  '++g.generation; // Invalidate outstanding callbacks even when retries are exhausted.',
   'WebMessageReceived handler registration failed.',
   'ScheduleWebViewRecovery(query);',
   'initializationInProgress',
