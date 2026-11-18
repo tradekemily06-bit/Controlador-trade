@@ -3,6 +3,7 @@
 #include <cassert>
 #include <iostream>
 
+using controlador::host::BuildWindowRegionRects;
 using controlador::host::IsInsideClip;
 using controlador::host::LayoutMessage;
 using controlador::host::ValidateLayout;
