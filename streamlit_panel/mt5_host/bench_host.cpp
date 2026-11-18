@@ -158,6 +158,7 @@ void ScheduleWebViewRecovery(HRESULT reason) {
     }
     const UINT delay = std::min<UINT>(60000, 5000u << std::min(g.recoveryAttempt, 3u));
     ++g.recoveryAttempt;
+    ++g.generation; // Invalidate outstanding callbacks before rebuilding COM state.
     g.initializationInProgress = false;
     wchar_t message[160]{};
     swprintf_s(message, L"Controlador WebView2 recovery scheduled in %u ms; HRESULT=0x%08X; attempt=%u\\n", delay, static_cast<unsigned>(reason), g.recoveryAttempt);
@@ -270,7 +271,7 @@ void InitializeWebView() {
     g.initializationInProgress = true;
     g.webviewProcessFailed = false;
     const std::uint64_t generation = ++g.generation;
-    CreateCoreWebView2EnvironmentWithOptions(
+    const HRESULT environmentCreation = CreateCoreWebView2EnvironmentWithOptions(
         nullptr, nullptr, nullptr,
         Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
             [generation](HRESULT result, ICoreWebView2Environment* environment) -> HRESULT {
@@ -280,7 +281,7 @@ void InitializeWebView() {
                 ComPtr<ICoreWebView2Environment3> environment3;
                 HRESULT environmentQuery = g.environment.As(&environment3);
                 if (FAILED(environmentQuery)) { ScheduleWebViewRecovery(environmentQuery); return environmentQuery; }
-                return environment3->CreateCoreWebView2CompositionController(
+                const HRESULT compositionCreation = environment3->CreateCoreWebView2CompositionController(
                     g.window,
                     Callback<ICoreWebView2CreateCoreWebView2CompositionControllerCompletedHandler>(
                         [generation](HRESULT hr, ICoreWebView2CompositionController* composition) -> HRESULT {
@@ -373,7 +374,8 @@ void InitializeWebView() {
                             // WebView2 keeps its documented default keyboard behavior.
                             query = g.controller->add_AcceleratorKeyPressed(
                                 Callback<ICoreWebView2AcceleratorKeyPressedEventHandler>(
-                                    [](ICoreWebView2Controller*, ICoreWebView2AcceleratorKeyPressedEventArgs*) -> HRESULT {
+                                    [generation](ICoreWebView2Controller*, ICoreWebView2AcceleratorKeyPressedEventArgs*) -> HRESULT {
+                                        if (generation != g.generation) return S_OK;
                                         return S_OK;
                                     }).Get(), &g.acceleratorKeyToken);
                             if (FAILED(query)) { RemoveWebViewEventHandlers(); ScheduleWebViewRecovery(query); return query; }
@@ -383,7 +385,8 @@ void InitializeWebView() {
                             // Normal text/navigation keys remain handled by WebView2 while it owns focus.
                             query = g.controller->add_MoveFocusRequested(
                                 Callback<ICoreWebView2MoveFocusRequestedEventHandler>(
-                                    [](ICoreWebView2Controller*, ICoreWebView2MoveFocusRequestedEventArgs* args) -> HRESULT {
+                                    [generation](ICoreWebView2Controller*, ICoreWebView2MoveFocusRequestedEventArgs* args) -> HRESULT {
+                                        if (generation != g.generation) return S_OK;
                                         COREWEBVIEW2_MOVE_FOCUS_REASON reason{};
                                         HRESULT hr = args->get_Reason(&reason);
                                         if (FAILED(hr)) return hr;
@@ -427,6 +430,7 @@ void InitializeWebView() {
                                 RemoveWebViewEventHandlers();
                                 HideWebView();
                                 OutputDebugStringW(L"Controlador WebMessageReceived handler registration failed.\\n");
+                                ScheduleWebViewRecovery(query);
                                 return query;
                             }
 
@@ -454,8 +458,7 @@ void InitializeWebView() {
                                         if (FAILED(navigation)) {
                                             HideWebView();
                                             ScheduleWebViewRecovery(navigation);
-                                            OutputDebugStringW(L"Controlador initial Streamlit navigation could not be queued; retry in 5s.\\n");
-                                            SetTimer(g.window, kNavigationRetryTimer, 5000, nullptr);
+                                            OutputDebugStringW(L"Controlador initial Streamlit navigation could not be queued; WebView2 recreation scheduled.\\n");
                                         }
                                         return S_OK;
                                     }).Get());
@@ -466,7 +469,10 @@ void InitializeWebView() {
                             }
                             return scriptRegistration;
                         }).Get());
+                if (FAILED(compositionCreation)) ScheduleWebViewRecovery(compositionCreation);
+                return compositionCreation;
             }).Get());
+    if (FAILED(environmentCreation)) ScheduleWebViewRecovery(environmentCreation);
 }
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
