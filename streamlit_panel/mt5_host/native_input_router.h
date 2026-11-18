@@ -52,8 +52,8 @@ inline HRESULT RouteMouseMessage(
     const HRESULT sent = composition->SendMouseInput(
         input.kind, input.virtualKeys, input.mouseData, point);
     if (FAILED(sent)) {
-        capture = {};
-        if (GetCapture() == hostWindow) ReleaseCapture();
+        // Preserve the pressed-button mask so the caller can send matching
+        // BUTTON_UP events to WebView2 before native capture is released.
         return sent;
     }
 
