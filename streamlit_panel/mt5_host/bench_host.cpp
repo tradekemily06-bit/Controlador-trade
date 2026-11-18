@@ -344,7 +344,8 @@ void InitializeWebView() {
                             // service is starting/restarting; never launch a duplicate server.
                             query = g.webview->add_NavigationCompleted(
                                 Callback<ICoreWebView2NavigationCompletedEventHandler>(
-                                    [](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT {
+                                    [generation](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT {
+                                        if (generation != g.generation) return S_OK;
                                         BOOL success = FALSE;
                                         COREWEBVIEW2_WEB_ERROR_STATUS error = COREWEBVIEW2_WEB_ERROR_STATUS_UNKNOWN;
                                         HRESULT hr = args->get_IsSuccess(&success);
@@ -398,7 +399,8 @@ void InitializeWebView() {
 
                             query = g.webview->add_WebMessageReceived(
                                 Callback<ICoreWebView2WebMessageReceivedEventHandler>(
-                                    [](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT {
+                                    [generation](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT {
+                                        if (generation != g.generation) return S_OK;
                                         LPWSTR raw{};
                                         HRESULT hr = args->get_WebMessageAsJson(&raw);
                                         if (FAILED(hr) || !raw) {
@@ -505,7 +507,6 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
             g.dcomp.Reset();
             g.initializationInProgress = false;
             g.webviewProcessFailed = false;
-            OutputDebugStringW(L"Controlador WebView2 recreating environment after process failure.\\n");
             OutputDebugStringW(L"Controlador WebView2 recreating environment after failure.\\n");
             InitializeWebView();
             return 0;
