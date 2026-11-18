@@ -608,12 +608,28 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
         if (reinterpret_cast<HWND>(lParam) != hwnd) g.mouseCapture = {};
         break;
     case WM_CLOSE:
-        HideWebView();
-        RemoveWebViewEventHandlers();
-        if (g.controller) g.controller->Close();
         DestroyWindow(hwnd);
         return 0;
     case WM_DESTROY:
+        // Centralize shutdown here so WM_CLOSE and externally initiated
+        // destruction follow the same idempotent cleanup path.
+        KillTimer(hwnd, kNavigationRetryTimer);
+        KillTimer(hwnd, kWebViewRecoveryTimer);
+        ++g.generation; // Invalidate every outstanding asynchronous callback.
+        g.initializationInProgress = false;
+        HideWebView();
+        RemoveWebViewEventHandlers();
+        if (g.controller) g.controller->Close();
+        g.webview.Reset();
+        g.controller.Reset();
+        g.composition.Reset();
+        g.environment.Reset();
+        g.clip.Reset();
+        g.root.Reset();
+        g.target.Reset();
+        g.dcomp.Reset();
+        g.window = nullptr;
+        g.toggle = nullptr;
         PostQuitMessage(0);
         return 0;
     }
