@@ -41,6 +41,7 @@ struct HostState {
     ComPtr<IDCompositionVisual> root;
     ComPtr<IDCompositionRectangleClip> clip;
     EventRegistrationToken messageToken{};
+    EventRegistrationToken moveFocusToken{};
     std::uint64_t lastSequence{};
     bool layoutValid{};
     bool expanded{};
@@ -187,6 +188,23 @@ void InitializeWebView() {
                             GetClientRect(g.window, &bounds);
                             g.controller->put_Bounds(bounds);
 
+                            // When Tab leaves the WebView, return focus to the native C control.
+                            // Normal text/navigation keys remain handled by WebView2 while it owns focus.
+                            query = g.controller->add_MoveFocusRequested(
+                                Callback<ICoreWebView2MoveFocusRequestedEventHandler>(
+                                    [](ICoreWebView2Controller*, ICoreWebView2MoveFocusRequestedEventArgs* args) -> HRESULT {
+                                        COREWEBVIEW2_MOVE_FOCUS_REASON reason{};
+                                        HRESULT hr = args->get_Reason(&reason);
+                                        if (FAILED(hr)) return hr;
+                                        if (reason == COREWEBVIEW2_MOVE_FOCUS_REASON_NEXT ||
+                                            reason == COREWEBVIEW2_MOVE_FOCUS_REASON_PREVIOUS) {
+                                            args->put_Handled(TRUE);
+                                            if (g.toggle && IsWindow(g.toggle)) SetFocus(g.toggle);
+                                        }
+                                        return S_OK;
+                                    }).Get(), &g.moveFocusToken);
+                            if (FAILED(query)) return query;
+
                             g.webview->add_WebMessageReceived(
                                 Callback<ICoreWebView2WebMessageReceivedEventHandler>(
                                     [](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT {
@@ -309,6 +327,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
         break;
     case WM_CLOSE:
         HideWebView();
+        if (g.controller) g.controller->remove_MoveFocusRequested(g.moveFocusToken);
         if (g.webview) g.webview->remove_WebMessageReceived(g.messageToken);
         if (g.controller) g.controller->Close();
         DestroyWindow(hwnd);
