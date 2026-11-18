@@ -69,5 +69,10 @@ int main() {
     assert(ShouldForwardMouseInput(layout, outside, WM_RBUTTONUP, capture));
     assert(!capture.captured);
 
+    capture.captured = true;
+    capture.pressedButtons = 3;
+    ResetMouseCaptureState(capture);
+    assert(!capture.captured && capture.pressedButtons == 0);
+
     return 0;
 }
