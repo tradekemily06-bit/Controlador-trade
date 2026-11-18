@@ -567,14 +567,16 @@ Comportamento implementado no scaffold:
 - aplica recorte DirectComposition ao retângulo reportado pelo DOM quando expandido;
 - encaminha o clique no C nativo como mensagem de toggle para o bridge.
 
-O workflow agora tenta compilar e linkar esse executável x64 com o SDK WebView2 fixado e publica executável + bridge como artefato de bancada. A execução CI correspondente é a primeira validação desse código; até sua conclusão, compilação não está confirmada.
+A execução CI `44217916591` compilou e linkou o executável x64 com o SDK WebView2 fixado e publicou o artefato de bancada `controlador-win32-webview2-bench-host`. Isso confirma a compilação do scaffold, não sua execução visual nem a integração com o terminal.
+
+O WndProc passou a conectar o roteador nativo de mouse ao Composition Controller: movimento, botões, roda, captura durante arraste, evento de saída do ponteiro e cursor são encaminhados conforme o recorte aceito. O host também solicita foco programático ao WebView quando o painel recebe foco. As alterações seguintes estão sob CI própria; a validação do código mais recente ainda depende da conclusão desses jobs.
 
 **Limites conhecidos — não é host final nem integração MT5:**
 - não inicia nem supervisiona o processo Streamlit; exige o serviço em `127.0.0.1:8501`;
-- não implementa ainda roteamento completo de mouse/teclado/foco/captura/cursor no WndProc;
+- teclado completo, navegação por Tab e ciclo de foco entre WebView, botão C e janela hospedeira ainda não foram comprovados;
 - a janela é independente, não acompanha o gráfico/terminal MT5;
 - o botão C é um controle Win32 de bancada e sua interação ainda precisa de teste visual real;
 - não há teste interativo de composição, scroll, DPI, minimização, troca de gráfico, reconnect ou sessão longa;
-- o protocolo de layout está em validação inicial e deve ser endurecido antes de qualquer integração.
+- o protocolo de layout e o roteamento ainda precisam de validação visual e de interação em Windows real antes de qualquer integração.
 
 O host de bancada não modifica `app.py`, EA/MQL5, runtime/API, banco, Reserva Fiscal, Assistente, identidade ou bloqueio REAL. Não instalar, não fazer merge e não conectar ao MT5 antes de todos os gates de bancada e aprovação explícita.
