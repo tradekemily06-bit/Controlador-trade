@@ -63,6 +63,16 @@ for (const token of [
   'const auto failClosed = []()',
   'ShowWindow(g.window, SW_HIDE)',
   'if (!IsWindowVisible(g.window)) ShowWindow(g.window, SW_SHOWNOACTIVATE)',
+  'case WM_CLOSE:\\n        DestroyWindow(hwnd);',
+  'case WM_DESTROY:',
+  'KillTimer(hwnd, kNavigationRetryTimer);',
+  'KillTimer(hwnd, kWebViewRecoveryTimer);',
+  '++g.generation; // Invalidate every outstanding asynchronous callback.',
+  'g.initializationInProgress = false;',
+  'g.webview.Reset();',
+  'g.controller.Reset();',
+  'g.window = nullptr;',
+  'g.toggle = nullptr;',
 ]) {
   assert.ok(host.includes(token), `Missing native host lifecycle contract: ${token}`);
 }
