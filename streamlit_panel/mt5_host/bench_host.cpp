@@ -433,7 +433,6 @@ void InitializeWebView() {
                             }
                             return scriptRegistration;
                         }).Get());
-                        }).Get());
             }).Get());
 }
 
