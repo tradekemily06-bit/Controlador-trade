@@ -69,6 +69,7 @@ inline bool ShouldForwardMouseLeave(const PhysicalLayout& layout) noexcept {
 struct MouseCaptureState {
     bool captured{};
     std::uint8_t pressedButtons{};
+    bool releasePending{};
 };
 
 inline void ResetMouseCaptureState(MouseCaptureState& capture) noexcept {
