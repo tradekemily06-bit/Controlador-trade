@@ -138,7 +138,10 @@ void InitializeWebView() {
             [](HRESULT result, ICoreWebView2Environment* environment) -> HRESULT {
                 if (FAILED(result) || !environment) { HideWebView(); return result; }
                 g.environment = environment;
-                return g.environment->CreateCoreWebView2CompositionController(
+                ComPtr<ICoreWebView2Environment3> environment3;
+                HRESULT environmentQuery = g.environment.As(&environment3);
+                if (FAILED(environmentQuery)) return environmentQuery;
+                return environment3->CreateCoreWebView2CompositionController(
                     g.window,
                     Callback<ICoreWebView2CreateCoreWebView2CompositionControllerCompletedHandler>(
                         [](HRESULT hr, ICoreWebView2CompositionController* composition) -> HRESULT {
