@@ -23,6 +23,9 @@ for (const token of [
   'COREWEBVIEW2_MOVE_FOCUS_REASON_NEXT',
   'COREWEBVIEW2_MOVE_FOCUS_REASON_PREVIOUS',
   'http://127.0.0.1:8501',
+  'WS_EX_NOREDIRECTIONBITMAP',
+  'wc.hbrBackground = nullptr',
+  'case WM_ERASEBKGND:',
 ]) {
   assert.ok(host.includes(token), `Missing native host lifecycle contract: ${token}`);
 }
