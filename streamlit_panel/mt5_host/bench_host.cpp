@@ -293,20 +293,20 @@ void InitializeWebView() {
                             if (FAILED(query)) { ScheduleWebViewRecovery(query); return query; }
 
                             query = DCompositionCreateDevice(nullptr, IID_PPV_ARGS(&g.dcomp));
-                            if (FAILED(query)) return query;
+                            if (FAILED(query)) { ScheduleWebViewRecovery(query); return query; }
                             query = g.dcomp->CreateTargetForHwnd(g.window, TRUE, &g.target);
-                            if (FAILED(query)) return query;
+                            if (FAILED(query)) { ScheduleWebViewRecovery(query); return query; }
                             query = g.dcomp->CreateVisual(&g.root);
-                            if (FAILED(query)) return query;
+                            if (FAILED(query)) { ScheduleWebViewRecovery(query); return query; }
                             query = g.dcomp->CreateRectangleClip(&g.clip);
-                            if (FAILED(query)) return query;
+                            if (FAILED(query)) { ScheduleWebViewRecovery(query); return query; }
                             g.root->SetContent(nullptr);
                             query = g.composition->put_RootVisualTarget(g.root.Get());
-                            if (FAILED(query)) return query;
+                            if (FAILED(query)) { ScheduleWebViewRecovery(query); return query; }
                             query = g.target->SetRoot(g.root.Get());
-                            if (FAILED(query)) return query;
+                            if (FAILED(query)) { ScheduleWebViewRecovery(query); return query; }
                             query = g.dcomp->Commit();
-                            if (FAILED(query)) return query;
+                            if (FAILED(query)) { ScheduleWebViewRecovery(query); return query; }
 
                             g.controller->put_IsVisible(FALSE);
                             g.initializationInProgress = false;
@@ -365,7 +365,7 @@ void InitializeWebView() {
                                         }
                                         return S_OK;
                                     }).Get(), &g.navigationCompletedToken);
-                            if (FAILED(query)) { RemoveWebViewEventHandlers(); return query; }
+                            if (FAILED(query)) { RemoveWebViewEventHandlers(); ScheduleWebViewRecovery(query); return query; }
                             g.navigationCompletedHandlerRegistered = true;
 
                             // WebView2 receives ordinary keyboard input while focused.
@@ -376,7 +376,7 @@ void InitializeWebView() {
                                     [](ICoreWebView2Controller*, ICoreWebView2AcceleratorKeyPressedEventArgs*) -> HRESULT {
                                         return S_OK;
                                     }).Get(), &g.acceleratorKeyToken);
-                            if (FAILED(query)) { RemoveWebViewEventHandlers(); return query; }
+                            if (FAILED(query)) { RemoveWebViewEventHandlers(); ScheduleWebViewRecovery(query); return query; }
                             g.acceleratorKeyHandlerRegistered = true;
 
                             // When Tab leaves the WebView, return focus to the native C control.
@@ -394,7 +394,7 @@ void InitializeWebView() {
                                         }
                                         return S_OK;
                                     }).Get(), &g.moveFocusToken);
-                            if (FAILED(query)) { RemoveWebViewEventHandlers(); return query; }
+                            if (FAILED(query)) { RemoveWebViewEventHandlers(); ScheduleWebViewRecovery(query); return query; }
                             g.moveFocusHandlerRegistered = true;
 
                             query = g.webview->add_WebMessageReceived(
