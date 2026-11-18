@@ -75,6 +75,17 @@ inline void ResetMouseCaptureState(MouseCaptureState& capture) noexcept {
     capture = {};
 }
 
+// A failed WebView2 BUTTON_UP must remain pending until the controller is
+// successfully sent the release or is destroyed during fail-closed recovery.
+inline void RecordMouseButtonRelease(
+    MouseCaptureState& capture, std::uint8_t bit, HRESULT result) noexcept {
+    if (SUCCEEDED(result)) {
+        capture.pressedButtons = static_cast<std::uint8_t>(capture.pressedButtons & ~bit);
+    }
+    capture.captured = false;
+    capture.releasePending = capture.pressedButtons != 0;
+}
+
 // A press that starts inside the clipped panel keeps routing move/up events to
 // WebView2 until every pressed button is released, even when the pointer leaves
 // the visible clip. This prevents a drag from becoming stuck in the web content.
