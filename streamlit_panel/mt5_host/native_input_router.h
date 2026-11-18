@@ -32,7 +32,7 @@ inline HRESULT RouteMouseMessage(
     // WM_MOUSELEAVE has no meaningful client coordinates; deliver it whenever
     // the clipped WebView is active so hover state cannot remain stuck.
     const bool forward = message == WM_MOUSELEAVE
-        ? (layout.accepted && layout.webViewVisible)
+        ? ShouldForwardMouseLeave(layout)
         : ShouldForwardMouseInput(layout, point, message, capture);
     if (!forward) return S_FALSE;
 
