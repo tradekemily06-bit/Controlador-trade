@@ -35,6 +35,9 @@ for (const token of [
   'ApplyInteractiveWindowRegion(false)',
   'ApplyInteractiveWindowRegion(true)',
   'bool restrictWindowRegion{}',
+  'const auto failClosed = []()',
+  'ShowWindow(g.window, SW_HIDE)',
+  'if (!IsWindowVisible(g.window)) ShowWindow(g.window, SW_SHOWNOACTIVATE)',
 ]) {
   assert.ok(host.includes(token), `Missing native host lifecycle contract: ${token}`);
 }
