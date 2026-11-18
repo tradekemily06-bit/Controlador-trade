@@ -72,6 +72,18 @@ public static class Mt5WindowReadOnlyProbe
         return timedOut ? IntPtr.Zero : activeChild;
     }
 
+    public static int GetWindowDepth(IntPtr hwnd, IntPtr root)
+    {
+        int depth = 0;
+        IntPtr current = hwnd;
+        while (current != IntPtr.Zero && current != root && depth < 64)
+        {
+            current = GetParent(current);
+            depth++;
+        }
+        return current == root ? depth : -1;
+    }
+
     public static string WindowLine(IntPtr hwnd, string kind, int depth)
     {
         uint pid;
@@ -119,7 +131,10 @@ foreach ($p in $mt5) {
     $lines.Add('=== PROCESSO: ' + $p.ProcessName + ' PID=' + $p.Id + ' ===')
     $childCallback = [Mt5WindowReadOnlyProbe+EnumWindowsProc] {
         param([IntPtr]$hwnd, [IntPtr]$unused)
-        $lines.Add([Mt5WindowReadOnlyProbe]::WindowLine($hwnd, 'CHILD', 1))
+        $depth = [Mt5WindowReadOnlyProbe]::GetWindowDepth($hwnd, $topWindow)
+        if ($depth -ge 1) {
+            $lines.Add([Mt5WindowReadOnlyProbe]::WindowLine($hwnd, 'CHILD', $depth))
+        }
         return $true
     }
     $topCallback = [Mt5WindowReadOnlyProbe+EnumWindowsProc] {
