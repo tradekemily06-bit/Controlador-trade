@@ -63,6 +63,34 @@ inline HRESULT RouteMouseMessage(
 
 // Keep the native cursor consistent with the cursor requested by WebView2
 // while the pointer is over the visible panel clip.
+// Release any mouse button still held by WebView2 before native capture is
+// cancelled or the panel is hidden. Clearing only host bookkeeping can leave
+// the DOM believing a button is still down after WM_CANCELMODE/WM_CAPTURECHANGED.
+inline HRESULT CancelMouseCapture(
+    HWND hostWindow,
+    ICoreWebView2CompositionController* composition,
+    MouseCaptureState& capture) noexcept
+{
+    HRESULT firstFailure = S_OK;
+    const std::uint8_t pressed = capture.pressedButtons;
+    POINT point{};
+    if (hostWindow && GetCursorPos(&point) && !ScreenToClient(hostWindow, &point)) point = {};
+
+    const auto release = [&](std::uint8_t bit, COREWEBVIEW2_MOUSE_EVENT_KIND kind) {
+        if ((pressed & bit) == 0 || !composition) return;
+        const HRESULT hr = composition->SendMouseInput(
+            kind, COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_NONE, 0, point);
+        if (FAILED(hr) && SUCCEEDED(firstFailure)) firstFailure = hr;
+    };
+    release(1, COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_UP);
+    release(2, COREWEBVIEW2_MOUSE_EVENT_KIND_RIGHT_BUTTON_UP);
+    release(4, COREWEBVIEW2_MOUSE_EVENT_KIND_MIDDLE_BUTTON_UP);
+
+    ResetMouseCaptureState(capture);
+    if (hostWindow && GetCapture() == hostWindow) ReleaseCapture();
+    return firstFailure;
+}
+
 inline HRESULT ApplyWebViewCursor(
     ICoreWebView2CompositionController* composition,
     const PhysicalLayout& layout,
