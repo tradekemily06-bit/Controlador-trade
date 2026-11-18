@@ -63,6 +63,16 @@ jobs:
             throw "Read-only MT5 diagnostic script has PowerShell syntax errors."
           }
           Write-Host "Read-only MT5 diagnostic PowerShell syntax validated."
+      - name: Execute read-only MT5 diagnostic safely in CI
+        shell: pwsh
+        run: |
+          $path = Join-Path $env:TEMP "ControladorTrading-MT5-window-tree-PS.txt"
+          if (Test-Path $path) { Remove-Item -LiteralPath $path -Force }
+          & "streamlit_panel/mt5_host/diagnostico_janelas_mt5_readonly.ps1"
+          if (-not (Test-Path $path)) { throw "Read-only diagnostic did not create its temporary report." }
+          $report = Get-Content -LiteralPath $path -Raw
+          if (-not $report.Contains("Diagnostico read-only MT5")) { throw "Diagnostic report header is missing." }
+          Write-Host "Read-only diagnostic executed and generated its report successfully."
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
