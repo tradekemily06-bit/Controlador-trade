@@ -621,3 +621,12 @@ A auditoria do host encontrou um risco visual: a classe Win32 ainda usava o pinc
 Esta alteração corrige a configuração da janela para o caminho de composição transparente, mas a transparência ainda não foi comprovada visualmente em desktop real. Além disso, transparência visual não significa passagem de clique: uma janela sem redirection bitmap ainda pode receber hit-test em toda a sua área. Antes de acoplar o host ao gráfico MT5, será necessário restringir a região de janela ao C e ao shell expandido (ou implementar mecanismo equivalente de hit-test cross-process) e comprovar que cliques fora do painel chegam ao gráfico MT5. O host continua sendo apenas bancada e não está acoplado ao terminal.
 
 Commit: daa585dfb410130d600ed4f684ee463c876ec258. CI e validação visual pendentes. Referências Microsoft: [DirectComposition CreateTargetForHwnd](https://learn.microsoft.com/en-us/windows/win32/api/dcomp/nf-dcomp-idcompositiondesktopdevice-createtargetforhwnd), [WS_EX_NOREDIRECTIONBITMAP](https://learn.microsoft.com/en-us/windows/win32/winmsg/extended-window-styles) e [WM_ERASEBKGND](https://learn.microsoft.com/en-us/windows/win32/winmsg/wm-erasebkgnd).
+
+
+## Diagnóstico read-only da hierarquia de janelas MT5 — 18/11/2026
+
+Foi acrescentado ao executável de bancada o modo --inspect-mt5. Ele enumera, sem modificar janelas, os processos terminal64.exe/terminal.exe, HWNDs de topo, classe, título, posição, estilos, MDIClient, filho MDI ativo e a árvore de janelas descendentes. O relatório é gravado em %TEMP%\\ControladorTrading-MT5-window-tree.txt. O objetivo é identificar a janela real do gráfico no terminal instalado sem alterar o EA/MQL5 nem presumir classes/handles que não foram observados no ambiente real.
+
+Esse diagnóstico é apenas leitura. Não chama SetParent, SetWindowPos, SetWindowRgn, não injeta DLL e não altera o terminal. A ancoragem só deve ser implementada depois de examinar a hierarquia real e selecionar o HWND do gráfico correto. A referência MQL5 confirma que CHART_WINDOW_HANDLE é um HWND, mas a API MQL5 para obtê-lo pertence ao terminal; neste trabalho não será alterado o EA para expor esse valor. Referências: [MQL5 Chart Properties](https://www.mql5.com/en/docs/constants/chartconstants/enum_chart_property) e [MQL5 Chart identification](https://www.mql5.com/en/book/applications/charts/charts_id).
+
+Commit do probe: b53d5d07bfe2501597370f2ed046a5e87fcaad53. Compilação CI e execução em Windows/MT5 real ainda pendentes.
