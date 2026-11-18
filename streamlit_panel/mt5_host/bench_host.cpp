@@ -55,6 +55,7 @@ struct HostState {
     bool acceleratorKeyHandlerRegistered{};
     bool navigationCompletedHandlerRegistered{};
     bool webviewProcessFailed{};
+    bool recoveryScheduled{};
     unsigned recoveryAttempt{};
     bool initializationInProgress{};
     std::uint64_t generation{};
@@ -155,6 +156,10 @@ void HideWebView(bool allowRecovery = true) {
 }
 
 void ScheduleWebViewRecovery(HRESULT reason) {
+    // Several failure paths can converge (for example, a failed mouse release
+    // while hiding the view followed by a navigation error). Keep one recovery
+    // timer and one retry-budget increment for that failure episode.
+    if (g.recoveryScheduled) return;
     ++g.generation; // Invalidate outstanding callbacks even when retries are exhausted.
     g.initializationInProgress = false;
     if (!g.window || !IsWindow(g.window) || g.recoveryAttempt >= 6) {
@@ -167,7 +172,11 @@ void ScheduleWebViewRecovery(HRESULT reason) {
     swprintf_s(message, L"Controlador WebView2 recovery scheduled in %u ms; HRESULT=0x%08X; attempt=%u\\n", delay, static_cast<unsigned>(reason), g.recoveryAttempt);
     OutputDebugStringW(message);
     KillTimer(g.window, kWebViewRecoveryTimer);
-    if (!SetTimer(g.window, kWebViewRecoveryTimer, delay, nullptr)) OutputDebugStringW(L"Controlador WebView2 recovery timer could not be created.\\n");
+    g.recoveryScheduled = true;
+    if (!SetTimer(g.window, kWebViewRecoveryTimer, delay, nullptr)) {
+        g.recoveryScheduled = false;
+        OutputDebugStringW(L"Controlador WebView2 recovery timer could not be created.\\n");
+    }
 }
 
 HRESULT CancelMouseCaptureSafely(bool scheduleRecovery) {
@@ -511,6 +520,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
     case WM_TIMER:
         if (wParam == kWebViewRecoveryTimer) {
             KillTimer(hwnd, kWebViewRecoveryTimer);
+            g.recoveryScheduled = false;
             HideWebView(false);
             RemoveWebViewEventHandlers();
             if (g.controller) g.controller->Close();
@@ -636,6 +646,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
         // destruction follow the same idempotent cleanup path.
         KillTimer(hwnd, kNavigationRetryTimer);
         KillTimer(hwnd, kWebViewRecoveryTimer);
+        g.recoveryScheduled = false;
         ++g.generation; // Invalidate every outstanding asynchronous callback.
         g.initializationInProgress = false;
         HideWebView(false);
