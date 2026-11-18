@@ -599,8 +599,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
                 wParam, lParam, g.mouseCapture);
             if (routed == S_OK) return 0;
             if (FAILED(routed)) {
-                controlador::host::CancelMouseCapture(
-                    hwnd, g.composition.Get(), g.mouseCapture);
+                CancelMouseCaptureSafely();
             }
         }
         break;
@@ -622,13 +621,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
     case WM_CANCELMODE:
         // Send matching BUTTON_UP events before releasing native capture so
         // WebView2's DOM cannot retain a stuck mouse button.
-        controlador::host::CancelMouseCapture(
-            hwnd, g.composition.Get(), g.mouseCapture);
+        CancelMouseCaptureSafely();
         return 0;
     case WM_CAPTURECHANGED:
         if (reinterpret_cast<HWND>(lParam) != hwnd) {
-            controlador::host::CancelMouseCapture(
-                hwnd, g.composition.Get(), g.mouseCapture);
+            CancelMouseCaptureSafely();
         }
         break;
     case WM_CLOSE:
