@@ -64,7 +64,15 @@
         dpr: devicePixelRatio
       },
       collapsedButton: rectOf(collapsedButton),
-      expandedShell
+      expandedShell,
+      // Native ApplyLayout reads these four fields at the message root.
+      // Keep expandedShell for diagnostics/other bridge consumers.
+      ...(expandedShell ? {
+        x: expandedShell.x,
+        y: expandedShell.y,
+        width: expandedShell.width,
+        height: expandedShell.height
+      } : {})
     };
     const serialized = JSON.stringify(payload);
     if (serialized !== lastPayload) {
