@@ -141,11 +141,12 @@ bool ReadBool(const std::string& json, const char* key, bool& value) {
     return true;
 }
 
-void HideWebView() {
-    // Release any buttons still held by the WebView before invalidating the
-    // layout or dropping native capture.
-    controlador::host::CancelMouseCapture(
-        g.window, g.composition.Get(), g.mouseCapture);
+HRESULT CancelMouseCaptureSafely(bool scheduleRecovery = true);
+
+void HideWebView(bool allowRecovery = true) {
+    // Preserve failed button releases and recreate WebView2 before accepting
+    // more input; recovery teardown itself must not schedule another retry.
+    CancelMouseCaptureSafely(allowRecovery);
     g.layoutValid = false;
     g.expanded = false;
     g.physicalLayout = {};
@@ -167,6 +168,13 @@ void ScheduleWebViewRecovery(HRESULT reason) {
     OutputDebugStringW(message);
     KillTimer(g.window, kWebViewRecoveryTimer);
     if (!SetTimer(g.window, kWebViewRecoveryTimer, delay, nullptr)) OutputDebugStringW(L"Controlador WebView2 recovery timer could not be created.\\n");
+}
+
+HRESULT CancelMouseCaptureSafely(bool scheduleRecovery) {
+    const HRESULT result = controlador::host::CancelMouseCapture(
+        g.window, g.composition.Get(), g.mouseCapture);
+    if (FAILED(result) && scheduleRecovery) ScheduleWebViewRecovery(result);
+    return result;
 }
 
 void RemoveWebViewEventHandlers() {
@@ -227,8 +235,7 @@ void ApplyLayout(const std::string& json) {
         g.physicalLayout.accepted = true;
         g.physicalLayout.sequence = g.lastSequence;
         g.physicalLayout.webViewVisible = false;
-        controlador::host::CancelMouseCapture(
-            g.window, g.composition.Get(), g.mouseCapture);
+        CancelMouseCaptureSafely();
         g.controller->put_IsVisible(FALSE);
         ApplyInteractiveWindowRegion(false);
         return;
@@ -504,9 +511,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
     case WM_TIMER:
         if (wParam == kWebViewRecoveryTimer) {
             KillTimer(hwnd, kWebViewRecoveryTimer);
-            HideWebView();
+            HideWebView(false);
             RemoveWebViewEventHandlers();
             if (g.controller) g.controller->Close();
+            controlador::host::ResetMouseCaptureState(g.mouseCapture);
             g.webview.Reset();
             g.controller.Reset();
             g.composition.Reset();
@@ -633,9 +641,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
         KillTimer(hwnd, kWebViewRecoveryTimer);
         ++g.generation; // Invalidate every outstanding asynchronous callback.
         g.initializationInProgress = false;
-        HideWebView();
+        HideWebView(false);
         RemoveWebViewEventHandlers();
         if (g.controller) g.controller->Close();
+        controlador::host::ResetMouseCaptureState(g.mouseCapture);
         g.webview.Reset();
         g.controller.Reset();
         g.composition.Reset();
