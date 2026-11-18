@@ -63,6 +63,14 @@ jobs:
             throw "Read-only MT5 diagnostic script has PowerShell syntax errors."
           }
           Write-Host "Read-only MT5 diagnostic PowerShell syntax validated."
+          $source = Get-Content -LiteralPath $path -Raw
+          foreach ($required in @("SendMessageTimeout", "WM_MDIGETACTIVE", "SMTO_ABORTIFHUNG", "ACTIVE_MDI_CHILD")) {
+            if (-not $source.Contains($required)) { throw "MT5 diagnostic is missing required active-chart probe element: $required" }
+          }
+          foreach ($forbidden in @("SetParent(", "SetWindowPos(", "SetWindowRgn(", "SendInput(")) {
+            if ($source.Contains($forbidden)) { throw "Read-only MT5 diagnostic contains a prohibited window/input mutation API: $forbidden" }
+          }
+          Write-Host "Active MDI chart probe and read-only API boundary validated."
       - name: Execute read-only MT5 diagnostic safely in CI
         shell: pwsh
         run: |
