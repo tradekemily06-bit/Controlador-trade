@@ -30,7 +30,7 @@ for (const token of [
   'RunMt5WindowProbe()',
   'EnumWindows(ProbeTopLevelWindow',
   'EnumChildWindows(hwnd, ProbeChildWindow',
-  'CHART',
+  'MDIClient',
 ]) {
   assert.ok(host.includes(token), `Missing native host lifecycle contract: ${token}`);
 }
