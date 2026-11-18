@@ -730,10 +730,17 @@ BOOL CALLBACK ProbeTopLevelWindow(HWND hwnd, LPARAM parameter) {
     HWND mdi = FindWindowExW(hwnd, nullptr, L"MDIClient", nullptr);
     if (mdi) {
         WriteWindowProbeLine(*output, mdi, L"MDI", 1);
-        HWND active = reinterpret_cast<HWND>(SendMessageW(mdi, WM_MDIGETACTIVE, 0, 0));
-        if (active) {
+        // A hung MT5 UI thread must not stall this read-only diagnostic.
+        DWORD_PTR activeResult{};
+        const LRESULT response = SendMessageTimeoutW(
+            mdi, WM_MDIGETACTIVE, 0, 0,
+            SMTO_ABORTIFHUNG | SMTO_BLOCK, 1000, &activeResult);
+        if (response && activeResult) {
+            HWND active = reinterpret_cast<HWND>(activeResult);
             *output << L"ACTIVE MDI CHILD:\n";
             WriteWindowProbeLine(*output, active, L"ACTIVE", 2);
+        } else {
+            *output << L"ACTIVE MDI CHILD: unavailable (timeout or no active child)\n";
         }
     }
     WindowProbeContext context{ output, hwnd };
