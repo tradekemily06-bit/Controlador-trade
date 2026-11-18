@@ -43,6 +43,7 @@ struct HostState {
     EventRegistrationToken messageToken{};
     EventRegistrationToken moveFocusToken{};
     EventRegistrationToken processFailedToken{};
+    EventRegistrationToken acceleratorKeyToken{};
     std::uint64_t lastSequence{};
     bool layoutValid{};
     bool expanded{};
@@ -209,6 +210,16 @@ void InitializeWebView() {
                                     }).Get(), &g.processFailedToken);
                             if (FAILED(query)) return query;
 
+                            // WebView2 receives ordinary keyboard input while focused.
+                            // Accelerator keys are surfaced here; leave Handled=false so
+                            // WebView2 keeps its documented default keyboard behavior.
+                            query = g.controller->add_AcceleratorKeyPressed(
+                                Callback<ICoreWebView2AcceleratorKeyPressedEventHandler>(
+                                    [](ICoreWebView2Controller*, ICoreWebView2AcceleratorKeyPressedEventArgs*) -> HRESULT {
+                                        return S_OK;
+                                    }).Get(), &g.acceleratorKeyToken);
+                            if (FAILED(query)) return query;
+
                             // When Tab leaves the WebView, return focus to the native C control.
                             // Normal text/navigation keys remain handled by WebView2 while it owns focus.
                             query = g.controller->add_MoveFocusRequested(
@@ -364,6 +375,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
         if (g.webview) {
             g.webview->remove_WebMessageReceived(g.messageToken);
             g.webview->remove_ProcessFailed(g.processFailedToken);
+            g.controller->remove_AcceleratorKeyPressed(g.acceleratorKeyToken);
         }
         if (g.controller) g.controller->Close();
         DestroyWindow(hwnd);
