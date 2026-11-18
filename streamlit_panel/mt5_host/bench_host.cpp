@@ -277,14 +277,26 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
         }
         return 0;
     }
-    case WM_DPICHANGED:
+    case WM_DPICHANGED: {
+        // Per-monitor DPI changes include a suggested top-level window rectangle.
+        // Apply it instead of merely rereading the old client bounds; WM_SIZE
+        // then updates the WebView controller and repositions the native C control.
+        HideWebView();
+        const RECT* suggested = reinterpret_cast<const RECT*>(lParam);
+        if (suggested) {
+            SetWindowPos(hwnd, nullptr,
+                suggested->left, suggested->top,
+                suggested->right - suggested->left,
+                suggested->bottom - suggested->top,
+                SWP_NOZORDER | SWP_NOACTIVATE);
+        }
         if (g.controller) {
-            HideWebView();
             RECT bounds{};
             GetClientRect(hwnd, &bounds);
             g.controller->put_Bounds(bounds);
         }
         return 0;
+    }
     case WM_MOUSEMOVE:
     case WM_MOUSELEAVE:
     case WM_LBUTTONDOWN:
