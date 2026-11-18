@@ -353,6 +353,7 @@ void InitializeWebView() {
                                         if (FAILED(hr)) return hr;
                                         if (success) {
                                             KillTimer(g.window, kNavigationRetryTimer);
+                                            g.recoveryAttempt = 0;
                                             OutputDebugStringW(L"Controlador Streamlit navigation ready\\n");
                                         } else {
                                             args->get_WebErrorStatus(&error);
