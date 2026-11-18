@@ -21,6 +21,7 @@ inline HRESULT RouteMouseMessage(
     MouseCaptureState& capture) noexcept
 {
     if (!hostWindow || !composition) return E_POINTER;
+    if (capture.releasePending) return E_ABORT;
 
     POINT point{ GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
     if (message == WM_MOUSEWHEEL || message == WM_MOUSEHWHEEL) {
@@ -83,16 +84,20 @@ inline HRESULT CancelMouseCapture(
     if (hostWindow && GetCursorPos(&point) && !ScreenToClient(hostWindow, &point)) point = {};
 
     const auto release = [&](std::uint8_t bit, COREWEBVIEW2_MOUSE_EVENT_KIND kind) {
-        if ((pressed & bit) == 0 || !composition) return;
-        const HRESULT hr = composition->SendMouseInput(
-            kind, COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_NONE, 0, point);
+        if ((pressed & bit) == 0) return;
+        const HRESULT hr = composition
+            ? composition->SendMouseInput(kind, COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_NONE, 0, point)
+            : E_POINTER;
+        RecordMouseButtonRelease(capture, bit, hr);
         if (FAILED(hr) && SUCCEEDED(firstFailure)) firstFailure = hr;
     };
     release(1, COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_UP);
     release(2, COREWEBVIEW2_MOUSE_EVENT_KIND_RIGHT_BUTTON_UP);
     release(4, COREWEBVIEW2_MOUSE_EVENT_KIND_MIDDLE_BUTTON_UP);
 
-    ResetMouseCaptureState(capture);
+    capture.captured = false;
+    capture.releasePending = capture.pressedButtons != 0;
+    if (capture.pressedButtons == 0) ResetMouseCaptureState(capture);
     if (hostWindow && GetCapture() == hostWindow) ReleaseCapture();
     return firstFailure;
 }
