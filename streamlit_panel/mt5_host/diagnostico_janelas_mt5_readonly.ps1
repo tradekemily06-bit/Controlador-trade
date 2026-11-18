@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 public static class Mt5WindowReadOnlyProbe
 {
     public delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
+    private static IntPtr _mdiClient;
 
     [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
     [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr parent, EnumWindowsProc callback, IntPtr lParam);
@@ -19,11 +20,37 @@ public static class Mt5WindowReadOnlyProbe
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
     [DllImport("user32.dll")] public static extern IntPtr GetParent(IntPtr hwnd);
+    [DllImport("user32.dll", EntryPoint="SendMessageW")] public static extern IntPtr SendMessage(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll", EntryPoint="GetWindowLongPtrW")] public static extern IntPtr GetWindowLongPtr64(IntPtr hwnd, int index);
     [DllImport("user32.dll", EntryPoint="GetWindowLongW")] public static extern IntPtr GetWindowLong32(IntPtr hwnd, int index);
 
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT { public int Left, Top, Right, Bottom; }
+
+    private static bool FindMdiClientCallback(IntPtr hwnd, IntPtr lParam)
+    {
+        var cls = new StringBuilder(128);
+        GetClassName(hwnd, cls, cls.Capacity);
+        if (String.Equals(cls.ToString(), "MDIClient", StringComparison.OrdinalIgnoreCase))
+        {
+            _mdiClient = hwnd;
+            return false;
+        }
+        return true;
+    }
+
+    public static IntPtr FindMdiClient(IntPtr topWindow)
+    {
+        _mdiClient = IntPtr.Zero;
+        EnumChildWindows(topWindow, FindMdiClientCallback, IntPtr.Zero);
+        return _mdiClient;
+    }
+
+    public static IntPtr GetActiveMdiChild(IntPtr mdiClient)
+    {
+        const uint WM_MDIGETACTIVE = 0x0229;
+        return mdiClient == IntPtr.Zero ? IntPtr.Zero : SendMessage(mdiClient, WM_MDIGETACTIVE, IntPtr.Zero, IntPtr.Zero);
+    }
 
     public static string WindowLine(IntPtr hwnd, string kind, int depth)
     {
@@ -73,6 +100,18 @@ foreach ($p in $mt5) {
         [void][Mt5WindowReadOnlyProbe]::GetWindowThreadProcessId($hwnd, [ref]$pidValue)
         if ($pidValue -eq [uint32]$p.Id) {
             $lines.Add([Mt5WindowReadOnlyProbe]::WindowLine($hwnd, 'TOP', 0))
+            $mdi = [Mt5WindowReadOnlyProbe]::FindMdiClient($hwnd)
+            if ($mdi -ne [IntPtr]::Zero) {
+                $lines.Add([Mt5WindowReadOnlyProbe]::WindowLine($mdi, 'MDICLIENT', 1))
+                $activeChart = [Mt5WindowReadOnlyProbe]::GetActiveMdiChild($mdi)
+                if ($activeChart -ne [IntPtr]::Zero) {
+                    $lines.Add([Mt5WindowReadOnlyProbe]::WindowLine($activeChart, 'ACTIVE_MDI_CHILD', 2))
+                } else {
+                    $lines.Add('  ACTIVE_MDI_CHILD: nenhum filho MDI ativo foi retornado.')
+                }
+            } else {
+                $lines.Add('  MDICLIENT: nao encontrado nesta janela de topo.')
+            }
             [void][Mt5WindowReadOnlyProbe]::EnumChildWindows($hwnd, $childCallback, [IntPtr]::Zero)
         }
         return $true
@@ -88,4 +127,4 @@ $path = Join-Path $env:TEMP 'ControladorTrading-MT5-window-tree-PS.txt'
 [System.IO.File]::WriteAllLines($path, $lines, [System.Text.Encoding]::UTF8)
 Write-Host 'Relatorio somente leitura salvo em:'
 Write-Host $path
-Write-Host 'Abra o arquivo e compartilhe o conteudo. Ele contem HWND, parent HWND, PID/TID, classes, titulos, estilos e coordenadas.'
+Write-Host 'Abra o arquivo e compartilhe o conteudo. Ele destaca MDIClient e ACTIVE_MDI_CHILD, alem de HWND, parent HWND, PID/TID, classes, titulos, estilos e coordenadas.'
