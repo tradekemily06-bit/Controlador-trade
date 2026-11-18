@@ -4,6 +4,7 @@
 #include <windowsx.h>
 #include <dcomp.h>
 #include <WebView2.h>
+#include "native_input_router.h"
 #include <wrl.h>
 #include <wrl/event.h>
 #include <algorithm>
@@ -44,6 +45,8 @@ struct HostState {
     bool layoutValid{};
     bool expanded{};
     RECT shell{};
+    controlador::host::PhysicalLayout physicalLayout{};
+    controlador::host::MouseCaptureState mouseCapture{};
 };
 
 HostState g;
@@ -67,6 +70,9 @@ bool ReadBool(const std::string& json, const char* key, bool& value) {
 void HideWebView() {
     g.layoutValid = false;
     g.expanded = false;
+    g.physicalLayout = {};
+    g.mouseCapture = {};
+    if (GetCapture() == g.window) ReleaseCapture();
     if (g.controller) g.controller->put_IsVisible(FALSE);
 }
 
@@ -97,6 +103,10 @@ void ApplyLayout(const std::string& json) {
     if (!expanded) {
         g.layoutValid = true;
         g.expanded = false;
+        g.physicalLayout.accepted = true;
+        g.physicalLayout.sequence = g.lastSequence;
+        g.physicalLayout.webViewVisible = false;
+        g.mouseCapture = {};
         g.controller->put_IsVisible(FALSE);
         return;
     }
@@ -120,6 +130,10 @@ void ApplyLayout(const std::string& json) {
     }
 
     g.shell = { left, top, right, bottom };
+    g.physicalLayout.accepted = true;
+    g.physicalLayout.webViewVisible = true;
+    g.physicalLayout.sequence = g.lastSequence;
+    g.physicalLayout.clip = g.shell;
     g.clip->SetLeft(static_cast<float>(left));
     g.clip->SetTop(static_cast<float>(top));
     g.clip->SetRight(static_cast<float>(right));
@@ -253,6 +267,36 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
             g.controller->put_Bounds(bounds);
         }
         return 0;
+    case WM_MOUSEMOVE:
+    case WM_MOUSELEAVE:
+    case WM_LBUTTONDOWN:
+    case WM_LBUTTONUP:
+    case WM_RBUTTONDOWN:
+    case WM_RBUTTONUP:
+    case WM_MBUTTONDOWN:
+    case WM_MBUTTONUP:
+    case WM_MOUSEWHEEL:
+    case WM_MOUSEHWHEEL:
+        if (g.composition && g.layoutValid && g.expanded) {
+            const HRESULT routed = controlador::host::RouteMouseMessage(
+                hwnd, g.composition.Get(), g.physicalLayout, message,
+                wParam, lParam, g.mouseCapture);
+            if (routed == S_OK) return 0;
+        }
+        break;
+    case WM_SETCURSOR:
+        if (LOWORD(lParam) == HTCLIENT && g.composition && g.layoutValid && g.expanded) {
+            POINT cursor{};
+            if (GetCursorPos(&cursor) && ScreenToClient(hwnd, &cursor)) {
+                const HRESULT applied = controlador::host::ApplyWebViewCursor(
+                    g.composition.Get(), g.physicalLayout, cursor);
+                if (applied == S_OK) return TRUE;
+            }
+        }
+        break;
+    case WM_CAPTURECHANGED:
+        if (reinterpret_cast<HWND>(lParam) != hwnd) g.mouseCapture = {};
+        break;
     case WM_CLOSE:
         HideWebView();
         if (g.webview) g.webview->remove_WebMessageReceived(g.messageToken);
