@@ -82,5 +82,12 @@ for (const token of [
 for (const forbidden of ['CreateProcessW(', 'TerminateProcess(', 'ShellExecuteExW(']) {
   assert.ok(!host.includes(forbidden), `Host must not own Streamlit process lifecycle: ${forbidden}`);
 }
+// Chart attachment is intentionally gated until a real MT5 chart HWND is
+// identified and its coordinate/input contract is validated on the target PC.
+// Keep the current bench host standalone rather than guessing a parent HWND.
+assert.ok(host.includes('bool restrictWindowRegion{}'), 'Interactive window-region restriction must remain disabled in standalone bench mode');
+assert.ok(host.includes('CreateWindowExW(WS_EX_NOREDIRECTIONBITMAP, kClassName, kWindowTitle, WS_OVERLAPPEDWINDOW,'), 'Bench host must remain an independent top-level window until chart attachment is validated');
+assert.ok(host.includes('CW_USEDEFAULT, CW_USEDEFAULT, 1100, 760, nullptr, nullptr, instance, nullptr)'), 'Bench host must not acquire an unverified parent HWND');
+assert.ok(!host.includes('SetParent('), 'Do not attach the host to an unverified MT5 HWND');
 
 console.log('Native host WebView2 failure, navigation retry, keyboard/focus, and supervisor-boundary contract: OK');
