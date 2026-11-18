@@ -587,3 +587,16 @@ O host de bancada não modifica `app.py`, EA/MQL5, runtime/API, banco, Reserva F
 A revisão do WndProc encontrou um defeito concreto: `WM_DPICHANGED` apenas relia o client rect atual e não aplicava o retângulo sugerido pelo Windows. Isso podia deixar a janela de bancada com tamanho/posição antigos ao atravessar monitores com escalas diferentes. O host agora aplica o retângulo sugerido via `SetWindowPos`; a mensagem `WM_SIZE` subsequente atualiza os limites do WebView e reposiciona o controle C. O WebView permanece oculto até receber um novo layout DOM válido, mantendo a política fail-closed.
 
 A alteração está na branch experimental, commit `42e6bd0bf1301c4541c03b1dbca99472ed65218e`. A compilação/CI dessa revisão ainda precisa ser confirmada. Isto corrige a lógica de tratamento de DPI no host de bancada, mas não substitui o teste visual em Windows com monitores de escalas diferentes, nem comprova ancoragem ao MT5.
+
+
+## Tratamento de falha do WebView2 e caminho de teclado — 18/11/2026
+
+O host de bancada passou a registrar ICoreWebView2::ProcessFailed. Quando o WebView2 informa encerramento inesperado ou falta de resposta, o callback oculta a composição, invalida o layout e limpa a captura do mouse; o tipo da falha é enviado ao OutputDebugString para diagnóstico. O token do evento é removido no fechamento do host. Isso é uma resposta fail-closed, não uma recuperação automática: se o processo do navegador morrer, o operador ainda precisará reiniciar o host até que exista uma rotina de recriação validada.
+
+O caminho de teclado foi esclarecido pela API oficial:
+- Enquanto o WebView2 tem foco, ele recebe diretamente o teclado normal; o host não deve inventar um método SendKeyEvent.
+- AcceleratorKeyPressed é registrado no controller. O callback deixa Handled falso para preservar o comportamento padrão do WebView2.
+- MoveFocusRequested trata a saída por Tab e devolve o foco ao C nativo; WM_SETFOCUS solicita foco programático ao WebView quando expandido.
+- Isso comprova o uso das interfaces oficiais e a compilação, mas não substitui teste interativo de digitação, atalhos, Tab/Shift+Tab, foco ao alternar entre MT5 e painel, nem teste de acessibilidade.
+
+A implementação foi atualizada nos commits 714331a8c934cdf03adce24108e5ddf07f4dacd0 e 2f7862c3414d42a1d8a6885537d89af46ef978e8. O primeiro CI ainda estava em execução na última consulta; o segundo commit também precisa de sua própria execução. Fontes oficiais: [ProcessFailed](https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2) e [AcceleratorKeyPressed / foco](https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2controller).
