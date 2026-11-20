@@ -1,0 +1,9 @@
+PONTE DE CONTEXTO DO GRAFICO — SOMENTE LEITURA
+
+1. Abra o MetaTrader 5 em conta DEMO.
+2. Copie ControlHubChartBridge.mq5 para a pasta MQL5\Experts\ControlHubChartBridge.
+3. Abra no MetaEditor, compile e anexe o EA ao grafico cujo ativo/periodo deseja ler.
+4. Permita Algo Trading apenas se o MT5 exigir para executar o EA; este codigo nao contem chamadas de negociacao nem envia ordens.
+5. O EA grava Common\Files\ControlHub\active_chart.json. O host le o arquivo e usa simbolo/periodo para pedir analise ao runtime.
+
+A ponte le o grafico onde o EA esta anexado. Para acompanhar outro grafico, anexe o EA nesse outro grafico. O painel Figma original nao e modificado. Teste apenas em DEMO/SIMULACAO.
