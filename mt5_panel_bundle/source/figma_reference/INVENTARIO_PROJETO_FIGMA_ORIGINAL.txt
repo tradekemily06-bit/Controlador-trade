@@ -1,57 +1,30 @@
-INVENTARIO DO PROJETO FIGMA MAKE ORIGINAL
+ESCOPO DESTA BRANCH: SOMENTE O PAINEL APROVADO E SUAS REFERENCIAS
 
-ARQUIVO-FONTE IDENTIFICADO
-ControlHub_Figma_integracao_separada_AUDITORIA_INTEGRAL.zip
-Tamanho: 42.747 bytes
-SHA-256: 531f8fa3b39eae7f4475b63b1d146e2ed5a9d382962a9c59a1cdf16c7f286939
-Total real de entradas no ZIP: 40 arquivos (27 arquivos do projeto Figma Make e 13 arquivos adicionais de integracao/auditoria).
+PAINEL STREAMLIT
+Arquivos do painel preservados em ../streamlit_panel:
+- app.py
+- presentation.py
+- trusted_identity.py
+- controlador_trader_referencia_visual.json
+- requirements.txt
+- README.md
 
-ARQUIVOS ORIGINAIS JA COPIADOS PARA ESTA BRANCH
-figma_make/src/App.tsx
-figma_make/src/index.css
-figma_make/src/main.tsx
-figma_make/src/vite-env.d.ts
-figma_make/index.html
-figma_make/package.json
-figma_make/tsconfig.json
-figma_make/VALIDAR_CONTROLHUB_FIGMA.ps1
-figma_make/INICIAR_CONTROLHUB_MT5.ps1
-figma_make/mt5-bridge/ControlHubChartBridge.mq5
-figma_make/mt5-bridge/LEIA-ME.txt
-figma_make/windows-host/App.xaml
-figma_make/windows-host/App.xaml.cs
-figma_make/windows-host/ControlHubMt5Host.csproj
-figma_make/windows-host/LEIA-ME.txt
-figma_make/windows-host/MainWindow.xaml
-figma_make/windows-host/MainWindow.xaml.cs
+Testes do painel preservados em ../tests, incluindo contratos de apresentacao, runtime, sincronizacao MT5 e modulos fiscais/assistente.
 
-ARQUIVOS AINDA PENDENTES DE COPIA
-- vite.config.ts
-- pnpm-lock.yaml
-- public/favicon.svg
-- backups/pre-control-hub/App.tsx, index.css e main.tsx
-- arquivos .figma/make/*
-- AGENTS.md, CLAUDE.md, .gitattributes, .gitignore e .mise.toml
-- documentos originais do ZIP que ainda nao tenham sido listados/copied.
-- imagens de referencia 8870.jpg, 8871.jpg, 8872.jpg, 8873.jpg e 8878.jpg como arquivos binarios.
+REFERENCIA FIGMA
+Arquivo de referencia visual do Streamlit: controlador_trader_referencia_visual.json.
+Ele NAO e o JSON interno/export completo do projeto Figma.
+O ZIP original ControlHub_Figma_integracao_separada_AUDITORIA_INTEGRAL.zip foi identificado localmente (42.747 bytes; SHA-256 531f8fa3b39eae7f4475b63b1d146e2ed5a9d382962a9c59a1cdf16c7f286939), mas o binario e os arquivos internos originais ainda nao foram carregados integralmente nesta branch.
+As imagens 8870.jpg, 8871.jpg, 8872.jpg, 8873.jpg e 8878.jpg ainda nao estao presentes como binarios; apenas seus hashes constam no manifesto de referencia.
 
-REFERENCIAS VISUAIS — SHA-256
-8870.jpg — d360304836a59191097d6789fcf04ce74b2a5bc0ef428e251453488fc48e0024
-8871.jpg — dbbd1c452142f7a1d5d2a973eba7ad5151df8b07690e45ac3ada997647cc0cd9
-8872.jpg — 3c57e047d64215745c9cde145a27281b19df84f7f2c8a8561791c853362254b5
-8873.jpg — 041ef3862420e04aa6fcf0b563f435b0497c3fc2b191fb66e58500ad9d3cbbb1
-8878.jpg — d672e567a9cc7c2a224b0df902b7292358d54566a34d16727c671280a218469f
+LIMPEZA DE ESCOPO
+Foram excluidos desta branch os arquivos do host WebView2/WPF, ponte MQL5, scripts de inicializacao/validacao do host, prototipos de janela e documentos especificos do host.
+Tambem foram removidos arquivos React/HTML/configuracao que tinham sido montados sem conferencia byte a byte com o ZIP original; eles nao devem ser tratados como fonte original do Figma.
+A branch fica restrita ao painel Streamlit e aos materiais de referencia/auditoria que nao implementam o host.
 
-JSON DE REFERENCIA VISUAL
-controlador_trader_referencia_visual.json
-SHA-256: 69a98a0ab518f0d668d8433af444c4be84145bfb682daada24d34608696f7bdf
-Este JSON e a referencia visual usada pelo Streamlit; nao e o export interno do Figma.
-
-PRESERVACAO E LIMITES
-- A copia foi feita para uma branch separada; a branch de origem nao foi alterada.
-- Os arquivos do painel foram copiados sem intencao de alterar o conteudo. A verificacao criptografica byte a byte de cada arquivo copiado ainda deve ser concluida.
-- O ZIP original completo e as imagens binárias ainda nao estao carregados na branch.
-- Nao editar os arquivos originais do painel, nem substituir o painel por imagem/recriacao.
-- Nao mexer em transparencia, dimensoes, posicionamento ou comportamento do host durante a coleta.
-- Nenhuma janela, Streamlit ou MT5 foi iniciado nesta etapa; nenhuma ordem foi enviada.
-- A validacao de transparencia e a integracao efetiva ao grafico MT5 sao etapas posteriores e independentes.
+REGRAS
+- Nao redesenhar, recriar ou substituir o painel aprovado por imagem.
+- Nao alterar codigo, funcionalidades, dados ou protecoes do painel nesta etapa de coleta.
+- Nao incluir host, overlay, ponte MQL5 ou scripts de inicializacao nesta branch.
+- Nenhuma alteracao foi feita na branch de origem.
+- Transparencia e incorporacao ao grafico MT5 nao foram testadas nem resolvidas nesta coleta.
