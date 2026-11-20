@@ -1,0 +1,53 @@
+INVENTARIO DO PROJETO FIGMA MAKE ORIGINAL
+Fonte de referencia: ControlHub_Figma_integracao_separada_AUDITORIA_INTEGRAL.zip
+Tamanho do ZIP: 42.747 bytes
+Total de entradas: 27 arquivos.
+Este inventario identifica o conteudo do ZIP original. Nao substitui os arquivos binarios nem declara que eles ja foram extraidos para este pacote.
+
+ARQUIVOS DO PAINEL FIGMA
+.fig ma/make/analyze-routes
+.figma/make/deploy
+.figma/make/deploy-preview
+.figma/make/dev
+.figma/make/dev.json
+.figma/make/format
+.figma/make/install
+.figma/make/langserver
+.figma/make/site.json
+.gitattributes
+.gitignore
+.mise.toml
+AGENTS.md
+CLAUDE.md
+backups/pre-control-hub/App.tsx
+backups/pre-control-hub/index.css
+backups/pre-control-hub/main.tsx
+index.html
+package.json
+pnpm-lock.yaml
+public/favicon.svg
+src/App.tsx
+src/index.css
+src/main.tsx
+src/vite-env.d.ts
+tsconfig.json
+vite.config.ts
+
+ARQUIVOS ADICIONAIS DO PACOTE DE INTEGRACAO
+AUDITORIA_PONTE_DOM.txt
+FIGMA_ORIGINAL_SHA256_MANIFEST.txt
+INTEGRACAO-MT5-STATUS.txt
+INICIAR_CONTROLHUB_MT5.ps1
+VALIDAR_CONTROLHUB_FIGMA.ps1
+mt5-bridge/ControlHubChartBridge.mq5
+mt5-bridge/LEIA-ME.txt
+windows-host/App.xaml
+windows-host/App.xaml.cs
+windows-host/ControlHubMt5Host.csproj
+windows-host/LEIA-ME.txt
+windows-host/MainWindow.xaml
+windows-host/MainWindow.xaml.cs
+
+PRESERVACAO
+O painel React/TypeScript original deve permanecer intocado. Os arquivos windows-host, mt5-bridge e scripts sao parte do material de integracao, nao uma autorizacao para alterar o painel.
+A verificacao de transparencia, posicionamento e incorporacao real ao grafico MT5 pertence a uma etapa posterior de integracao/testes no Windows. Copiar estes arquivos nao executa nem altera o host.
