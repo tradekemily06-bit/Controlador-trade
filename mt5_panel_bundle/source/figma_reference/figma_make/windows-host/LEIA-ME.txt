@@ -1,0 +1,22 @@
+HOSPEDEIRO WINDOWS — OVERLAY DE PRÉVIA PARA MT5 (NÃO É PLUGIN NATIVO)
+
+O que foi preparado:
+- Abre o projeto web original do Figma em WebView2, sem editar src/App.tsx, src/index.css ou src/main.tsx.
+- Procura a janela principal do MetaTrader 5 e posiciona uma janela sobreposta no canto superior direito, acompanhando posição/tamanho aproximadamente.
+- Oculta o overlay quando não encontra uma janela MT5 visível/minimizada.
+
+Limites importantes:
+- Isto é uma janela overlay separada, NÃO um componente embutido no processo/gráfico do MT5 nem um EA.
+- A comunicação com o runtime ainda não está implementada; não confiar em sinais ou valores como dados ao vivo até essa integração ser feita e validada.
+- O reconhecimento da janela usa o título; pode precisar de ajuste dependendo do idioma/título do terminal.
+- Não usar para operar. REAL permanece bloqueado.
+
+Requisitos Windows: .NET 8 SDK, Microsoft Edge WebView2 Runtime e Node.js/pnpm compatíveis.
+
+Passos de teste (ainda precisam ser executados no Windows do usuário):
+1. Iniciar a prévia Vite do projeto Figma na porta 4173.
+2. Nesta pasta, executar: dotnet restore
+3. Executar: dotnet run
+4. Abrir o MT5 e verificar posicionamento, interação e ocultação/reaparecimento.
+
+Este ambiente não tem dotnet instalado, então a compilação do host ainda não foi validada aqui.
