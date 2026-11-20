@@ -4,14 +4,36 @@ ARQUIVO-FONTE IDENTIFICADO
 ControlHub_Figma_integracao_separada_AUDITORIA_INTEGRAL.zip
 Tamanho: 42.747 bytes
 SHA-256: 531f8fa3b39eae7f4475b63b1d146e2ed5a9d382962a9c59a1cdf16c7f286939
-Total real de entradas no ZIP: 40 arquivos.
+Total real de entradas no ZIP: 40 arquivos (27 arquivos do projeto Figma Make e 13 arquivos adicionais de integracao/auditoria).
 
-CONTEUDO DO ZIP
-O arquivo contem 27 arquivos do projeto Figma Make original e 13 arquivos adicionais de integracao/auditoria. Os 27 arquivos originais incluem .figma/make/*, arquivos de configuracao, package.json, pnpm-lock.yaml, index.html, src/App.tsx, src/index.css, src/main.tsx, src/vite-env.d.ts, public/favicon.svg, backups e configuracao Vite/TypeScript.
-Os 13 adicionais incluem documentos de auditoria/status, scripts PowerShell, ponte mt5-bridge e hospedeiro windows-host.
+ARQUIVOS ORIGINAIS JA COPIADOS PARA ESTA BRANCH
+figma_make/src/App.tsx
+figma_make/src/index.css
+figma_make/src/main.tsx
+figma_make/src/vite-env.d.ts
+figma_make/index.html
+figma_make/package.json
+figma_make/tsconfig.json
+figma_make/VALIDAR_CONTROLHUB_FIGMA.ps1
+figma_make/INICIAR_CONTROLHUB_MT5.ps1
+figma_make/mt5-bridge/ControlHubChartBridge.mq5
+figma_make/mt5-bridge/LEIA-ME.txt
+figma_make/windows-host/App.xaml
+figma_make/windows-host/App.xaml.cs
+figma_make/windows-host/ControlHubMt5Host.csproj
+figma_make/windows-host/LEIA-ME.txt
+figma_make/windows-host/MainWindow.xaml
+figma_make/windows-host/MainWindow.xaml.cs
 
-ESTADO REAL DA COPIA NO GITHUB
-O pacote GitHub atual contem os arquivos Streamlit e host relacionados listados nas pastas source/streamlit_panel e source/tests, alem dos documentos de referencia/auditoria. O ZIP Figma acima foi localizado e auditado localmente, mas seu binario e os 27 arquivos internos ainda NAO foram integralmente carregados nesta branch. Portanto, nao considerar a coleta integral concluida.
+ARQUIVOS AINDA PENDENTES DE COPIA
+- vite.config.ts
+- pnpm-lock.yaml
+- public/favicon.svg
+- backups/pre-control-hub/App.tsx, index.css e main.tsx
+- arquivos .figma/make/*
+- AGENTS.md, CLAUDE.md, .gitattributes, .gitignore e .mise.toml
+- documentos originais do ZIP que ainda nao tenham sido listados/copied.
+- imagens de referencia 8870.jpg, 8871.jpg, 8872.jpg, 8873.jpg e 8878.jpg como arquivos binarios.
 
 REFERENCIAS VISUAIS — SHA-256
 8870.jpg — d360304836a59191097d6789fcf04ce74b2a5bc0ef428e251453488fc48e0024
@@ -25,9 +47,11 @@ controlador_trader_referencia_visual.json
 SHA-256: 69a98a0ab518f0d668d8433af444c4be84145bfb682daada24d34608696f7bdf
 Este JSON e a referencia visual usada pelo Streamlit; nao e o export interno do Figma.
 
-PRESERVACAO
-- Nao editar arquivos originais do painel.
-- Nao substituir o painel React/TypeScript por imagem ou recriacao.
-- Nao mexer na transparencia, dimensoes, posicionamento ou comportamento do host durante a coleta.
-- Nao iniciar host, Streamlit ou MT5 e nao enviar ordens nesta fase.
-- A validacao da janela/transparencia e a integracao efetiva ao grafico sao etapas posteriores.
+PRESERVACAO E LIMITES
+- A copia foi feita para uma branch separada; a branch de origem nao foi alterada.
+- Os arquivos do painel foram copiados sem intencao de alterar o conteudo. A verificacao criptografica byte a byte de cada arquivo copiado ainda deve ser concluida.
+- O ZIP original completo e as imagens binárias ainda nao estao carregados na branch.
+- Nao editar os arquivos originais do painel, nem substituir o painel por imagem/recriacao.
+- Nao mexer em transparencia, dimensoes, posicionamento ou comportamento do host durante a coleta.
+- Nenhuma janela, Streamlit ou MT5 foi iniciado nesta etapa; nenhuma ordem foi enviada.
+- A validacao de transparencia e a integracao efetiva ao grafico MT5 sao etapas posteriores e independentes.
