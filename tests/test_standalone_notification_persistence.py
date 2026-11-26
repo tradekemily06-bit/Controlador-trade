@@ -39,6 +39,17 @@ class StandaloneNotificationPersistenceTests(unittest.TestCase):
             self.assertEqual(restarted.system_status()["notification_persistence"], "SQLITE")
             self.assertFalse(any(item.get("execution_authorized", True) for item in items))
 
+            from core.unified_intelligence import ApplicationArea
+            from integration.standalone_application_factory import build_standalone_application
+            app = build_standalone_application(ecosystem_service=restarted)
+            cabin = app.handle(area=ApplicationArea.COMMAND_CABIN, task="verificar alertas")
+            self.assertEqual(cabin["status"], "CONNECTED")
+            self.assertEqual(cabin["result"]["notifications"]["persistence"], "SQLITE")
+            self.assertTrue(any(
+                item["notification_id"] == "market-feed-down"
+                for item in cabin["result"]["notification_items"]
+            ))
+
 
 if __name__ == "__main__":
     unittest.main()
