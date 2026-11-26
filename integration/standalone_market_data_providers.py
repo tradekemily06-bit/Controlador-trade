@@ -19,4 +19,13 @@ def build_configured_market_data_providers(
         from data.biquote_provider import BiQuoteProvider
 
         return {"biquote": (BiQuoteProvider(), "biquote_public_ohlc")}
+    if selected in {"mt5_demo", "icmarkets_mt5_demo"}:
+        from execution.icmarkets_mt5_market_data import ICMarketsMT5DemoMarketDataAdapter
+
+        return {
+            "mt5_demo": (
+                ICMarketsMT5DemoMarketDataAdapter(),
+                "IC Markets MT5 DEMO read-only",
+            )
+        }
     raise ValueError(f"unsupported standalone market-data provider: {selected}")
