@@ -141,6 +141,14 @@ class StandaloneWSGIApplication:
 
             start_response = cors_start_response
 
+        if not SECURITY.allow(environ):
+            return _json_response(
+                start_response, HTTPStatus.TOO_MANY_REQUESTS,
+                {"error": "limite de requisições excedido", "execution_authorized": False},
+                request_id,
+            )
+
+
         if method == "OPTIONS":
             if not origin:
                 return _json_response(
@@ -159,14 +167,6 @@ class StandaloneWSGIApplication:
             ]
             start_response("204 No Content", headers)
             return []
-
-        if not SECURITY.allow(environ):
-            return _json_response(
-                start_response, HTTPStatus.TOO_MANY_REQUESTS,
-                {"error": "limite de requisições excedido", "execution_authorized": False},
-                request_id,
-            )
-
 
         if method == "POST" and path == "/api/bridge/mt5/candles":
             if not _mt5_relay_authorized(environ):
