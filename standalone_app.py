@@ -143,6 +143,34 @@ class StandaloneWSGIApplication:
             )
             return _json_response(start_response, HTTPStatus.OK, payload, request_id)
 
+        if method == "GET" and path == "/api/market-monitor/results":
+            monitor = getattr(self.runtime, "market_monitor", None)
+            if monitor is None:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "fonte de dados de mercado não configurada", "results": [], "execution_authorized": False},
+                    request_id,
+                )
+            try:
+                query = str(environ.get("QUERY_STRING") or "")
+                params = dict(
+                    item.split("=", 1) for item in query.split("&")
+                    if item and "=" in item
+                )
+                limit = int(params.get("limit", "50"))
+                results = monitor.latest_results(limit=limit)
+            except (ValueError, TypeError):
+                return _json_response(
+                    start_response, HTTPStatus.BAD_REQUEST,
+                    {"error": "limit deve ser um inteiro entre 1 e 200", "execution_authorized": False},
+                    request_id,
+                )
+            return _json_response(
+                start_response, HTTPStatus.OK,
+                {"results": results, "execution_authorized": False},
+                request_id,
+            )
+
         if method == "GET" and path == "/api/market-monitor/subscriptions":
             monitor = getattr(self.runtime, "market_monitor", None)
             subscriptions = monitor.subscriptions() if monitor is not None else []
