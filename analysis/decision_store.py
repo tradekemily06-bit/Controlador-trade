@@ -23,8 +23,27 @@ class DecisionStore:
     def __init__(self, database_path: str | None = None) -> None:
         self.database_path = database_path if database_path is not None else os.environ.get("CONTROLADOR_DECISION_DB")
         self._lock = Lock()
+        self._persistence_state = (
+            "INITIALIZING" if self.database_path else "IN_MEMORY_NOT_CONFIGURED"
+        )
+        self._last_error: str | None = None
         if self.database_path:
             self._initialize()
+
+    def persistence_status(self) -> dict[str, str | bool | None]:
+        """Expose durable-memory state without leaking paths or exception details."""
+        configured = bool(self.database_path)
+        return {
+            "configured": configured,
+            "mode": "SQLITE" if configured else "IN_MEMORY",
+            "state": self._persistence_state,
+            "last_error_class": self._last_error,
+            "durability_confirmed": self._persistence_state == "PERSISTENT_READY",
+        }
+
+    def _mark_error(self, exc: BaseException) -> None:
+        self._persistence_state = "PERSISTENCE_ERROR"
+        self._last_error = type(exc).__name__
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.database_path or ":memory:", timeout=5)
@@ -46,11 +65,13 @@ class DecisionStore:
                 if "outcome_source" not in columns_existing:
                     connection.execute("ALTER TABLE decisions ADD COLUMN outcome_source TEXT NOT NULL DEFAULT 'MANUAL_STUDY'")
                 connection.execute("CREATE INDEX IF NOT EXISTS idx_decisions_created_at ON decisions(created_at)")
-        except (OSError, sqlite3.Error):
-            self.database_path = None
+            self._persistence_state = "PERSISTENT_READY"
+            self._last_error = None
+        except (OSError, sqlite3.Error) as exc:
+            self._mark_error(exc)
 
     def save(self, record: DecisionRecord) -> None:
-        if not self.database_path:
+        if not self.database_path or self._persistence_state != "PERSISTENT_READY":
             return
         placeholders = ", ".join("?" for _ in self._COLUMNS)
         columns = ", ".join(self._COLUMNS)
@@ -58,11 +79,11 @@ class DecisionStore:
         try:
             with self._lock, self._connect() as connection:
                 connection.execute(f"INSERT OR REPLACE INTO decisions ({columns}) VALUES ({placeholders})", values)
-        except sqlite3.Error:
-            pass
+        except sqlite3.Error as exc:
+            self._mark_error(exc)
 
     def load(self) -> list[DecisionRecord]:
-        if not self.database_path:
+        if not self.database_path or self._persistence_state != "PERSISTENT_READY":
             return []
         columns = ", ".join(self._COLUMNS)
         try:
@@ -73,5 +94,6 @@ class DecisionStore:
                 signal=row[4], score=float(row[5]), confirmed=bool(row[6]), reason=row[7],
                 execution_allowed=bool(row[8]), outcome=row[9], outcome_source=row[10] if len(row) > 10 else "MANUAL_STUDY",
             ) for row in rows]
-        except (sqlite3.Error, ValueError, TypeError):
+        except (sqlite3.Error, ValueError, TypeError) as exc:
+            self._mark_error(exc)
             return []
