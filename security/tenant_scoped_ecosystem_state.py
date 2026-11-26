@@ -59,6 +59,25 @@ class TenantScopedEcosystemState:
             raise ValueError("notifications must be a list of objects")
         self.storage.put(self._context(context), self._NOTIFICATIONS_KEY, notifications)
 
+    def append_notification(
+        self, context: TenantContext, notification: dict[str, Any], *, limit: int = 500
+    ) -> bool:
+        """Append to one explicitly addressed tenant inbox; never broadcast."""
+        trusted = self._context(context)
+        if not isinstance(notification, dict):
+            raise ValueError("notification must be an object")
+        notification_id = notification.get("notification_id")
+        if not isinstance(notification_id, str) or not notification_id.strip():
+            raise ValueError("notification_id is required")
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 2000:
+            raise ValueError("limit must be an integer between 1 and 2000")
+        items = self.load_notifications(trusted)
+        if any(item.get("notification_id") == notification_id for item in items):
+            return False
+        items.append(dict(notification))
+        self.save_notifications(trusted, items[-limit:])
+        return True
+
     def readiness(self) -> dict[str, object]:
         return {
             "status": "LOCAL_TENANT_SCOPED_STORAGE",
