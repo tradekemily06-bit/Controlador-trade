@@ -70,22 +70,26 @@ class TenantScopedDecisionMemory:
             raise ValueError("stored decision failed domain validation")
         return record
 
-    def save(self, context: TenantContext, record: DecisionRecord) -> None:
+    def save(self, context: TenantContext, record: DecisionRecord) -> bool:
         trusted = self._context(context)
         if not isinstance(record, DecisionRecord):
             raise TypeError("DecisionRecord is required")
         if record.execution_allowed:
             raise ValueError("decision memory cannot store execution authority")
-        self.storage.put(
-            trusted, self._RECORD_PREFIX + record.decision_id, record.to_dict()
-        )
-        self.storage.append_unique_list_item(
+        record_key = self._RECORD_PREFIX + record.decision_id
+        # A candle-cycle ID is stable across retries. Never overwrite an
+        # existing record: doing so could erase a manually annotated outcome.
+        if self.storage.get(trusted, record_key) is not None:
+            return False
+        self.storage.put(trusted, record_key, record.to_dict())
+        added = self.storage.append_unique_list_item(
             trusted,
             self._INDEX_KEY,
             {"decision_id": record.decision_id},
             unique_field="decision_id",
             limit=2000,
         )
+        return added
 
     def load(self, context: TenantContext, *, limit: int = 1000) -> list[DecisionRecord]:
         trusted = self._context(context)
