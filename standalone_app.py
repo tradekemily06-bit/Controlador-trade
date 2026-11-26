@@ -207,6 +207,21 @@ class StandaloneWSGIApplication:
             )
 
         if method == "GET" and path == "/api/market-data/timeframes":
+            registry = getattr(self.runtime, "market_data_registry", None)
+            selected = registry.selected() if registry is not None else None
+            provider_compatibility = (
+                {
+                    "selected_provider": selected.provider_id,
+                    "status": "REGISTERED_NOT_TESTED_PER_TIMEFRAME",
+                    "note": "A aceitação pelo normalizador não garante que a fonte selecionada forneça cada intervalo.",
+                }
+                if selected is not None
+                else {
+                    "selected_provider": None,
+                    "status": "NO_PROVIDER_SELECTED",
+                    "note": "Configure e valide uma fonte de mercado antes de monitorar intervalos.",
+                }
+            )
             return _json_response(
                 start_response, HTTPStatus.OK,
                 {
@@ -214,6 +229,8 @@ class StandaloneWSGIApplication:
                     "platform": list_supported_timeframes(platform_format=True),
                     "limits": {"minutes": [1, 59], "hours": [1, 24], "days": [1, 31], "weeks": [1, 4]},
                     "excluded": {"seconds": "fonte sub-minute não suportada", "months": "intervalos de calendário ainda não implementados"},
+                    "parser_support": "NORMALIZATION_ONLY",
+                    "provider_compatibility": provider_compatibility,
                     "execution_authorized": False,
                 },
                 request_id,
