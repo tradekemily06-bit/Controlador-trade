@@ -117,7 +117,7 @@ Returns history only when the conversation belongs to the caller. A conversation
 Body: `{"conversation_id":"..."}`. Deletes only a conversation owned by the resolved tenant and subject.
 
 #### `POST /api/assistant/ask`
-Body: `{"message":"...","conversation_id":null}`. Currently enabled only for the configured local single-user runtime. The current fiscal repositories are still local/global and have not yet been converted to tenant-scoped persistence, so remote chat is deliberately rejected with `FISCAL_TENANT_ISOLATION_REQUIRED`. This prevents the assistant from disclosing one user's fiscal context to another. Conversation list/history/delete are tenant-scoped for remote identities; remote chat will be enabled only after fiscal storage and context collection are isolated end-to-end.
+Body: `{"message":"...","conversation_id":null}`. Currently enabled only for the configured local single-user runtime. A tenant-separated local fiscal repository factory and per-tenant on-demand backup primitive now exist, but they are not yet wired into remote request handling or assistant context collection. Remote chat therefore remains deliberately rejected with `FISCAL_TENANT_ISOLATION_REQUIRED`. Conversation list/history/delete are tenant-scoped for remote identities; remote chat will be enabled only after the verified identity boundary, fiscal repositories, context collection and backup/restore lifecycle are integrated and tested end-to-end.
 
 All assistant routes remain read-only: no orders, REAL activation, or money movement.
 
@@ -178,6 +178,13 @@ Returns relay inbox status. A configured relay is not proof that the user's PC i
 - The endpoint runs read-only SQLite `PRAGMA quick_check` against the five required local stores (fiscal, ecosystem state, notification outbox, decision memory, assistant conversations) and reports optional market-monitor storage separately.
 - A missing or unreadable required database degrades the reported foundation status. The check does not create, migrate, repair, or modify databases.
 - This is local SQLite integrity evidence only. It does not establish production-grade multi-tenant isolation, backup/restore, managed database availability, or deployment readiness; those remain explicitly unconfigured/not proven.
+
+## Tenant fiscal storage and backup primitives
+- `finance/tenant_fiscal_store.py` creates one local SQLite fiscal database per trusted tenant + subject context. It uses an opaque digest for the on-disk path and initializes the domestic queue, foreign queue and reserve ledger in that isolated database.
+- `core/tenant_fiscal_backup.py` creates an explicit, on-demand backup for exactly one supplied tenant + subject. It uses SQLite's backup API, runs `PRAGMA quick_check`, and publishes without overwriting an existing backup.
+- These are isolated storage/backup primitives only. They are not yet connected to remote fiscal routes or assistant context collection; they do not enumerate tenants, schedule backups, replicate off-host, or restore data.
+- The legacy single-user runtime remains the active fiscal path until integration and migration are validated. Remote assistant chat and cross-area routes remain blocked where shared state exists.
+
 
 
 ## Decision-memory persistence status
