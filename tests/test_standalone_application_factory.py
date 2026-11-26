@@ -133,6 +133,17 @@ class StandaloneApplicationFactoryTests(unittest.TestCase):
         self.assertIn("risk_assessment", assistant.received["shared_capabilities"])
         self.assertFalse(result["execution_authorized"])
 
+    def test_study_area_exposes_existing_learning_attempts(self):
+        app = build_standalone_application(ecosystem_service=FakeService())
+        result = app.handle(
+            area=ApplicationArea.STUDY,
+            task="consultar tentativas",
+            context={"operation": "attempts"},
+        )
+        self.assertEqual(result["status"], "CONNECTED")
+        self.assertEqual(result["result"]["attempts"], [])
+        self.assertFalse(result["execution_authorized"])
+
     def test_study_area_exposes_existing_laboratory_replay(self):
         app = build_standalone_application(ecosystem_service=FakeService())
         result = app.handle(
