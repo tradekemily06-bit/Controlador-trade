@@ -30,6 +30,20 @@ class TenantNotificationDispatcherTests(unittest.TestCase):
             self.assertEqual(len(state.load_notifications(alice)), 1)
             self.assertEqual(state.load_notifications(bob), [])
 
+    def test_dispatch_rejects_malformed_dataclass_fields(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = TenantScopedEcosystemState(SQLiteTenantStorage(Path(directory) / "tenant.sqlite3"))
+            dispatcher = TenantNotificationDispatcher(state)
+            malformed = EcosystemNotification(
+                notification_id="n2",
+                kind="NOT_A_KIND",  # type: ignore[arg-type]
+                severity=NotificationSeverity.INFO,
+                title="Aviso",
+                message="Mensagem",
+            )
+            with self.assertRaises(ValueError):
+                dispatcher.publish(TenantContext("tenant-a", "alice"), malformed)
+
     def test_dispatch_rejects_missing_or_invalid_context_and_event(self):
         with tempfile.TemporaryDirectory() as directory:
             state = TenantScopedEcosystemState(SQLiteTenantStorage(Path(directory) / "tenant.sqlite3"))
