@@ -18,6 +18,7 @@ from integration.standalone_runtime import StandaloneRuntime
 from integration.standalone_foundation_status import standalone_storage_status
 from security.identity_boundary import IdentityPolicy
 from security.wsgi_identity import trusted_tenant_context_from_wsgi
+from security.tenant_context import TenantContext
 from data.timeframes import list_supported_timeframes
 
 
@@ -91,6 +92,19 @@ def _authorized(environ) -> tuple[bool, str]:
             "token compartilhado sozinho não autentica um usuário"
         )
     return True, "trusted_identity"
+
+
+def _tenant_context_for_request(environ, authorization_reason: str) -> TenantContext | None:
+    """Resolve request scope from trusted remote middleware or configured local identity."""
+    if authorization_reason == "trusted_identity":
+        return trusted_tenant_context_from_wsgi(environ, middleware_enabled=True)
+    if authorization_reason == "local":
+        subject_id = os.getenv("CONTROLADOR_SINGLE_USER_IDENTITY", "").strip()
+        if not subject_id:
+            return None
+        return TenantContext(tenant_id="local-single-user", subject_id=subject_id)
+    return None
+
 
 def _mt5_relay_authorized(environ) -> bool:
     expected = os.getenv("CONTROLADOR_MT5_RELAY_TOKEN", "").strip()
@@ -276,6 +290,11 @@ class StandaloneWSGIApplication:
                 "notifications": ecosystem.notification_summary() if callable(getattr(ecosystem, "notification_summary", None)) else {"status": "NOT_CONFIGURED"},
                 "notification_delivery": worker.status() if worker is not None else {"configured": False, "running": False, "state": "NO_EXTERNAL_SINK_CONFIGURED"},
                 "storage_foundation": standalone_storage_status(self.runtime),
+                "tenant_state": (
+                    self.runtime.tenant_state.readiness()
+                    if callable(getattr(getattr(self.runtime, "tenant_state", None), "readiness", None))
+                    else {"status": "NOT_CONFIGURED", "production_ready": False}
+                ),
                 "deployment": "PROCESS_RUNNING_DEPLOYMENT_NOT_VERIFIED",
                 "execution_authorized": False,
             }
@@ -447,6 +466,46 @@ class StandaloneWSGIApplication:
             return _json_response(
                 start_response, HTTPStatus.OK,
                 {"disabled": removed, "execution_authorized": False},
+                request_id,
+            )
+
+        if path == "/api/user/preferences" and method in {"GET", "PUT"}:
+            tenant_state = getattr(self.runtime, "tenant_state", None)
+            if tenant_state is None:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "armazenamento individual não configurado", "execution_authorized": False},
+                    request_id,
+                )
+            tenant_context = _tenant_context_for_request(environ, reason)
+            if tenant_context is None:
+                return _json_response(
+                    start_response, HTTPStatus.FORBIDDEN,
+                    {"error": "identidade confiável necessária para acessar preferências", "execution_authorized": False},
+                    request_id,
+                )
+            try:
+                if method == "GET":
+                    preferences = tenant_state.load_preferences(tenant_context) or {}
+                    return _json_response(
+                        start_response, HTTPStatus.OK,
+                        {"preferences": preferences, "scope": "TENANT_SCOPED", "execution_authorized": False},
+                        request_id,
+                    )
+                payload = _read_json(environ)
+                preferences = payload.get("preferences")
+                if not isinstance(preferences, dict):
+                    raise ValueError("preferences deve ser um objeto")
+                tenant_state.save_preferences(tenant_context, preferences)
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return _json_response(
+                    start_response, HTTPStatus.BAD_REQUEST,
+                    {"error": str(exc), "execution_authorized": False},
+                    request_id,
+                )
+            return _json_response(
+                start_response, HTTPStatus.OK,
+                {"preferences": preferences, "scope": "TENANT_SCOPED", "execution_authorized": False},
                 request_id,
             )
 
