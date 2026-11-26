@@ -55,7 +55,7 @@ The area and task are required strings; context must be an object. The selected 
 Lists provider registration/configuration status. Status values must not be presented as proof of a live feed.
 
 ### `GET /api/market-data/timeframes`
-Returns the exact timeframe catalog accepted by the backend in compact and platform notation, with limits and explicit exclusions. The current catalog covers 1–59 minutes, 1–24 hours, 1–31 days and 1–4 weeks. Seconds and calendar months (MN1) are not supported; the frontend should populate its timeframe selector from this endpoint rather than assume every platform interval is available.
+Returns the intervals accepted by the backend normalizer in compact and platform notation, with limits and explicit exclusions. The current parser covers 1–59 minutes, 1–24 hours, 1–31 days and 1–4 weeks. Seconds and calendar months (MN1) are not supported. This is not a guarantee that the selected data provider supplies every interval: `provider_compatibility.status` remains `REGISTERED_NOT_TESTED_PER_TIMEFRAME` until source-specific capability and live data are validated. The frontend should use this endpoint for the selector while showing provider availability separately.
 ### `GET /api/market-monitor/status`
 Returns worker state, enabled subscriptions and monitor status.
 
