@@ -70,6 +70,17 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(body["areas"], 7)
         self.assertFalse(body["execution_authorized"])
 
+    def test_readiness_endpoint_reports_unconfigured_services_without_claiming_live(self):
+        app = StandaloneWSGIApplication(FakeRuntime())
+        status, body = call_wsgi(app, "/api/readiness")
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["areas"], 7)
+        self.assertEqual(body["market_data"]["status"], "NOT_CONFIGURED")
+        self.assertEqual(body["news"]["status"], "NOT_CONFIGURED")
+        self.assertEqual(body["notification_delivery"]["state"], "NO_EXTERNAL_SINK_CONFIGURED")
+        self.assertEqual(body["deployment"], "PROCESS_RUNNING_DEPLOYMENT_NOT_VERIFIED")
+        self.assertFalse(body["execution_authorized"])
+
     def test_architecture_endpoint_is_read_only(self):
         app = StandaloneWSGIApplication(FakeRuntime())
         status, body = call_wsgi(app, "/api/intelligence/architecture")
