@@ -31,6 +31,9 @@ class NewsProvider:
 class UnconfiguredNewsProvider(NewsProvider):
     """Fail-closed provider: never fabricates or claims live news."""
 
+    def status(self) -> dict[str, object]:
+        return {"configured": False, "live": False, "feed_count": 0, "last_error": None}
+
     def latest(self, *, symbol: str | None = None, limit: int = 10) -> list[NewsItem]:
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
             raise ValueError("limit deve estar entre 1 e 50")
