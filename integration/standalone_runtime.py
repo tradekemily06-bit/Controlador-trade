@@ -163,6 +163,9 @@ class StandaloneRuntime:
                 market_data_registry=self.market_data_registry,
             )
         except Exception:
+            monitor = getattr(self, "market_monitor", None)
+            if monitor is not None:
+                monitor.stop()
             self.process_lock.release()
             self.closed = True
             raise
