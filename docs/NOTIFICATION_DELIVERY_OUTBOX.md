@@ -18,12 +18,14 @@ SQLite outbox in addition to the in-app notification store.
 
 ## What is not enabled yet
 
-This is durable queue infrastructure, not a live push service. The standalone
-runtime currently creates the outbox but does not configure a delivery sink or
-start a background worker. The API therefore reports
+This is durable queue infrastructure, not a live push service. A transport-neutral
+background worker is now available and is started only when a configured sink is
+explicitly injected into `StandaloneRuntime(notification_sink=...)`. The default
+environment startup still supplies no sink, so the API reports
 `OUTBOX_ONLY_NO_PROVIDER`. No notification is claimed to reach a phone or
 browser while the application is closed until a real provider, subscription
-management, worker lifecycle, and end-to-end delivery test are configured.
+management, production worker configuration, and end-to-end device delivery test
+are configured.
 
 No provider credentials or user subscription data are stored in source code.
 The delivery adapter must be configured server-side and must never authorize
