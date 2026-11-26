@@ -10,6 +10,7 @@ from assistant.chat_service import EcosystemAssistant
 from assistant.conversation_store import AssistantConversationStore
 from security.sqlite_tenant_storage import SQLiteTenantStorage
 from security.tenant_scoped_ecosystem_state import TenantScopedEcosystemState
+from integration.tenant_notification_dispatcher import TenantNotificationDispatcher
 from core.runtime_process_lock import RuntimeProcessLock
 from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
 from finance.fiscal_identity import configured_fiscal_owner_id
@@ -76,6 +77,11 @@ class StandaloneRuntime:
             )
             self.tenant_state = TenantScopedEcosystemState(
                 SQLiteTenantStorage(self.runtime_dir / "tenant-state.sqlite3")
+            )
+            # Available to trusted, explicitly addressed event producers.
+            # No global broadcast or automatic legacy-event migration occurs.
+            self.tenant_notification_dispatcher = TenantNotificationDispatcher(
+                self.tenant_state
             )
             self.notification_outbox = PersistentNotificationOutbox(
                 self.runtime_dir / "notification-outbox.sqlite3"
