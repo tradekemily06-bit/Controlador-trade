@@ -13,7 +13,7 @@ class FakeAnalyzer:
         self.calls = []
 
     def analyze(self, *, symbol, timeframe, limit, confirmed, filters_ok, decision_context=None):
-        self.calls.append((symbol, timeframe, limit, confirmed, filters_ok))
+        self.calls.append((symbol, timeframe, limit, confirmed, filters_ok, decision_context))
         return self.results[timeframe]
 
 
@@ -120,7 +120,7 @@ def test_monitor_rejects_invalid_symbols_and_timeframes(tmp_path):
 
 
 def test_monitor_can_disable_a_subscription(tmp_path):
-    monitor = MarketTimeframeMonitor(tmp_path / "monitor.sqlite3", FakeAnalyzer())
+    monitor = MarketTimeframeMonitor(tmp_path / "monitor.sqlite3", FakeAnalyzer(), default_context=OWNER)
     monitor.subscribe("EURUSD", "M5")
 
     assert monitor.unsubscribe("EURUSD", "M5")
@@ -166,6 +166,10 @@ def test_subscriptions_and_results_are_isolated_by_tenant_and_subject(tmp_path):
     monitor.subscribe("EURUSD", "M5", context=alice)
     monitor.subscribe("GBPUSD", "M5", context=bob)
     monitor.subscribe("USDJPY", "M5", context=other_tenant)
+    analyzer.results["5m"] = analysis_result(
+        datetime(2026, 9, 7, 10, 0, tzinfo=timezone.utc), signal="COMPRA"
+    )
+    monitor.run_once(now=datetime(2026, 9, 7, 10, 5, 5, tzinfo=timezone.utc))
 
     assert [x["symbol"] for x in monitor.subscriptions(alice)] == ["EURUSD"]
     assert [x["symbol"] for x in monitor.subscriptions(bob)] == ["GBPUSD"]
@@ -173,6 +177,10 @@ def test_subscriptions_and_results_are_isolated_by_tenant_and_subject(tmp_path):
     assert monitor.unsubscribe("EURUSD", "M5", context=bob) is False
     assert monitor.unsubscribe("EURUSD", "M5", context=alice) is True
     assert [x["symbol"] for x in monitor.subscriptions(bob)] == ["GBPUSD"]
+    assert [x["symbol"] for x in monitor.latest_results(context=alice)] == ["EURUSD"]
+    assert [x["symbol"] for x in monitor.latest_results(context=bob)] == ["GBPUSD"]
+    assert [x["symbol"] for x in monitor.latest_results(context=other_tenant)] == ["USDJPY"]
+    assert all(call[-1] in {alice, bob, other_tenant} for call in analyzer.calls)
 
 
 def test_monitor_requires_trusted_context_without_local_default(tmp_path):
