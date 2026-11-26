@@ -7,29 +7,53 @@ from typing import Any
 
 
 _DATABASES = (
-    ("fiscal", "fiscal-reserve.sqlite3", True, {"fiscal_reserve_entries", "fiscal_reserve_settings"}),
-    ("ecosystem_state", "ecosystem-state.sqlite3", True, {"ecosystem_state"}),
-    ("notification_outbox", "notification-outbox.sqlite3", True, {"notification_outbox"}),
-    ("decision_memory", "decision-memory.sqlite3", True, {"decisions"}),
-    ("assistant_conversations", "assistant-conversations.sqlite3", True, {"conversations", "messages"}),
-    ("market_timeframe_monitor", "market-timeframe-monitor.sqlite3", False, {"market_timeframe_watch", "market_timeframe_results"}),
+    ("fiscal", "fiscal-reserve.sqlite3", True, {
+        "fiscal_reserve_entries": {"entry_id", "owner_id", "category", "realized_result_brl", "reserve_amount_brl", "reference", "occurred_on"},
+        "fiscal_reserve_settings": {"owner_id", "category", "rate", "rate_source"},
+    }),
+    ("ecosystem_state", "ecosystem-state.sqlite3", True, {
+        "ecosystem_state": {"key", "value_json"},
+    }),
+    ("notification_outbox", "notification-outbox.sqlite3", True, {
+        "notification_outbox": {"idempotency_key", "payload_json", "status", "attempts", "available_at", "created_at"},
+    }),
+    ("decision_memory", "decision-memory.sqlite3", True, {
+        "decisions": {"decision_id", "created_at", "signal", "score", "confirmed", "reason", "execution_allowed", "outcome_source"},
+    }),
+    ("assistant_conversations", "assistant-conversations.sqlite3", True, {
+        "conversations": {"id", "owner", "title", "updated_at"},
+        "messages": {"id", "conversation_id", "role", "content", "created_at"},
+    }),
+    ("market_timeframe_monitor", "market-timeframe-monitor.sqlite3", False, {
+        "market_timeframe_watch": {"symbol", "timeframe", "enabled", "created_at", "last_processed_candle", "last_signal", "last_status", "last_error"},
+        "market_timeframe_results": {"symbol", "timeframe", "candle_at", "result_json", "recorded_at"},
+    }),
 )
 
 
-def _integrity(path: Path, expected_tables: set[str]) -> tuple[str, list[str]]:
+def _integrity(path: Path, expected_schema: dict[str, set[str]]) -> tuple[str, dict[str, list[str]]]:
     # Read-only URI: readiness must never create, migrate, or mutate a database.
     uri = f"{path.resolve().as_uri()}?mode=ro"
     with sqlite3.connect(uri, uri=True, timeout=2) as connection:
         result = connection.execute("PRAGMA quick_check").fetchone()
         if not result or str(result[0]).lower() != "ok":
-            return (str(result[0]) if result else "NO_RESULT"), []
-        actual_tables = {
-            str(row[0])
-            for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()
-        }
-    missing = sorted(expected_tables - actual_tables)
+            return (str(result[0]) if result else "NO_RESULT"), {}
+        missing: dict[str, list[str]] = {}
+        for table, expected_columns in expected_schema.items():
+            exists = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                (table,),
+            ).fetchone()
+            if not exists:
+                missing[table] = ["<table>"]
+                continue
+            actual_columns = {
+                str(row[1])
+                for row in connection.execute(f'PRAGMA table_info("{table}")').fetchall()
+            }
+            absent = sorted(expected_columns - actual_columns)
+            if absent:
+                missing[table] = absent
     return "ok", missing
 
 
@@ -50,18 +74,18 @@ def standalone_storage_status(runtime: Any) -> dict[str, Any]:
     root = Path(runtime_dir)
     stores = []
     required_ready = True
-    for store_id, filename, required, expected_tables in _DATABASES:
+    for store_id, filename, required, expected_schema in _DATABASES:
         path = root / filename
-        missing_tables: list[str] = []
+        missing_schema: dict[str, list[str]] = {}
         if not path.is_file():
             state = "MISSING"
             detail = None
         else:
             try:
-                detail, missing_tables = _integrity(path, expected_tables)
+                detail, missing_schema = _integrity(path, expected_schema)
                 if detail != "ok":
                     state = "INTEGRITY_ERROR"
-                elif missing_tables:
+                elif missing_schema:
                     state = "SCHEMA_INCOMPLETE"
                 else:
                     state = "HEALTHY"
@@ -75,7 +99,7 @@ def standalone_storage_status(runtime: Any) -> dict[str, Any]:
             "state": state,
             "required": required,
             "integrity": detail,
-            "missing_tables": missing_tables,
+            "missing_schema": missing_schema,
         })
     return {
         "provider": "LOCAL_SQLITE",
