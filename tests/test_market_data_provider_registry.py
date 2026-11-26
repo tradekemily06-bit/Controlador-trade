@@ -8,6 +8,16 @@ class FakeProvider:
         return []
 
 
+class DemoProvider(FakeProvider):
+    def get_account_mode(self):
+        return "DEMO"
+
+
+class RealProvider(FakeProvider):
+    def get_account_mode(self):
+        return "REAL"
+
+
 class MarketDataProviderRegistryTests(unittest.TestCase):
     def test_register_and_select_multiple_provider_adapters(self):
         registry = MarketDataProviderRegistry()
@@ -19,6 +29,20 @@ class MarketDataProviderRegistryTests(unittest.TestCase):
         self.assertEqual(status["count"], 2)
         self.assertEqual(status["selected_provider"], "broker_b")
         self.assertFalse(status["providers"][0]["execution_authorized"])
+
+    def test_selected_provider_exposes_only_verified_demo_or_real_mode(self):
+        registry = MarketDataProviderRegistry()
+        registry.register("demo", DemoProvider(), "DEMO_FEED")
+        self.assertEqual(registry.status()["account_mode"]["mode"], "DEMO")
+        registry.register("real", RealProvider(), "REAL_FEED")
+        registry.select("real")
+        self.assertEqual(registry.status()["account_mode"]["mode"], "REAL")
+
+    def test_provider_without_account_mode_reports_unavailable(self):
+        registry = MarketDataProviderRegistry()
+        registry.register("default", FakeProvider(), "DEFAULT_FEED")
+        self.assertEqual(registry.status()["account_mode"]["status"], "UNAVAILABLE")
+        self.assertIsNone(registry.status()["account_mode"]["mode"])
 
     def test_single_provider_is_selected_by_default(self):
         registry = MarketDataProviderRegistry()
