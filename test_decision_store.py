@@ -52,6 +52,8 @@ def test_decision_store_failure_is_fail_soft(tmp_path):
     blocked.write_text("blocked", encoding="utf-8")
     store = DecisionStore(str(blocked / "decisions.sqlite3"))
 
-    assert store.database_path is None
+    assert store.database_path == str(blocked / "decisions.sqlite3")
+    assert store.persistence_status()["state"] == "PERSISTENCE_ERROR"
+    assert store.persistence_status()["durability_confirmed"] is False
     store.save(make_record())
     assert store.load() == []
