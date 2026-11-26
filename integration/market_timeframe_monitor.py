@@ -104,7 +104,7 @@ class MarketTimeframeMonitor:
             active_count = db.execute(
                 "SELECT COUNT(*) FROM market_timeframe_watch WHERE enabled=1"
             ).fetchone()[0]
-            if existing is None and active_count >= 100:
+            if (existing is None or not bool(existing["enabled"])) and active_count >= 100:
                 raise ValueError("limite de 100 assinaturas ativas atingido")
             db.execute(
                 """
