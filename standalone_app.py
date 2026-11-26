@@ -12,6 +12,7 @@ from http import HTTPStatus
 from socketserver import ThreadingMixIn
 from wsgiref.simple_server import WSGIServer, make_server
 from typing import Any
+from urllib.parse import parse_qs
 
 from security_guard import MAX_BODY_BYTES, SECURITY
 from integration.standalone_runtime import StandaloneRuntime
@@ -20,6 +21,7 @@ from security.identity_boundary import IdentityPolicy
 from security.wsgi_identity import trusted_tenant_context_from_wsgi
 from security.tenant_context import TenantContext
 from data.timeframes import list_supported_timeframes
+from analysis.tenant_decision_analytics import summarize_tenant_decisions, build_tenant_decision_report
 
 
 class ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
@@ -602,6 +604,52 @@ class StandaloneWSGIApplication:
                 },
                 request_id,
             )
+
+        if method == "GET" and path in {
+            "/api/analysis/statistics", "/api/analysis/report"
+        }:
+            memory = getattr(self.runtime, "tenant_decision_memory", None)
+            if memory is None:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "memória individual não configurada", "execution_authorized": False},
+                    request_id,
+                )
+            tenant_context = _tenant_context_for_request(environ, reason)
+            if tenant_context is None:
+                return _json_response(
+                    start_response, HTTPStatus.FORBIDDEN,
+                    {"error": "identidade confiável necessária para consultar estatísticas e relatórios", "execution_authorized": False},
+                    request_id,
+                )
+            try:
+                params = parse_qs(str(environ.get("QUERY_STRING") or ""), strict_parsing=False)
+                # The tenant memory retains at most 2,000 records. Loading that
+                # complete owner-scoped index is the denominator for all stats.
+                records = memory.load(tenant_context, limit=2000)
+                if path == "/api/analysis/statistics":
+                    payload = summarize_tenant_decisions(records)
+                    payload["scope"] = "TENANT_SCOPED"
+                    payload["execution_authorized"] = False
+                else:
+                    raw_limit = params.get("limit", ["1000"])[-1]
+                    limit = int(raw_limit)
+                    payload = build_tenant_decision_report(records, limit=limit)
+                    payload["scope"] = "TENANT_SCOPED"
+                    payload["execution_authorized"] = False
+            except (ValueError, TypeError, OverflowError) as exc:
+                return _json_response(
+                    start_response, HTTPStatus.BAD_REQUEST,
+                    {"error": str(exc), "execution_authorized": False},
+                    request_id,
+                )
+            except Exception:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "não foi possível consultar os dados isolados deste usuário", "execution_authorized": False},
+                    request_id,
+                )
+            return _json_response(start_response, HTTPStatus.OK, payload, request_id)
 
         if method == "POST" and path == "/api/memory/decisions/outcome":
             memory = getattr(self.runtime, "tenant_decision_memory", None)
