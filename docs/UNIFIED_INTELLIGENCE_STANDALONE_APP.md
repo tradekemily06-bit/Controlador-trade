@@ -91,6 +91,7 @@ The monitor accepts the same normalized timeframe syntax as the analysis service
 API routes (protected by the existing standalone access boundary):
 - `GET /api/market-monitor/status` — worker and subscription status.
 - `GET /api/market-monitor/subscriptions` — persisted watch list.
+- `GET /api/market-monitor/results?limit=50` — latest persisted analysis cycles (limit 1–200).
 - `POST /api/market-monitor/subscriptions` — body: `{"symbol":"EURUSD","timeframe":"M5"}`.
 - `DELETE /api/market-monitor/subscriptions` — body: `{"symbol":"EURUSD","timeframe":"M5"}`.
 
