@@ -8,6 +8,8 @@ from typing import Any, Mapping
 from analysis.decision_store import DecisionStore
 from assistant.chat_service import EcosystemAssistant
 from assistant.conversation_store import AssistantConversationStore
+from security.sqlite_tenant_storage import SQLiteTenantStorage
+from security.tenant_scoped_ecosystem_state import TenantScopedEcosystemState
 from core.runtime_process_lock import RuntimeProcessLock
 from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
 from finance.fiscal_identity import configured_fiscal_owner_id
@@ -71,6 +73,9 @@ class StandaloneRuntime:
 
             ecosystem_state_store = EcosystemStateStore(
                 self.runtime_dir / "ecosystem-state.sqlite3"
+            )
+            self.tenant_state = TenantScopedEcosystemState(
+                SQLiteTenantStorage(self.runtime_dir / "tenant-state.sqlite3")
             )
             self.notification_outbox = PersistentNotificationOutbox(
                 self.runtime_dir / "notification-outbox.sqlite3"
