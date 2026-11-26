@@ -15,6 +15,7 @@ from typing import Any
 
 from security_guard import MAX_BODY_BYTES, SECURITY
 from integration.standalone_runtime import StandaloneRuntime
+from integration.standalone_foundation_status import standalone_storage_status
 from data.timeframes import list_supported_timeframes
 
 
@@ -240,6 +241,7 @@ class StandaloneWSGIApplication:
                 "assistant": assistant.readiness() if callable(getattr(assistant, "readiness", None)) else {"status": "NOT_CONFIGURED"},
                 "notifications": ecosystem.notification_summary() if callable(getattr(ecosystem, "notification_summary", None)) else {"status": "NOT_CONFIGURED"},
                 "notification_delivery": worker.status() if worker is not None else {"configured": False, "running": False, "state": "NO_EXTERNAL_SINK_CONFIGURED"},
+                "storage_foundation": standalone_storage_status(self.runtime),
                 "deployment": "PROCESS_RUNNING_DEPLOYMENT_NOT_VERIFIED",
                 "execution_authorized": False,
             }
