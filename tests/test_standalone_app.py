@@ -41,7 +41,7 @@ class FakeRuntime:
     notification_worker = None
 
 
-def call_wsgi(app, path, method="GET", body=None, remote_addr="127.0.0.1", origin=None, include_headers=False):
+def call_wsgi(app, path, method="GET", body=None, remote_addr="127.0.0.1", origin=None, include_headers=False, authorization=None, identity_verified=False, remote_user=None, tenant_id=None):
     raw = json.dumps(body or {}).encode("utf-8")
     parsed_path = urlsplit(path)
     environ = {
@@ -54,6 +54,14 @@ def call_wsgi(app, path, method="GET", body=None, remote_addr="127.0.0.1", origi
     }
     if origin is not None:
         environ["HTTP_ORIGIN"] = origin
+    if authorization is not None:
+        environ["HTTP_AUTHORIZATION"] = authorization
+    if identity_verified:
+        environ["controlador.identity_verified"] = True
+    if remote_user is not None:
+        environ["REMOTE_USER"] = remote_user
+    if tenant_id is not None:
+        environ["controlador.tenant_id"] = tenant_id
     captured = {}
 
     def start_response(status, headers):
@@ -164,6 +172,38 @@ class StandaloneWSGITests(unittest.TestCase):
             )
         self.assertEqual(status, "204 No Content")
 
+
+    def test_shared_bearer_token_alone_does_not_authenticate_remote_user(self):
+        app = StandaloneWSGIApplication(FakeRuntime())
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/health", remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+            )
+        self.assertEqual(status, "503 Service Unavailable")
+        self.assertIn("identidade remota verificada", body["error"])
+        self.assertFalse(body["execution_authorized"])
+
+    def test_remote_access_requires_verified_subject_and_tenant(self):
+        app = StandaloneWSGIApplication(FakeRuntime())
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/health", remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="user-123", tenant_id="tenant-abc",
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertFalse(body["execution_authorized"])
 
     def test_remote_access_is_denied_by_default(self):
         app = StandaloneWSGIApplication(FakeRuntime())
