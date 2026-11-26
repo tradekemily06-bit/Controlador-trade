@@ -7,6 +7,7 @@ from unittest.mock import patch
 from urllib.parse import urlsplit
 
 from standalone_app import StandaloneWSGIApplication
+from analysis.decision_record import DecisionRecord
 
 
 class FakeRuntime:
@@ -68,13 +69,14 @@ class FakeRuntime:
     class TenantDecisionMemory:
         def __init__(self):
             self.contexts = []
+            self.records = []
 
         def readiness(self):
             return {"status": "LOCAL_TENANT_SCOPED_DECISION_MEMORY", "production_ready": False}
 
         def load(self, context, *, limit=100):
             self.contexts.append(context)
-            return []
+            return self.records[-limit:]
 
     tenant_decision_memory = TenantDecisionMemory()
 
@@ -258,6 +260,86 @@ class StandaloneWSGITests(unittest.TestCase):
         context = runtime.tenant_decision_memory.contexts[0]
         self.assertEqual(context.tenant_id, "tenant-a")
         self.assertEqual(context.subject_id, "alice")
+        self.assertFalse(body["execution_authorized"])
+
+    def test_local_tenant_statistics_and_report_use_only_configured_owner_memory(self):
+        runtime = FakeRuntime()
+        runtime.tenant_decision_memory.records = [
+            DecisionRecord(
+                decision_id="local-1", created_at="2026-11-26T12:00:00+00:00",
+                symbol="EURUSD", timeframe="M5", signal="COMPRA", score=82.0,
+                confirmed=True, reason="contexto validado", outcome="WIN",
+            )
+        ]
+        app = StandaloneWSGIApplication(runtime)
+        with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
+            status, stats = call_wsgi(app, "/api/analysis/statistics")
+            report_status, report = call_wsgi(app, "/api/analysis/report?limit=10")
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(stats["scope"], "TENANT_SCOPED")
+        self.assertEqual(stats["total"], 1)
+        self.assertEqual(stats["wins"], 1)
+        self.assertEqual(stats["win_rate"], 100.0)
+        self.assertTrue(stats["win_rate_is_historical_outcome_ratio_not_prediction"])
+        self.assertEqual(report_status, "200 OK")
+        self.assertEqual(report["scope"], "TENANT_SCOPED")
+        self.assertEqual(report["record_count"], 1)
+        self.assertEqual(report["statistics_records_considered"], 1)
+        self.assertEqual(report["records"][0]["decision_id"], "local-1")
+        self.assertEqual(report["statistics_scope"], "ALL_LOADED_TENANT_DECISIONS")
+        self.assertTrue(all(c.subject_id == "local-owner" for c in runtime.tenant_decision_memory.contexts))
+
+    def test_remote_tenant_statistics_are_scoped_to_verified_identity(self):
+        runtime = FakeRuntime()
+        runtime.tenant_decision_memory.records = [
+            DecisionRecord(
+                decision_id="tenant-record", created_at="2026-11-26T12:00:00+00:00",
+                symbol="GBPUSD", timeframe="M15", signal="VENDA", score=75.0,
+                confirmed=True, reason="contexto validado", outcome="LOSS",
+            )
+        ]
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/analysis/statistics", remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["scope"], "TENANT_SCOPED")
+        self.assertEqual(body["total"], 1)
+        self.assertEqual(body["losses"], 1)
+        context = runtime.tenant_decision_memory.contexts[-1]
+        self.assertEqual(context.tenant_id, "tenant-a")
+        self.assertEqual(context.subject_id, "alice")
+
+    def test_remote_tenant_analytics_rejects_unverified_identity(self):
+        runtime = FakeRuntime()
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/analysis/statistics", remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+            )
+        self.assertEqual(status, "403 Forbidden")
+        self.assertFalse(body["execution_authorized"])
+        self.assertEqual(runtime.tenant_decision_memory.contexts, [])
+
+    def test_tenant_report_rejects_invalid_limit(self):
+        app = StandaloneWSGIApplication(FakeRuntime())
+        with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
+            status, body = call_wsgi(app, "/api/analysis/report?limit=1001")
+        self.assertEqual(status, "400 Bad Request")
         self.assertFalse(body["execution_authorized"])
 
     def test_remote_market_monitor_uses_verified_tenant_and_subject_scope(self):
