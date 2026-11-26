@@ -164,9 +164,21 @@ class EcosystemAssistant:
     def conversations(self,identity): return self.store.list(identity)
     def history(self,identity,cid): return self.store.history(identity,cid)
     def delete_conversation(self,identity,cid): return self.store.delete(identity,cid)
-    def ask(self,identity,message,fiscal_owner_id,cid=None):
+    def ask(self,identity,message,fiscal_owner_id,cid=None,shared_intelligence_context=None):
         if not isinstance(message,str) or not message.strip() or len(message)>4000: raise ValueError("Mensagem deve ter de 1 a 4.000 caracteres.")
         context=collect_read_only_context(self.service,self.fiscal,fiscal_owner_id,self.fiscal_pending_queue,self.fiscal_domestic_pending_queue)
+        if shared_intelligence_context is not None:
+            try:
+                shared_payload = json.dumps(
+                    shared_intelligence_context, ensure_ascii=False, allow_nan=False
+                )
+                if len(shared_payload) > 8000:
+                    raise ValueError("shared intelligence context exceeds the configured size limit")
+                context["shared_intelligence"] = json.loads(shared_payload)
+            except (TypeError, ValueError) as exc:
+                raise AssistantUnavailableError(
+                    "Contexto da inteligência compartilhada indisponível; mensagem não foi enviada."
+                ) from exc
         # The sanitizer must return JSON-native values. Never stringify an
         # unexpected object into the external prompt, and fail before saving
         # the user's message if the context is malformed or non-finite.
