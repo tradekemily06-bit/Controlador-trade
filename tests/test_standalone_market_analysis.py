@@ -86,27 +86,34 @@ class StandaloneMarketAnalysisTests(unittest.TestCase):
 
     def test_analysis_is_saved_to_decision_memory_with_stable_cycle_identity(self):
         provider = FakeMarketDataProvider(candle_series())
-        saved = []
+        saved = {}
+
+        def save_once(record):
+            if record.decision_id in saved:
+                return False
+            saved[record.decision_id] = record
+            return True
+
         service = StandaloneMarketAnalysisService(
             provider=provider,
             source="MEMORY_TEST_FEED",
             intelligence=UnifiedIntelligence(),
-            decision_sink=saved.append,
+            decision_sink=save_once,
         )
 
         first = service.analyze(symbol="EURUSD", timeframe="5m", limit=8)
         second = service.analyze(symbol="EURUSD", timeframe="5m", limit=8)
 
-        self.assertEqual(len(saved), 2)
-        self.assertEqual(saved[0].decision_id, saved[1].decision_id)
-        self.assertEqual(saved[0].symbol, "EURUSD")
-        self.assertEqual(saved[0].timeframe, "5m")
-        self.assertEqual(saved[0].signal, first["signal"])
-        self.assertEqual(saved[0].signal, second["signal"])
-        self.assertFalse(saved[0].execution_allowed)
+        self.assertEqual(len(saved), 1)
+        record = next(iter(saved.values()))
+        self.assertEqual(record.symbol, "EURUSD")
+        self.assertEqual(record.timeframe, "5m")
+        self.assertEqual(record.signal, first["signal"])
+        self.assertEqual(record.signal, second["signal"])
+        self.assertFalse(record.execution_allowed)
         self.assertEqual(first["decision_memory"]["status"], "SAVED")
         self.assertEqual(second["decision_memory"]["status"], "ALREADY_RECORDED")
-        self.assertEqual(first["decision_memory"]["decision_id"], saved[0].decision_id)
+        self.assertEqual(first["decision_memory"]["decision_id"], record.decision_id)
 
     def test_decision_memory_failure_is_reported_without_faking_persistence(self):
         def fail_save(_record):
