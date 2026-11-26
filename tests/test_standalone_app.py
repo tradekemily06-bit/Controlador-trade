@@ -403,6 +403,7 @@ class StandaloneWSGITests(unittest.TestCase):
 
     def test_remote_tenant_analytics_rejects_unverified_identity(self):
         runtime = FakeRuntime()
+        runtime.tenant_decision_memory.contexts.clear()
         app = StandaloneWSGIApplication(runtime)
         settings = {
             "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
