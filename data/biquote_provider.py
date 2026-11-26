@@ -1,38 +1,101 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from data.feed import MarketDataProvider, MarketDataRequest
 from data.models import Candle
+from data.timeframes import get_timeframe_interval, normalize_timeframe
 
 
 class BiQuoteProvider(MarketDataProvider):
-    """Read-only BiQuote OHLC provider.
+    """Read-only BiQuote OHLC provider with safe aggregation of custom intervals.
 
-    Public read endpoints require no API key. Only closed bars are exposed to
-    the core so an open candle cannot be treated as confirmed market data.
+    Native base intervals are 1m, 5m, 1h and 1d. Other fixed intervals are
+    derived only from complete, contiguous base candles aligned to the target
+    bucket. No missing or partial candle is estimated.
     """
 
     BASE_URL = "https://biquote.io/api"
-    TIMEFRAMES = {"1m", "5m", "10m", "15m", "30m", "1h", "4h", "1d"}
+    BASE_INTERVALS = {
+        60: "1m",
+        300: "5m",
+        3600: "1h",
+        86400: "1d",
+    }
+    MAX_SOURCE_BARS = 1000
 
     def __init__(self, timeout_seconds: float = 10.0) -> None:
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
         self._timeout = timeout_seconds
 
-    def fetch(self, request: MarketDataRequest) -> list[Candle]:
-        if request.timeframe not in self.TIMEFRAMES:
-            raise ValueError(f"unsupported BiQuote timeframe: {request.timeframe}")
+    @staticmethod
+    def _bucket_start(timestamp: datetime, target_seconds: int) -> datetime:
+        epoch = int(timestamp.timestamp())
+        if target_seconds == 604800:
+            # Calendar week starts Monday 00:00 UTC, not Unix epoch Thursday.
+            monday_offset = 3 * 86400
+            bucket_epoch = ((epoch + monday_offset) // target_seconds) * target_seconds - monday_offset
+        else:
+            bucket_epoch = (epoch // target_seconds) * target_seconds
+        return datetime.fromtimestamp(bucket_epoch, tz=timezone.utc)
 
-        source_timeframe = "5m" if request.timeframe == "10m" else request.timeframe
-        source_limit = min((request.limit * 2 + 2) if request.timeframe == "10m" else request.limit + 1, 1000)
-        query = urlencode(
-            {"interval": source_timeframe, "limit": source_limit}
-        )
+    @classmethod
+    def _source_interval(cls, target_seconds: int) -> tuple[int, str]:
+        candidates = sorted(cls.BASE_INTERVALS.items(), reverse=True)
+        for seconds, label in candidates:
+            if target_seconds >= seconds and target_seconds % seconds == 0:
+                return seconds, label
+        raise ValueError("timeframe cannot be safely derived from available base intervals")
+
+    @staticmethod
+    def _aggregate(
+        candles: list[Candle], *, source_seconds: int, target_seconds: int
+    ) -> list[Candle]:
+        if target_seconds == source_seconds:
+            return candles
+        expected = target_seconds // source_seconds
+        groups: dict[datetime, list[Candle]] = {}
+        for candle in candles:
+            bucket = BiQuoteProvider._bucket_start(candle.timestamp, target_seconds)
+            groups.setdefault(bucket, []).append(candle)
+
+        aggregated: list[Candle] = []
+        for bucket, group in sorted(groups.items()):
+            group.sort(key=lambda candle: candle.timestamp)
+            if len(group) != expected:
+                continue
+            if group[0].timestamp.astimezone(timezone.utc) != bucket:
+                continue
+            contiguous = all(
+                (group[index].timestamp - group[index - 1].timestamp).total_seconds()
+                == source_seconds
+                for index in range(1, len(group))
+            )
+            if not contiguous:
+                continue
+            aggregated.append(
+                Candle(
+                    timestamp=group[0].timestamp,
+                    open=group[0].open,
+                    high=max(item.high for item in group),
+                    low=min(item.low for item in group),
+                    close=group[-1].close,
+                    volume=sum(item.volume for item in group),
+                )
+            )
+        return aggregated
+
+    def fetch(self, request: MarketDataRequest) -> list[Candle]:
+        timeframe = normalize_timeframe(request.timeframe)
+        target_seconds = int(get_timeframe_interval(timeframe).total_seconds())
+        source_seconds, source_timeframe = self._source_interval(target_seconds)
+        factor = target_seconds // source_seconds
+        source_limit = min(request.limit * factor + factor, self.MAX_SOURCE_BARS)
+        query = urlencode({"interval": source_timeframe, "limit": source_limit})
         url = f"{self.BASE_URL}/{request.symbol.upper()}/ohlc?{query}"
         http_request = Request(url, headers={"Accept": "application/json"})
         with urlopen(http_request, timeout=self._timeout) as response:
@@ -60,32 +123,10 @@ class BiQuoteProvider(MarketDataProvider):
                 )
             )
 
-        # Providers may return newest-first or oldest-first. Normalize order
-        # explicitly before validation or timeframe aggregation.
         candles.sort(key=lambda candle: candle.timestamp)
-        if request.timeframe == "10m":
-            # Build only complete, aligned pairs of closed 5-minute candles.
-            # Missing or misaligned source bars are discarded, never guessed.
-            ten_minute: list[Candle] = []
-            index = 0
-            while index + 1 < len(candles):
-                first, second = candles[index], candles[index + 1]
-                first_bucket = int(first.timestamp.timestamp()) // 600
-                second_bucket = int(second.timestamp.timestamp()) // 600
-                contiguous = (second.timestamp - first.timestamp).total_seconds() == 300
-                if first_bucket == second_bucket and contiguous:
-                    ten_minute.append(
-                        Candle(
-                            timestamp=first.timestamp,
-                            open=first.open,
-                            high=max(first.high, second.high),
-                            low=min(first.low, second.low),
-                            close=second.close,
-                            volume=first.volume + second.volume,
-                        )
-                    )
-                    index += 2
-                else:
-                    index += 1
-            candles = ten_minute
-        return candles[-request.limit :]
+        candles = self._aggregate(
+            candles,
+            source_seconds=source_seconds,
+            target_seconds=target_seconds,
+        )
+        return candles[-request.limit:]
