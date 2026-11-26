@@ -530,6 +530,90 @@ class StandaloneWSGIApplication:
                 request_id,
             )
 
+        if method == "GET" and path == "/api/memory/decisions":
+            memory = getattr(self.runtime, "tenant_decision_memory", None)
+            if memory is None:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "memória individual não configurada", "execution_authorized": False},
+                    request_id,
+                )
+            tenant_context = _tenant_context_for_request(environ, reason)
+            if tenant_context is None:
+                return _json_response(
+                    start_response, HTTPStatus.FORBIDDEN,
+                    {"error": "identidade confiável necessária para acessar a memória", "execution_authorized": False},
+                    request_id,
+                )
+            try:
+                query = str(environ.get("QUERY_STRING") or "")
+                params = dict(
+                    item.split("=", 1) for item in query.split("&")
+                    if item and "=" in item
+                )
+                limit = int(params.get("limit", "100"))
+                records = memory.load(tenant_context, limit=limit)
+            except (ValueError, TypeError) as exc:
+                return _json_response(
+                    start_response, HTTPStatus.BAD_REQUEST,
+                    {"error": str(exc), "execution_authorized": False},
+                    request_id,
+                )
+            return _json_response(
+                start_response, HTTPStatus.OK,
+                {
+                    "decisions": [item.to_dict() for item in records],
+                    "count": len(records),
+                    "scope": "TENANT_SCOPED",
+                    "execution_authorized": False,
+                },
+                request_id,
+            )
+
+        if method == "POST" and path == "/api/memory/decisions/outcome":
+            memory = getattr(self.runtime, "tenant_decision_memory", None)
+            if memory is None:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "memória individual não configurada", "execution_authorized": False},
+                    request_id,
+                )
+            tenant_context = _tenant_context_for_request(environ, reason)
+            if tenant_context is None:
+                return _json_response(
+                    start_response, HTTPStatus.FORBIDDEN,
+                    {"error": "identidade confiável necessária para acessar a memória", "execution_authorized": False},
+                    request_id,
+                )
+            try:
+                payload = _read_json(environ)
+                record = memory.record_outcome(
+                    tenant_context,
+                    payload.get("decision_id"),
+                    payload.get("outcome"),
+                )
+            except PermissionError as exc:
+                return _json_response(
+                    start_response, HTTPStatus.NOT_FOUND,
+                    {"error": str(exc), "execution_authorized": False},
+                    request_id,
+                )
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return _json_response(
+                    start_response, HTTPStatus.BAD_REQUEST,
+                    {"error": str(exc), "execution_authorized": False},
+                    request_id,
+                )
+            return _json_response(
+                start_response, HTTPStatus.OK,
+                {
+                    "decision": record.to_dict(),
+                    "scope": "TENANT_SCOPED",
+                    "execution_authorized": False,
+                },
+                request_id,
+            )
+
         if method == "GET" and path == "/api/notifications":
             try:
                 query = str(environ.get("QUERY_STRING") or "")
