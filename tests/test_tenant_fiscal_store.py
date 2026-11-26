@@ -59,3 +59,41 @@ def test_tenant_fiscal_migration_rejects_nonopaque_owner_key(tmp_path):
     with pytest.raises(ValueError, match="chave opaca confiável"):
         migrate_fiscal_schema(str(database), trusted_owner_id="tenant:alice")
     assert not database.exists()
+
+
+def test_tenant_fiscal_store_isolates_ledger_and_domestic_queue(tmp_path):
+    factory = TenantFiscalStoreFactory(tmp_path)
+    alice_context = TenantContext("tenant-a", "alice")
+    bob_context = TenantContext("tenant-a", "bob")
+    alice = factory.get(alice_context)
+    bob = factory.get(bob_context)
+    today = datetime.now(ZoneInfo("America/Sao_Paulo")).date().isoformat()
+
+    alice.reserve.record_realized_result(
+        alice.owner_id,
+        {
+            "category": "BR_DAY_TRADE",
+            "realized_result_brl": 1000.0,
+            "reference": "ALICE-LEDGER",
+            "occurred_on": today,
+        },
+    )
+    alice.domestic_pending.add(
+        alice.owner_id,
+        {
+            "reference": "ALICE-DOMESTIC",
+            "instrument": "FUTURES",
+            "market_scope": "B3",
+            "occurred_on": today,
+        },
+    )
+
+    alice_summary = alice.reserve.summary(alice.owner_id)
+    bob_summary = bob.reserve.summary(bob.owner_id)
+    assert alice_summary["categories"]["BR_DAY_TRADE"]["entries"] == 1
+    assert bob_summary["categories"]["BR_DAY_TRADE"]["entries"] == 0
+    assert [
+        item["reference"]
+        for item in alice.domestic_pending.list_pending(alice.owner_id)["items"]
+    ] == ["ALICE-DOMESTIC"]
+    assert bob.domestic_pending.list_pending(bob.owner_id)["items"] == []
