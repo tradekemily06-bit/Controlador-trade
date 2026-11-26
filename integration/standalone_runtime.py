@@ -25,6 +25,7 @@ from core.learning_state_store import LearningStateStore
 from core.notification_outbox import PersistentNotificationOutbox
 from core.ecosystem_notifications import EcosystemNotification, NotificationKind, NotificationSeverity
 from integration.market_timeframe_monitor import MarketTimeframeMonitor
+from integration.notification_outbox_worker import NotificationOutboxWorker
 
 
 class StandaloneRuntime:
@@ -43,6 +44,7 @@ class StandaloneRuntime:
         market_data_source: str | None = None,
         market_data_providers: Mapping[str, tuple[Any, str]] | None = None,
         selected_market_data_provider: str | None = None,
+        notification_sink=None,
     ) -> None:
         configured_identity = os.getenv("CONTROLADOR_SINGLE_USER_IDENTITY", "").strip()
         if not configured_identity:
@@ -72,6 +74,12 @@ class StandaloneRuntime:
             self.notification_outbox = PersistentNotificationOutbox(
                 self.runtime_dir / "notification-outbox.sqlite3"
             )
+            self.notification_worker = None
+            if notification_sink is not None:
+                self.notification_worker = NotificationOutboxWorker(
+                    self.notification_outbox, notification_sink
+                )
+                self.notification_worker.start()
             self.ecosystem_service = EcosystemService(
                 decision_store=DecisionStore(str(self.runtime_dir / "decision-memory.sqlite3")),
                 learning_state_store=LearningStateStore(ecosystem_state_store),
@@ -166,6 +174,9 @@ class StandaloneRuntime:
             monitor = getattr(self, "market_monitor", None)
             if monitor is not None:
                 monitor.stop()
+            worker = getattr(self, "notification_worker", None)
+            if worker is not None:
+                worker.stop()
             self.process_lock.release()
             self.closed = True
             raise
@@ -179,6 +190,8 @@ class StandaloneRuntime:
             return
         if self.market_monitor is not None:
             self.market_monitor.stop()
+        if self.notification_worker is not None:
+            self.notification_worker.stop()
         self.process_lock.release()
         self.closed = True
 
