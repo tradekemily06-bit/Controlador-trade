@@ -183,6 +183,45 @@ def test_subscriptions_and_results_are_isolated_by_tenant_and_subject(tmp_path):
     assert all(call[-1] in {alice, bob, other_tenant} for call in analyzer.calls)
 
 
+
+def test_legacy_single_user_rows_migrate_only_to_configured_local_owner(tmp_path):
+    import sqlite3
+    path = tmp_path / "legacy.sqlite3"
+    with sqlite3.connect(path) as db:
+        db.execute("""
+            CREATE TABLE market_timeframe_watch (
+                symbol TEXT NOT NULL, timeframe TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1, created_at REAL NOT NULL,
+                last_processed_candle TEXT, last_signal TEXT,
+                last_status TEXT NOT NULL DEFAULT 'WAITING', last_error TEXT,
+                PRIMARY KEY(symbol, timeframe)
+            )
+        """)
+        db.execute("""
+            CREATE TABLE market_timeframe_results (
+                symbol TEXT NOT NULL, timeframe TEXT NOT NULL,
+                candle_at TEXT NOT NULL, result_json TEXT NOT NULL,
+                recorded_at REAL NOT NULL,
+                PRIMARY KEY(symbol, timeframe, candle_at)
+            )
+        """)
+        db.execute(
+            "INSERT INTO market_timeframe_watch(symbol,timeframe,enabled,created_at) VALUES(?,?,1,?)",
+            ("EURUSD", "5m", 1.0),
+        )
+        db.execute(
+            "INSERT INTO market_timeframe_results VALUES(?,?,?,?,?)",
+            ("EURUSD", "5m", "2026-09-07T10:00:00+00:00", '{"signal":"COMPRA"}', 2.0),
+        )
+
+    monitor = MarketTimeframeMonitor(path, FakeAnalyzer(), default_context=OWNER)
+    remote = TenantContext("tenant-remote", "alice")
+    assert [item["symbol"] for item in monitor.subscriptions(OWNER)] == ["EURUSD"]
+    assert [item["symbol"] for item in monitor.latest_results(context=OWNER)] == ["EURUSD"]
+    assert monitor.subscriptions(remote) == []
+    assert monitor.latest_results(context=remote) == []
+
+
 def test_monitor_requires_trusted_context_without_local_default(tmp_path):
     monitor = MarketTimeframeMonitor(tmp_path / "strict.sqlite3", FakeAnalyzer())
     try:
