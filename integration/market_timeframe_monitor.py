@@ -268,13 +268,24 @@ class MarketTimeframeMonitor:
                 (str(error)[:500], context.tenant_id, context.subject_id, symbol, timeframe),
             )
 
+    def _is_enabled(self, context: TenantContext, symbol: str, timeframe: str) -> bool:
+        with self._lock, self._connect() as db:
+            row = db.execute(
+                """
+                SELECT enabled FROM market_timeframe_watch_v2
+                WHERE tenant_id=? AND subject_id=? AND symbol=? AND timeframe=?
+                """,
+                (context.tenant_id, context.subject_id, symbol, timeframe),
+            ).fetchone()
+        return bool(row and row["enabled"])
+
     def _process(self, subscription: dict[str, Any], now: datetime) -> dict[str, Any] | None:
         context = TenantContext(tenant_id=subscription["tenant_id"], subject_id=subscription["subject_id"])
         symbol = subscription["symbol"]
         timeframe = subscription["timeframe"]
         expected = self.expected_last_closed_candle(timeframe, now=now)
         previous = subscription.get("last_processed_candle")
-        if previous == expected.isoformat():
+        if previous == expected.isoformat() or not self._is_enabled(context, symbol, timeframe):
             return None
         try:
             result = self.analyzer.analyze(
@@ -311,6 +322,10 @@ class MarketTimeframeMonitor:
                 "tenant_context": context,
                 "result": result,
             }
+            # Respect unsubscribe requests that arrive while market data is
+            # being fetched; do not emit a post-consent notification.
+            if not self._is_enabled(context, symbol, timeframe):
+                return None
             # Publish side effects before marking the candle processed. If
             # notification persistence fails, the next poll retries this
             # candle; stable notification IDs make that retry idempotent.
