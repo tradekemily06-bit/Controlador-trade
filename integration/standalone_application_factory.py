@@ -270,9 +270,10 @@ def build_standalone_application(
     app.register_handler(ApplicationArea.ANALYSIS, analysis)
     app.register_handler(ApplicationArea.STUDY, study)
     app.register_handler(ApplicationArea.MEMORY, memory)
-    if fiscal_reserve is not None:
-        app.register_handler(ApplicationArea.TAX_RESERVE, fiscal)
-    if assistant is not None:
-        app.register_handler(ApplicationArea.ECOSYSTEM_ASSISTANT, ecosystem_assistant)
+    # Register every visible area even when a dependency is absent. The handler
+    # returns an explicit NOT_CONFIGURED state instead of making the area vanish
+    # from dispatch or appear as an unknown route.
+    app.register_handler(ApplicationArea.TAX_RESERVE, fiscal)
+    app.register_handler(ApplicationArea.ECOSYSTEM_ASSISTANT, ecosystem_assistant)
     app.register_handler(ApplicationArea.CONTROL_CENTER, control_center)
     return app
