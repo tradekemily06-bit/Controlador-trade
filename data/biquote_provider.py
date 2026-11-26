@@ -60,7 +60,9 @@ class BiQuoteProvider(MarketDataProvider):
                 )
             )
 
-        candles.reverse()
+        # Providers may return newest-first or oldest-first. Normalize order
+        # explicitly before validation or timeframe aggregation.
+        candles.sort(key=lambda candle: candle.timestamp)
         if request.timeframe == "10m":
             # Build only complete, aligned pairs of closed 5-minute candles.
             # Missing or misaligned source bars are discarded, never guessed.
