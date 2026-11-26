@@ -226,27 +226,27 @@ def test_additional_standard_mt5_timeframes_are_mapped(timeframe, constant_name)
 
 
 
-def test_get_account_mode_confirms_demo_from_connected_terminal():
+def test_get_account_mode_confirms_demo_from_connected_terminal(tmp_path):
     mt5 = FakeMT5()
-    adapter = ICMarketsMT5DemoMarketDataAdapter(mt5)
+    adapter = ICMarketsMT5DemoMarketDataAdapter(mt5, terminal_path=str(tmp_path / "terminal64.exe"))
 
     assert adapter.get_account_mode() == "DEMO"
     assert mt5.shutdown_called is True
 
 
-def test_get_account_mode_fails_closed_for_real_account():
+def test_get_account_mode_fails_closed_for_real_account(tmp_path):
     mt5 = FakeMT5(demo=False)
-    adapter = ICMarketsMT5DemoMarketDataAdapter(mt5)
+    adapter = ICMarketsMT5DemoMarketDataAdapter(mt5, terminal_path=str(tmp_path / "terminal64.exe"))
 
     with pytest.raises(MT5MarketDataError, match="DEMO"):
         adapter.get_account_mode()
     assert mt5.shutdown_called is True
 
 
-def test_get_account_mode_fails_closed_for_disconnected_terminal():
+def test_get_account_mode_fails_closed_for_disconnected_terminal(tmp_path):
     mt5 = FakeMT5()
-    mt5.terminal_info = lambda: SimpleNamespace(path="", connected=False)
-    adapter = ICMarketsMT5DemoMarketDataAdapter(mt5)
+    adapter = ICMarketsMT5DemoMarketDataAdapter(mt5, terminal_path=str(tmp_path / "terminal64.exe"))
+    mt5.terminal_info = lambda: SimpleNamespace(path=str(tmp_path), connected=False)
 
     with pytest.raises(MT5MarketDataError, match="não está conectado"):
         adapter.get_account_mode()
