@@ -59,7 +59,7 @@ def build_standalone_application(
     senior_context = getattr(ecosystem_service, "senior_context", None)
     intelligence = intelligence or (UnifiedIntelligence(senior_context=senior_context) if senior_context is not None else UnifiedIntelligence())
     app = UnifiedEcosystemApplication(intelligence=intelligence)
-    app.market_data_provider_status = "CONNECTED" if market_analyzer is not None else "NOT_CONFIGURED"
+    app.market_data_provider_status = "REGISTERED_NOT_TESTED" if market_analyzer is not None else "NOT_CONFIGURED"
     app.market_data_registry = market_data_registry
 
     def command_cabin(task: str, context: Mapping[str, Any], shared: UnifiedIntelligence):
