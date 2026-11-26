@@ -268,6 +268,11 @@ class StandaloneWSGIApplication:
                 "market_monitor": monitor.status() if monitor is not None else {"status": "NOT_CONFIGURED", "worker_running": False},
                 "news": news_status(limit=1) if callable(news_status) else {"status": "NOT_CONFIGURED", "live": False},
                 "assistant": assistant.readiness() if callable(getattr(assistant, "readiness", None)) else {"status": "NOT_CONFIGURED"},
+                "decision_memory": (
+                    self.runtime.ecosystem_service.store.persistence_status()
+                    if callable(getattr(getattr(self.runtime.ecosystem_service, "store", None), "persistence_status", None))
+                    else {"mode": "UNKNOWN", "state": "STATUS_NOT_EXPOSED", "durability_confirmed": False}
+                ),
                 "notifications": ecosystem.notification_summary() if callable(getattr(ecosystem, "notification_summary", None)) else {"status": "NOT_CONFIGURED"},
                 "notification_delivery": worker.status() if worker is not None else {"configured": False, "running": False, "state": "NO_EXTERNAL_SINK_CONFIGURED"},
                 "storage_foundation": standalone_storage_status(self.runtime),
