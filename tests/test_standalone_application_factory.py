@@ -42,6 +42,9 @@ class FakeService:
     def statistics(self):
         return {"total": 0}
 
+    def replay(self, cases):
+        return [{"step": index, "symbol": case.get("symbol")} for index, case in enumerate(cases, start=1)]
+
     def memory_view(self, limit=50):
         return []
 
@@ -129,6 +132,26 @@ class StandaloneApplicationFactoryTests(unittest.TestCase):
         self.assertEqual(assistant.received["area"], "ecosystem_assistant")
         self.assertIn("risk_assessment", assistant.received["shared_capabilities"])
         self.assertFalse(result["execution_authorized"])
+
+    def test_study_area_exposes_existing_laboratory_replay(self):
+        app = build_standalone_application(ecosystem_service=FakeService())
+        result = app.handle(
+            area=ApplicationArea.STUDY,
+            task="replay de laboratório",
+            context={"operation": "replay", "cases": [{"symbol": "EURUSD"}]},
+        )
+        self.assertEqual(result["status"], "CONNECTED")
+        self.assertEqual(result["result"]["replay"][0]["symbol"], "EURUSD")
+        self.assertFalse(result["execution_authorized"])
+
+    def test_study_replay_rejects_empty_or_oversized_case_lists(self):
+        app = build_standalone_application(ecosystem_service=FakeService())
+        with self.assertRaises(ValueError):
+            app.handle(
+                area=ApplicationArea.STUDY,
+                task="replay",
+                context={"operation": "replay", "cases": []},
+            )
 
     def test_analysis_area_exposes_existing_statistics_and_news(self):
         app = build_standalone_application(ecosystem_service=FakeService())
