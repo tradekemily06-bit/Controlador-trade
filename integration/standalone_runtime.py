@@ -19,6 +19,8 @@ from integration.standalone_application_factory import build_standalone_applicat
 from integration.standalone_market_analysis import StandaloneMarketAnalysisService
 from integration.market_data_provider_registry import MarketDataProviderRegistry
 from core.unified_intelligence import UnifiedIntelligence
+from core.ecosystem_state_store import EcosystemStateStore
+from core.learning_state_store import LearningStateStore
 
 
 class StandaloneRuntime:
@@ -61,7 +63,10 @@ class StandaloneRuntime:
             self.domestic_pending = FiscalDomesticPendingQueue(str(fiscal_database))
 
             self.ecosystem_service = EcosystemService(
-                decision_store=DecisionStore(str(self.runtime_dir / "decision-memory.sqlite3"))
+                decision_store=DecisionStore(str(self.runtime_dir / "decision-memory.sqlite3")),
+                learning_state_store=LearningStateStore(
+                    EcosystemStateStore(self.runtime_dir / "ecosystem-state.sqlite3")
+                ),
             )
             self.intelligence = UnifiedIntelligence(
                 senior_context=self.ecosystem_service.senior_context
