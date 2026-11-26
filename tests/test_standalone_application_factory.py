@@ -127,7 +127,7 @@ class StandaloneApplicationFactoryTests(unittest.TestCase):
         self.assertEqual(result["status"], "CONNECTED")
         self.assertEqual(assistant.received["architecture"], "ONE_SHARED_INTELLIGENCE")
         self.assertEqual(assistant.received["area"], "ecosystem_assistant")
-        self.assertIn("risk", assistant.received["shared_capabilities"])
+        self.assertIn("risk_assessment", assistant.received["shared_capabilities"])
         self.assertFalse(result["execution_authorized"])
 
     def test_analysis_area_exposes_existing_statistics_and_news(self):
