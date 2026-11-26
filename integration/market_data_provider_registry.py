@@ -57,7 +57,7 @@ class MarketDataProviderRegistry:
                 {
                     "provider_id": item.provider_id,
                     "source": item.source,
-                    "status": "REGISTERED",
+                    "status": "REGISTERED_NOT_TESTED",
                     "selected": item.provider_id == self._selected,
                     "read_only": True,
                     "execution_authorized": False,
@@ -65,7 +65,7 @@ class MarketDataProviderRegistry:
                 for item in self._providers.values()
             ],
             "count": len(self._providers),
-            "provider_connected": bool(self._providers),
+            "provider_registered": bool(self._providers),
         }
 
     @classmethod
