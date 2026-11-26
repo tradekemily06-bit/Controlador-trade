@@ -18,6 +18,7 @@ from integration.ecosystem_service import EcosystemService
 from integration.standalone_application_factory import build_standalone_application
 from integration.standalone_market_analysis import StandaloneMarketAnalysisService
 from integration.market_data_provider_registry import MarketDataProviderRegistry
+from integration.standalone_market_data_providers import build_configured_market_data_providers
 from core.unified_intelligence import UnifiedIntelligence
 from core.ecosystem_state_store import EcosystemStateStore
 from core.learning_state_store import LearningStateStore
@@ -74,17 +75,20 @@ class StandaloneRuntime:
                 senior_context=self.ecosystem_service.senior_context
             )
             provider_map = dict(market_data_providers or {})
+            configured_provider = (
+                selected_market_data_provider
+                or os.getenv("CONTROLADOR_MARKET_DATA_PROVIDER", "").strip()
+                or None
+            )
+            if not provider_map and market_data_provider is None:
+                provider_map = build_configured_market_data_providers(configured_provider)
             if market_data_provider is not None:
                 if provider_map:
                     raise ValueError("use market_data_provider or market_data_providers, not both")
                 if not isinstance(market_data_source, str) or not market_data_source.strip():
                     raise ValueError("market_data_source is required when a provider is injected")
                 provider_map["default"] = (market_data_provider, market_data_source)
-            selected_provider = (
-                selected_market_data_provider
-                or os.getenv("CONTROLADOR_MARKET_DATA_PROVIDER", "").strip()
-                or None
-            )
+            selected_provider = configured_provider
             self.market_data_registry = MarketDataProviderRegistry.from_mapping(
                 provider_map,
                 selected_provider=selected_provider,
