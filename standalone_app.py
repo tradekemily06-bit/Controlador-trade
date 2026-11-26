@@ -78,7 +78,14 @@ def _authorized(environ) -> tuple[bool, str]:
     authenticated = environ.get("controlador.identity_verified") is True
     subject = str(environ.get("REMOTE_USER") or "").strip()
     tenant_id = str(environ.get("controlador.tenant_id") or "").strip()
-    if not middleware_enabled or not authenticated or not subject or not tenant_id:
+    identity_policy = IdentityPolicy()
+    if (
+        not middleware_enabled
+        or not subject
+        or not identity_policy.authorize_production_request(
+            authenticated=authenticated, tenant_id=tenant_id
+        )
+    ):
         return False, (
             "identidade remota verificada e tenant são obrigatórios; "
             "token compartilhado sozinho não autentica um usuário"
