@@ -167,6 +167,28 @@ class StandaloneWSGIApplication:
                 request_id,
             )
 
+        if method == "GET" and path == "/api/readiness":
+            architecture = self.runtime.application.architecture()
+            ecosystem = self.runtime.ecosystem_service
+            registry = getattr(self.runtime, "market_data_registry", None)
+            monitor = getattr(self.runtime, "market_monitor", None)
+            worker = getattr(self.runtime, "notification_worker", None)
+            assistant = getattr(self.runtime, "assistant", None)
+            news_status = getattr(ecosystem, "news_status", None)
+            readiness = {
+                "architecture": architecture.get("architecture", "UNKNOWN"),
+                "areas": len(architecture.get("application_areas", [])),
+                "market_data": registry.status() if registry is not None else {"status": "NOT_CONFIGURED"},
+                "market_monitor": monitor.status() if monitor is not None else {"status": "NOT_CONFIGURED", "worker_running": False},
+                "news": news_status(limit=1) if callable(news_status) else {"status": "NOT_CONFIGURED", "live": False},
+                "assistant": assistant.readiness() if callable(getattr(assistant, "readiness", None)) else {"status": "NOT_CONFIGURED"},
+                "notifications": ecosystem.notification_summary() if callable(getattr(ecosystem, "notification_summary", None)) else {"status": "NOT_CONFIGURED"},
+                "notification_delivery": worker.status() if worker is not None else {"configured": False, "running": False, "state": "NO_EXTERNAL_SINK_CONFIGURED"},
+                "deployment": "PROCESS_RUNNING_DEPLOYMENT_NOT_VERIFIED",
+                "execution_authorized": False,
+            }
+            return _json_response(start_response, HTTPStatus.OK, readiness, request_id)
+
         if method == "GET" and path == "/api/intelligence/architecture":
             return _json_response(
                 start_response, HTTPStatus.OK,
