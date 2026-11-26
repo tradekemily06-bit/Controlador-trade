@@ -98,8 +98,6 @@ class LearningStateStore:
             ]
         except (KeyError, TypeError, ValueError, AttributeError) as exc:
             raise ValueError("persisted learning state failed domain validation") from exc
-        if set(sources) - set(resources):
-            raise ValueError("learning source without matching resource")
         if any(item.resource_id not in resources for item in observations):
             raise ValueError("learning observation references an unknown resource")
         if any(item.activity_id not in activities for item in attempts):
