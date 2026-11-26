@@ -1,0 +1,447 @@
+"""Read-only context assembly for the Controlador Trading assistant.
+
+Only explicit, low-sensitivity fields are sent to the external model provider. Pending foreign items are represented by owner-scoped counts only.
+This module does not execute trades, change settings, move funds, or infer tax outcomes.
+"""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from math import isfinite
+import re
+from typing import Any
+
+from finance.fiscal_taxonomy import fiscal_classification_catalog
+
+
+def _iso_date(value: Any) -> str:
+    if not isinstance(value, str) or re.fullmatch(r"\d{4}-\d{2}-\d{2}", value) is None:
+        return ""
+    candidate = value[:10]
+    try:
+        datetime.strptime(candidate, "%Y-%m-%d")
+    except ValueError:
+        return ""
+    return candidate
+
+
+def _safe_currency_codes(value: Any) -> list[str]:
+    if not isinstance(value, (list, tuple, set)):
+        return []
+    # Currency codes are data, not objects to stringify. Accept only bounded
+    # strings so hostile/custom objects cannot run __str__ during sanitization.
+    return sorted({
+        code.upper() for code in value
+        if isinstance(code, str)
+        and len(code) == 3
+        and code.isascii()
+        and code.isalpha()
+    })[:10]
+
+
+def _is_finite_number(value: Any) -> bool:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return isfinite(value)
+    except (OverflowError, TypeError, ValueError):
+        return False
+
+
+def _count(value: Any) -> int:
+    # Counts come from trusted service aggregates and must be actual integers.
+    # Coercing strings or fractional floats can silently turn malformed data
+    # into plausible-looking totals in the assistant context.
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 0
+    # Keep corrupted or adversarial aggregates from becoming enormous
+    # numeric payloads in the external assistant prompt.
+    return min(max(0, value), 1_000_000_000)
+
+
+def _fiscal_number(value: Any, field: str) -> bool:
+    """Validate bounded fiscal aggregates before they enter external context."""
+    if not _is_finite_number(value):
+        return False
+    if field == "rate":
+        return 0 <= value <= 100
+    if field == "reserve_amount_brl":
+        return 0 <= value <= 1_000_000_000_000
+    if field == "realized_result_brl":
+        return -1_000_000_000_000 <= value <= 1_000_000_000_000
+    return False
+
+
+def _decision_summary(item: Any) -> dict[str, Any]:
+    if not isinstance(item, dict):
+        return {}
+    # Only forward controlled enum values and validated primitives. A string
+    # type check alone is insufficient: free-form text can carry prompt
+    # injection or private notes into the external assistant context.
+    safe: dict[str, Any] = {}
+    signal = item.get("signal")
+    if isinstance(signal, str) and signal in {
+        "COMPRA", "COMPRAR", "VENDA", "VENDER", "AGUARDAR",
+        "BUY", "SELL", "WAIT",
+    }:
+        safe["signal"] = signal
+    score = item.get("score")
+    if _is_finite_number(score) and 1 <= score <= 100:
+        safe["score"] = score
+    confirmed = item.get("confirmed")
+    if isinstance(confirmed, bool):
+        safe["confirmed"] = confirmed
+    outcome = item.get("outcome")
+    if isinstance(outcome, str) and outcome in {
+        "WIN", "LOSS", "DRAW", "OPEN", "VOID", "UNKNOWN",
+    }:
+        safe["outcome"] = outcome
+    created_at = item.get("created_at")
+    if isinstance(created_at, str) and len(created_at) <= 40:
+        try:
+            datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+        except ValueError:
+            pass
+        else:
+            safe["created_at"] = created_at
+    return safe
+
+
+def _safe_bool(value: Any) -> bool:
+    """Accept only actual booleans; strings such as \"false\" are not truthy evidence."""
+    return value if isinstance(value, bool) else False
+
+
+def _safe_state_token(value: Any, limit: int = 32) -> str:
+    """Keep operational labels to bounded uppercase identifiers, never free text."""
+    if (
+        not isinstance(value, str)
+        or isinstance(limit, bool)
+        or not isinstance(limit, int)
+        or not 1 <= limit <= 48
+        or len(value) > limit
+    ):
+        return "UNKNOWN"
+    return value if re.fullmatch(rf"[A-Z0-9_-]{{1,{limit}}}", value) else "UNKNOWN"
+
+
+
+
+_COMPONENT_KEYS = (
+    "decision_engine", "memory", "replay", "statistics", "risk_gate",
+    "automation", "learning", "news", "mt5_demo", "real", "saas",
+    "production_storage", "production_operation_gate",
+    "trusted_identity_provider", "tenant_isolation",
+)
+
+
+def _component_summary(value: Any) -> dict[str, str]:
+    """Forward only known component names and bounded machine-state tokens."""
+    if not isinstance(value, dict):
+        return {}
+    return {
+        key: _safe_state_token(value.get(key), 48)
+        for key in _COMPONENT_KEYS
+        if key in value
+    }
+
+
+def _risk_summary(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {"available": False}
+    limits = value.get("configured_limits")
+    safe_limits = {}
+    if isinstance(limits, dict):
+        for key in ("daily_loss_limit", "max_operations", "max_consecutive_losses"):
+            item = limits.get(key)
+            if _is_finite_number(item):
+                safe_limits[key] = item
+    return {
+        "available": True,
+        "allowed": _safe_bool(value.get("allowed")),
+        "configured_limits": safe_limits,
+    }
+
+
+def _operations_summary(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {"available": False}
+    execution = value.get("execution") if isinstance(value.get("execution"), dict) else {}
+    reconciliation = value.get("reconciliation") if isinstance(value.get("reconciliation"), dict) else {}
+    recovery = value.get("recovery") if isinstance(value.get("recovery"), dict) else {}
+    kill = value.get("kill_switch") if isinstance(value.get("kill_switch"), dict) else {}
+    health = value.get("runtime_health") if isinstance(value.get("runtime_health"), dict) else {}
+    market = value.get("market_data") if isinstance(value.get("market_data"), dict) else {}
+    # Do not forward request IDs, free-form messages/reasons, supervisor payloads,
+    # broker symbols, timeframes, or other arbitrary nested runtime data.
+    return {
+        "available": True,
+        "execution": {
+            "allowed": False,
+            "mode": _safe_state_token(execution.get("mode"), 24),
+            "state": _safe_state_token(execution.get("state")),
+            "real": "DISABLED",
+        },
+        "reconciliation": {
+            "state": _safe_state_token(reconciliation.get("state")),
+            "pending_count": _count(len(reconciliation.get("pending_request_ids", []))) if isinstance(reconciliation.get("pending_request_ids", []), list) else 0,
+            "unknown_count": _count(len(reconciliation.get("unknown_request_ids", []))) if isinstance(reconciliation.get("unknown_request_ids", []), list) else 0,
+        },
+        "recovery": {
+            "state": _safe_state_token(recovery.get("state")),
+            "can_resume": _safe_bool(recovery.get("can_resume")),
+        },
+        "kill_switch": {
+            "state": _safe_state_token(kill.get("state"), 24),
+            "enabled": _safe_bool(kill.get("enabled")),
+        },
+        "runtime_health": {
+            "state": _safe_state_token(health.get("state"), 24),
+            "ledger_entries": _count(health.get("ledger_entries")),
+            "pending_executions": _count(health.get("pending_executions")),
+            "unknown_executions": _count(health.get("unknown_executions")),
+        },
+        "market_data": {
+            "health": _safe_state_token(market.get("health"), 24),
+            "safe_for_analysis": _safe_bool(market.get("safe_for_analysis")),
+            "candle_count": _count(market.get("candle_count")),
+            "gap_count": _count(market.get("gap_count")),
+            "stale": market.get("stale") if isinstance(market.get("stale"), bool) else None,
+        },
+    }
+
+
+def _statistics_summary(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {"available": False}
+    safe = {}
+    for key in ("total", "total_decisions", "actionable", "wins", "losses", "draws", "open", "win_rate"):
+        item = value.get(key)
+        if _is_finite_number(item):
+            safe[key] = item
+    periods = value.get("periods")
+    if isinstance(periods, dict):
+        safe["periods"] = {}
+        for period in ("daily", "weekly", "monthly", "day", "week", "month", "year"):
+            row = periods.get(period)
+            if isinstance(row, dict):
+                safe["periods"][period] = {
+                    key: row[key] for key in ("total", "actionable", "wins", "losses", "draws", "open", "win_rate")
+                    if key in row and _is_finite_number(row[key])
+                }
+    safe["available"] = True
+    return safe
+
+
+def _fiscal_periods(value: Any) -> dict[str, dict[str, Any]]:
+    """Allow only fixed period keys, ISO date bounds, counts and numeric aggregates."""
+    safe: dict[str, dict[str, Any]] = {}
+    if not isinstance(value, dict):
+        return safe
+    for period in ("day", "week", "month", "year"):
+        row = value.get(period)
+        if not isinstance(row, dict):
+            continue
+        item: dict[str, Any] = {}
+        for key in ("start", "end"):
+            raw = row.get(key)
+            candidate = _iso_date(raw)
+            if candidate:
+                item[key] = candidate
+        if "entries" in row:
+            item["entries"] = _count(row.get("entries"))
+        for key in ("realized_result_brl", "reserve_amount_brl"):
+            raw = row.get(key)
+            if _fiscal_number(raw, key):
+                item[key] = raw
+        safe[period] = item
+    return safe
+
+
+def _fiscal_reserve_semantics(value: Any) -> dict[str, Any]:
+    """Never forward free-form semantic descriptions from fiscal service data."""
+    # These are application-owned invariants, not claims copied from fiscal
+    # service data. Always emit the fixed safe contract, even if the service
+    # omits or forges semantic fields.
+    return {
+        "kind": "PLANNING_ESTIMATE_ONLY",
+        "tax_liability_confirmed": False,
+        "monthly_tax_assessment": False,
+        "monthly_loss_offsets_calculated": False,
+        "irrf_credits_calculated": False,
+        "positive_entry_only": True,
+    }
+
+
+def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id: str, fiscal_pending_queue: Any = None, fiscal_domestic_pending_queue: Any = None) -> dict[str, Any]:
+    """Build a compact, privacy-filtered snapshot for an assistant response."""
+    if service is None or fiscal_reserve is None:
+        raise ValueError("serviço do ecossistema e Reserva Fiscal são obrigatórios")
+
+    status = service.system_status()
+    risk = service.risk_status()
+    observability = service.operational_observability()
+    statistics = service.statistics()
+    fiscal = fiscal_reserve.summary(fiscal_owner_id)
+    fiscal_context: dict[str, Any] = {
+        "name": "Reserva Fiscal",
+        "currency": "BRL",
+    }
+    as_of = fiscal.get("as_of") if isinstance(fiscal, dict) else None
+    safe_as_of = _iso_date(as_of)
+    if safe_as_of:
+        fiscal_context["as_of"] = safe_as_of
+    total_reserved = fiscal.get("total_reserved_brl") if isinstance(fiscal, dict) else None
+    if _fiscal_number(total_reserved, "reserve_amount_brl"):
+        fiscal_context["total_reserved_brl"] = total_reserved
+    if isinstance(fiscal, dict):
+        fiscal_context["categories"] = fiscal.get("categories", {}) if isinstance(fiscal.get("categories"), dict) else {}
+        fiscal_context["periods"] = _fiscal_periods(fiscal.get("periods"))
+        fiscal_context["reserve_semantics"] = _fiscal_reserve_semantics(fiscal.get("reserve_semantics"))
+        # Do not send arbitrary service-provided limitation text to the model.
+        fiscal_context["limitations"] = [
+            "Estimativa de planejamento; não representa imposto apurado ou devido.",
+            "Compensações fiscais e créditos de IRRF não são calculados.",
+            "Categorias sem regra validada permanecem pendentes e fora dos totais.",
+        ]
+    # The legacy foreign category may still carry a historical generic rate
+    # (15%). Never forward that rate to the external assistant as tax guidance.
+    categories = fiscal_context.get("categories")
+    if isinstance(categories, dict):
+        # Forward only aggregate fields needed for planning. Never pass ledger
+        # notes, references, or future free-form fields to the external model.
+        safe_categories: dict[str, dict[str, Any]] = {}
+        for category, item in categories.items():
+            if not isinstance(category, str) or not isinstance(item, dict):
+                continue
+            if category not in {"BR_DAY_TRADE", "FOREIGN_FINANCIAL_ASSET"}:
+                continue
+            if category.startswith("FOREIGN_"):
+                # Foreign categories remain classification-only. Legacy rows
+                # are visible as counts, never as taxable results or reserves.
+                safe_categories[category] = {
+                    "entries": _count(item.get("entries")),
+                    "realized_result_brl": 0.0,
+                    "reserve_amount_brl": 0.0,
+                    "classification_status": "PENDING_CLASSIFICATION",
+                    "rate_available": False,
+                }
+                continue
+            raw_rate_source = item.get("rate_source")
+            rate_source = (
+                raw_rate_source
+                if raw_rate_source in {"DEFAULT", "USER_CONFIGURED", "LEGACY_UNKNOWN"}
+                else "LEGACY_UNKNOWN"
+            )
+            rate_kind = {
+                "DEFAULT": "SYSTEM_DEFAULT_PLANNING_RATE",
+                "USER_CONFIGURED": "USER_CONFIGURED_PLANNING_RATE",
+                "LEGACY_UNKNOWN": "LEGACY_RATE_ORIGIN_UNKNOWN",
+            }[rate_source]
+            safe_item = {
+                "entries": _count(item.get("entries")),
+                "rate_source": rate_source,
+                "rate_kind": rate_kind,
+                "tax_rate_verified": False,
+            }
+            for key in ("rate", "realized_result_brl", "reserve_amount_brl"):
+                value = item.get(key)
+                if _fiscal_number(value, key):
+                    safe_item[key] = value
+            safe_categories[category] = safe_item
+        fiscal_context["categories"] = safe_categories
+    pending_context = {"available": False, "included_in_totals": False}
+    if fiscal_pending_queue is not None:
+        try:
+            pending_summary = fiscal_pending_queue.summary(fiscal_owner_id)
+            pending_context = {
+                "available": True,
+                "total": _count(pending_summary.get("total")),
+                "realized_results": _count(pending_summary.get("realized_results")),
+                "asset_amounts": _count(pending_summary.get("asset_amounts")),
+                "currencies": _safe_currency_codes(pending_summary.get("currencies", [])),
+                "evidence_completeness": {
+                    key: _count(pending_summary.get("evidence_completeness", {}).get(key))
+                    for key in (
+                        "total",
+                        "missing_institution",
+                        "missing_custody_location",
+                        "missing_contract_type",
+                        "missing_core_evidence",
+                    )
+                    if isinstance(pending_summary.get("evidence_completeness"), dict)
+                },
+                "periods": {
+                    str(period): {
+                        "start": _iso_date(values.get("start")),
+                        "end": _iso_date(values.get("end")),
+                        "total": _count(values.get("total")),
+                        "realized_results": _count(values.get("realized_results")),
+                        "asset_amounts": _count(values.get("asset_amounts")),
+                    }
+                    for period, values in pending_summary.get("periods", {}).items()
+                    if period in {"day", "week", "month", "year"} and isinstance(values, dict)
+                },
+                "as_of": _iso_date(pending_summary.get("as_of")),
+                "classification_status": "PENDING_CLASSIFICATION",
+                "included_in_totals": False,
+                "reserve_calculated": False,
+            }
+        except Exception:
+            pending_context = {"available": False, "included_in_totals": False}
+    fiscal_context["foreign_pending"] = pending_context
+    domestic_pending_context = {"available": False, "included_in_totals": False}
+    if fiscal_domestic_pending_queue is not None:
+        try:
+            domestic_summary = fiscal_domestic_pending_queue.summary(fiscal_owner_id)
+            domestic_pending_context = {
+                "available": True,
+                "total": _count(domestic_summary.get("total")),
+                "periods": {
+                    str(period): {
+                        "start": _iso_date(values.get("start")),
+                        "end": _iso_date(values.get("end")),
+                        "total": _count(values.get("total")),
+                        "results": _count(values.get("results")),
+                    }
+                    for period, values in domestic_summary.get("periods", {}).items()
+                    if period in {"day", "week", "month", "year"} and isinstance(values, dict)
+                },
+                "as_of": _iso_date(domestic_summary.get("as_of")),
+                "classification_status": "PENDING_CLASSIFICATION",
+                "included_in_totals": False,
+                "reserve_calculated": False,
+            }
+        except Exception:
+            domestic_pending_context = {"available": False, "included_in_totals": False}
+    fiscal_context["domestic_pending"] = domestic_pending_context
+    recent_decisions = service.memory_view(limit=5)
+
+    # Component labels are a fixed application contract. Do not forward
+    # arbitrary keys or free-form status strings from service/provider data.
+    safe_components = _component_summary(status.get("components"))
+
+    return {
+        "as_of": datetime.now(timezone.utc).isoformat(),
+        "sources": ["system_status", "risk_status", "operational_observability", "statistics", "fiscal_reserve", "fiscal_pending_queue_summary", "fiscal_domestic_pending_queue_summary", "recent_decisions"],
+        "system": {
+            "mode": _safe_state_token(status.get("mode"), 24),
+            "execution_allowed": False,
+            "real": "DESABILITADO",
+            "health": _safe_state_token(status.get("health"), 24),
+            "components": safe_components,
+        },
+        "risk": _risk_summary(risk),
+        "operations": _operations_summary(observability),
+        "statistics": _statistics_summary(statistics),
+        "fiscal_reserve": fiscal_context,
+        "fiscal_classification_catalog": fiscal_classification_catalog(),
+        "recent_decisions": [_decision_summary(item) for item in recent_decisions if isinstance(item, dict)][-5:],
+        "assistant_safety": {
+            "read_only": True,
+            "may_execute_orders": False,
+            "may_enable_real": False,
+            "may_move_money": False,
+            "tax_estimates_are_not_tax_assessments": True,
+            "unknown_data_must_be_reported_as_unavailable": True,
+        },
+    }
