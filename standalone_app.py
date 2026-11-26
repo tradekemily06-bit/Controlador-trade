@@ -519,8 +519,29 @@ class StandaloneWSGIApplication:
                 limit = int(params.get("limit", "50"))
                 if not 1 <= limit <= 200:
                     raise ValueError
-                include_info = str(params.get("include_info", "false")).lower() in {"1", "true", "yes"}
-                items = self.runtime.ecosystem_service.notification_items(include_info=include_info)
+                tenant_context = _tenant_context_for_request(environ, reason)
+                if tenant_context is None:
+                    return _json_response(
+                        start_response, HTTPStatus.FORBIDDEN,
+                        {"error": "identidade individual necessária para acessar notificações", "execution_authorized": False},
+                        request_id,
+                    )
+                if reason == "trusted_identity":
+                    tenant_state = getattr(self.runtime, "tenant_state", None)
+                    if tenant_state is None:
+                        return _json_response(
+                            start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                            {"error": "armazenamento individual de notificações não configurado", "execution_authorized": False},
+                            request_id,
+                        )
+                    items = tenant_state.load_notifications(tenant_context)
+                    scope = "TENANT_SCOPED"
+                else:
+                    # The local single-user runtime may continue using its
+                    # legacy operational inbox; remote users never see it.
+                    include_info = str(params.get("include_info", "false")).lower() in {"1", "true", "yes"}
+                    items = self.runtime.ecosystem_service.notification_items(include_info=include_info)
+                    scope = "LOCAL_SINGLE_USER"
             except (ValueError, TypeError):
                 return _json_response(
                     start_response, HTTPStatus.BAD_REQUEST,
@@ -529,7 +550,7 @@ class StandaloneWSGIApplication:
                 )
             return _json_response(
                 start_response, HTTPStatus.OK,
-                {"notifications": items[:limit], "count": min(len(items), limit), "execution_authorized": False},
+                {"notifications": items[:limit], "count": min(len(items), limit), "scope": scope, "execution_authorized": False},
                 request_id,
             )
 
