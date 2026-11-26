@@ -53,6 +53,23 @@ def _authorized(environ) -> tuple[bool, str]:
         return False, "autorização negada"
     return True, "trusted"
 
+def _mt5_relay_authorized(environ) -> bool:
+    expected = os.getenv("CONTROLADOR_MT5_RELAY_TOKEN", "").strip()
+    if not expected:
+        return False
+    authorization = str(environ.get("HTTP_AUTHORIZATION") or "")
+    if not authorization.startswith("Bearer "):
+        return False
+    supplied = authorization[7:].strip()
+    if not supplied or not hmac.compare_digest(supplied, expected):
+        return False
+    direct_tls = str(environ.get("wsgi.url_scheme", "")).lower() == "https"
+    trusted_proxy_tls = (
+        os.getenv("CONTROLADOR_TRUST_PROXY_TLS", "").strip().lower() in {"1", "true", "yes"}
+        and str(environ.get("HTTP_X_FORWARDED_PROTO", "")).lower() == "https"
+    )
+    return direct_tls or trusted_proxy_tls
+
 
 def _read_json(environ) -> dict[str, Any]:
     raw_length = environ.get("CONTENT_LENGTH") or "0"
@@ -88,6 +105,45 @@ class StandaloneWSGIApplication:
                 {"error": "limite de requisições excedido", "execution_authorized": False},
                 request_id,
             )
+
+
+        if method == "POST" and path == "/api/bridge/mt5/candles":
+            if not _mt5_relay_authorized(environ):
+                return _json_response(
+                    start_response, HTTPStatus.UNAUTHORIZED,
+                    {"error": "ponte MT5 não autorizada ou conexão TLS não confirmada", "execution_authorized": False},
+                    request_id,
+                )
+            relay = getattr(self.runtime, "mt5_relay_store", None)
+            if relay is None:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "provedor mt5_relay não está configurado", "execution_authorized": False},
+                    request_id,
+                )
+            try:
+                payload = _read_json(environ)
+                result = relay.ingest(payload)
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return _json_response(
+                    start_response, HTTPStatus.BAD_REQUEST,
+                    {"error": str(exc), "execution_authorized": False},
+                    request_id,
+                )
+            return _json_response(
+                start_response, HTTPStatus.ACCEPTED,
+                {**result, "execution_authorized": False},
+                request_id,
+            )
+
+        if method == "GET" and path == "/api/bridge/mt5/status":
+            relay = getattr(self.runtime, "mt5_relay_store", None)
+            payload = (
+                relay.status()
+                if relay is not None
+                else {"connected": False, "status": "NOT_CONFIGURED", "execution_authorized": False}
+            )
+            return _json_response(start_response, HTTPStatus.OK, payload, request_id)
 
         authorized, reason = _authorized(environ)
         if not authorized:
