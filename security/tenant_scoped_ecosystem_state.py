@@ -71,12 +71,13 @@ class TenantScopedEcosystemState:
             raise ValueError("notification_id is required")
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 2000:
             raise ValueError("limit must be an integer between 1 and 2000")
-        items = self.load_notifications(trusted)
-        if any(item.get("notification_id") == notification_id for item in items):
-            return False
-        items.append(dict(notification))
-        self.save_notifications(trusted, items[-limit:])
-        return True
+        return self.storage.append_unique_list_item(
+            trusted,
+            self._NOTIFICATIONS_KEY,
+            notification,
+            unique_field="notification_id",
+            limit=limit,
+        )
 
     def readiness(self) -> dict[str, object]:
         return {
