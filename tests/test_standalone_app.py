@@ -258,6 +258,7 @@ class StandaloneWSGITests(unittest.TestCase):
 
     def test_remote_market_monitor_uses_verified_tenant_and_subject_scope(self):
         runtime = FakeRuntime()
+        runtime.market_monitor.calls.clear()
         app = StandaloneWSGIApplication(runtime)
         settings = {
             "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
