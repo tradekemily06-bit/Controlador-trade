@@ -1,6 +1,7 @@
 """Atomic migration of all fiscal tables to the configured single owner."""
 from __future__ import annotations
 
+import re
 import sqlite3
 from pathlib import Path
 
@@ -93,13 +94,23 @@ def _owner_schema_constraints_valid(db: sqlite3.Connection) -> bool:
     )
 
 
-def migrate_fiscal_schema(database_path: str) -> str:
-    """Migrate all four fiscal tables in one transaction; abort if owner is unset.
+def migrate_fiscal_schema(
+    database_path: str, *, trusted_owner_id: str | None = None
+) -> str:
+    """Migrate fiscal tables atomically for one configured or trusted tenant owner.
 
-    Existing rows are assigned to the one server-configured owner. The identity
-    is never accepted as an argument and is never stored in clear text.
+    The default remains the legacy single-configured-owner path. The optional
+    tenant path accepts only a pre-derived opaque tenant digest, never raw
+    tenant/subject identifiers or request payload values.
     """
-    owner_id = configured_fiscal_owner_id()
+    if trusted_owner_id is None:
+        owner_id = configured_fiscal_owner_id()
+    else:
+        if not isinstance(trusted_owner_id, str) or not re.fullmatch(
+            r"tenant:[0-9a-f]{64}", trusted_owner_id
+        ):
+            raise ValueError("identidade fiscal tenant inválida; use somente chave opaca confiável")
+        owner_id = trusted_owner_id
     path = str(database_path)
     if path != ":memory:":
         Path(path).parent.mkdir(parents=True, exist_ok=True)
