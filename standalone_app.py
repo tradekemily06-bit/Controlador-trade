@@ -541,6 +541,20 @@ class StandaloneWSGIApplication:
                     # legacy operational inbox; remote users never see it.
                     include_info = str(params.get("include_info", "false")).lower() in {"1", "true", "yes"}
                     items = self.runtime.ecosystem_service.notification_items(include_info=include_info)
+                    # Merge explicitly addressed local-user events with the
+                    # legacy local operational inbox. Deduplicate by stable ID.
+                    tenant_state = getattr(self.runtime, "tenant_state", None)
+                    if tenant_state is not None:
+                        scoped_items = tenant_state.load_notifications(tenant_context)
+                        seen_ids = {
+                            item.get("notification_id")
+                            for item in items
+                            if isinstance(item, dict) and item.get("notification_id")
+                        }
+                        items.extend(
+                            item for item in scoped_items
+                            if item.get("notification_id") not in seen_ids
+                        )
                     scope = "LOCAL_SINGLE_USER"
             except (ValueError, TypeError):
                 return _json_response(
