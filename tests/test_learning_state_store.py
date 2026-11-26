@@ -52,6 +52,7 @@ class LearningStateStoreTests(unittest.TestCase):
                 learning_state_store=LearningStateStore(EcosystemStateStore(database))
             )
             summary = restarted.learning_summary()
+            self.assertEqual(restarted.system_status()["learning_persistence"], "SQLITE")
             self.assertEqual(len(summary["resources"]), 1)
             self.assertEqual(len(summary["learning_sources"]), 1)
             self.assertEqual(summary["learning_sources"][0]["status"], "VALIDATED")
