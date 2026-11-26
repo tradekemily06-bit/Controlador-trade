@@ -16,6 +16,7 @@ from typing import Any
 from security_guard import MAX_BODY_BYTES, SECURITY
 from integration.standalone_runtime import StandaloneRuntime
 from integration.standalone_foundation_status import standalone_storage_status
+from security.identity_boundary import IdentityPolicy
 from data.timeframes import list_supported_timeframes
 
 
@@ -251,14 +252,9 @@ class StandaloneWSGIApplication:
                 "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE", ""
             ).strip().lower() in {"1", "true", "yes"}
             readiness = {
-                "identity": {
-                    "runtime_identity": "SINGLE_CONFIGURED_LOCAL_IDENTITY",
-                    "remote_identity_middleware": "ENABLED" if identity_middleware else "NOT_CONFIGURED",
-                    "remote_tenant_claim": "REQUIRED",
-                    "shared_bearer_token_is_user_identity": False,
-                    "multi_tenant_isolation": "NOT_IMPLEMENTED",
-                    "real_execution": "DISABLED",
-                },
+                "identity": IdentityPolicy().status(
+                    remote_identity_middleware_configured=identity_middleware
+                ),
                 "architecture": architecture.get("architecture", "UNKNOWN"),
                 "areas": len(architecture.get("application_areas", [])),
                 "market_data": registry.status(probe_account_mode=False) if registry is not None else {"status": "NOT_CONFIGURED"},
