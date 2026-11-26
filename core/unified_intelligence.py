@@ -203,7 +203,6 @@ class UnifiedIntelligence:
                 "external_foundation_model": "NOT_CONFIGURED_BY_THIS_LAYER",
                 "live_market_provider": "MUST_BE_VALIDATED_PER_ADAPTER",
                 "external_push_notifications": "MUST_BE_CONFIGURED_AND_TESTED",
-                "all_area_handlers_connected": False,
             },
             "execution_authorized": False,
         }
