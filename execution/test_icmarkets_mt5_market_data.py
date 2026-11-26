@@ -12,7 +12,26 @@ from execution.icmarkets_mt5_market_data import (
 
 class FakeMT5:
     ACCOUNT_TRADE_MODE_DEMO = 2
+    TIMEFRAME_M1 = 1
+    TIMEFRAME_M2 = 2
+    TIMEFRAME_M3 = 3
+    TIMEFRAME_M4 = 4
     TIMEFRAME_M5 = 5
+    TIMEFRAME_M6 = 6
+    TIMEFRAME_M10 = 10
+    TIMEFRAME_M12 = 12
+    TIMEFRAME_M15 = 15
+    TIMEFRAME_M20 = 20
+    TIMEFRAME_M30 = 30
+    TIMEFRAME_H1 = 60
+    TIMEFRAME_H2 = 120
+    TIMEFRAME_H3 = 180
+    TIMEFRAME_H4 = 240
+    TIMEFRAME_H6 = 360
+    TIMEFRAME_H8 = 480
+    TIMEFRAME_H12 = 720
+    TIMEFRAME_D1 = 1440
+    TIMEFRAME_W1 = 10080
 
     def __init__(self, *, demo=True, rates=None):
         self.demo = demo
@@ -126,7 +145,7 @@ def test_unsupported_timeframe_is_rejected():
 
     with pytest.raises(ValueError, match="timeframe não suportado"):
         adapter.fetch_market_data(
-            BrokerMarketDataRequest(symbol="BTCUSD", timeframe="2m", limit=2)
+            BrokerMarketDataRequest(symbol="BTCUSD", timeframe="7m", limit=2)
         )
 
 
@@ -179,3 +198,28 @@ def test_adapter_rejects_a_different_connected_terminal(rates, tmp_path):
         )
 
     assert mt5.shutdown_called is True
+
+
+
+@pytest.mark.parametrize(
+    ("timeframe", "constant_name"),
+    [
+        ("M2", "TIMEFRAME_M2"),
+        ("M3", "TIMEFRAME_M3"),
+        ("M6", "TIMEFRAME_M6"),
+        ("M10", "TIMEFRAME_M10"),
+        ("M20", "TIMEFRAME_M20"),
+        ("H2", "TIMEFRAME_H2"),
+        ("H3", "TIMEFRAME_H3"),
+        ("H6", "TIMEFRAME_H6"),
+        ("H8", "TIMEFRAME_H8"),
+        ("H12", "TIMEFRAME_H12"),
+        ("D1", "TIMEFRAME_D1"),
+        ("W1", "TIMEFRAME_W1"),
+    ],
+)
+def test_additional_standard_mt5_timeframes_are_mapped(timeframe, constant_name):
+    mt5 = FakeMT5()
+    adapter = ICMarketsMT5DemoMarketDataAdapter(mt5)
+
+    assert adapter._timeframe(timeframe) == getattr(mt5, constant_name)
