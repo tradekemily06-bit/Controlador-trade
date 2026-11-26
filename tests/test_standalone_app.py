@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import unittest
+from unittest.mock import patch
 from urllib.parse import urlsplit
 
 from standalone_app import StandaloneWSGIApplication
@@ -40,7 +41,7 @@ class FakeRuntime:
     notification_worker = None
 
 
-def call_wsgi(app, path, method="GET", body=None, remote_addr="127.0.0.1"):
+def call_wsgi(app, path, method="GET", body=None, remote_addr="127.0.0.1", origin=None):
     raw = json.dumps(body or {}).encode("utf-8")
     parsed_path = urlsplit(path)
     environ = {
@@ -51,6 +52,8 @@ def call_wsgi(app, path, method="GET", body=None, remote_addr="127.0.0.1"):
         "CONTENT_LENGTH": str(len(raw)),
         "wsgi.input": io.BytesIO(raw),
     }
+    if origin is not None:
+        environ["HTTP_ORIGIN"] = origin
     captured = {}
 
     def start_response(status, headers):
@@ -131,6 +134,29 @@ class StandaloneWSGITests(unittest.TestCase):
         status, body = call_wsgi(app, "/api/notifications?limit=999")
         self.assertEqual(status, "400 Bad Request")
         self.assertFalse(body["execution_authorized"])
+
+    def test_cors_allows_only_explicitly_configured_frontend_origin(self):
+        app = StandaloneWSGIApplication(FakeRuntime())
+        with patch.dict("os.environ", {"CONTROLADOR_ALLOWED_ORIGINS": "https://app.example.com"}):
+            status, body = call_wsgi(
+                app, "/api/health", origin="https://app.example.com"
+            )
+            self.assertEqual(status, "200 OK")
+            denied_status, denied_body = call_wsgi(
+                app, "/api/health", origin="https://attacker.example"
+            )
+            self.assertEqual(denied_status, "403 Forbidden")
+            self.assertFalse(denied_body["execution_authorized"])
+
+    def test_cors_preflight_supports_frontend_api_methods(self):
+        app = StandaloneWSGIApplication(FakeRuntime())
+        with patch.dict("os.environ", {"CONTROLADOR_ALLOWED_ORIGINS": "https://app.example.com"}):
+            status, _ = call_wsgi(
+                app, "/api/market-monitor/subscriptions",
+                method="OPTIONS", origin="https://app.example.com",
+            )
+        self.assertEqual(status, "204 No Content")
+
 
     def test_remote_access_is_denied_by_default(self):
         app = StandaloneWSGIApplication(FakeRuntime())
