@@ -40,6 +40,8 @@ def build_standalone_application(
     domestic_pending: FiscalDomesticPendingQueue | None = None,
     assistant: EcosystemAssistant | None = None,
     trusted_identity: str | None = None,
+    intelligence: UnifiedIntelligence | None = None,
+    market_analyzer: Any | None = None,
 ) -> UnifiedEcosystemApplication:
     """Compose the seven areas around one shared intelligence coordinator.
 
@@ -54,8 +56,9 @@ def build_standalone_application(
         raise ValueError("fiscal_owner_id must come from trusted server configuration")
 
     senior_context = getattr(ecosystem_service, "senior_context", None)
-    intelligence = UnifiedIntelligence(senior_context=senior_context) if senior_context is not None else UnifiedIntelligence()
+    intelligence = intelligence or (UnifiedIntelligence(senior_context=senior_context) if senior_context is not None else UnifiedIntelligence())
     app = UnifiedEcosystemApplication(intelligence=intelligence)
+    app.market_data_provider_status = "CONNECTED" if market_analyzer is not None else "NOT_CONFIGURED"
 
     def command_cabin(task: str, context: Mapping[str, Any], shared: UnifiedIntelligence):
         return _plain({
@@ -71,19 +74,35 @@ def build_standalone_application(
         })
 
     def analysis(task: str, context: Mapping[str, Any], shared: UnifiedIntelligence):
+        if market_analyzer is not None:
+            symbol = context.get("symbol")
+            timeframe = context.get("timeframe", "5m")
+            limit = context.get("limit", 120)
+            confirmed = context.get("confirmed", False)
+            filters_ok = context.get("filters_ok", True)
+            if not isinstance(symbol, str) or not symbol.strip():
+                raise ValueError("symbol é obrigatório para análise")
+            result = market_analyzer.analyze(
+                symbol=symbol,
+                timeframe=timeframe,
+                limit=limit,
+                confirmed=confirmed,
+                filters_ok=filters_ok,
+            )
+            return _plain(result)
         request = context.get("senior_context_input")
-        if not isinstance(request, SeniorContextInput):
-            return {
-                "status": "INPUT_REQUIRED",
-                "message": "A análise precisa receber candles e contexto de mercado validados pelo adaptador de dados.",
+        if isinstance(request, SeniorContextInput):
+            assessment = shared.assess_market(request)
+            return _plain({
+                "assessment": assessment,
                 "execution_authorized": False,
-            }
-        assessment = shared.assess_market(request)
-        return _plain({
-            "assessment": assessment,
+                "decision_authority": "NOT_GRANTED",
+            })
+        return {
+            "status": "DATA_PROVIDER_NOT_CONFIGURED",
+            "message": "A inteligência está pronta para receber provedores, mas nenhuma fonte de candles foi conectada a este runtime.",
             "execution_authorized": False,
-            "decision_authority": "NOT_GRANTED",
-        })
+        }
 
     def study(task: str, context: Mapping[str, Any], shared: UnifiedIntelligence):
         return _plain({
