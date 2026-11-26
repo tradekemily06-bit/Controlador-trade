@@ -360,14 +360,16 @@ class StandaloneWSGITests(unittest.TestCase):
                 app, "/api/analysis/run", method="POST",
                 body={"symbol": "EURUSD", "timeframe": "M5"},
             )
+            runtime.market_analysis_service = type(
+                "Analyzer", (), {"analyze": lambda self, **kwargs: {"signal": "AGUARDAR"}}
+            )()
             invalid_status, invalid_body = call_wsgi(
                 app, "/api/analysis/run", method="POST",
                 body={"symbol": "EURUSD", "timeframe": "M5", "limit": True},
             )
         self.assertEqual(missing_status, "503 Service Unavailable")
         self.assertEqual(missing_body["state"], "ANALYSIS_NOT_CONFIGURED")
-        self.assertEqual(invalid_status, "503 Service Unavailable")
-        # Provider readiness is checked before the request body is interpreted.
+        self.assertEqual(invalid_status, "400 Bad Request")
         self.assertFalse(invalid_body["execution_authorized"])
 
     def test_remote_tenant_statistics_are_scoped_to_verified_identity(self):
