@@ -69,6 +69,20 @@ def test_decision_memory_rejects_execution_authority_and_invalid_limits(tmp_path
             memory.load(owner, limit=limit)
 
 
+def test_decision_memory_rejects_corrupt_or_nonfinite_stored_records(tmp_path):
+    storage = SQLiteTenantStorage(tmp_path / "tenant.sqlite3")
+    memory = TenantScopedDecisionMemory(storage)
+    owner = TenantContext("tenant-a", "subject-a")
+    storage.put(owner, "analysis:decision-index", [{"decision_id": "bad-record"}])
+    storage.put(owner, "analysis:decision:bad-record", {
+        **_record("bad-record").to_dict(),
+        "score": float("nan"),
+    })
+
+    with pytest.raises(ValueError, match="numeric|domain validation"):
+        memory.load(owner)
+
+
 def test_decision_memory_never_imports_legacy_global_records(tmp_path):
     storage = SQLiteTenantStorage(tmp_path / "tenant.sqlite3")
     memory = TenantScopedDecisionMemory(storage)
