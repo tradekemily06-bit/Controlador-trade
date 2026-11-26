@@ -605,6 +605,65 @@ class StandaloneWSGIApplication:
                 request_id,
             )
 
+        if method == "POST" and path == "/api/analysis/run":
+            tenant_context = _tenant_context_for_request(environ, reason)
+            if tenant_context is None:
+                return _json_response(
+                    start_response, HTTPStatus.FORBIDDEN,
+                    {"error": "identidade confiável necessária para executar análise", "execution_authorized": False},
+                    request_id,
+                )
+            analyzer = getattr(self.runtime, "market_analysis_service", None)
+            if analyzer is None:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "provedor de dados/analisador não configurado", "state": "ANALYSIS_NOT_CONFIGURED", "execution_authorized": False},
+                    request_id,
+                )
+            try:
+                payload = _read_json(environ)
+                symbol = payload.get("symbol")
+                timeframe = payload.get("timeframe")
+                limit = payload.get("limit", 120)
+                if not isinstance(symbol, str) or not symbol.strip():
+                    raise ValueError("symbol é obrigatório")
+                if not isinstance(timeframe, str) or not timeframe.strip():
+                    raise ValueError("timeframe é obrigatório")
+                if isinstance(limit, bool) or not isinstance(limit, int) or not 3 <= limit <= 1000:
+                    raise ValueError("limit deve ser um inteiro de 3 a 1000")
+                # Confirmation and filters are server-controlled: this route
+                # is analysis-only and cannot accept a client-side approval.
+                result = analyzer.analyze(
+                    symbol=symbol.strip(),
+                    timeframe=timeframe.strip(),
+                    limit=limit,
+                    confirmed=False,
+                    filters_ok=True,
+                    decision_context=tenant_context,
+                )
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return _json_response(
+                    start_response, HTTPStatus.BAD_REQUEST,
+                    {"error": str(exc), "execution_authorized": False},
+                    request_id,
+                )
+            except Exception:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "análise indisponível; nenhuma ordem foi enviada", "execution_authorized": False},
+                    request_id,
+                )
+            return _json_response(
+                start_response, HTTPStatus.OK,
+                {
+                    "analysis": result,
+                    "scope": "TENANT_SCOPED",
+                    "execution_authorized": False,
+                    "order_submitted": False,
+                },
+                request_id,
+            )
+
         if method == "GET" and path in {
             "/api/analysis/statistics", "/api/analysis/report"
         }:
