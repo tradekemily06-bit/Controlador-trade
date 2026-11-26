@@ -38,7 +38,7 @@ Only services actually supplied to the factory are marked CONNECTED. The analysi
 
 ## Broker-neutral market analysis
 
-The standalone Analysis area can receive any provider implementing the existing MarketDataProvider contract. Its feed is normalized and validated, then passed through the existing strategy pipeline, signal-quality evaluator, market-context engine and the shared senior-context gate. It returns a candidate signal and evidence score only; it never submits orders. Stale, gapped, invalid or unsupported-timeframe data force AGUARDAR.
+The standalone Analysis area can receive any provider implementing the existing MarketDataProvider contract. Its feed is normalized and validated, then passed through the existing strategy pipeline, signal-quality evaluator, market-context engine and the shared senior-context gate. It returns a candidate signal and evidence score only; it never submits orders. The standalone response includes a structured manual-review signal card (symbol, direction, timeframe and evidence score). The score is explicitly not a win probability; probability of profit, entry, stop-loss and take-profit remain unset unless separately estimated and validated. Stale, gapped, invalid or unsupported-timeframe data force AGUARDAR.
 
 The 10-minute timeframe is now included alongside 1m, 5m, 15m, 30m, 1h, 4h and 1d. No broker provider is enabled by default: a provider must be injected and its freshness/quality checks must pass. A configured API model is separate from the market-data feed and does not make the system an AGI/ASI.
 
