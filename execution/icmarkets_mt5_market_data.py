@@ -97,6 +97,26 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
         demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
         return demo_mode is not None and getattr(account, "trade_mode", None) == demo_mode
 
+    def get_account_mode(self) -> str:
+        """Return DEMO only after querying the currently connected terminal.
+
+        REAL mode is deliberately not asserted by this DEMO-only adapter.
+        Any missing terminal/account or unexpected mode fails closed.
+        """
+        mt5 = self._module()
+        if not self._initialize(mt5):
+            raise MT5MarketDataError(f"MT5 indisponível: {self._last_error(mt5)}")
+        try:
+            terminal = mt5.terminal_info()
+            if terminal is None or not bool(getattr(terminal, "connected", False)):
+                raise MT5MarketDataError("terminal MT5 não está conectado")
+            account = mt5.account_info()
+            if account is None or not self._is_demo_account(account, mt5):
+                raise MT5MarketDataError("conta MT5 não confirmada como DEMO")
+            return "DEMO"
+        finally:
+            mt5.shutdown()
+
     def fetch(self, request) -> tuple[Candle, ...]:
         """Adapt the generic core feed request to the broker-aware contract.
 
