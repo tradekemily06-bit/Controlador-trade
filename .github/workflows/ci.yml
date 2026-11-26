@@ -35,7 +35,7 @@ jobs:
           python -m pip_audit -r requirements.txt
 
       - name: Compile all Python project surfaces
-        run: python -m compileall -q app.py core data execution audit analysis integration security_guard.py security_audit.py web
+        run: python -m compileall -q app.py standalone_app.py assistant finance core data execution audit analysis integration security_guard.py security_audit.py web
 
       - name: Build production container
         run: docker build --tag controlador-trade:ci .
@@ -67,6 +67,51 @@ jobs:
           done
 
           echo "Container health endpoint did not become healthy within 120 seconds."
+          exit 1
+
+      - name: Build standalone analyst container
+        run: docker build -f Dockerfile.standalone --tag controlador-trade-standalone:ci .
+
+      - name: Smoke test standalone analyst container
+        env:
+          CONTROLADOR_SINGLE_USER_IDENTITY: ci-owner
+          CONTROLADOR_REMOTE_ACCESS_REQUIRED: "false"
+          CONTROLADOR_BIND_HOST: 0.0.0.0
+          CONTROLADOR_BIND_PORT: "8765"
+          CONTROLADOR_RUNTIME_DIR: /var/lib/controlador
+        shell: bash
+        run: |
+          set -euo pipefail
+          cleanup() {
+            docker logs controlador-standalone-ci || true
+            docker rm -f controlador-standalone-ci || true
+          }
+          trap cleanup EXIT
+
+          docker run -d --name controlador-standalone-ci \
+            -p 8765:8765 \
+            -e CONTROLADOR_SINGLE_USER_IDENTITY=ci-owner \
+            -e CONTROLADOR_REMOTE_ACCESS_REQUIRED=false \
+            -e CONTROLADOR_BIND_HOST=0.0.0.0 \
+            -e CONTROLADOR_BIND_PORT=8765 \
+            -e CONTROLADOR_RUNTIME_DIR=/var/lib/controlador \
+            controlador-trade-standalone:ci
+
+          for attempt in {1..60}; do
+            health_status="$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}starting{{end}}' controlador-standalone-ci 2>/dev/null || true)"
+            case "$health_status" in
+              healthy)
+                echo "Standalone analyst container is healthy."
+                exit 0
+                ;;
+              unhealthy)
+                echo "Standalone analyst healthcheck reported unhealthy; retrying while the startup window remains."
+                ;;
+            esac
+            sleep 2
+          done
+
+          echo "Standalone analyst container did not become healthy within 120 seconds."
           exit 1
 
   windows-powershell-validation:
