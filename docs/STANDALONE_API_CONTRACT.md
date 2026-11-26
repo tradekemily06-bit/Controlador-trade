@@ -100,3 +100,10 @@ Returns relay inbox status. A configured relay is not proof that the user's PC i
 - Signal direction is informational; manual review is required.
 - No endpoint authorizes broker orders, trades, or money movement.
 - Browser/device push requires a push provider, subscription registration, service worker and permission flow; it is not enabled by the in-app inbox or outbox alone.
+
+
+## Foundation storage integrity
+- `GET /api/readiness` now includes `storage_foundation`.
+- The endpoint runs read-only SQLite `PRAGMA quick_check` against the five required local stores (fiscal, ecosystem state, notification outbox, decision memory, assistant conversations) and reports optional market-monitor storage separately.
+- A missing or unreadable required database degrades the reported foundation status. The check does not create, migrate, repair, or modify databases.
+- This is local SQLite integrity evidence only. It does not establish production-grade multi-tenant isolation, backup/restore, managed database availability, or deployment readiness; those remain explicitly unconfigured/not proven.
