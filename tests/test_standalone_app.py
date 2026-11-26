@@ -43,9 +43,6 @@ class FakeRuntime:
     class TenantState:
         def __init__(self):
             self.preferences = {}
-
-        def __init__(self):
-            self.preferences = {}
             self.notifications = {}
 
         def load_preferences(self, context):
@@ -172,11 +169,11 @@ class StandaloneWSGITests(unittest.TestCase):
     def test_remote_notifications_are_isolated_by_verified_tenant_and_subject(self):
         runtime = FakeRuntime()
         runtime.tenant_state.save_notifications(
-            type("Context", (), {"key": "tenant-a:alice"})(),
+            type("Context", (), {"key": "tenant:tenant-a:subject:alice"})(),
             [{"notification_id": "alice-only"}],
         )
         runtime.tenant_state.save_notifications(
-            type("Context", (), {"key": "tenant-a:bob"})(),
+            type("Context", (), {"key": "tenant:tenant-a:subject:bob"})(),
             [{"notification_id": "bob-only"}],
         )
         app = StandaloneWSGIApplication(runtime)
