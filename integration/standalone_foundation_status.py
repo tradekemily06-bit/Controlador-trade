@@ -7,21 +7,30 @@ from typing import Any
 
 
 _DATABASES = (
-    ("fiscal", "fiscal-reserve.sqlite3", True),
-    ("ecosystem_state", "ecosystem-state.sqlite3", True),
-    ("notification_outbox", "notification-outbox.sqlite3", True),
-    ("decision_memory", "decision-memory.sqlite3", True),
-    ("assistant_conversations", "assistant-conversations.sqlite3", True),
-    ("market_timeframe_monitor", "market-timeframe-monitor.sqlite3", False),
+    ("fiscal", "fiscal-reserve.sqlite3", True, {"fiscal_reserve_entries", "fiscal_reserve_settings"}),
+    ("ecosystem_state", "ecosystem-state.sqlite3", True, {"ecosystem_state"}),
+    ("notification_outbox", "notification-outbox.sqlite3", True, {"notification_outbox"}),
+    ("decision_memory", "decision-memory.sqlite3", True, {"decisions"}),
+    ("assistant_conversations", "assistant-conversations.sqlite3", True, {"conversations", "messages"}),
+    ("market_timeframe_monitor", "market-timeframe-monitor.sqlite3", False, {"market_timeframe_watch", "market_timeframe_results"}),
 )
 
 
-def _integrity(path: Path) -> str:
+def _integrity(path: Path, expected_tables: set[str]) -> tuple[str, list[str]]:
     # Read-only URI: readiness must never create, migrate, or mutate a database.
     uri = f"{path.resolve().as_uri()}?mode=ro"
     with sqlite3.connect(uri, uri=True, timeout=2) as connection:
         result = connection.execute("PRAGMA quick_check").fetchone()
-    return str(result[0]) if result else "NO_RESULT"
+        if not result or str(result[0]).lower() != "ok":
+            return (str(result[0]) if result else "NO_RESULT"), []
+        actual_tables = {
+            str(row[0])
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+    missing = sorted(expected_tables - actual_tables)
+    return "ok", missing
 
 
 def standalone_storage_status(runtime: Any) -> dict[str, Any]:
@@ -41,15 +50,21 @@ def standalone_storage_status(runtime: Any) -> dict[str, Any]:
     root = Path(runtime_dir)
     stores = []
     required_ready = True
-    for store_id, filename, required in _DATABASES:
+    for store_id, filename, required, expected_tables in _DATABASES:
         path = root / filename
+        missing_tables: list[str] = []
         if not path.is_file():
             state = "MISSING"
             detail = None
         else:
             try:
-                detail = _integrity(path)
-                state = "HEALTHY" if detail == "ok" else "INTEGRITY_ERROR"
+                detail, missing_tables = _integrity(path, expected_tables)
+                if detail != "ok":
+                    state = "INTEGRITY_ERROR"
+                elif missing_tables:
+                    state = "SCHEMA_INCOMPLETE"
+                else:
+                    state = "HEALTHY"
             except (OSError, sqlite3.Error) as exc:
                 state = "UNREADABLE"
                 detail = type(exc).__name__
@@ -60,6 +75,7 @@ def standalone_storage_status(runtime: Any) -> dict[str, Any]:
             "state": state,
             "required": required,
             "integrity": detail,
+            "missing_tables": missing_tables,
         })
     return {
         "provider": "LOCAL_SQLITE",
