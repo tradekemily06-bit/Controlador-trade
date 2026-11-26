@@ -103,6 +103,8 @@ Body: `{"symbol":"EURUSD","timeframe":"M5","limit":120}`. Runs the existing read
 
 The generic cross-area `POST /api/intelligence/route` remains blocked for remote users because its handlers include shared learning, assistant, fiscal and legacy service state. The dedicated market-analysis endpoint does not invoke those shared handlers.
 
+`GET /api/assistant/status` also reports the conversation identity scope and whether remote chat is blocked pending fiscal isolation. Provider credentials being configured does not mean the provider connection has been tested.
+
 ### Assistant conversation APIs
 
 #### `GET /api/assistant/conversations`
