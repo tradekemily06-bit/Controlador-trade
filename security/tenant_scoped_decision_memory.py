@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from math import isfinite
 from typing import Any
 
 from analysis.decision_record import DecisionRecord
@@ -51,7 +52,9 @@ class TenantScopedDecisionMemory:
         if (
             not isinstance(record.decision_id, str) or not record.decision_id.strip()
             or not isinstance(record.created_at, str) or not record.created_at.strip()
-            or not isinstance(record.signal, str) or not record.signal.strip()
+            or not isinstance(record.decision_id, str) or len(record.decision_id) > 120
+            or not isinstance(record.signal, str) or record.signal not in {"COMPRA", "VENDA", "AGUARDAR"}
+            or not isfinite(record.score)
             or not isinstance(record.reason, str)
             or not isinstance(record.confirmed, bool)
             or not isinstance(record.execution_allowed, bool)
@@ -110,8 +113,8 @@ class TenantScopedDecisionMemory:
         self, context: TenantContext, decision_id: str, outcome: str
     ) -> DecisionRecord:
         trusted = self._context(context)
-        if not isinstance(decision_id, str) or not decision_id.strip():
-            raise ValueError("decision_id is required")
+        if not isinstance(decision_id, str) or not decision_id.strip() or len(decision_id.strip()) > 120:
+            raise ValueError("decision_id is required and must not exceed 120 characters")
         raw = self.storage.get(trusted, self._RECORD_PREFIX + decision_id.strip())
         if raw is None:
             raise ValueError("decision_id não encontrado")
