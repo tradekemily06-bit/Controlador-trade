@@ -103,6 +103,33 @@ class StandaloneApplicationFactoryTests(unittest.TestCase):
             self.assertEqual(result["status"], "CONNECTED")
             self.assertIn(expected, result["result"])
 
+
+    def test_assistant_receives_shared_intelligence_context(self):
+        class FakeAssistant:
+            def __init__(self):
+                self.received = None
+
+            def ask(self, **kwargs):
+                self.received = kwargs.get("shared_intelligence_context")
+                return {"answer": "Consulta somente leitura"}
+
+        assistant = FakeAssistant()
+        app = build_standalone_application(
+            ecosystem_service=FakeService(),
+            assistant=assistant,
+            trusted_identity="trusted-user",
+            fiscal_owner_id="trusted-owner",
+        )
+        result = app.handle(
+            area=ApplicationArea.ECOSYSTEM_ASSISTANT,
+            task="Explique o estado do ecossistema",
+        )
+        self.assertEqual(result["status"], "CONNECTED")
+        self.assertEqual(assistant.received["architecture"], "ONE_SHARED_INTELLIGENCE")
+        self.assertEqual(assistant.received["area"], "ecosystem_assistant")
+        self.assertIn("risk", assistant.received["shared_capabilities"])
+        self.assertFalse(result["execution_authorized"])
+
     def test_analysis_area_exposes_existing_statistics_and_news(self):
         app = build_standalone_application(ecosystem_service=FakeService())
         stats = app.handle(
