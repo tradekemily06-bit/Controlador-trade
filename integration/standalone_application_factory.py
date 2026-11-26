@@ -87,10 +87,22 @@ def build_standalone_application(
 
     def analysis(task: str, context: Mapping[str, Any], shared: UnifiedIntelligence):
         operation = str(context.get("operation", "overview")).strip().lower()
-        if operation in {"statistics", "performance", "reports", "report"}:
+        if operation in {"statistics", "performance"}:
             return _plain({
                 "statistics": ecosystem_service.statistics(),
-                "reporting_status": "STATISTICS_AVAILABLE_REPORT_EXPORT_NOT_CONNECTED",
+                "reporting_status": "STATISTICS_AVAILABLE",
+                "execution_authorized": False,
+            })
+        if operation in {"reports", "report", "export"}:
+            report_builder = getattr(ecosystem_service, "decision_report", None)
+            if not callable(report_builder):
+                return {"status": "REPORT_NOT_CONNECTED", "execution_authorized": False}
+            limit = context.get("limit", 1000)
+            if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
+                raise ValueError("limit must be an integer from 1 to 1000")
+            return _plain({
+                "report": report_builder(limit=limit),
+                "reporting_status": "DECISION_REPORT_READY",
                 "execution_authorized": False,
             })
         if operation in {"news", "market_news"}:
@@ -182,6 +194,15 @@ def build_standalone_application(
         limit = context.get("limit", 50)
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
             raise ValueError("limit must be an integer from 1 to 100")
+        operation = str(context.get("operation", "overview")).strip().lower()
+        if operation in {"report", "reports", "export"}:
+            report_builder = getattr(ecosystem_service, "decision_report", None)
+            if not callable(report_builder):
+                return {"status": "REPORT_NOT_CONNECTED", "execution_authorized": False}
+            return _plain({
+                "report": report_builder(limit=min(limit, 1000)),
+                "execution_authorized": False,
+            })
         return _plain({
             "records": ecosystem_service.memory_view(limit=limit),
             "statistics": ecosystem_service.statistics(),
