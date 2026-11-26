@@ -33,6 +33,20 @@ def _json_response(start_response, status: HTTPStatus, payload: dict[str, Any], 
     return [body]
 
 
+def _allowed_frontend_origins() -> set[str]:
+    """Return exact browser origins allowed to call the API cross-origin."""
+    configured = os.getenv("CONTROLADOR_ALLOWED_ORIGINS", "")
+    return {
+        origin.strip().rstrip("/")
+        for origin in configured.split(",")
+        if origin.strip()
+    }
+
+
+def _origin_from_environ(environ) -> str:
+    return str(environ.get("HTTP_ORIGIN") or "").strip().rstrip("/")
+
+
 def _authorized(environ) -> tuple[bool, str]:
     client = str(environ.get("REMOTE_ADDR") or "")
     loopback = client in {"127.0.0.1", "::1"}
@@ -99,6 +113,52 @@ class StandaloneWSGIApplication:
         request_id = SECURITY.request_id()
         method = str(environ.get("REQUEST_METHOD", "GET")).upper()
         path = str(environ.get("PATH_INFO", "/"))
+        origin = _origin_from_environ(environ)
+        allowed_origins = _allowed_frontend_origins()
+
+        # CORS is opt-in and exact-origin only. Never reflect arbitrary origins
+        # or accept wildcard origins for an authenticated analyst API.
+        if origin and origin not in allowed_origins:
+            return _json_response(
+                start_response, HTTPStatus.FORBIDDEN,
+                {"error": "origem do navegador não autorizada", "execution_authorized": False},
+                request_id,
+            )
+
+        if origin:
+            original_start_response = start_response
+
+            def cors_start_response(status, headers, exc_info=None):
+                headers = list(headers)
+                headers.extend([
+                    ("Access-Control-Allow-Origin", origin),
+                    ("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS"),
+                    ("Access-Control-Allow-Headers", "Authorization, Content-Type"),
+                    ("Access-Control-Max-Age", "600"),
+                    ("Vary", "Origin"),
+                ])
+                return original_start_response(status, headers, exc_info)
+
+            start_response = cors_start_response
+
+        if method == "OPTIONS":
+            if not origin:
+                return _json_response(
+                    start_response, HTTPStatus.FORBIDDEN,
+                    {"error": "preflight CORS exige origem autorizada", "execution_authorized": False},
+                    request_id,
+                )
+            headers = [
+                ("Content-Length", "0"),
+                *SECURITY.headers(request_id),
+                ("Access-Control-Allow-Origin", origin),
+                ("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS"),
+                ("Access-Control-Allow-Headers", "Authorization, Content-Type"),
+                ("Access-Control-Max-Age", "600"),
+                ("Vary", "Origin"),
+            ]
+            start_response("204 No Content", headers)
+            return []
 
         if not SECURITY.allow(environ):
             return _json_response(
