@@ -6,6 +6,7 @@ must be configured separately.
 """
 from __future__ import annotations
 
+import os
 import sqlite3
 import tempfile
 from datetime import datetime, timezone
@@ -29,6 +30,14 @@ class SQLiteBackupService:
         self.backup_dir = Path(backup_dir).resolve()
         if self.backup_dir == self.runtime_dir or self.runtime_dir in self.backup_dir.parents:
             raise ValueError("backup directory must be outside the runtime data directory")
+
+    @staticmethod
+    def _publish_exclusive(temporary: Path, destination: Path) -> None:
+        """Atomically publish without replacing a backup created by another worker."""
+        # Both paths are in the backup directory, so a hard link is same-filesystem.
+        # Unlike exists()+replace(), link creation fails atomically if destination exists.
+        os.link(temporary, destination)
+        temporary.unlink()
 
     @staticmethod
     def _check(path: Path) -> None:
@@ -66,10 +75,9 @@ class SQLiteBackupService:
                     with sqlite3.connect(temporary, timeout=10) as dst:
                         src.backup(dst)
                 self._check(temporary)
-                # Exclusive creation semantics: never replace an existing backup.
-                if destination.exists():
-                    raise FileExistsError("backup destination already exists")
-                temporary.replace(destination)
+                # Atomic exclusive publication: concurrent backups cannot overwrite.
+                self._publish_exclusive(temporary, destination)
+                temporary = None
                 results.append({
                     "id": database_id,
                     "status": "BACKUP_CREATED",
