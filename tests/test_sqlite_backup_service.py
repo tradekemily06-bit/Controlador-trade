@@ -29,6 +29,18 @@ class SQLiteBackupServiceTests(unittest.TestCase):
                 self.assertEqual(db.execute("SELECT COUNT(*) FROM decisions").fetchone()[0], 1)
             self.assertFalse(result["restore_tested"])
 
+    def test_publish_never_overwrites_existing_backup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            temporary = root / "temporary.sqlite3"
+            destination = root / "existing.sqlite3"
+            temporary.write_bytes(b"new backup")
+            destination.write_bytes(b"keep existing")
+            with self.assertRaises(FileExistsError):
+                SQLiteBackupService._publish_exclusive(temporary, destination)
+            self.assertEqual(destination.read_bytes(), b"keep existing")
+            self.assertTrue(temporary.exists())
+
     def test_rejects_unknown_database_identifier(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
