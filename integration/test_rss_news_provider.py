@@ -70,3 +70,26 @@ def test_rss_provider_rejects_redirect_to_unapproved_domain():
     assert provider.latest() == []
     assert provider.status()["live"] is False
     assert "domínio" in provider.status()["last_error"]
+
+
+def test_atom_provider_parses_namespaced_article_link_and_publication():
+    atom = b"""<?xml version="1.0"?>
+    <feed xmlns="http://www.w3.org/2005/Atom">
+      <title>Market Wire</title>
+      <entry>
+        <title>EURUSD outlook</title>
+        <link href="https://www.cnbc.com/atom-story" rel="alternate"/>
+        <published>2026-11-26T12:00:00Z</published>
+      </entry>
+    </feed>"""
+    provider = RSSNewsProvider(
+        ["https://www.cnbc.com/feed.atom"],
+        opener=lambda request, timeout: FakeResponse(atom, "https://www.cnbc.com/feed.atom"),
+    )
+
+    items = provider.latest(symbol="EURUSD")
+
+    assert len(items) == 1
+    assert items[0].url == "https://www.cnbc.com/atom-story"
+    assert items[0].source == "Market Wire"
+    assert items[0].published_at == "2026-11-26T12:00:00+00:00"
