@@ -135,6 +135,14 @@ class StandaloneWSGIApplication:
                 {**result, "execution_authorized": False},
                 request_id,
             )
+        authorized, reason = _authorized(environ)
+        if not authorized:
+            return _json_response(
+                start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                {"error": reason, "execution_authorized": False},
+                request_id,
+            )
+
 
         if method == "GET" and path == "/api/bridge/mt5/status":
             relay = getattr(self.runtime, "mt5_relay_store", None)
@@ -144,14 +152,6 @@ class StandaloneWSGIApplication:
                 else {"connected": False, "status": "NOT_CONFIGURED", "execution_authorized": False}
             )
             return _json_response(start_response, HTTPStatus.OK, payload, request_id)
-
-        authorized, reason = _authorized(environ)
-        if not authorized:
-            return _json_response(
-                start_response, HTTPStatus.SERVICE_UNAVAILABLE,
-                {"error": reason, "execution_authorized": False},
-                request_id,
-            )
 
         if method == "GET" and path in {"/api/health", "/api/health/live"}:
             architecture = self.runtime.application.architecture()
