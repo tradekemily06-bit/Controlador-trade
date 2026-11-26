@@ -9,6 +9,7 @@ from core.decision_engine import DecisionEngine
 from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
 from core.p23_market_data_integrity import MarketDataIntegrity
 from core.risk_manager import RiskManager
+from core.senior_analysis_gate import SeniorAnalysisGate
 from core.senior_context_orchestrator import SeniorContextInput
 from core.senior_risk_reasoning import RiskDomain, RiskObservation
 from core.signal_quality import SignalQualityEvaluator
@@ -126,13 +127,33 @@ class StandaloneMarketAnalysisService:
         candidate_signal = result.analysis.signal.value
         senior = result.senior_context
         senior_complete = senior is not None and senior.quality.value == "COMPLETE"
-        safe = integrity.safe_for_analysis and senior_complete
-        signal = candidate_signal if safe else "AGUARDAR"
-        reason = result.analysis.reason
+        senior_posture = (
+            senior.senior_assessment.posture.value
+            if senior is not None else "INSUFFICIENT"
+        )
+        gated = (
+            SeniorAnalysisGate().evaluate(
+                analysis=result.analysis,
+                senior_context=senior,
+            )
+            if senior is not None else None
+        )
+        senior_reassessment = senior_posture in {"REASSESS", "INSUFFICIENT"}
+        safe = (
+            integrity.safe_for_analysis
+            and senior_complete
+            and not senior_reassessment
+            and gated is not None
+            and gated.signal.value != "AGUARDAR"
+        )
+        signal = gated.signal.value if safe else "AGUARDAR"
+        reason = gated.reason if gated is not None else result.analysis.reason
         if not integrity.safe_for_analysis:
             reason = f"Análise suspensa: {integrity.message}."
-        elif not senior_complete:
-            reason = "Análise suspensa: o contexto sênior está incompleto ou exige reavaliação."
+        elif not senior_complete or senior_reassessment:
+            reason = "Análise suspensa: o raciocínio sênior identificou contexto incompleto ou uma condição que exige reavaliação."
+        elif gated is not None and gated.signal.value == "AGUARDAR":
+            reason = gated.reason
 
         return {
             "status": "ANALYZED" if safe else "REASSESS_REQUIRED",
@@ -171,7 +192,7 @@ class StandaloneMarketAnalysisService:
                 {
                     "cycle_id": senior.cycle_id,
                     "quality": senior.quality.value,
-                    "posture": senior.senior_assessment.posture.value,
+                    "posture": senior_posture,
                     "unresolved_questions": list(senior.unresolved_questions),
                     "execution_authorized": False,
                 }
