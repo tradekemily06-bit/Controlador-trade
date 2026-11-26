@@ -17,6 +17,7 @@ from security_guard import MAX_BODY_BYTES, SECURITY
 from integration.standalone_runtime import StandaloneRuntime
 from integration.standalone_foundation_status import standalone_storage_status
 from security.identity_boundary import IdentityPolicy
+from security.wsgi_identity import trusted_tenant_context_from_wsgi
 from data.timeframes import list_supported_timeframes
 
 
@@ -75,15 +76,14 @@ def _authorized(environ) -> tuple[bool, str]:
     middleware_enabled = os.getenv(
         "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE", ""
     ).strip().lower() in {"1", "true", "yes"}
-    authenticated = environ.get("controlador.identity_verified") is True
-    subject = str(environ.get("REMOTE_USER") or "").strip()
-    tenant_id = str(environ.get("controlador.tenant_id") or "").strip()
+    tenant_context = trusted_tenant_context_from_wsgi(
+        environ, middleware_enabled=middleware_enabled
+    )
     identity_policy = IdentityPolicy()
     if (
-        not middleware_enabled
-        or not subject
+        tenant_context is None
         or not identity_policy.authorize_production_request(
-            authenticated=authenticated, tenant_id=tenant_id
+            authenticated=True, tenant_id=tenant_context.tenant_id
         )
     ):
         return False, (
