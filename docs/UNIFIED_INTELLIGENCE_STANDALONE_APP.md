@@ -96,3 +96,20 @@ API routes (protected by the existing standalone access boundary):
 - `DELETE /api/market-monitor/subscriptions` — body: `{"symbol":"EURUSD","timeframe":"M5"}`.
 
 The API is backend capability only. The approved Lovable interface has not been modified or wired to these endpoints yet.
+
+
+## Secure local MT5-to-cloud relay (DEMO, read-only)
+
+The MT5 terminal is a Windows-local process. A cloud-hosted API cannot pull data directly from a terminal behind the user's router. The optional relay uses an outbound HTTPS connection from a small local Windows agent to the standalone API; no inbound port is opened on the user's PC.
+
+- Cloud runtime: set `CONTROLADOR_MARKET_DATA_PROVIDER=mt5_relay`, configure a high-entropy `CONTROLADOR_MT5_RELAY_TOKEN` as a server secret, and enable the normal remote-access boundary separately. The relay token is independent from the UI/API access token.
+- TLS: the local agent refuses non-HTTPS URLs. The API accepts relay writes only over direct HTTPS, or when `CONTROLADOR_TRUST_PROXY_TLS=true` is explicitly set behind a trusted TLS-terminating reverse proxy. Do not set that flag behind an untrusted proxy.
+- Local Windows agent: install the optional dependency from `requirements-mt5.txt`, configure `CONTROLADOR_MT5_RELAY_URL`, `CONTROLADOR_MT5_RELAY_TOKEN`, `CONTROLADOR_MT5_SYMBOLS`, and `CONTROLADOR_MT5_TIMEFRAMES`, then run `python -m integration.mt5_local_bridge_agent`. It reads only closed candles and confirms DEMO before sending.
+- The cloud endpoint `POST /api/bridge/mt5/candles` validates the token, TLS boundary, symbol/timeframe, candle shape, DEMO assertion, message timestamp and unique message ID. It stores bounded candle history in SQLite. The relay account mode becomes DEMO only while a recent heartbeat is present; otherwise it is UNAVAILABLE.
+- The endpoint accepts no orders, account credentials, positions or money movement. The bridge sends market candles only. It does not expose the local terminal to inbound internet traffic.
+- The relay is opt-in and not live-tested merely by being implemented. Production use still requires deployment of the cloud API, provisioning the two independent secrets, running the Windows agent on the same PC as MT5, confirming the relay status endpoint, and validating real closed-candle freshness for each selected symbol/timeframe. Do not describe it as connected until these steps pass.
+- The local agent currently sends only the configured symbols/timeframes; adding a new one requires adding it to the agent configuration. The API's relay store is bounded and uses a recent heartbeat; it is not a historical market-data archive.
+
+API:
+- `POST /api/bridge/mt5/candles` — separate relay bearer token and TLS required.
+- `GET /api/bridge/mt5/status` — normal standalone API authorization required.
