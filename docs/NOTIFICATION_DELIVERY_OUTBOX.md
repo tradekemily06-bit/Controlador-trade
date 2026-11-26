@@ -30,3 +30,22 @@ are configured.
 No provider credentials or user subscription data are stored in source code.
 The delivery adapter must be configured server-side and must never authorize
 trading or money movement.
+
+
+## Standalone notification API
+
+The standalone HTTP API exposes the persisted in-app inbox without changing
+the approved frontend layout:
+
+- `GET /api/notifications?limit=50&include_info=false` returns the newest
+  visible notifications (including current read-only operational incidents).
+  The limit is bounded from 1 to 200.
+- `GET /api/notifications/status` reports notification persistence, outbox
+  counts, and whether an external delivery worker was injected and is running.
+
+These endpoints use the same standalone access boundary as the other app
+endpoints. They do not mark items as read and do not create push subscriptions.
+A configured worker still needs a real delivery sink; merely having queued
+notifications or a running worker is not proof that a browser or phone received
+them. Browser push also requires frontend service-worker and permission
+integration, which remains separate from this backend API.
