@@ -82,7 +82,7 @@ def call_wsgi(app, path, method="GET", body=None, remote_addr="127.0.0.1", origi
         environ["controlador.tenant_id"] = tenant_id
     captured = {}
 
-    def start_response(status, headers):
+    def start_response(status, headers, exc_info=None):
         captured["status"] = status
         captured["headers"] = headers
 
