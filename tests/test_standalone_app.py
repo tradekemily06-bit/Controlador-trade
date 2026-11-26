@@ -166,6 +166,22 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(body["notifications"][0]["notification_id"], "n1")
         self.assertFalse(body["execution_authorized"])
 
+    def test_local_notifications_merge_explicitly_addressed_market_events(self):
+        runtime = FakeRuntime()
+        runtime.tenant_state.notifications = {
+            "tenant:local-single-user:subject:local-owner": [
+                {"notification_id": "market-1", "title": "Mudança de sinal"}
+            ]
+        }
+        app = StandaloneWSGIApplication(runtime)
+        with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
+            status, body = call_wsgi(app, "/api/notifications?limit=10")
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["scope"], "LOCAL_SINGLE_USER")
+        ids = [item["notification_id"] for item in body["notifications"]]
+        self.assertEqual(ids, ["n1", "market-1"])
+        self.assertFalse(body["execution_authorized"])
+
     def test_remote_notifications_are_isolated_by_verified_tenant_and_subject(self):
         runtime = FakeRuntime()
         runtime.tenant_state.save_notifications(
