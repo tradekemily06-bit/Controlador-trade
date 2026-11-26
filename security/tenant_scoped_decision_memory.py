@@ -33,6 +33,9 @@ class TenantScopedDecisionMemory:
     def _record(value: Any) -> DecisionRecord:
         if not isinstance(value, dict):
             raise ValueError("stored decision has an invalid shape")
+        raw_score = value.get("score")
+        if isinstance(raw_score, bool) or not isinstance(raw_score, (int, float)):
+            raise ValueError("stored decision score must be numeric")
         try:
             record = DecisionRecord(
                 decision_id=value["decision_id"],
@@ -40,7 +43,7 @@ class TenantScopedDecisionMemory:
                 symbol=value.get("symbol"),
                 timeframe=value.get("timeframe"),
                 signal=value["signal"],
-                score=float(value["score"]),
+                score=float(raw_score),
                 confirmed=value["confirmed"],
                 reason=value["reason"],
                 execution_allowed=value.get("execution_allowed", False),
@@ -51,10 +54,12 @@ class TenantScopedDecisionMemory:
             raise ValueError("stored decision failed domain validation") from exc
         if (
             not isinstance(record.decision_id, str) or not record.decision_id.strip()
+            or len(record.decision_id) > 120
             or not isinstance(record.created_at, str) or not record.created_at.strip()
-            or not isinstance(record.decision_id, str) or len(record.decision_id) > 120
             or not isinstance(record.signal, str) or record.signal not in {"COMPRA", "VENDA", "AGUARDAR"}
             or not isfinite(record.score)
+            or (record.symbol is not None and not isinstance(record.symbol, str))
+            or (record.timeframe is not None and not isinstance(record.timeframe, str))
             or not isinstance(record.reason, str)
             or not isinstance(record.confirmed, bool)
             or not isinstance(record.execution_allowed, bool)
