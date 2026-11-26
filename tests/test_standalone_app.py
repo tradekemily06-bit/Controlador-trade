@@ -88,7 +88,7 @@ class FakeRuntime:
 
         def conversations(self, identity):
             self.calls.append(("list", identity))
-            return list(self.owners.get(identity, []))
+            return [{"conversation_id": item} for item in self.owners.get(identity, [])]
 
         def history(self, identity, conversation_id):
             self.calls.append(("history", identity, conversation_id))
