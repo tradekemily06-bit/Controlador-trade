@@ -107,6 +107,58 @@ class SQLiteTenantStorage(TenantStorageBoundary):
                 (tenant_id, subject_id, normalized_key, encoded),
             )
 
+    def append_unique_list_item(
+        self,
+        context: TenantContext,
+        key: str,
+        item: dict[str, Any],
+        *,
+        unique_field: str,
+        limit: int,
+    ) -> bool:
+        """Atomically append one unique object within a tenant-scoped list."""
+        tenant_id, subject_id, normalized_key = self._scope(context, key)
+        if not isinstance(item, dict):
+            raise ValueError("item must be an object")
+        if not isinstance(unique_field, str) or not unique_field.strip():
+            raise ValueError("unique_field is required")
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 2000:
+            raise ValueError("limit must be an integer between 1 and 2000")
+        unique_value = item.get(unique_field)
+        if not isinstance(unique_value, str) or not unique_value.strip():
+            raise ValueError(f"{unique_field} must be a non-empty string")
+        encoded_item = json.dumps(
+            item, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+        )
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT value_json FROM tenant_state WHERE tenant_id=? AND subject_id=? AND key=?",
+                (tenant_id, subject_id, normalized_key),
+            ).fetchone()
+            current = [] if row is None else json.loads(row[0])
+            if not isinstance(current, list) or any(not isinstance(entry, dict) for entry in current):
+                raise ValueError("stored tenant list has an invalid shape")
+            if any(entry.get(unique_field) == unique_value for entry in current):
+                connection.rollback()
+                return False
+            current.append(json.loads(encoded_item))
+            encoded_list = json.dumps(
+                current[-limit:], ensure_ascii=False, separators=(",", ":"), allow_nan=False
+            )
+            connection.execute(
+                """
+                INSERT INTO tenant_state(tenant_id, subject_id, key, value_json)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(tenant_id, subject_id, key) DO UPDATE SET
+                    value_json=excluded.value_json,
+                    updated_at=CURRENT_TIMESTAMP
+                """,
+                (tenant_id, subject_id, normalized_key, encoded_list),
+            )
+            connection.commit()
+        return True
+
     def delete(self, context: TenantContext, key: str) -> None:
         tenant_id, subject_id, normalized_key = self._scope(context, key)
         with self._lock, self._connect() as connection:
