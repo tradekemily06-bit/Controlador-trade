@@ -41,7 +41,7 @@ class FakeRuntime:
     notification_worker = None
 
 
-def call_wsgi(app, path, method="GET", body=None, remote_addr="127.0.0.1", origin=None):
+def call_wsgi(app, path, method="GET", body=None, remote_addr="127.0.0.1", origin=None, include_headers=False):
     raw = json.dumps(body or {}).encode("utf-8")
     parsed_path = urlsplit(path)
     environ = {
@@ -61,7 +61,8 @@ def call_wsgi(app, path, method="GET", body=None, remote_addr="127.0.0.1", origi
         captured["headers"] = headers
 
     response = b"".join(app(environ, start_response))
-    return captured["status"], json.loads(response.decode("utf-8"))
+    result = (captured["status"], json.loads(response.decode("utf-8")))
+    return (*result, captured["headers"]) if include_headers else result
 
 
 class StandaloneWSGITests(unittest.TestCase):
@@ -138,10 +139,15 @@ class StandaloneWSGITests(unittest.TestCase):
     def test_cors_allows_only_explicitly_configured_frontend_origin(self):
         app = StandaloneWSGIApplication(FakeRuntime())
         with patch.dict("os.environ", {"CONTROLADOR_ALLOWED_ORIGINS": "https://app.example.com"}):
-            status, body = call_wsgi(
-                app, "/api/health", origin="https://app.example.com"
+            status, body, headers = call_wsgi(
+                app, "/api/health", origin="https://app.example.com",
+                include_headers=True,
             )
             self.assertEqual(status, "200 OK")
+            self.assertIn(
+                ("Access-Control-Allow-Origin", "https://app.example.com"),
+                headers,
+            )
             denied_status, denied_body = call_wsgi(
                 app, "/api/health", origin="https://attacker.example"
             )
