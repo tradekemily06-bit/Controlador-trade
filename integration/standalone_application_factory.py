@@ -134,6 +134,17 @@ def build_standalone_application(
     def study(task: str, context: Mapping[str, Any], shared: UnifiedIntelligence):
         operation = str(context.get("operation", "overview")).strip().lower()
         learning = ecosystem_service.learning_summary()
+        if operation in {"replay", "laboratory_replay"}:
+            cases = context.get("cases")
+            if not isinstance(cases, list) or not cases or len(cases) > 100:
+                raise ValueError("cases deve ser uma lista com 1 a 100 cenários")
+            replay = getattr(ecosystem_service, "replay", None)
+            if not callable(replay):
+                return {"status": "NOT_CONFIGURED", "execution_authorized": False}
+            return _plain({
+                "replay": replay(cases),
+                "execution_authorized": False,
+            })
         if operation in {"sources", "learning_sources"}:
             payload = {"learning_sources": ecosystem_service.learning_sources_view()}
         elif operation in {"resources", "learning_resources"}:
