@@ -133,3 +133,16 @@ def test_monitor_latest_results_rejects_invalid_limits(tmp_path):
             pass
         else:
             raise AssertionError("invalid result limit was accepted")
+
+
+
+def test_monitor_caps_active_subscriptions(tmp_path):
+    monitor = MarketTimeframeMonitor(tmp_path / "monitor.sqlite3", FakeAnalyzer())
+    for index in range(100):
+        monitor.subscribe(f"SYM{index}", "M1")
+    try:
+        monitor.subscribe("EXTRA", "M1")
+    except ValueError as exc:
+        assert "100" in str(exc)
+    else:
+        raise AssertionError("monitor accepted more than 100 active subscriptions")
