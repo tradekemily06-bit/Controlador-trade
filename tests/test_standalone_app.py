@@ -289,6 +289,87 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(report["statistics_scope"], "ALL_LOADED_TENANT_DECISIONS")
         self.assertTrue(all(c.subject_id == "local-owner" for c in runtime.tenant_decision_memory.contexts))
 
+    def test_local_analysis_run_uses_configured_owner_and_server_controlled_flags(self):
+        runtime = FakeRuntime()
+
+        class Analyzer:
+            def __init__(self):
+                self.calls = []
+
+            def analyze(self, **kwargs):
+                self.calls.append(kwargs)
+                return {"signal": "AGUARDAR", "execution_authorized": False}
+
+        runtime.market_analysis_service = Analyzer()
+        app = StandaloneWSGIApplication(runtime)
+        with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
+            status, body = call_wsgi(
+                app, "/api/analysis/run", method="POST",
+                body={"symbol": "EURUSD", "timeframe": "M5", "confirmed": True, "filters_ok": False},
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["scope"], "TENANT_SCOPED")
+        self.assertFalse(body["execution_authorized"])
+        self.assertFalse(body["order_submitted"])
+        call = runtime.market_analysis_service.calls[0]
+        self.assertEqual(call["symbol"], "EURUSD")
+        self.assertEqual(call["timeframe"], "M5")
+        self.assertFalse(call["confirmed"])
+        self.assertTrue(call["filters_ok"])
+        self.assertEqual(call["decision_context"].tenant_id, "local-single-user")
+        self.assertEqual(call["decision_context"].subject_id, "local-owner")
+
+    def test_remote_analysis_run_passes_verified_tenant_context(self):
+        runtime = FakeRuntime()
+
+        class Analyzer:
+            def __init__(self):
+                self.calls = []
+
+            def analyze(self, **kwargs):
+                self.calls.append(kwargs)
+                return {"signal": "COMPRA", "execution_authorized": False}
+
+        runtime.market_analysis_service = Analyzer()
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/analysis/run", method="POST",
+                body={"symbol": "GBPUSD", "timeframe": "M10"},
+                remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["analysis"]["signal"], "COMPRA")
+        context = runtime.market_analysis_service.calls[0]["decision_context"]
+        self.assertEqual(context.tenant_id, "tenant-a")
+        self.assertEqual(context.subject_id, "alice")
+
+    def test_analysis_run_rejects_invalid_timeframe_parameters_and_missing_provider(self):
+        runtime = FakeRuntime()
+        runtime.market_analysis_service = None
+        app = StandaloneWSGIApplication(runtime)
+        with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
+            missing_status, missing_body = call_wsgi(
+                app, "/api/analysis/run", method="POST",
+                body={"symbol": "EURUSD", "timeframe": "M5"},
+            )
+            invalid_status, invalid_body = call_wsgi(
+                app, "/api/analysis/run", method="POST",
+                body={"symbol": "EURUSD", "timeframe": "M5", "limit": True},
+            )
+        self.assertEqual(missing_status, "503 Service Unavailable")
+        self.assertEqual(missing_body["state"], "ANALYSIS_NOT_CONFIGURED")
+        self.assertEqual(invalid_status, "503 Service Unavailable")
+        # Provider readiness is checked before the request body is interpreted.
+        self.assertFalse(invalid_body["execution_authorized"])
+
     def test_remote_tenant_statistics_are_scoped_to_verified_identity(self):
         runtime = FakeRuntime()
         runtime.tenant_decision_memory.records = [
