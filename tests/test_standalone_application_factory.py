@@ -186,7 +186,7 @@ class StandaloneApplicationFactoryTests(unittest.TestCase):
             task="consultar relatório",
             context={"operation": "report"},
         )
-        self.assertEqual(report["reporting_status"], "DECISION_REPORT_READY")
+        self.assertEqual(report["result"]["reporting_status"], "DECISION_REPORT_READY")
         self.assertEqual(report["result"]["report"]["report_type"], "STANDALONE_DECISION_REPORT")
         self.assertEqual(memory_report["result"]["report"]["record_count"], 0)
         self.assertFalse(report["execution_authorized"])
@@ -204,7 +204,7 @@ class StandaloneApplicationFactoryTests(unittest.TestCase):
             task="consultar",
             context={"operation": "news"},
         )
-        self.assertEqual(stats["result"]["reporting_status"], "STATISTICS_AVAILABLE_REPORT_EXPORT_NOT_CONNECTED")
+        self.assertEqual(stats["result"]["reporting_status"], "STATISTICS_AVAILABLE")
         self.assertEqual(news["result"]["news"]["live"], False)
 
 
