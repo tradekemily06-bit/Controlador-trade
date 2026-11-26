@@ -5,6 +5,8 @@ from datetime import datetime
 from hashlib import sha256
 from typing import Any, Callable
 
+from security.tenant_context import TenantContext
+
 from analysis.decision_record import DecisionRecord
 
 from analysis.pipeline import StrategyPipeline
@@ -32,7 +34,7 @@ class StandaloneMarketAnalysisService:
         provider: MarketDataProvider,
         source: str,
         intelligence: UnifiedIntelligence,
-        decision_sink: Callable[[DecisionRecord], None] | None = None,
+        decision_sink: Callable[..., bool | None] | None = None,
     ) -> None:
         if provider is None:
             raise ValueError("market data provider is required")
@@ -86,6 +88,7 @@ class StandaloneMarketAnalysisService:
         limit: int = 120,
         confirmed: bool = False,
         filters_ok: bool = True,
+        decision_context: TenantContext | None = None,
     ) -> dict[str, Any]:
         if not isinstance(confirmed, bool) or not isinstance(filters_ok, bool):
             raise ValueError("confirmed and filters_ok must be booleans")
@@ -219,7 +222,7 @@ class StandaloneMarketAnalysisService:
                 execution_allowed=False,
             )
             try:
-                stored = self.decision_sink(decision_record)
+                stored = self.decision_sink(decision_record, decision_context)
                 response["decision_memory"] = {
                     "status": "SAVED" if stored is not False else "ALREADY_RECORDED",
                     "decision_id": stable_id,
