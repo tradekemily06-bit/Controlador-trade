@@ -37,7 +37,7 @@ class StandaloneNotificationPersistenceTests(unittest.TestCase):
             self.assertTrue(any(item["notification_id"] == "market-feed-down" for item in items))
             self.assertEqual(restarted.notification_summary()["by_severity"]["CRITICAL"], 1)
             self.assertEqual(restarted.system_status()["notification_persistence"], "SQLITE")
-            self.assertFalse(any(item.get("execution_authorized", True) for item in items))
+            self.assertFalse(restarted.system_status()["execution_allowed"])
 
             from core.unified_intelligence import ApplicationArea
             from integration.standalone_application_factory import build_standalone_application
