@@ -5,6 +5,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Mapping
 
+from core.active_account_mode import resolve_active_account_mode
+
 
 @dataclass(frozen=True)
 class RegisteredMarketDataProvider:
@@ -50,9 +52,14 @@ class MarketDataProviderRegistry:
     def selected(self) -> RegisteredMarketDataProvider | None:
         return self._providers.get(self._selected) if self._selected else None
 
+    def active_account_mode(self) -> dict[str, Any]:
+        selected = self.selected()
+        return resolve_active_account_mode(selected.provider if selected else None)
+
     def status(self) -> dict[str, Any]:
         return {
             "selected_provider": self._selected,
+            "account_mode": self.active_account_mode(),
             "providers": [
                 {
                     "provider_id": item.provider_id,
