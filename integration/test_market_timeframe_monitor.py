@@ -130,7 +130,7 @@ def test_monitor_can_disable_a_subscription(tmp_path):
 
 
 def test_monitor_latest_results_rejects_invalid_limits(tmp_path):
-    monitor = MarketTimeframeMonitor(tmp_path / "monitor.sqlite3", FakeAnalyzer())
+    monitor = MarketTimeframeMonitor(tmp_path / "monitor.sqlite3", FakeAnalyzer(), default_context=OWNER)
     for limit in (0, 201, True):
         try:
             monitor.latest_results(limit=limit)
