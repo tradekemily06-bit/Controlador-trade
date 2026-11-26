@@ -279,7 +279,7 @@ class StandaloneMarketAnalysisService:
                 response["decision_memory"] = {
                     "status": "SAVED" if stored is not False else "ALREADY_RECORDED",
                     "decision_id": stable_id,
-                    "scope": "CONFIGURED_RUNTIME_OWNER",
+                    "scope": "TENANT_AND_SUBJECT",
                 }
             except Exception as exc:
                 response["decision_memory"] = {
