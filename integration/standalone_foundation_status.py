@@ -8,17 +8,17 @@ from typing import Any
 
 _DATABASES = (
     ("fiscal", "fiscal-reserve.sqlite3", True, {
-        "fiscal_reserve_entries": {"entry_id", "owner_id", "category", "realized_result_brl", "reserve_amount_brl", "reference", "occurred_on"},
+        "fiscal_reserve_entries": {"entry_id", "owner_id", "category", "entry_type", "realized_result_brl", "reserve_rate", "reserve_amount_brl", "reference", "occurred_on", "created_at", "notes"},
         "fiscal_reserve_settings": {"owner_id", "category", "rate", "rate_source"},
     }),
     ("ecosystem_state", "ecosystem-state.sqlite3", True, {
         "ecosystem_state": {"key", "value_json"},
     }),
     ("notification_outbox", "notification-outbox.sqlite3", True, {
-        "notification_outbox": {"idempotency_key", "payload_json", "status", "attempts", "available_at", "created_at"},
+        "notification_outbox": {"idempotency_key", "payload_json", "status", "attempts", "available_at", "lease_until", "created_at", "delivered_at", "last_error"},
     }),
     ("decision_memory", "decision-memory.sqlite3", True, {
-        "decisions": {"decision_id", "created_at", "signal", "score", "confirmed", "reason", "execution_allowed", "outcome_source"},
+        "decisions": {"decision_id", "created_at", "symbol", "timeframe", "signal", "score", "confirmed", "reason", "execution_allowed", "outcome", "outcome_source"},
     }),
     ("assistant_conversations", "assistant-conversations.sqlite3", True, {
         "conversations": {"id", "owner", "title", "updated_at"},
