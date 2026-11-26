@@ -10,6 +10,7 @@ from analysis.statistics import summarize, summarize_breakdowns, summarize_perio
 from core.ecosystem_health import build_health_alerts
 from core.ecosystem_notifications import EcosystemNotification, NotificationKind, NotificationSeverity
 from core.learning_content import ContentType, LearningActivity, LearningAttempt, LearningObservation, LearningResource, LearningStatus, normalize_tags
+from core.learning_state_store import LearningStateStore
 from core.market_data_runtime_integrity import MarketDataRuntimeReport
 from core.operational_runtime import OperationalRuntime
 from core.p122_broker_market_data import BrokerMarketDataSnapshot
@@ -31,7 +32,7 @@ from storage.production_boundary import ProductionStoragePolicy
 class EcosystemService:
     """Application orchestration; broker execution remains outside this layer."""
 
-    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None) -> None:
+    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None, learning_state_store: LearningStateStore | None = None) -> None:
         self.engine = engine or SignalEngine()
         self.store = decision_store or DecisionStore()
         self.memory: list[DecisionRecord] = self.store.load()
@@ -43,15 +44,27 @@ class EcosystemService:
         self.operational_runtime = operational_runtime
         self.learning_source_gate = LearningSourceGate()
         self.learning_professor = LearningProfessor()
-        self.learning_sources: dict[str, LearningSource] = {}
-        self.learning_resources: dict[str, LearningResource] = {}
-        self.learning_observations: list[LearningObservation] = []
-        self.learning_activities: dict[str, LearningActivity] = {}
-        self.learning_attempts: list[LearningAttempt] = []
+        self.learning_state_store = learning_state_store
+        learning_state = learning_state_store.load() if learning_state_store is not None else {}
+        self.learning_sources: dict[str, LearningSource] = learning_state.get('sources', {})
+        self.learning_resources: dict[str, LearningResource] = learning_state.get('resources', {})
+        self.learning_observations: list[LearningObservation] = learning_state.get('observations', [])
+        self.learning_activities: dict[str, LearningActivity] = learning_state.get('activities', {})
+        self.learning_attempts: list[LearningAttempt] = learning_state.get('attempts', [])
         self.senior_context = SeniorContextOrchestrator()
         self.automation = ControlledAutomationService(
             lifecycle_store=(operational_runtime.automation_lifecycle if operational_runtime is not None else None)
         )
+
+    def _persist_learning_state(self) -> None:
+        if self.learning_state_store is not None:
+            self.learning_state_store.save(
+                sources=self.learning_sources,
+                resources=self.learning_resources,
+                observations=self.learning_observations,
+                activities=self.learning_activities,
+                attempts=self.learning_attempts,
+            )
 
     def require_production_context(self, *, subject_id: str | None, tenant_id: str | None) -> ProductionRequestContext:
         return require_production_context(subject_id=subject_id, tenant_id=tenant_id)
@@ -137,11 +150,13 @@ class EcosystemService:
         if source.source_id in self.learning_sources:
             raise ValueError("source_id já cadastrado")
         self.learning_sources[source.source_id] = source
+        self._persist_learning_state()
         return source
 
     def validate_learning_source(self, source: LearningSource, *, content_verified: bool, security_checked: bool) -> LearningSource:
         updated = self.learning_source_gate.validate_content(source, content_verified=content_verified, security_checked=security_checked)
         self.learning_sources[updated.source_id] = updated
+        self._persist_learning_state()
         return updated
 
     def admit_learning_knowledge(self, source: LearningSource, *, knowledge_validated: bool) -> LearningSource:
@@ -160,6 +175,7 @@ class EcosystemService:
             source_type = {ContentType.VIDEO: LearningSourceType.VIDEO, ContentType.DOCUMENT: LearningSourceType.DOCUMENT}.get(resource.content_type, LearningSourceType.LINK)
             self.screen_learning_source({"source_id": resource.resource_id, "source_type": source_type.value, "uri": resource.source_url})
         self.learning_resources[resource.resource_id] = resource
+        self._persist_learning_state()
         return resource
 
     def learning_resources_view(self) -> list[dict[str, Any]]:
@@ -175,6 +191,7 @@ class EcosystemService:
             raise ValueError("external learning knowledge must pass source and knowledge validation first")
         observation = LearningObservation(resource_id=resource_id, statement=str(payload.get("statement", "")), concepts=normalize_tags(tuple(payload.get("concepts", ()) or ())), evidence=payload.get("evidence"), confidence=payload.get("confidence"), validated=validated)
         self.learning_observations.append(observation)
+        self._persist_learning_state()
         return observation
 
     def learning_observations_view(self) -> list[dict[str, Any]]:
@@ -185,6 +202,7 @@ class EcosystemService:
         if activity.activity_id in self.learning_activities:
             raise ValueError("activity_id já cadastrado")
         self.learning_activities[activity.activity_id] = activity
+        self._persist_learning_state()
         return activity
 
     def generate_professor_activity(self, payload: dict[str, Any]) -> LearningActivity:
@@ -203,6 +221,7 @@ class EcosystemService:
             raise ValueError("activity_id não encontrado")
         attempt = LearningAttempt(activity_id=activity_id, answer=str(payload.get("answer", "")), correct=payload.get("correct"), feedback=str(payload.get("feedback", "")))
         self.learning_attempts.append(attempt)
+        self._persist_learning_state()
         return attempt
 
     def learning_summary(self) -> dict[str, Any]:
