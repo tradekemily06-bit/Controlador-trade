@@ -44,11 +44,21 @@ class FakeRuntime:
         def __init__(self):
             self.preferences = {}
 
+        def __init__(self):
+            self.preferences = {}
+            self.notifications = {}
+
         def load_preferences(self, context):
             return self.preferences.get(context.key)
 
         def save_preferences(self, context, preferences):
             self.preferences[context.key] = dict(preferences)
+
+        def load_notifications(self, context):
+            return list(self.notifications.get(context.key, []))
+
+        def save_notifications(self, context, notifications):
+            self.notifications[context.key] = list(notifications)
 
         def readiness(self):
             return {
@@ -149,12 +159,62 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(status, "404 Not Found")
         self.assertFalse(body["execution_authorized"])
 
-    def test_notifications_endpoint_returns_persisted_inbox(self):
+    def test_notifications_endpoint_returns_local_single_user_inbox(self):
         app = StandaloneWSGIApplication(FakeRuntime())
-        status, body = call_wsgi(app, "/api/notifications?limit=10")
+        with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
+            status, body = call_wsgi(app, "/api/notifications?limit=10")
         self.assertEqual(status, "200 OK")
+        self.assertEqual(body["scope"], "LOCAL_SINGLE_USER")
         self.assertEqual(body["count"], 1)
         self.assertEqual(body["notifications"][0]["notification_id"], "n1")
+        self.assertFalse(body["execution_authorized"])
+
+    def test_remote_notifications_are_isolated_by_verified_tenant_and_subject(self):
+        runtime = FakeRuntime()
+        runtime.tenant_state.save_notifications(
+            type("Context", (), {"key": "tenant-a:alice"})(),
+            [{"notification_id": "alice-only"}],
+        )
+        runtime.tenant_state.save_notifications(
+            type("Context", (), {"key": "tenant-a:bob"})(),
+            [{"notification_id": "bob-only"}],
+        )
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, alice = call_wsgi(
+                app, "/api/notifications", remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+            self.assertEqual(status, "200 OK")
+            status, bob = call_wsgi(
+                app, "/api/notifications", remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="bob", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(alice["scope"], "TENANT_SCOPED")
+        self.assertEqual([n["notification_id"] for n in alice["notifications"]], ["alice-only"])
+        self.assertEqual([n["notification_id"] for n in bob["notifications"]], ["bob-only"])
+
+    def test_remote_notifications_fail_closed_without_verified_identity(self):
+        app = StandaloneWSGIApplication(FakeRuntime())
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/notifications", remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+            )
+        self.assertEqual(status, "503 Service Unavailable")
         self.assertFalse(body["execution_authorized"])
 
     def test_notification_status_reports_no_external_sink_honestly(self):
