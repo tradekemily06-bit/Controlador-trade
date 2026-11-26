@@ -35,8 +35,8 @@ class BiQuoteProvider(MarketDataProvider):
     @staticmethod
     def _bucket_start(timestamp: datetime, target_seconds: int) -> datetime:
         epoch = int(timestamp.timestamp())
-        if target_seconds == 604800:
-            # Calendar week starts Monday 00:00 UTC, not Unix epoch Thursday.
+        if target_seconds % 604800 == 0:
+            # Week-based intervals start Monday 00:00 UTC, not Unix epoch Thursday.
             monday_offset = 3 * 86400
             bucket_epoch = ((epoch + monday_offset) // target_seconds) * target_seconds - monday_offset
         else:
