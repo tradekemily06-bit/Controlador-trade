@@ -61,7 +61,8 @@ def call_wsgi(app, path, method="GET", body=None, remote_addr="127.0.0.1", origi
         captured["headers"] = headers
 
     response = b"".join(app(environ, start_response))
-    result = (captured["status"], json.loads(response.decode("utf-8")))
+    decoded = json.loads(response.decode("utf-8")) if response else {}
+    result = (captured["status"], decoded)
     return (*result, captured["headers"]) if include_headers else result
 
 
