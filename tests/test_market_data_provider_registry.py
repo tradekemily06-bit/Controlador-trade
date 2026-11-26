@@ -44,6 +44,17 @@ class MarketDataProviderRegistryTests(unittest.TestCase):
         self.assertEqual(registry.status()["account_mode"]["status"], "UNAVAILABLE")
         self.assertIsNone(registry.status()["account_mode"]["mode"])
 
+    def test_status_can_skip_active_account_probe_for_readiness_polling(self):
+        class ProbeMustNotRun(FakeProvider):
+            def get_account_mode(self):
+                raise AssertionError("readiness polling must not probe broker terminal")
+
+        registry = MarketDataProviderRegistry()
+        registry.register("demo", ProbeMustNotRun(), "DEMO_FEED")
+        status = registry.status(probe_account_mode=False)
+        self.assertEqual(status["account_mode"]["status"], "NOT_PROBED")
+        self.assertFalse(status["account_mode"]["execution_authorized"])
+
     def test_single_provider_is_selected_by_default(self):
         registry = MarketDataProviderRegistry()
         registry.register("default", FakeProvider(), "DEFAULT_FEED")
