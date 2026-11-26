@@ -63,19 +63,19 @@ Lists provider registration/configuration status. Status values must not be pres
 ### `GET /api/market-data/timeframes`
 Returns the intervals accepted by the backend normalizer in compact and platform notation, with limits and explicit exclusions. The current parser covers 1–59 minutes, 1–24 hours, 1–31 days and 1–4 weeks. Seconds and calendar months (MN1) are not supported. The response also reports adapter-declared `provider_compatibility.supported` and `unsupported` intervals when the adapter exposes a side-effect-free capability check. `DECLARED_NOT_LIVE_TESTED` means the adapter can map/derive the interval but real data availability has not been tested; `NOT_DECLARED` means the adapter does not publish a capability list. A supported interval is never a claim of a live feed. The frontend should use this endpoint for the selector while showing provider availability separately.
 ### `GET /api/market-monitor/status`
-Returns worker state, enabled subscriptions and monitor status.
+Returns worker state and only the enabled subscriptions belonging to the tenant and subject resolved by trusted server identity. The worker-running flag is operational metadata.
 
 ### `GET /api/market-monitor/subscriptions`
-Returns persisted symbol/timeframe subscriptions.
+Returns persisted symbol/timeframe subscriptions belonging only to the resolved tenant and subject.
 
 ### `POST /api/market-monitor/subscriptions`
-Body: `{"symbol":"EURUSD","timeframe":"M5"}`. Subscribes the monitor to a symbol and supported timeframe.
+Body: `{"symbol":"EURUSD","timeframe":"M5"}`. Creates a subscription under the resolved tenant and subject. Each owner has an independent limit of 100 active subscriptions.
 
 ### `DELETE /api/market-monitor/subscriptions`
-Body: `{"symbol":"EURUSD","timeframe":"M5"}`. Disables that subscription.
+Body: `{"symbol":"EURUSD","timeframe":"M5"}`. Disables only the matching subscription owned by the resolved tenant and subject.
 
 ### `GET /api/market-monitor/results?limit=50`
-Returns recent results for closed candles. Limit is 1–200. A stale, incomplete, invalid or unsupported feed must remain non-actionable/AGUARDAR.
+Returns recent closed-candle results only for the resolved tenant and subject. Limit is 1–200. A stale, incomplete, invalid or unsupported feed must remain non-actionable/AGUARDAR.
 
 ## User preferences
 
@@ -108,10 +108,10 @@ Returns the in-app notification inbox. Limit is 1–200. This endpoint does not 
 
 - Local loopback uses the configured single-user runtime inbox.
 - Remote requests require verified server-injected tenant and subject identity and read only the matching tenant-scoped notification collection. They never read the legacy global operational inbox.
-- The standalone runtime now binds its configured `CONTROLADOR_SINGLE_USER_IDENTITY` to a local tenant context before starting market monitoring. A material market-signal change is published both to the legacy local operational inbox and to that explicitly addressed user's tenant-scoped inbox; the local API merges both views by notification ID. Tenant inbox append is an atomic SQLite transaction with deduplication and bounded retention. This wires market-change alerts for the configured single-user runtime only. Remote tenant inboxes still require a verified recipient or an explicit consented subscription fan-out; there is no global broadcast or automatic legacy migration.
+- The runtime binds its configured `CONTROLADOR_SINGLE_USER_IDENTITY` to a local tenant context before starting market monitoring. Every market-monitor subscription and result is keyed by tenant ID + subject ID + symbol + timeframe. Remote subscription creation, listing, cancellation, status and result reads use only the tenant context injected by trusted server middleware. The worker processes each saved subscription with that owner's context; decision records and material signal notifications are written to the same owner's tenant-scoped stores. The monitor's previous single-user tables are migrated only to the explicitly configured local owner, never attributed to remote users. Tenant inbox append is an atomic SQLite transaction with deduplication and bounded retention; there is no global notification broadcast.
 - This API boundary prevents cross-user reads; it does not mean the entire application or every legacy store is multi-tenant.
 
-Remote users are temporarily denied access to shared `/api/market-monitor/*` endpoints and `POST /api/intelligence/route` while monitor subscriptions/results and decision memory are not tenant-scoped. The local single-user runtime remains available. This is a fail-closed security boundary, not a completed multi-tenant implementation; remote access can be reopened only after per-tenant persistence, ownership checks, and isolation tests exist.
+`/api/market-monitor/*` now enforces per-tenant/per-subject ownership and has isolation tests. Remote `POST /api/intelligence/route` remains blocked because the broader application statistics and report-generation pipeline is still shared and has not been made tenant-scoped. This is a partial multi-tenant foundation, not a completed multi-tenant SaaS implementation.
 
 ### `GET /api/notifications/status`
 Returns persistence/outbox counts and external worker status. `OUTBOX_ONLY_NO_PROVIDER` means notifications are stored in the app but no external delivery sink is configured. Do not display this as phone/browser push enabled.
