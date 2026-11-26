@@ -281,6 +281,16 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(status, "200 OK")
         self.assertEqual(bob["preferences"], {})
 
+    def test_local_user_preferences_fail_closed_without_configured_identity(self):
+        app = StandaloneWSGIApplication(FakeRuntime())
+        with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": ""}):
+            status, body = call_wsgi(
+                app, "/api/user/preferences", method="PUT",
+                body={"preferences": {"language": "pt-BR"}},
+            )
+        self.assertEqual(status, "403 Forbidden")
+        self.assertFalse(body["execution_authorized"])
+
     def test_user_preferences_reject_non_object_payload(self):
         app = StandaloneWSGIApplication(FakeRuntime())
         with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
