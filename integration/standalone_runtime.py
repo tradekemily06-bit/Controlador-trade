@@ -11,6 +11,7 @@ from assistant.conversation_store import AssistantConversationStore
 from security.sqlite_tenant_storage import SQLiteTenantStorage
 from security.tenant_context import TenantContext
 from security.tenant_scoped_ecosystem_state import TenantScopedEcosystemState
+from security.tenant_scoped_decision_memory import TenantScopedDecisionMemory
 from integration.tenant_notification_dispatcher import TenantNotificationDispatcher
 from core.runtime_process_lock import RuntimeProcessLock
 from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
@@ -76,9 +77,11 @@ class StandaloneRuntime:
             ecosystem_state_store = EcosystemStateStore(
                 self.runtime_dir / "ecosystem-state.sqlite3"
             )
-            self.tenant_state = TenantScopedEcosystemState(
-                SQLiteTenantStorage(self.runtime_dir / "tenant-state.sqlite3")
+            tenant_storage = SQLiteTenantStorage(
+                self.runtime_dir / "tenant-state.sqlite3"
             )
+            self.tenant_state = TenantScopedEcosystemState(tenant_storage)
+            self.tenant_decision_memory = TenantScopedDecisionMemory(tenant_storage)
             self.local_tenant_context = TenantContext(
                 tenant_id="local-single-user",
                 subject_id=configured_identity,
