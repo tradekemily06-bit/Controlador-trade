@@ -94,7 +94,7 @@ Returns the in-app notification inbox. Limit is 1–200. This endpoint does not 
 
 - Local loopback uses the configured single-user runtime inbox.
 - Remote requests require verified server-injected tenant and subject identity and read only the matching tenant-scoped notification collection. They never read the legacy global operational inbox.
-- Operational events are not yet automatically fanned out into tenant-scoped notification collections. Until that publisher is integrated, remote tenant inboxes can be empty even while the local single-user inbox contains operational events.
+- Operational events are not yet automatically fanned out into tenant-scoped notification collections. The runtime now exposes an explicit-recipient dispatcher for trusted event producers, with deduplication and bounded retention, but no global broadcast or automatic migration is performed. Remote tenant inboxes can therefore remain empty until a producer supplies a verified recipient or an explicit subscription fan-out is implemented.
 - This API boundary prevents cross-user reads; it does not mean the entire application or every legacy store is multi-tenant.
 
 ### `GET /api/notifications/status`
