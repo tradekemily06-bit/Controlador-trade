@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import unittest
+from urllib.parse import urlsplit
 
 from standalone_app import StandaloneWSGIApplication
 
@@ -41,9 +42,11 @@ class FakeRuntime:
 
 def call_wsgi(app, path, method="GET", body=None, remote_addr="127.0.0.1"):
     raw = json.dumps(body or {}).encode("utf-8")
+    parsed_path = urlsplit(path)
     environ = {
         "REQUEST_METHOD": method,
-        "PATH_INFO": path,
+        "PATH_INFO": parsed_path.path,
+        "QUERY_STRING": parsed_path.query,
         "REMOTE_ADDR": remote_addr,
         "CONTENT_LENGTH": str(len(raw)),
         "wsgi.input": io.BytesIO(raw),
