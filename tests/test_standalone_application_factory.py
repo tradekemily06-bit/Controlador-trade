@@ -60,7 +60,7 @@ class StandaloneApplicationFactoryTests(unittest.TestCase):
     def test_analysis_requires_validated_market_context(self):
         app = build_standalone_application(ecosystem_service=FakeService())
         result = app.handle(area=ApplicationArea.ANALYSIS, task="analisar")
-        self.assertEqual(result["result"]["status"], "INPUT_REQUIRED")
+        self.assertEqual(result["result"]["status"], "DATA_PROVIDER_NOT_CONFIGURED")
         self.assertFalse(result["execution_authorized"])
 
     def test_missing_fiscal_owner_rejected(self):
