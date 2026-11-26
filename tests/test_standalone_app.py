@@ -40,6 +40,24 @@ class FakeRuntime:
     ecosystem_service = EcosystemService()
     notification_worker = None
 
+    class TenantState:
+        def __init__(self):
+            self.preferences = {}
+
+        def load_preferences(self, context):
+            return self.preferences.get(context.key)
+
+        def save_preferences(self, context, preferences):
+            self.preferences[context.key] = dict(preferences)
+
+        def readiness(self):
+            return {
+                "status": "LOCAL_TENANT_SCOPED_STORAGE",
+                "production_ready": False,
+            }
+
+    tenant_state = TenantState()
+
 
 def call_wsgi(app, path, method="GET", body=None, remote_addr="127.0.0.1", origin=None, include_headers=False, authorization=None, identity_verified=False, remote_user=None, tenant_id=None):
     raw = json.dumps(body or {}).encode("utf-8")
@@ -216,6 +234,60 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(status, "503 Service Unavailable")
         self.assertFalse(body["execution_authorized"])
 
+
+
+    def test_local_user_preferences_are_persisted_in_single_user_scope(self):
+        app = StandaloneWSGIApplication(FakeRuntime())
+        settings = {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}
+        with patch.dict("os.environ", settings):
+            status, saved = call_wsgi(
+                app, "/api/user/preferences", method="PUT",
+                body={"preferences": {"language": "pt-BR", "compact_mode": True}},
+            )
+            self.assertEqual(status, "200 OK")
+            self.assertEqual(saved["scope"], "TENANT_SCOPED")
+            status, loaded = call_wsgi(app, "/api/user/preferences")
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(
+            loaded["preferences"],
+            {"language": "pt-BR", "compact_mode": True},
+        )
+        self.assertFalse(loaded["execution_authorized"])
+
+    def test_remote_user_preferences_are_isolated_by_verified_tenant_and_subject(self):
+        app = StandaloneWSGIApplication(FakeRuntime())
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, _ = call_wsgi(
+                app, "/api/user/preferences", method="PUT",
+                body={"preferences": {"language": "pt-BR"}},
+                remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+            self.assertEqual(status, "200 OK")
+            status, bob = call_wsgi(
+                app, "/api/user/preferences",
+                remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="bob", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(bob["preferences"], {})
+
+    def test_user_preferences_reject_non_object_payload(self):
+        app = StandaloneWSGIApplication(FakeRuntime())
+        with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
+            status, body = call_wsgi(
+                app, "/api/user/preferences", method="PUT",
+                body={"preferences": ["not", "an", "object"]},
+            )
+        self.assertEqual(status, "400 Bad Request")
+        self.assertFalse(body["execution_authorized"])
 
 if __name__ == "__main__":
     unittest.main()
