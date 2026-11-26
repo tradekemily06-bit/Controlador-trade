@@ -57,6 +57,19 @@ def test_decision_memory_updates_manual_outcome_without_granting_execution(tmp_p
     assert loaded.execution_allowed is False
 
 
+def test_duplicate_cycle_does_not_erase_manual_outcome(tmp_path):
+    memory = TenantScopedDecisionMemory(SQLiteTenantStorage(tmp_path / "tenant.sqlite3"))
+    owner = TenantContext("tenant-a", "subject-a")
+    record = _record()
+    assert memory.save(owner, record) is True
+    memory.record_outcome(owner, record.decision_id, "WIN")
+
+    assert memory.save(owner, record) is False
+    loaded = memory.load(owner)[0]
+    assert loaded.outcome == "WIN"
+    assert loaded.outcome_source == "MANUAL_STUDY"
+
+
 def test_decision_memory_rejects_execution_authority_and_invalid_limits(tmp_path):
     memory = TenantScopedDecisionMemory(SQLiteTenantStorage(tmp_path / "tenant.sqlite3"))
     owner = TenantContext("tenant-a", "subject-a")
