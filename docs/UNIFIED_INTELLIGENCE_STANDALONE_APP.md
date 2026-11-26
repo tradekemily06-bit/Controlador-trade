@@ -42,6 +42,17 @@ The standalone Analysis area can receive any provider implementing the existing 
 
 The 10-minute timeframe is now included alongside 1m, 5m, 15m, 30m, 1h, 4h and 1d. No broker provider is enabled by default: a provider must be injected and its freshness/quality checks must pass. A configured API model is separate from the market-data feed and does not make the system an AGI/ASI.
 
+### Calibrated probability of profit (DEMO and REAL)
+
+The product requirement is to show a probability-of-profit estimate in addition to the technical evidence score, for both DEMO and REAL contexts. These are distinct measures and must never be substituted for one another.
+
+- The probability is conditional on a fully specified trade hypothesis: symbol, direction, timeframe, entry/exit rules, stop/target or other outcome horizon, and costs. It must estimate net-positive outcome, not merely whether price moved in the predicted direction.
+- Calibration and validation must be segmented by execution context (DEMO versus REAL) and, where evidence supports it, provider/broker, account type, symbol, timeframe and strategy. DEMO fills are not assumed to represent REAL spread, slippage, latency, rejection or liquidity.
+- Training and evaluation must use time-ordered, out-of-sample data; prevent leakage between overlapping trades; report sample count, evaluation window, calibration quality and uncertainty interval. A high technical score alone is never a probability estimate.
+- Until a segment has sufficient representative, validated outcomes, the UI/API must show “probabilidade indisponível / ainda não calibrada” rather than inventing a percentage. Do not silently borrow DEMO calibration for REAL or vice versa.
+- Historical outcomes must distinguish DEMO and REAL and record the actual entry/exit, costs and outcome source. Manual labels must be identified as manual and must not be treated as verified broker fills.
+- This remains an analyst feature only. Probability is informational, not a guarantee or an instruction to enter; the user decides and places any trade manually.
+
 
 ## Functional module placement (no extra navigation areas)
 
