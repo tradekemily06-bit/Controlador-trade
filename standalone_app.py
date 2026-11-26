@@ -831,6 +831,134 @@ class StandaloneWSGIApplication:
                 request_id,
             )
 
+        if path.startswith("/api/assistant/conversations"):
+            tenant_context = _tenant_context_for_request(environ, reason)
+            if tenant_context is None:
+                return _json_response(
+                    start_response, HTTPStatus.FORBIDDEN,
+                    {"error": "identidade confiável necessária para acessar conversas", "execution_authorized": False},
+                    request_id,
+                )
+            assistant = getattr(self.runtime, "assistant", None)
+            if assistant is None:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "Assistente não configurado", "execution_authorized": False},
+                    request_id,
+                )
+            owner_key = tenant_context.key
+            if method == "GET" and path == "/api/assistant/conversations":
+                return _json_response(
+                    start_response, HTTPStatus.OK,
+                    {"conversations": assistant.conversations(owner_key), "scope": "TENANT_SCOPED", "execution_authorized": False},
+                    request_id,
+                )
+            if method == "GET" and path == "/api/assistant/conversations/history":
+                params = parse_qs(str(environ.get("QUERY_STRING") or ""), strict_parsing=False)
+                conversation_id = params.get("conversation_id", [""])[-1]
+                try:
+                    history = assistant.history(owner_key, conversation_id)
+                except PermissionError:
+                    return _json_response(
+                        start_response, HTTPStatus.NOT_FOUND,
+                        {"error": "conversa não encontrada", "execution_authorized": False},
+                        request_id,
+                    )
+                except ValueError as exc:
+                    return _json_response(
+                        start_response, HTTPStatus.BAD_REQUEST,
+                        {"error": str(exc), "execution_authorized": False},
+                        request_id,
+                    )
+                return _json_response(
+                    start_response, HTTPStatus.OK,
+                    {"conversation_id": conversation_id, "history": history, "scope": "TENANT_SCOPED", "execution_authorized": False},
+                    request_id,
+                )
+            if method == "DELETE" and path == "/api/assistant/conversations":
+                try:
+                    payload = _read_json(environ)
+                    assistant.delete_conversation(owner_key, payload.get("conversation_id"))
+                except PermissionError:
+                    return _json_response(
+                        start_response, HTTPStatus.NOT_FOUND,
+                        {"error": "conversa não encontrada", "execution_authorized": False},
+                        request_id,
+                    )
+                except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                    return _json_response(
+                        start_response, HTTPStatus.BAD_REQUEST,
+                        {"error": str(exc), "execution_authorized": False},
+                        request_id,
+                    )
+                return _json_response(
+                    start_response, HTTPStatus.OK,
+                    {"deleted": True, "scope": "TENANT_SCOPED", "execution_authorized": False},
+                    request_id,
+                )
+            return _json_response(
+                start_response, HTTPStatus.METHOD_NOT_ALLOWED,
+                {"error": "método não permitido para conversas", "execution_authorized": False},
+                request_id,
+            )
+
+        if method == "POST" and path == "/api/assistant/ask":
+            tenant_context = _tenant_context_for_request(environ, reason)
+            if tenant_context is None:
+                return _json_response(
+                    start_response, HTTPStatus.FORBIDDEN,
+                    {"error": "identidade confiável necessária para usar o Assistente", "execution_authorized": False},
+                    request_id,
+                )
+            # The fiscal repositories used by the current Assistant still
+            # belong to the local single-user runtime. Do not expose them to
+            # remote tenants until fiscal storage itself is tenant-scoped.
+            if reason != "local":
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "Assistente remoto aguardando isolamento individual da Reserva Fiscal", "state": "FISCAL_TENANT_ISOLATION_REQUIRED", "execution_authorized": False},
+                    request_id,
+                )
+            assistant = getattr(self.runtime, "assistant", None)
+            if assistant is None:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "Assistente não configurado", "execution_authorized": False},
+                    request_id,
+                )
+            try:
+                payload = _read_json(environ)
+                result = assistant.ask(
+                    identity=tenant_context.key,
+                    message=payload.get("message"),
+                    fiscal_owner_id=self.runtime.fiscal_owner_id,
+                    cid=payload.get("conversation_id"),
+                )
+            except PermissionError:
+                return _json_response(
+                    start_response, HTTPStatus.NOT_FOUND,
+                    {"error": "conversa não encontrada", "execution_authorized": False},
+                    request_id,
+                )
+            except ValueError as exc:
+                return _json_response(
+                    start_response, HTTPStatus.BAD_REQUEST,
+                    {"error": str(exc), "execution_authorized": False},
+                    request_id,
+                )
+            except Exception as exc:
+                error = str(exc)
+                status = HTTPStatus.SERVICE_UNAVAILABLE
+                response = {"error": error, "execution_authorized": False}
+                if getattr(exc, "conversation_id", None):
+                    response["conversation_id"] = exc.conversation_id
+                return _json_response(start_response, status, response, request_id)
+            return _json_response(
+                start_response, HTTPStatus.OK,
+                {**result, "scope": "LOCAL_SINGLE_USER", "execution_authorized": False},
+                request_id,
+            )
+
         if method == "GET" and path == "/api/assistant/status":
             readiness = self.runtime.assistant.readiness()
             return _json_response(
