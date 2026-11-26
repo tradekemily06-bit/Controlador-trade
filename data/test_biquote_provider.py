@@ -196,9 +196,9 @@ def test_biquote_provider_aggregates_variable_timeframes(
 
     assert len(result) == 1
     assert result[0].open == 1.0
-    assert result[0].high == 1.2 + len(timestamps) - 1
-    assert result[0].low == 0.8
-    assert result[0].close == 1.1 + len(timestamps) - 1
+    assert result[0].high == pytest.approx(1.2 + len(timestamps) - 1)
+    assert result[0].low == pytest.approx(0.8)
+    assert result[0].close == pytest.approx(1.1 + len(timestamps) - 1)
     assert result[0].volume == sum(10 + index for index in range(len(timestamps)))
 
 
