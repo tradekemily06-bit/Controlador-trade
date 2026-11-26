@@ -237,9 +237,8 @@ class StandaloneWSGIApplication:
                 request_id,
             )
 
-        # Until subscriptions/results and decision history are tenant-scoped,
-        # do not expose shared market-monitor state or shared analysis writes to
-        # authenticated remote users. Local single-user operation remains open.
+        # Market-monitor data is tenant-scoped below. The broader analysis
+        # route remains blocked until legacy statistics/reporting are isolated.
         if reason == "trusted_identity" and path == "/api/intelligence/route":
             return _json_response(
                 start_response, HTTPStatus.SERVICE_UNAVAILABLE,
