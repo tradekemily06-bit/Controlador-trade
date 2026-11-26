@@ -42,6 +42,16 @@ class FakeService:
     def statistics(self):
         return {"total": 0}
 
+    def decision_report(self, limit=1000):
+        return {
+            "report_type": "STANDALONE_DECISION_REPORT",
+            "record_count": 0,
+            "records": [],
+            "export_json": "{}",
+            "execution_authorized": False,
+        }
+
+
     def replay(self, cases):
         return [{"step": index, "symbol": case.get("symbol")} for index, case in enumerate(cases, start=1)]
 
@@ -163,6 +173,24 @@ class StandaloneApplicationFactoryTests(unittest.TestCase):
                 task="replay",
                 context={"operation": "replay", "cases": []},
             )
+
+    def test_analysis_and_memory_expose_decision_report(self):
+        app = build_standalone_application(ecosystem_service=FakeService())
+        report = app.handle(
+            area=ApplicationArea.ANALYSIS,
+            task="exportar relatório",
+            context={"operation": "reports"},
+        )
+        memory_report = app.handle(
+            area=ApplicationArea.MEMORY,
+            task="consultar relatório",
+            context={"operation": "report"},
+        )
+        self.assertEqual(report["reporting_status"], "DECISION_REPORT_READY")
+        self.assertEqual(report["result"]["report"]["report_type"], "STANDALONE_DECISION_REPORT")
+        self.assertEqual(memory_report["result"]["report"]["record_count"], 0)
+        self.assertFalse(report["execution_authorized"])
+        self.assertFalse(memory_report["execution_authorized"])
 
     def test_analysis_area_exposes_existing_statistics_and_news(self):
         app = build_standalone_application(ecosystem_service=FakeService())
