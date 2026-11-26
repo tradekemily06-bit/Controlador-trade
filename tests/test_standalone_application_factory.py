@@ -75,8 +75,19 @@ class StandaloneApplicationFactoryTests(unittest.TestCase):
         self.assertEqual(architecture["area_handler_status"]["study"], "CONNECTED")
         self.assertEqual(architecture["area_handler_status"]["memory"], "CONNECTED")
         self.assertEqual(architecture["area_handler_status"]["control_center"], "CONNECTED")
-        self.assertEqual(architecture["area_handler_status"]["tax_reserve"], "NOT_CONNECTED")
-        self.assertEqual(architecture["area_handler_status"]["ecosystem_assistant"], "NOT_CONNECTED")
+        self.assertEqual(architecture["area_handler_status"]["tax_reserve"], "CONNECTED")
+        self.assertEqual(architecture["area_handler_status"]["ecosystem_assistant"], "CONNECTED")
+
+    def test_fiscal_and_assistant_areas_remain_routable_when_unconfigured(self):
+        app = build_standalone_application(ecosystem_service=FakeService())
+        fiscal = app.handle(area=ApplicationArea.TAX_RESERVE, task="consultar")
+        assistant = app.handle(area=ApplicationArea.ECOSYSTEM_ASSISTANT, task="consultar")
+        self.assertEqual(fiscal["status"], "CONNECTED")
+        self.assertEqual(fiscal["result"]["status"], "NOT_CONFIGURED")
+        self.assertEqual(assistant["status"], "CONNECTED")
+        self.assertEqual(assistant["result"]["status"], "NOT_CONFIGURED")
+        self.assertFalse(fiscal["execution_authorized"])
+        self.assertFalse(assistant["execution_authorized"])
 
     def test_command_cabin_is_read_only(self):
         app = build_standalone_application(ecosystem_service=FakeService())
