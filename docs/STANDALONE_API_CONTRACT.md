@@ -97,6 +97,8 @@ Returns the in-app notification inbox. Limit is 1–200. This endpoint does not 
 - The standalone runtime now binds its configured `CONTROLADOR_SINGLE_USER_IDENTITY` to a local tenant context before starting market monitoring. A material market-signal change is published both to the legacy local operational inbox and to that explicitly addressed user's tenant-scoped inbox; the local API merges both views by notification ID. Tenant inbox append is an atomic SQLite transaction with deduplication and bounded retention. This wires market-change alerts for the configured single-user runtime only. Remote tenant inboxes still require a verified recipient or an explicit consented subscription fan-out; there is no global broadcast or automatic legacy migration.
 - This API boundary prevents cross-user reads; it does not mean the entire application or every legacy store is multi-tenant.
 
+Remote users are temporarily denied access to shared `/api/market-monitor/*` endpoints and `POST /api/intelligence/route` while monitor subscriptions/results and decision memory are not tenant-scoped. The local single-user runtime remains available. This is a fail-closed security boundary, not a completed multi-tenant implementation; remote access can be reopened only after per-tenant persistence, ownership checks, and isolation tests exist.
+
 ### `GET /api/notifications/status`
 Returns persistence/outbox counts and external worker status. `OUTBOX_ONLY_NO_PROVIDER` means notifications are stored in the app but no external delivery sink is configured. Do not display this as phone/browser push enabled.
 
