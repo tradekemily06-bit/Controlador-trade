@@ -15,12 +15,12 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
             root = Path(directory)
             schemas = {
                 "fiscal-reserve.sqlite3": {
-                    "fiscal_reserve_entries": "entry_id TEXT, owner_id TEXT, category TEXT, realized_result_brl REAL, reserve_amount_brl REAL, reference TEXT, occurred_on TEXT",
+                    "fiscal_reserve_entries": "entry_id TEXT, owner_id TEXT, category TEXT, entry_type TEXT, realized_result_brl REAL, reserve_rate REAL, reserve_amount_brl REAL, reference TEXT, occurred_on TEXT, created_at TEXT, notes TEXT",
                     "fiscal_reserve_settings": "owner_id TEXT, category TEXT, rate REAL, rate_source TEXT",
                 },
                 "ecosystem-state.sqlite3": {"ecosystem_state": "key TEXT, value_json TEXT"},
-                "notification-outbox.sqlite3": {"notification_outbox": "idempotency_key TEXT, payload_json TEXT, status TEXT, attempts INTEGER, available_at REAL, created_at REAL"},
-                "decision-memory.sqlite3": {"decisions": "decision_id TEXT, created_at TEXT, signal TEXT, score REAL, confirmed INTEGER, reason TEXT, execution_allowed INTEGER, outcome_source TEXT"},
+                "notification-outbox.sqlite3": {"notification_outbox": "idempotency_key TEXT, payload_json TEXT, status TEXT, attempts INTEGER, available_at REAL, lease_until REAL, created_at REAL, delivered_at REAL, last_error TEXT"},
+                "decision-memory.sqlite3": {"decisions": "decision_id TEXT, created_at TEXT, symbol TEXT, timeframe TEXT, signal TEXT, score REAL, confirmed INTEGER, reason TEXT, execution_allowed INTEGER, outcome TEXT, outcome_source TEXT"},
                 "assistant-conversations.sqlite3": {
                     "conversations": "id TEXT, owner TEXT, title TEXT, updated_at TEXT",
                     "messages": "id INTEGER, conversation_id TEXT, role TEXT, content TEXT, created_at TEXT",
@@ -80,7 +80,7 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
                 },
                 "ecosystem-state.sqlite3": {"ecosystem_state": "key TEXT, value_json TEXT"},
                 "notification-outbox.sqlite3": {"notification_outbox": "idempotency_key TEXT, payload_json TEXT, status TEXT, attempts INTEGER, available_at REAL, created_at REAL"},
-                "decision-memory.sqlite3": {"decisions": "decision_id TEXT, created_at TEXT, signal TEXT, score REAL, confirmed INTEGER, reason TEXT, execution_allowed INTEGER"},
+                "decision-memory.sqlite3": {"decisions": "decision_id TEXT, created_at TEXT, symbol TEXT, timeframe TEXT, signal TEXT, score REAL, confirmed INTEGER, reason TEXT, execution_allowed INTEGER, outcome TEXT"},
                 "assistant-conversations.sqlite3": {
                     "conversations": "id TEXT, owner TEXT, title TEXT, updated_at TEXT",
                     "messages": "id INTEGER, conversation_id TEXT, role TEXT, content TEXT, created_at TEXT",
