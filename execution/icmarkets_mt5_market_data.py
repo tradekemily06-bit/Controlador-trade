@@ -81,6 +81,17 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
             self._mt5 = mt5
         return self._mt5
 
+    @classmethod
+    def supports_timeframe(cls, timeframe: str) -> bool:
+        """Check native interval support without initializing or probing MT5."""
+        from data.timeframes import normalize_timeframe
+
+        try:
+            normalized = normalize_timeframe(timeframe)
+        except (TypeError, ValueError):
+            return False
+        return normalized in {key for key in cls._TIMEFRAMES if key[0].isdigit()}
+
     def _timeframe(self, timeframe: str) -> Any:
         key = timeframe.strip().lower().removeprefix("period_")
         constant_name = self._TIMEFRAMES.get(key)
