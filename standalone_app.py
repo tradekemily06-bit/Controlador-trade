@@ -209,19 +209,37 @@ class StandaloneWSGIApplication:
         if method == "GET" and path == "/api/market-data/timeframes":
             registry = getattr(self.runtime, "market_data_registry", None)
             selected = registry.selected() if registry is not None else None
-            provider_compatibility = (
-                {
-                    "selected_provider": selected.provider_id,
-                    "status": "REGISTERED_NOT_TESTED_PER_TIMEFRAME",
-                    "note": "A aceitação pelo normalizador não garante que a fonte selecionada forneça cada intervalo.",
-                }
-                if selected is not None
-                else {
+            if selected is None:
+                provider_compatibility = {
                     "selected_provider": None,
                     "status": "NO_PROVIDER_SELECTED",
+                    "supported": [],
+                    "unsupported": [],
                     "note": "Configure e valide uma fonte de mercado antes de monitorar intervalos.",
                 }
-            )
+            else:
+                capability_check = getattr(selected.provider, "supports_timeframe", None)
+                if callable(capability_check):
+                    supported = [
+                        timeframe for timeframe in list_supported_timeframes()
+                        if capability_check(timeframe)
+                    ]
+                    unsupported = [
+                        timeframe for timeframe in list_supported_timeframes()
+                        if timeframe not in supported
+                    ]
+                    capability_status = "DECLARED_NOT_LIVE_TESTED"
+                else:
+                    supported = []
+                    unsupported = []
+                    capability_status = "NOT_DECLARED"
+                provider_compatibility = {
+                    "selected_provider": selected.provider_id,
+                    "status": capability_status,
+                    "supported": supported,
+                    "unsupported": unsupported,
+                    "note": "Compatibilidade declarada pelo adaptador; ainda exige teste real de dados para confirmar disponibilidade.",
+                }
             return _json_response(
                 start_response, HTTPStatus.OK,
                 {
