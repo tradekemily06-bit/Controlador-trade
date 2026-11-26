@@ -87,6 +87,10 @@ Body: `{"preferences":{"language":"pt-BR"}}`. The preferences value must be a JS
 
 This is local tenant-scoped persistence, not proof of a production identity provider, managed database, backup/restore, or complete multi-tenant isolation. The route is informational/configuration-only and never authorizes broker execution.
 
+## Tenant-scoped decision memory
+
+The runtime now provisions a tenant-and-subject-scoped decision-memory adapter on the local tenant SQLite store. It supports explicitly addressed save/load and manual outcome annotation, validates decision records, and never imports the legacy global decision history. This is an internal foundation component; it is not yet exposed as a remote memory API and does not replace the legacy local single-user analysis/reporting path. Remote analysis remains blocked until request-scoped analysis, statistics, report generation, and market-monitor subscriptions/results all use the verified tenant context. The adapter remains local SQLite and is not production-durable.
+
 ## Notifications
 
 ### `GET /api/notifications?limit=50&include_info=false`
