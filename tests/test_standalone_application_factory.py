@@ -24,6 +24,21 @@ class FakeService:
     def learning_summary(self):
         return {"execution_allowed": False}
 
+    def learning_sources_view(self):
+        return [{"source_id": "source-1"}]
+
+    def learning_resources_view(self):
+        return [{"resource_id": "resource-1"}]
+
+    def learning_observations_view(self):
+        return [{"resource_id": "resource-1"}]
+
+    def learning_activities_view(self):
+        return [{"activity_id": "activity-1"}]
+
+    def news_status(self, limit=10):
+        return {"provider": "UNCONFIGURED", "live": False, "items": []}
+
     def statistics(self):
         return {"total": 0}
 
@@ -70,6 +85,38 @@ class StandaloneApplicationFactoryTests(unittest.TestCase):
                 ecosystem_service=FakeService(),
                 fiscal_reserve=FiscalReserve(),
             )
+
+
+    def test_study_area_exposes_existing_learning_subsystems(self):
+        app = build_standalone_application(ecosystem_service=FakeService())
+        for operation, expected in (
+            ("sources", "learning_sources"),
+            ("resources", "resources"),
+            ("observations", "observations"),
+            ("activities", "activities"),
+        ):
+            result = app.handle(
+                area=ApplicationArea.STUDY,
+                task="consultar",
+                context={"operation": operation},
+            )
+            self.assertEqual(result["status"], "CONNECTED")
+            self.assertIn(expected, result["result"])
+
+    def test_analysis_area_exposes_existing_statistics_and_news(self):
+        app = build_standalone_application(ecosystem_service=FakeService())
+        stats = app.handle(
+            area=ApplicationArea.ANALYSIS,
+            task="consultar",
+            context={"operation": "statistics"},
+        )
+        news = app.handle(
+            area=ApplicationArea.ANALYSIS,
+            task="consultar",
+            context={"operation": "news"},
+        )
+        self.assertEqual(stats["result"]["reporting_status"], "STATISTICS_AVAILABLE_REPORT_EXPORT_NOT_CONNECTED")
+        self.assertEqual(news["result"]["news"]["live"], False)
 
 
 if __name__ == "__main__":
