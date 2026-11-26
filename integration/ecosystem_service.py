@@ -9,6 +9,7 @@ from analysis.decision_store import DecisionStore
 from analysis.decision_report import build_decision_report, export_decision_report
 from analysis.statistics import summarize, summarize_breakdowns, summarize_periods
 from core.ecosystem_health import build_health_alerts
+from core.operational_alerts import build_operational_incidents
 from core.ecosystem_notifications import EcosystemNotification, EcosystemNotificationCenter, NotificationKind, NotificationSeverity
 from core.ecosystem_state_store import EcosystemStateStore
 from core.learning_content import ContentType, LearningActivity, LearningAttempt, LearningObservation, LearningResource, LearningStatus, normalize_tags
