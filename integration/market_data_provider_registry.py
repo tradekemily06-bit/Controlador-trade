@@ -56,10 +56,20 @@ class MarketDataProviderRegistry:
         selected = self.selected()
         return resolve_active_account_mode(selected.provider if selected else None)
 
-    def status(self) -> dict[str, Any]:
+    def status(self, *, probe_account_mode: bool = True) -> dict[str, Any]:
+        """Describe registered adapters; optionally perform an active account probe.
+
+        Frontend readiness polling must be side-effect-free and must not
+        initialize/shutdown a broker terminal on every status request.
+        """
+        account_mode = (
+            self.active_account_mode()
+            if probe_account_mode
+            else {"mode": None, "status": "NOT_PROBED", "execution_authorized": False}
+        )
         return {
             "selected_provider": self._selected,
-            "account_mode": self.active_account_mode(),
+            "account_mode": account_mode,
             "providers": [
                 {
                     "provider_id": item.provider_id,
