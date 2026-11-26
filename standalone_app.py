@@ -965,9 +965,22 @@ class StandaloneWSGIApplication:
 
         if method == "GET" and path == "/api/assistant/status":
             readiness = self.runtime.assistant.readiness()
+            tenant_context = _tenant_context_for_request(environ, reason)
+            readiness = {
+                **readiness,
+                "conversation_scope": "TENANT_AND_SUBJECT",
+                "conversation_identity_required": True,
+                "remote_chat": (
+                    "BLOCKED_FISCAL_TENANT_ISOLATION_REQUIRED"
+                    if reason == "trusted_identity"
+                    else "LOCAL_SINGLE_USER_ONLY"
+                ),
+                "tenant_context_available": tenant_context is not None,
+                "execution_authorized": False,
+            }
             return _json_response(
                 start_response, HTTPStatus.OK,
-                {**readiness, "execution_authorized": False},
+                readiness,
                 request_id,
             )
 
