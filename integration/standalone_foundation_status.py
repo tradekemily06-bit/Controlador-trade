@@ -27,7 +27,19 @@ def _integrity(path: Path) -> str:
 
 def standalone_storage_status(runtime: Any) -> dict[str, Any]:
     """Report actual local SQLite presence/integrity without overstating production readiness."""
-    root = Path(runtime.runtime_dir)
+    runtime_dir = getattr(runtime, "runtime_dir", None)
+    if runtime_dir is None:
+        return {
+            "provider": "LOCAL_SQLITE",
+            "required_stores": "NOT_AVAILABLE",
+            "stores": [],
+            "tenant_isolation": "UNKNOWN",
+            "multi_tenant_isolation": "NOT_IMPLEMENTED",
+            "backup_restore": "NOT_CONFIGURED",
+            "production_storage": "NOT_PROVEN_BY_LOCAL_SQLITE_HEALTH",
+            "execution_authorized": False,
+        }
+    root = Path(runtime_dir)
     stores = []
     required_ready = True
     for store_id, filename, required in _DATABASES:
