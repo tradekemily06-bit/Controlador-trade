@@ -95,6 +95,8 @@ class StandaloneRuntime:
                 or os.getenv("CONTROLADOR_MARKET_DATA_PROVIDER", "").strip()
                 or None
             )
+            if configured_provider == "icmarkets_mt5_demo":
+                configured_provider = "mt5_demo"
             if not provider_map and market_data_provider is None:
                 provider_map = build_configured_market_data_providers(configured_provider)
             if market_data_provider is not None:
