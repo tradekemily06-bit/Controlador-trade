@@ -80,6 +80,9 @@ class EcosystemNotificationCenter:
             raise ValueError("notification is required")
         if not notification.title.strip() or not notification.message.strip():
             raise ValueError("notification title and message are required")
+        for existing in self._notifications:
+            if existing.notification_id == notification.notification_id:
+                return existing
         self._notifications.append(notification)
         return notification
 
