@@ -142,7 +142,7 @@ def test_monitor_latest_results_rejects_invalid_limits(tmp_path):
 
 
 def test_monitor_caps_active_subscriptions(tmp_path):
-    monitor = MarketTimeframeMonitor(tmp_path / "monitor.sqlite3", FakeAnalyzer())
+    monitor = MarketTimeframeMonitor(tmp_path / "monitor.sqlite3", FakeAnalyzer(), default_context=OWNER)
     for index in range(100):
         monitor.subscribe(f"SYM{index}", "M1")
     try:
