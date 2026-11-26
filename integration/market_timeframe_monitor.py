@@ -225,6 +225,18 @@ class MarketTimeframeMonitor:
                 return None
 
             signal = str(result.get("signal", "AGUARDAR"))
+            enriched = {
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "candle_at": expected.isoformat(),
+                "previous_signal": subscription.get("last_signal"),
+                "result": result,
+            }
+            # Publish side effects before marking the candle processed. If
+            # notification persistence fails, the next poll retries this
+            # candle; stable notification IDs make that retry idempotent.
+            if self.on_result is not None:
+                self.on_result(enriched)
             serialized = json.dumps(result, ensure_ascii=False, separators=(",", ":"), default=str)
             with self._lock, self._connect() as db:
                 db.execute(
@@ -249,15 +261,6 @@ class MarketTimeframeMonitor:
                         timeframe,
                     ),
                 )
-            enriched = {
-                "symbol": symbol,
-                "timeframe": timeframe,
-                "candle_at": expected.isoformat(),
-                "previous_signal": subscription.get("last_signal"),
-                "result": result,
-            }
-            if self.on_result is not None:
-                self.on_result(enriched)
             return enriched
         except Exception as exc:
             self._record_error(symbol, timeframe, exc)
