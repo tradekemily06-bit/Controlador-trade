@@ -78,6 +78,10 @@ def test_monitor_processes_only_the_expected_closed_candle_once(tmp_path):
     assert len(analyzer.calls) == 1
     assert notifications[0]["result"]["signal"] == "COMPRA"
     assert monitor.subscriptions()[0]["last_signal"] == "COMPRA"
+    latest = monitor.latest_results(limit=1)
+    assert latest[0]["symbol"] == "EURUSD"
+    assert latest[0]["timeframe"] == "5m"
+    assert latest[0]["result"]["signal"] == "COMPRA"
 
 
 def test_monitor_waits_when_provider_has_not_returned_closed_target_candle(tmp_path):
@@ -117,3 +121,15 @@ def test_monitor_can_disable_a_subscription(tmp_path):
     assert monitor.unsubscribe("EURUSD", "M5")
     assert not monitor.unsubscribe("EURUSD", "M5")
     assert monitor.status()["enabled"] == 0
+
+
+
+def test_monitor_latest_results_rejects_invalid_limits(tmp_path):
+    monitor = MarketTimeframeMonitor(tmp_path / "monitor.sqlite3", FakeAnalyzer())
+    for limit in (0, 201, True):
+        try:
+            monitor.latest_results(limit=limit)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("invalid result limit was accepted")
