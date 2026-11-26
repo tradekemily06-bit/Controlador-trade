@@ -445,17 +445,15 @@ def test_owner_scoped_fast_path_rejects_orphaned_foreign_reviews(tmp_path, monke
             "SELECT COUNT(*) FROM fiscal_pending_reviews WHERE review_id='orphan-review'"
         ).fetchone()[0] == 1
 
-def test_application_migrates_owner_schema_before_fiscal_repositories_are_created():
+def test_standalone_application_migrates_owner_schema_after_lock_and_before_repositories():
     import ast
     from pathlib import Path
 
-    app_path = Path(__file__).resolve().parents[1] / "app.py"
-    tree = ast.parse(app_path.read_text(encoding="utf-8"))
+    runtime_path = Path(__file__).resolve().parents[1] / "integration" / "standalone_runtime.py"
+    tree = ast.parse(runtime_path.read_text(encoding="utf-8"))
     migration_lines = []
     process_lock_acquire_lines = []
-    runtime_construction_lines = []
     repository_lines = []
-
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
@@ -464,30 +462,22 @@ def test_application_migrates_owner_schema_before_fiscal_repositories_are_create
                 migration_lines.append(node.lineno)
             elif node.func.id in {"FiscalReserve", "FiscalPendingQueue", "FiscalDomesticPendingQueue"}:
                 repository_lines.append(node.lineno)
-            elif node.func.id == "build_demo_execution_port":
-                runtime_construction_lines.append(node.lineno)
-        elif (
-            isinstance(node.func, ast.Attribute)
-            and node.func.attr == "acquire"
-            and isinstance(node.func.value, ast.Name)
-            and node.func.value.id == "_RUNTIME_PROCESS_LOCK"
-        ):
-            process_lock_acquire_lines.append(node.lineno)
+        elif isinstance(node.func, ast.Attribute) and node.func.attr == "acquire":
+            if isinstance(node.func.value, ast.Attribute) and node.func.value.attr == "process_lock":
+                process_lock_acquire_lines.append(node.lineno)
 
-    assert process_lock_acquire_lines, "app.py must acquire the process lock during startup"
-    assert runtime_construction_lines, "app.py must construct the operational runtime"
-    assert migration_lines, "app.py must apply the owner-scoped fiscal migration"
-    assert min(process_lock_acquire_lines) < min(runtime_construction_lines), (
-        "process exclusivity must be acquired before operational runtime construction"
-    )
+    assert process_lock_acquire_lines, "standalone runtime must acquire its process lock"
+    assert migration_lines, "standalone runtime must apply the owner-scoped fiscal migration"
+    assert repository_lines, "standalone runtime must initialize fiscal repositories"
     assert min(process_lock_acquire_lines) < min(migration_lines), (
-        "process exclusivity must be acquired before fiscal schema migration"
+        "process exclusivity must be acquired before fiscal migration"
     )
-    assert repository_lines, "app.py must initialize fiscal repositories"
     assert min(migration_lines) < min(repository_lines), (
         "owner-scoped migration must run before fiscal repository initialization"
     )
-
+    source = runtime_path.read_text(encoding="utf-8")
+    assert "build_demo_execution_port" not in source
+    assert "OperationalRuntime" not in source
 
 def test_schema_validator_rejects_partial_unique_index_as_full_owner_constraint():
     from finance.fiscal_schema import _has_unique_index
