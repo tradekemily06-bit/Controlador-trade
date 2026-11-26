@@ -27,6 +27,46 @@ class SQLiteTenantStorageTests(unittest.TestCase):
             self.assertIsNone(reopened.get(tenant_a, "preferences"))
             self.assertEqual(reopened.get(tenant_b, "preferences"), {"theme": "light"})
 
+    def test_users_inside_same_tenant_are_isolated_by_subject(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "tenant-state.sqlite3"
+            alice = TenantContext("tenant-a", "alice")
+            bob = TenantContext("tenant-a", "bob")
+            storage = SQLiteTenantStorage(database)
+            storage.put(alice, "preferences", {"language": "pt-BR"})
+            storage.put(bob, "preferences", {"language": "en"})
+            self.assertEqual(storage.get(alice, "preferences"), {"language": "pt-BR"})
+            self.assertEqual(storage.get(bob, "preferences"), {"language": "en"})
+            storage.delete(alice, "preferences")
+            self.assertIsNone(storage.get(alice, "preferences"))
+            self.assertEqual(storage.get(bob, "preferences"), {"language": "en"})
+
+    def test_legacy_unscoped_rows_are_preserved_but_not_reassigned(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "tenant-state.sqlite3"
+            import sqlite3
+            with sqlite3.connect(database) as connection:
+                connection.execute(
+                    "CREATE TABLE tenant_state (tenant_id TEXT NOT NULL, key TEXT NOT NULL, "
+                    "value_json TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+                    "PRIMARY KEY (tenant_id, key))"
+                )
+                connection.execute(
+                    "INSERT INTO tenant_state(tenant_id, key, value_json) VALUES (?, ?, ?)",
+                    ("tenant-a", "preferences", '{"language":"pt-BR"}'),
+                )
+            storage = SQLiteTenantStorage(database)
+            self.assertIsNone(
+                storage.get(TenantContext("tenant-a", "alice"), "preferences")
+            )
+            with sqlite3.connect(database) as connection:
+                legacy = connection.execute(
+                    "SELECT value_json FROM tenant_state_legacy_unscoped "
+                    "WHERE tenant_id=? AND key=?",
+                    ("tenant-a", "preferences"),
+                ).fetchone()
+            self.assertEqual(legacy[0], '{"language":"pt-BR"}')
+
     def test_missing_context_fails_closed(self):
         with tempfile.TemporaryDirectory() as directory:
             storage = SQLiteTenantStorage(Path(directory) / "tenant.sqlite3")
