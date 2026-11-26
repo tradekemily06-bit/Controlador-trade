@@ -283,6 +283,7 @@ class MarketTimeframeMonitor:
                 limit=120,
                 confirmed=True,
                 filters_ok=True,
+                decision_context=context,
             )
             market_data = result.get("market_data", {})
             last_candle = market_data.get("last_candle_at")
