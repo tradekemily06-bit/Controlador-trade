@@ -90,6 +90,8 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(body["areas"], 7)
         self.assertEqual(body["market_data"]["status"], "NOT_CONFIGURED")
         self.assertEqual(body["news"]["status"], "NOT_CONFIGURED")
+        self.assertEqual(body["decision_memory"]["state"], "STATUS_NOT_EXPOSED")
+        self.assertFalse(body["decision_memory"]["durability_confirmed"])
         self.assertEqual(body["notification_delivery"]["state"], "NO_EXTERNAL_SINK_CONFIGURED")
         self.assertEqual(body["deployment"], "PROCESS_RUNNING_DEPLOYMENT_NOT_VERIFIED")
         self.assertEqual(body["identity"]["trusted_identity_provider"], "NOT_CONFIGURED")
