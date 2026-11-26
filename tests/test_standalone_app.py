@@ -82,7 +82,7 @@ class FakeRuntime:
         def __init__(self):
             self.calls = []
 
-        def status(self, context):
+        def status(self, context=None):
             self.calls.append(("status", context.tenant_id, context.subject_id))
             return {"enabled": 0, "total": 0, "worker_running": False, "subscriptions": [], "execution_authorized": False}
 
@@ -198,7 +198,9 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertFalse(body["execution_authorized"])
 
     def test_notifications_endpoint_returns_local_single_user_inbox(self):
-        app = StandaloneWSGIApplication(FakeRuntime())
+        runtime = FakeRuntime()
+        runtime.tenant_state = FakeRuntime.TenantState()
+        app = StandaloneWSGIApplication(runtime)
         with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
             status, body = call_wsgi(app, "/api/notifications?limit=10")
         self.assertEqual(status, "200 OK")
@@ -237,6 +239,7 @@ class StandaloneWSGITests(unittest.TestCase):
 
     def test_remote_decision_memory_endpoint_uses_verified_tenant_and_subject(self):
         runtime = FakeRuntime()
+        runtime.tenant_decision_memory = FakeRuntime.TenantDecisionMemory()
         app = StandaloneWSGIApplication(runtime)
         settings = {
             "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
