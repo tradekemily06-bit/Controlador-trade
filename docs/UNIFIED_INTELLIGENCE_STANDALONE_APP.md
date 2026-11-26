@@ -34,3 +34,10 @@ The approved Lovable interface is outside this change and must remain visually u
 The standalone application factory now composes the current ecosystem service, senior contextual reasoning, learning/curriculum, operational memory, read-only fiscal summaries and the read-only assistant behind the same intelligence object. Fiscal owner identity is injected from trusted server configuration, never from a request.
 
 Only services actually supplied to the factory are marked CONNECTED. The analysis area requires a validated market-context object from a market-data adapter. Fiscal and assistant areas remain NOT_CONNECTED until their persistent stores, trusted identity and provider are configured. No order or money movement is exposed.
+
+
+## Broker-neutral market analysis
+
+The standalone Analysis area can receive any provider implementing the existing MarketDataProvider contract. Its feed is normalized and validated, then passed through the existing strategy pipeline, signal-quality evaluator, market-context engine and the shared senior-context gate. It returns a candidate signal and evidence score only; it never submits orders. Stale, gapped, invalid or unsupported-timeframe data force AGUARDAR.
+
+The 10-minute timeframe is now included alongside 1m, 5m, 15m, 30m, 1h, 4h and 1d. No broker provider is enabled by default: a provider must be injected and its freshness/quality checks must pass. A configured API model is separate from the market-data feed and does not make the system an AGI/ASI.
