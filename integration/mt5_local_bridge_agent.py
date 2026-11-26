@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import time
+import uuid
+from datetime import datetime, timezone
 import urllib.error
 import urllib.request
 from typing import Any
@@ -60,6 +62,8 @@ def publish_once(
                 continue
             payload = {
                 "source_id": source_id,
+                "message_id": str(uuid.uuid4()),
+                "sent_at": datetime.now(timezone.utc).isoformat(),
                 "account_mode": "DEMO",
                 "symbol": symbol,
                 "timeframe": timeframe,
