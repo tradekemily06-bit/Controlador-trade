@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Any
 
-from core.ecosystem_notifications import EcosystemNotification
+from core.ecosystem_notifications import EcosystemNotification, NotificationKind, NotificationSeverity
 from security.tenant_context import TenantContext
 from security.tenant_scoped_ecosystem_state import TenantScopedEcosystemState
 
@@ -26,8 +26,21 @@ class TenantNotificationDispatcher:
             raise PermissionError("trusted tenant context is required")
         if not isinstance(notification, EcosystemNotification):
             raise TypeError("EcosystemNotification is required")
-        if not notification.notification_id.strip() or not notification.title.strip() or not notification.message.strip():
+        if (
+            not isinstance(notification.notification_id, str)
+            or not notification.notification_id.strip()
+            or not isinstance(notification.title, str)
+            or not notification.title.strip()
+            or not isinstance(notification.message, str)
+            or not notification.message.strip()
+        ):
             raise ValueError("notification id, title and message are required")
+        if not isinstance(notification.kind, NotificationKind):
+            raise ValueError("notification kind must be a supported NotificationKind")
+        if not isinstance(notification.severity, NotificationSeverity):
+            raise ValueError("notification severity must be a supported NotificationSeverity")
+        if not isinstance(notification.requires_attention, bool) or not isinstance(notification.blocking, bool):
+            raise ValueError("notification flags must be boolean")
         payload: dict[str, Any] = asdict(notification)
         payload["kind"] = notification.kind.value
         payload["severity"] = notification.severity.value
