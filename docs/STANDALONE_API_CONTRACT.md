@@ -7,6 +7,7 @@ This contract is for connecting the existing approved frontend without changing 
 - Base URL is supplied by deployment; use HTTPS outside localhost.
 - JSON request/response bodies use UTF-8.
 - Protected application routes use the standalone bearer-token boundary when remote access is enabled.
+- Cross-origin browser access is disabled unless `CONTROLADOR_ALLOWED_ORIGINS` contains the exact comma-separated frontend origins (scheme + host + optional port). Wildcard origins are not supported. CORS preflight is rate-limited and permits only GET, POST, DELETE and OPTIONS with Authorization/Content-Type headers.
 - The MT5 relay ingest route uses its own dedicated bearer token and HTTPS/TLS validation.
 - Never expose server tokens, provider credentials, or relay secrets in browser code.
 
