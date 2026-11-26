@@ -19,6 +19,7 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
                     "fiscal_reserve_settings": "owner_id TEXT, category TEXT, rate REAL, rate_source TEXT",
                 },
                 "ecosystem-state.sqlite3": {"ecosystem_state": "key TEXT, value_json TEXT"},
+                "tenant-state.sqlite3": {"tenant_state": "tenant_id TEXT, key TEXT, value_json TEXT, updated_at TEXT"},
                 "notification-outbox.sqlite3": {"notification_outbox": "idempotency_key TEXT, payload_json TEXT, status TEXT, attempts INTEGER, available_at REAL, lease_until REAL, created_at REAL, delivered_at REAL, last_error TEXT"},
                 "decision-memory.sqlite3": {"decisions": "decision_id TEXT, created_at TEXT, symbol TEXT, timeframe TEXT, signal TEXT, score REAL, confirmed INTEGER, reason TEXT, execution_allowed INTEGER, outcome TEXT, outcome_source TEXT"},
                 "assistant-conversations.sqlite3": {
@@ -42,6 +43,7 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
             for filename in (
                 "fiscal-reserve.sqlite3",
                 "ecosystem-state.sqlite3",
+                "tenant-state.sqlite3",
                 "notification-outbox.sqlite3",
                 "decision-memory.sqlite3",
             ):
@@ -59,6 +61,7 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
             for filename in (
                 "fiscal-reserve.sqlite3",
                 "ecosystem-state.sqlite3",
+                "tenant-state.sqlite3",
                 "notification-outbox.sqlite3",
                 "decision-memory.sqlite3",
                 "assistant-conversations.sqlite3",
@@ -79,6 +82,7 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
                     "fiscal_reserve_settings": "owner_id TEXT, category TEXT, rate REAL, rate_source TEXT",
                 },
                 "ecosystem-state.sqlite3": {"ecosystem_state": "key TEXT, value_json TEXT"},
+                "tenant-state.sqlite3": {"tenant_state": "tenant_id TEXT, key TEXT, value_json TEXT, updated_at TEXT"},
                 "notification-outbox.sqlite3": {"notification_outbox": "idempotency_key TEXT, payload_json TEXT, status TEXT, attempts INTEGER, available_at REAL, lease_until REAL, created_at REAL, delivered_at REAL, last_error TEXT"},
                 "decision-memory.sqlite3": {"decisions": "decision_id TEXT, created_at TEXT, symbol TEXT, timeframe TEXT, signal TEXT, score REAL, confirmed INTEGER, reason TEXT, execution_allowed INTEGER, outcome TEXT"},
                 "assistant-conversations.sqlite3": {
@@ -105,6 +109,7 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
                     "fiscal_reserve_settings": "owner_id TEXT, category TEXT, rate REAL, rate_source TEXT",
                 },
                 "ecosystem-state.sqlite3": {"ecosystem_state": "key TEXT, value_json TEXT"},
+                "tenant-state.sqlite3": {"tenant_state": "tenant_id TEXT, key TEXT, value_json TEXT, updated_at TEXT"},
                 "notification-outbox.sqlite3": {"notification_outbox": "idempotency_key TEXT, payload_json TEXT, status TEXT, attempts INTEGER, available_at REAL, created_at REAL"},
                 "assistant-conversations.sqlite3": {
                     "conversations": "id TEXT, owner TEXT, title TEXT, updated_at TEXT",
