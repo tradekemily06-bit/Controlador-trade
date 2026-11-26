@@ -9,6 +9,7 @@ from analysis.decision_store import DecisionStore
 from assistant.chat_service import EcosystemAssistant
 from assistant.conversation_store import AssistantConversationStore
 from security.sqlite_tenant_storage import SQLiteTenantStorage
+from security.tenant_context import TenantContext
 from security.tenant_scoped_ecosystem_state import TenantScopedEcosystemState
 from integration.tenant_notification_dispatcher import TenantNotificationDispatcher
 from core.runtime_process_lock import RuntimeProcessLock
@@ -77,6 +78,10 @@ class StandaloneRuntime:
             )
             self.tenant_state = TenantScopedEcosystemState(
                 SQLiteTenantStorage(self.runtime_dir / "tenant-state.sqlite3")
+            )
+            self.local_tenant_context = TenantContext(
+                tenant_id="local-single-user",
+                subject_id=configured_identity,
             )
             # Available to trusted, explicitly addressed event producers.
             # No global broadcast or automatic legacy-event migration occurs.
@@ -159,6 +164,12 @@ class StandaloneRuntime:
                         requires_attention=True,
                     )
                     self.ecosystem_service.publish_notification(notification)
+                    # This runtime is explicitly single-user: its owner identity
+                    # is configured before startup, not taken from request data.
+                    # Remote multi-tenant fan-out remains a separate consented flow.
+                    self.tenant_notification_dispatcher.publish(
+                        self.local_tenant_context, notification
+                    )
 
                 self.market_monitor = MarketTimeframeMonitor(
                     self.runtime_dir / "market-timeframe-monitor.sqlite3",
