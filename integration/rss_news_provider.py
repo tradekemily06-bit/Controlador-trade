@@ -132,7 +132,9 @@ class RSSNewsProvider(NewsProvider):
             title = self._text(entry.find("title")) or self._text(entry.find("{http://www.w3.org/2005/Atom}title"))
             if not title:
                 continue
-            link_element = entry.find("link") or entry.find("{http://www.w3.org/2005/Atom}link")
+            link_element = entry.find("link")
+            if link_element is None:
+                link_element = entry.find("{http://www.w3.org/2005/Atom}link")
             link = None
             if link_element is not None:
                 link = link_element.get("href") or self._text(link_element)
