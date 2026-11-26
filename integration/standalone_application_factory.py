@@ -42,6 +42,7 @@ def build_standalone_application(
     trusted_identity: str | None = None,
     intelligence: UnifiedIntelligence | None = None,
     market_analyzer: Any | None = None,
+    market_data_registry: Any | None = None,
 ) -> UnifiedEcosystemApplication:
     """Compose the seven areas around one shared intelligence coordinator.
 
@@ -59,6 +60,7 @@ def build_standalone_application(
     intelligence = intelligence or (UnifiedIntelligence(senior_context=senior_context) if senior_context is not None else UnifiedIntelligence())
     app = UnifiedEcosystemApplication(intelligence=intelligence)
     app.market_data_provider_status = "CONNECTED" if market_analyzer is not None else "NOT_CONFIGURED"
+    app.market_data_registry = market_data_registry
 
     def command_cabin(task: str, context: Mapping[str, Any], shared: UnifiedIntelligence):
         return _plain({
@@ -169,6 +171,10 @@ def build_standalone_application(
                 ecosystem_service.get_preferences()
                 if callable(getattr(ecosystem_service, "get_preferences", None))
                 else {"status": "NOT_CONFIGURED"}
+            ),
+            "market_data_providers": (
+                market_data_registry.status()
+                if market_data_registry is not None else {"status": "NOT_CONFIGURED", "count": 0}
             ),
             "execution_authorized": False,
         })
