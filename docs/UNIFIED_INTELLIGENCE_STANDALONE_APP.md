@@ -113,3 +113,13 @@ The MT5 terminal is a Windows-local process. A cloud-hosted API cannot pull data
 API:
 - `POST /api/bridge/mt5/candles` — separate relay bearer token and TLS required.
 - `GET /api/bridge/mt5/status` — normal standalone API authorization required.
+
+
+## Configurable market-news ingestion (RSS/Atom)
+
+- The standalone runtime now accepts explicitly configured RSS/Atom feed URLs through the server environment variable `CONTROLADOR_NEWS_FEEDS`, separated by semicolons.
+- Only HTTPS URLs from the built-in domain allowlist are accepted: CNBC, Yahoo Finance, MarketWatch, Investing.com, Reuters, AP and Financial Times. Redirect destinations are revalidated against the same allowlist.
+- Each feed is size-limited to 1 MB and fetched with an 8-second timeout. RSS and Atom titles, source, publication time and HTTPS article links are normalized into the existing `NewsItem` contract.
+- The Analysis news operation exposes configured/live status, successful feed count, item count and bounded error details. Symbol filtering is a title-text filter, not a claim of complete entity recognition.
+- No feed URL is enabled by default. The provider reports unconfigured until server operators supply feed URLs. A configured feed is not proof that every article is accurate or that every market event is covered; source and publication time remain visible for human review.
+- This is read-only news ingestion. It does not authorize trading, execute actions, or turn unverified news into a signal by itself.
