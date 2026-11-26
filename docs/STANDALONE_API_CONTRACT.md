@@ -103,6 +103,22 @@ Body: `{"symbol":"EURUSD","timeframe":"M5","limit":120}`. Runs the existing read
 
 The generic cross-area `POST /api/intelligence/route` remains blocked for remote users because its handlers include shared learning, assistant, fiscal and legacy service state. The dedicated market-analysis endpoint does not invoke those shared handlers.
 
+### Assistant conversation APIs
+
+#### `GET /api/assistant/conversations`
+Lists conversations belonging only to the resolved tenant and subject. The owner key is derived from the trusted `TenantContext`; client-supplied owner IDs are never accepted.
+
+#### `GET /api/assistant/conversations/history?conversation_id=...`
+Returns history only when the conversation belongs to the caller. A conversation ID from another tenant/subject returns not found.
+
+#### `DELETE /api/assistant/conversations`
+Body: `{"conversation_id":"..."}`. Deletes only a conversation owned by the resolved tenant and subject.
+
+#### `POST /api/assistant/ask`
+Body: `{"message":"...","conversation_id":null}`. Currently enabled only for the configured local single-user runtime. The current fiscal repositories are still local/global and have not yet been converted to tenant-scoped persistence, so remote chat is deliberately rejected with `FISCAL_TENANT_ISOLATION_REQUIRED`. This prevents the assistant from disclosing one user's fiscal context to another. Conversation list/history/delete are tenant-scoped for remote identities; remote chat will be enabled only after fiscal storage and context collection are isolated end-to-end.
+
+All assistant routes remain read-only: no orders, REAL activation, or money movement.
+
 ### Tenant-scoped analysis statistics and reports
 
 #### `GET /api/analysis/statistics`
