@@ -270,7 +270,7 @@ class StandaloneWSGIApplication:
                 "assistant": assistant.readiness() if callable(getattr(assistant, "readiness", None)) else {"status": "NOT_CONFIGURED"},
                 "decision_memory": (
                     self.runtime.ecosystem_service.store.persistence_status()
-                    if callable(getattr(getattr(self.runtime.ecosystem_service, "store", None), "persistence_status", None))
+                    if callable(getattr(getattr(getattr(self.runtime, "ecosystem_service", None), "store", None), "persistence_status", None))
                     else {"mode": "UNKNOWN", "state": "STATUS_NOT_EXPOSED", "durability_confirmed": False}
                 ),
                 "notifications": ecosystem.notification_summary() if callable(getattr(ecosystem, "notification_summary", None)) else {"status": "NOT_CONFIGURED"},
