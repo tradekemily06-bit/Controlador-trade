@@ -62,11 +62,13 @@ class StandaloneRuntime:
             self.foreign_pending = FiscalPendingQueue(str(fiscal_database))
             self.domestic_pending = FiscalDomesticPendingQueue(str(fiscal_database))
 
+            ecosystem_state_store = EcosystemStateStore(
+                self.runtime_dir / "ecosystem-state.sqlite3"
+            )
             self.ecosystem_service = EcosystemService(
                 decision_store=DecisionStore(str(self.runtime_dir / "decision-memory.sqlite3")),
-                learning_state_store=LearningStateStore(
-                    EcosystemStateStore(self.runtime_dir / "ecosystem-state.sqlite3")
-                ),
+                learning_state_store=LearningStateStore(ecosystem_state_store),
+                notification_state_store=ecosystem_state_store,
             )
             self.intelligence = UnifiedIntelligence(
                 senior_context=self.ecosystem_service.senior_context
