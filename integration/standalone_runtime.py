@@ -142,8 +142,8 @@ class StandaloneRuntime:
                     provider=selected.provider,
                     source=selected.source,
                     intelligence=self.intelligence,
-                    decision_sink=lambda record: self.tenant_decision_memory.save(
-                        self.local_tenant_context, record
+                    decision_sink=lambda record, context=None: self.tenant_decision_memory.save(
+                        context or self.local_tenant_context, record
                     ),
                 )
 
@@ -169,18 +169,17 @@ class StandaloneRuntime:
                         ),
                         requires_attention=True,
                     )
-                    self.ecosystem_service.publish_notification(notification)
-                    # This runtime is explicitly single-user: its owner identity
-                    # is configured before startup, not taken from request data.
-                    # Remote multi-tenant fan-out remains a separate consented flow.
+                    # Deliver only to the owner bound to this subscription.
+                    # Never write a remote user's event to the legacy global inbox.
                     self.tenant_notification_dispatcher.publish(
-                        self.local_tenant_context, notification
+                        event["tenant_context"], notification
                     )
 
                 self.market_monitor = MarketTimeframeMonitor(
                     self.runtime_dir / "market-timeframe-monitor.sqlite3",
                     self.market_analysis_service,
                     on_result=publish_market_change,
+                    default_context=self.local_tenant_context,
                 )
                 self.market_monitor.start()
             self.conversation_store = AssistantConversationStore(
