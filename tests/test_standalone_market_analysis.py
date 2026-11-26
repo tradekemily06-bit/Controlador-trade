@@ -57,6 +57,15 @@ class StandaloneMarketAnalysisTests(unittest.TestCase):
         )
 
         self.assertEqual(result["decision"], "ANALYSIS_ONLY")
+        card = result["signal_card"]
+        self.assertEqual(card["symbol"], "EURUSD")
+        self.assertEqual(card["direction"], result["signal"])
+        self.assertEqual(card["timeframe"], "5m")
+        self.assertEqual(card["score_type"], "EVIDENCE_STRENGTH")
+        self.assertIsNone(card["probability_of_profit"])
+        self.assertTrue(card["manual_entry_only"])
+        self.assertFalse(card["execution_authorized"])
+        self.assertFalse(card["order_submitted"])
         self.assertFalse(result["execution_allowed"])
         self.assertFalse(result["execution_authorized"])
         self.assertFalse(result["order_submitted"])
