@@ -110,7 +110,7 @@ def build_standalone_application(
             if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
                 raise ValueError("limit must be an integer from 1 to 50")
             return _plain({
-                "news": ecosystem_service.news_status(limit=limit, symbol=context.get("symbol")),
+                "news": ecosystem_service.news_status(limit=limit),
                 "execution_authorized": False,
             })
         if market_analyzer is not None:
