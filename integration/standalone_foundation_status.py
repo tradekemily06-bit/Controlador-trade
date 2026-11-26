@@ -28,8 +28,8 @@ _DATABASES = (
         "messages": {"id", "conversation_id", "role", "content", "created_at"},
     }),
     ("market_timeframe_monitor", "market-timeframe-monitor.sqlite3", False, {
-        "market_timeframe_watch": {"symbol", "timeframe", "enabled", "created_at", "last_processed_candle", "last_signal", "last_status", "last_error"},
-        "market_timeframe_results": {"symbol", "timeframe", "candle_at", "result_json", "recorded_at"},
+        "market_timeframe_watch_v2": {"tenant_id", "subject_id", "symbol", "timeframe", "enabled", "created_at", "last_processed_candle", "last_signal", "last_status", "last_error"},
+        "market_timeframe_results_v2": {"tenant_id", "subject_id", "symbol", "timeframe", "candle_at", "result_json", "recorded_at"},
     }),
 )
 
