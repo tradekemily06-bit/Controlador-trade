@@ -15,6 +15,7 @@ from typing import Any
 
 from security_guard import MAX_BODY_BYTES, SECURITY
 from integration.standalone_runtime import StandaloneRuntime
+from data.timeframes import list_supported_timeframes
 
 
 class ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
@@ -202,6 +203,19 @@ class StandaloneWSGIApplication:
             return _json_response(
                 start_response, HTTPStatus.OK,
                 {**payload, "execution_authorized": False},
+                request_id,
+            )
+
+        if method == "GET" and path == "/api/market-data/timeframes":
+            return _json_response(
+                start_response, HTTPStatus.OK,
+                {
+                    "canonical": list_supported_timeframes(),
+                    "platform": list_supported_timeframes(platform_format=True),
+                    "limits": {"minutes": [1, 59], "hours": [1, 24], "days": [1, 31], "weeks": [1, 4]},
+                    "excluded": {"seconds": "fonte sub-minute não suportada", "months": "intervalos de calendário ainda não implementados"},
+                    "execution_authorized": False,
+                },
                 request_id,
             )
 
