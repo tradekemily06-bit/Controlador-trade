@@ -63,3 +63,58 @@ def test_tenant_backup_directory_must_be_outside_runtime(tmp_path):
     factory = TenantFiscalStoreFactory(runtime)
     with pytest.raises(ValueError, match="outside runtime"):
         TenantFiscalBackupService(factory, runtime / "backups")
+
+
+def test_backup_restore_is_validated_in_temporary_database(tmp_path):
+    runtime = tmp_path / "runtime"
+    backups = tmp_path / "backups"
+    factory = TenantFiscalStoreFactory(runtime)
+    service = TenantFiscalBackupService(factory, backups)
+    alice_context = TenantContext("tenant-a", "alice")
+    alice = factory.get(alice_context)
+    alice.foreign_pending.add(alice.owner_id, _pending("ALICE-RESTORE-TEST"))
+
+    created = service.backup(alice_context)
+    assert created["status"] == "BACKUP_CREATED"
+    live_path = alice.database_path
+    before = sqlite3.connect(live_path).execute(
+        "SELECT reference FROM fiscal_reserve_pending_foreign"
+    ).fetchall()
+
+    verified = service.verify_restore(alice_context, created["filename"])
+
+    assert verified == {
+        "status": "RESTORE_VALIDATED_IN_ISOLATION",
+        "scope": "ONE_TENANT_AND_SUBJECT",
+        "live_database_modified": False,
+        "backup_filename": created["filename"],
+        "execution_authorized": False,
+    }
+    after = sqlite3.connect(live_path).execute(
+        "SELECT reference FROM fiscal_reserve_pending_foreign"
+    ).fetchall()
+    assert after == before
+    assert not list(backups.glob(".tenant-restore-test-*"))
+
+
+def test_restore_verification_rejects_another_subjects_backup(tmp_path):
+    runtime = tmp_path / "runtime"
+    backups = tmp_path / "backups"
+    factory = TenantFiscalStoreFactory(runtime)
+    service = TenantFiscalBackupService(factory, backups)
+    alice_context = TenantContext("tenant-a", "alice")
+    bob_context = TenantContext("tenant-a", "bob")
+    alice = factory.get(alice_context)
+    alice.foreign_pending.add(alice.owner_id, _pending("ALICE-ONLY"))
+    created = service.backup(alice_context)
+
+    with pytest.raises(ValueError, match="não pertence"):
+        service.verify_restore(bob_context, created["filename"])
+
+
+def test_restore_verification_rejects_path_traversal(tmp_path):
+    factory = TenantFiscalStoreFactory(tmp_path / "runtime")
+    service = TenantFiscalBackupService(factory, tmp_path / "backups")
+    context = TenantContext("tenant-a", "alice")
+    with pytest.raises(ValueError, match="nome de backup"):
+        service.verify_restore(context, "../tenant-fiscal-other.sqlite3")
