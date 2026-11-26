@@ -139,6 +139,30 @@ class MarketTimeframeMonitor:
             for row in rows
         ]
 
+    def latest_results(self, limit: int = 50) -> list[dict[str, Any]]:
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
+            raise ValueError("limit must be an integer from 1 to 200")
+        with self._lock, self._connect() as db:
+            rows = db.execute(
+                """
+                SELECT symbol, timeframe, candle_at, result_json, recorded_at
+                FROM market_timeframe_results
+                ORDER BY recorded_at DESC, symbol, timeframe
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [
+            {
+                "symbol": row["symbol"],
+                "timeframe": row["timeframe"],
+                "candle_at": row["candle_at"],
+                "result": json.loads(row["result_json"]),
+                "recorded_at": row["recorded_at"],
+            }
+            for row in rows
+        ]
+
     @staticmethod
     def _bucket_start(now: datetime, interval_seconds: int) -> datetime:
         epoch = int(now.timestamp())
