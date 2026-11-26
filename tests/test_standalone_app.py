@@ -81,6 +81,22 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(body["deployment"], "PROCESS_RUNNING_DEPLOYMENT_NOT_VERIFIED")
         self.assertFalse(body["execution_authorized"])
 
+    def test_timeframe_catalog_exposes_supported_intervals_and_limits(self):
+        app = StandaloneWSGIApplication(FakeRuntime())
+        status, body = call_wsgi(app, "/api/market-data/timeframes")
+        self.assertEqual(status, "200 OK")
+        self.assertIn("1m", body["canonical"])
+        self.assertIn("10m", body["canonical"])
+        self.assertIn("M1", body["platform"])
+        self.assertIn("M10", body["platform"])
+        self.assertIn("M59", body["platform"])
+        self.assertIn("H24", body["platform"])
+        self.assertIn("D31", body["platform"])
+        self.assertIn("W4", body["platform"])
+        self.assertNotIn("MN1", body["platform"])
+        self.assertIn("months", body["excluded"])
+        self.assertFalse(body["execution_authorized"])
+
     def test_architecture_endpoint_is_read_only(self):
         app = StandaloneWSGIApplication(FakeRuntime())
         status, body = call_wsgi(app, "/api/intelligence/architecture")
