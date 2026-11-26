@@ -222,7 +222,11 @@ class StandaloneMarketAnalysisService:
                 execution_allowed=False,
             )
             try:
-                stored = self.decision_sink(decision_record, decision_context)
+                stored = (
+                    self.decision_sink(decision_record)
+                    if decision_context is None
+                    else self.decision_sink(decision_record, decision_context)
+                )
                 response["decision_memory"] = {
                     "status": "SAVED" if stored is not False else "ALREADY_RECORDED",
                     "decision_id": stable_id,
