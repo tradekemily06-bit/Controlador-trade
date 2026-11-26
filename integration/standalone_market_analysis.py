@@ -17,18 +17,7 @@ from core.live_orchestrator import TradingOrchestrator
 from core.unified_intelligence import UnifiedIntelligence
 from core.p122_broker_market_data import BrokerMarketDataSnapshot
 from data.feed import MarketDataFeed, MarketDataProvider, MarketDataRequest
-
-
-_TIMEFRAME_SECONDS = {
-    "1m": 60,
-    "5m": 300,
-    "10m": 600,
-    "15m": 900,
-    "30m": 1800,
-    "1h": 3600,
-    "4h": 14400,
-    "1d": 86400,
-}
+from data.timeframes import get_timeframe_interval, normalize_timeframe
 
 
 class StandaloneMarketAnalysisService:
@@ -95,8 +84,7 @@ class StandaloneMarketAnalysisService:
             raise ValueError("confirmed and filters_ok must be booleans")
         if not isinstance(symbol, str) or not symbol.strip():
             raise ValueError("symbol is required")
-        if not isinstance(timeframe, str) or timeframe.strip().lower() not in _TIMEFRAME_SECONDS:
-            raise ValueError("timeframe is not supported by the standalone market reader")
+        timeframe = normalize_timeframe(timeframe)
         if isinstance(limit, bool) or not isinstance(limit, int) or not 3 <= limit <= 1000:
             raise ValueError("limit must be an integer from 3 to 1000")
         request = MarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
@@ -108,8 +96,8 @@ class StandaloneMarketAnalysisService:
             filters_ok=filters_ok,
             filters_required=True,
         )
-        interval = _TIMEFRAME_SECONDS.get(timeframe.strip().lower())
-        max_age = max(300, interval * 2) if interval is not None else 300
+        interval = int(get_timeframe_interval(timeframe).total_seconds())
+        max_age = max(300, interval * 2)
         integrity = MarketDataRuntimeIntegrity(
             integrity=MarketDataIntegrity(max_age_seconds=max_age)
         ).assess(
