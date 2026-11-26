@@ -65,6 +65,19 @@ class FakeRuntime:
 
     tenant_state = TenantState()
 
+    class TenantDecisionMemory:
+        def __init__(self):
+            self.contexts = []
+
+        def readiness(self):
+            return {"status": "LOCAL_TENANT_SCOPED_DECISION_MEMORY", "production_ready": False}
+
+        def load(self, context, *, limit=100):
+            self.contexts.append(context)
+            return []
+
+    tenant_decision_memory = TenantDecisionMemory()
+
 
 def call_wsgi(app, path, method="GET", body=None, remote_addr="127.0.0.1", origin=None, include_headers=False, authorization=None, identity_verified=False, remote_user=None, tenant_id=None):
     raw = json.dumps(body or {}).encode("utf-8")
@@ -180,6 +193,39 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(body["scope"], "LOCAL_SINGLE_USER")
         ids = [item["notification_id"] for item in body["notifications"]]
         self.assertEqual(ids, ["n1", "market-1"])
+        self.assertFalse(body["execution_authorized"])
+
+    def test_local_decision_memory_endpoint_uses_configured_single_user_scope(self):
+        runtime = FakeRuntime()
+        app = StandaloneWSGIApplication(runtime)
+        with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
+            status, body = call_wsgi(app, "/api/memory/decisions?limit=25")
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["decisions"], [])
+        self.assertEqual(body["scope"], "TENANT_SCOPED")
+        self.assertEqual(runtime.tenant_decision_memory.contexts[0].tenant_id, "local-single-user")
+        self.assertEqual(runtime.tenant_decision_memory.contexts[0].subject_id, "local-owner")
+        self.assertFalse(body["execution_authorized"])
+
+    def test_remote_decision_memory_endpoint_uses_verified_tenant_and_subject(self):
+        runtime = FakeRuntime()
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/memory/decisions", remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["scope"], "TENANT_SCOPED")
+        context = runtime.tenant_decision_memory.contexts[0]
+        self.assertEqual(context.tenant_id, "tenant-a")
+        self.assertEqual(context.subject_id, "alice")
         self.assertFalse(body["execution_authorized"])
 
     def test_remote_users_cannot_access_shared_market_monitor_or_global_analysis(self):
