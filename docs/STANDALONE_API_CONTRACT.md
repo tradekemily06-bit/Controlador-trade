@@ -181,8 +181,9 @@ Returns relay inbox status. A configured relay is not proof that the user's PC i
 
 ## Tenant fiscal storage and backup primitives
 - `finance/tenant_fiscal_store.py` creates one local SQLite fiscal database per trusted tenant + subject context. It uses an opaque digest for the on-disk path and initializes the domestic queue, foreign queue and reserve ledger in that isolated database.
-- `core/tenant_fiscal_backup.py` creates an explicit, on-demand backup for exactly one supplied tenant + subject. It uses SQLite's backup API, runs `PRAGMA quick_check`, and publishes without overwriting an existing backup.
-- These are isolated storage/backup primitives only. They are not yet connected to remote fiscal routes or assistant context collection; they do not enumerate tenants, schedule backups, replicate off-host, or restore data.
+- `core/tenant_fiscal_backup.py` creates an explicit, on-demand backup for exactly one supplied tenant + subject. It uses SQLite's backup API, validates the complete fiscal table/owner scope and foreign keys, and publishes without overwriting an existing backup.
+- The same service can validate a backup by restoring it into a temporary isolated SQLite file, checking integrity, required fiscal tables, owner scope and foreign keys. This test never replaces or modifies the live database.
+- These are isolated storage/backup primitives only. They are not yet connected to remote fiscal routes or assistant context collection; they do not enumerate tenants, schedule backups, or replicate off-host. This is not a production disaster-recovery workflow.
 - The legacy single-user runtime remains the active fiscal path until integration and migration are validated. Remote assistant chat and cross-area routes remain blocked where shared state exists.
 
 
