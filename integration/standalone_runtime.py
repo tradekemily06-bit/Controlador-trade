@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any, Mapping
 
 from analysis.decision_store import DecisionStore
 from assistant.chat_service import EcosystemAssistant
@@ -16,6 +17,7 @@ from finance.fiscal_schema import migrate_fiscal_schema
 from integration.ecosystem_service import EcosystemService
 from integration.standalone_application_factory import build_standalone_application
 from integration.standalone_market_analysis import StandaloneMarketAnalysisService
+from integration.market_data_provider_registry import MarketDataProviderRegistry
 from core.unified_intelligence import UnifiedIntelligence
 
 
@@ -33,6 +35,8 @@ class StandaloneRuntime:
         *,
         market_data_provider=None,
         market_data_source: str | None = None,
+        market_data_providers: Mapping[str, tuple[Any, str]] | None = None,
+        selected_market_data_provider: str | None = None,
     ) -> None:
         configured_identity = os.getenv("CONTROLADOR_SINGLE_USER_IDENTITY", "").strip()
         if not configured_identity:
@@ -62,13 +66,28 @@ class StandaloneRuntime:
             self.intelligence = UnifiedIntelligence(
                 senior_context=self.ecosystem_service.senior_context
             )
-            self.market_analysis_service = None
+            provider_map = dict(market_data_providers or {})
             if market_data_provider is not None:
+                if provider_map:
+                    raise ValueError("use market_data_provider or market_data_providers, not both")
                 if not isinstance(market_data_source, str) or not market_data_source.strip():
                     raise ValueError("market_data_source is required when a provider is injected")
+                provider_map["default"] = (market_data_provider, market_data_source)
+            selected_provider = (
+                selected_market_data_provider
+                or os.getenv("CONTROLADOR_MARKET_DATA_PROVIDER", "").strip()
+                or None
+            )
+            self.market_data_registry = MarketDataProviderRegistry.from_mapping(
+                provider_map,
+                selected_provider=selected_provider,
+            )
+            self.market_analysis_service = None
+            selected = self.market_data_registry.selected()
+            if selected is not None:
                 self.market_analysis_service = StandaloneMarketAnalysisService(
-                    provider=market_data_provider,
-                    source=market_data_source,
+                    provider=selected.provider,
+                    source=selected.source,
                     intelligence=self.intelligence,
                 )
             self.conversation_store = AssistantConversationStore(
@@ -91,6 +110,7 @@ class StandaloneRuntime:
                 trusted_identity=configured_identity,
                 intelligence=self.intelligence,
                 market_analyzer=self.market_analysis_service,
+                market_data_registry=self.market_data_registry,
             )
         except Exception:
             self.process_lock.release()
