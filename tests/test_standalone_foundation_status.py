@@ -100,10 +100,16 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             schemas = {
-                "fiscal-reserve.sqlite3": ("fiscal_reserve_entries", "fiscal_reserve_settings"),
-                "ecosystem-state.sqlite3": ("ecosystem_state",),
-                "notification-outbox.sqlite3": ("notification_outbox",),
-                "assistant-conversations.sqlite3": ("conversations", "messages"),
+                "fiscal-reserve.sqlite3": {
+                    "fiscal_reserve_entries": "entry_id TEXT, owner_id TEXT, category TEXT, realized_result_brl REAL, reserve_amount_brl REAL, reference TEXT, occurred_on TEXT",
+                    "fiscal_reserve_settings": "owner_id TEXT, category TEXT, rate REAL, rate_source TEXT",
+                },
+                "ecosystem-state.sqlite3": {"ecosystem_state": "key TEXT, value_json TEXT"},
+                "notification-outbox.sqlite3": {"notification_outbox": "idempotency_key TEXT, payload_json TEXT, status TEXT, attempts INTEGER, available_at REAL, created_at REAL"},
+                "assistant-conversations.sqlite3": {
+                    "conversations": "id TEXT, owner TEXT, title TEXT, updated_at TEXT",
+                    "messages": "id INTEGER, conversation_id TEXT, role TEXT, content TEXT, created_at TEXT",
+                },
             }
             for filename, tables in schemas.items():
                 with sqlite3.connect(root / filename) as connection:
