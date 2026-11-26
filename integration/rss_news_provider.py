@@ -21,6 +21,9 @@ class NewsItem:
 
 
 class NewsProvider:
+    def status(self) -> dict[str, object]:
+        return dict(self._last_status)
+
     def latest(self, *, symbol: str | None = None, limit: int = 10) -> list[NewsItem]:
         raise NotImplementedError
 
@@ -57,6 +60,7 @@ class RSSNewsProvider(NewsProvider):
         self.feed_urls = tuple(self._validate_url(url) for url in feed_urls)
         self.timeout_seconds = timeout_seconds
         self._opener = opener
+        self._last_status = {"configured": True, "live": False, "feed_count": len(self.feed_urls), "last_error": None}
 
     @classmethod
     def _validate_url(cls, value: str) -> str:
@@ -151,12 +155,14 @@ class RSSNewsProvider(NewsProvider):
         query = symbol.strip().upper() if isinstance(symbol, str) and symbol.strip() else None
         collected: list[NewsItem] = []
         errors: list[str] = []
+        successful_feeds = 0
         for url in self.feed_urls:
             try:
                 items = self._fetch_feed(url)
             except Exception as exc:
                 errors.append(str(exc)[:160])
                 continue
+            successful_feeds += 1
             for item in items:
                 if query and query not in item.title.upper():
                     continue
@@ -164,6 +170,13 @@ class RSSNewsProvider(NewsProvider):
         unique: dict[tuple[str, str | None], NewsItem] = {}
         for item in collected:
             unique.setdefault((item.title.casefold(), item.url), item)
+        self._last_status = {
+            "configured": True,
+            "live": successful_feeds > 0,
+            "feed_count": len(self.feed_urls),
+            "successful_feeds": successful_feeds,
+            "last_error": "; ".join(errors[:3]) or None,
+        }
         ordered = sorted(
             unique.values(),
             key=lambda item: item.published_at or "",
