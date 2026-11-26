@@ -63,7 +63,7 @@ Lists provider registration/configuration status. Status values must not be pres
 ### `GET /api/market-data/timeframes`
 Returns the intervals accepted by the backend normalizer in compact and platform notation, with limits and explicit exclusions. The current parser covers 1–59 minutes, 1–24 hours, 1–31 days and 1–4 weeks. Seconds and calendar months (MN1) are not supported. The response also reports adapter-declared `provider_compatibility.supported` and `unsupported` intervals when the adapter exposes a side-effect-free capability check. `DECLARED_NOT_LIVE_TESTED` means the adapter can map/derive the interval but real data availability has not been tested; `NOT_DECLARED` means the adapter does not publish a capability list. A supported interval is never a claim of a live feed. The frontend should use this endpoint for the selector while showing provider availability separately.
 ### `GET /api/market-monitor/status`
-Returns worker state and only the enabled subscriptions belonging to the tenant and subject resolved by trusted server identity. The worker-running flag is operational metadata.
+Returns worker state and only the enabled subscriptions belonging to the tenant and subject resolved by trusted server identity. The worker-running flag is operational metadata. The worker rechecks that a subscription remains enabled before analysis and again before publishing a result or notification.
 
 ### `GET /api/market-monitor/subscriptions`
 Returns persisted symbol/timeframe subscriptions belonging only to the resolved tenant and subject.
