@@ -10,6 +10,24 @@ _DATABASES = (
     ("fiscal", "fiscal-reserve.sqlite3", True, {
         "fiscal_reserve_entries": {"entry_id", "owner_id", "category", "entry_type", "realized_result_brl", "reserve_rate", "reserve_amount_brl", "reference", "occurred_on", "created_at", "notes"},
         "fiscal_reserve_settings": {"owner_id", "category", "rate", "rate_source"},
+        "fiscal_reserve_pending_foreign": {
+            "pending_id", "owner_id", "reference", "original_amount", "original_currency",
+            "instrument", "jurisdiction", "occurred_on", "status", "created_at",
+        },
+        "fiscal_pending_reviews": {
+            "review_id", "owner_id", "pending_id", "candidate_classification",
+            "confirmed_jurisdiction", "reviewer_name", "reviewer_role",
+            "professional_registration", "evidence_reference", "reviewed_on", "created_at",
+        },
+        "fiscal_reserve_pending_domestic": {
+            "pending_id", "owner_id", "reference", "instrument", "occurred_on",
+            "status", "created_at",
+        },
+        "fiscal_domestic_pending_reviews": {
+            "review_id", "owner_id", "pending_id", "candidate_classification",
+            "confirmed_jurisdiction", "reviewer_name", "reviewer_role",
+            "professional_registration", "evidence_reference", "reviewed_on", "created_at",
+        },
     }),
     ("ecosystem_state", "ecosystem-state.sqlite3", True, {
         "ecosystem_state": {"key", "value_json"},
