@@ -113,6 +113,9 @@ class StandaloneRuntime:
             self.market_analysis_service = None
             self.market_monitor = None
             selected = self.market_data_registry.selected()
+            self.mt5_relay_store = (
+                selected.provider if selected is not None and selected.provider_id == "mt5_relay" else None
+            )
             if selected is not None:
                 self.market_analysis_service = StandaloneMarketAnalysisService(
                     provider=selected.provider,
