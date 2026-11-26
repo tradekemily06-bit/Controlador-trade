@@ -39,6 +39,12 @@ class MT5RelayStore:
                 )
             """)
             db.execute("""
+                CREATE TABLE IF NOT EXISTS mt5_relay_messages (
+                    message_id TEXT PRIMARY KEY,
+                    accepted_at TEXT NOT NULL
+                )
+            """)
+            db.execute("""
                 CREATE TABLE IF NOT EXISTS mt5_relay_state (
                     singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
                     account_mode TEXT NOT NULL,
@@ -68,6 +74,19 @@ class MT5RelayStore:
         )
         if payload.get("account_mode") != "DEMO":
             raise MT5RelayError("ponte aceita somente conta DEMO confirmada")
+        message_id = payload.get("message_id")
+        if not isinstance(message_id, str) or not re.fullmatch(r"[0-9a-fA-F-]{36}", message_id):
+            raise MT5RelayError("message_id UUID obrigatório")
+        sent_at_raw = payload.get("sent_at")
+        try:
+            sent_at = datetime.fromisoformat(str(sent_at_raw).replace("Z", "+00:00"))
+            if sent_at.tzinfo is None:
+                raise ValueError("timestamp sem fuso")
+            age = (datetime.now(timezone.utc) - sent_at.astimezone(timezone.utc)).total_seconds()
+            if age < -10 or age > 30:
+                raise ValueError("mensagem fora da janela de validade")
+        except (TypeError, ValueError) as exc:
+            raise MT5RelayError("sent_at inválido ou expirado") from exc
         source_id = payload.get("source_id", "mt5-local")
         if not isinstance(source_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,48}", source_id):
             raise MT5RelayError("source_id inválido")
@@ -100,6 +119,12 @@ class MT5RelayStore:
             raise MT5RelayError("candles duplicados no mesmo lote")
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as db:
+            if db.execute("SELECT 1 FROM mt5_relay_messages WHERE message_id=?", (message_id,)).fetchone():
+                raise MT5RelayError("mensagem repetida")
+            db.execute(
+                "INSERT INTO mt5_relay_messages(message_id,accepted_at) VALUES(?,?)",
+                (message_id, now),
+            )
             for candle in parsed:
                 db.execute(
                     """INSERT INTO mt5_relay_candles
@@ -117,6 +142,11 @@ class MT5RelayStore:
                 ON CONFLICT(singleton) DO UPDATE SET
                 account_mode='DEMO', last_seen=excluded.last_seen, source_id=excluded.source_id""",
                 (now, source_id),
+            )
+            db.execute(
+                """DELETE FROM mt5_relay_messages WHERE rowid NOT IN (
+                    SELECT rowid FROM mt5_relay_messages ORDER BY accepted_at DESC LIMIT 10000
+                )"""
             )
             db.execute(
                 """DELETE FROM mt5_relay_candles WHERE rowid IN (
