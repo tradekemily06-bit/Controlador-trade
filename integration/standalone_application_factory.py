@@ -156,6 +156,11 @@ def build_standalone_application(
                 "activities": ecosystem_service.learning_activities_view(),
                 "professor_uses_validated_knowledge_only": True,
             }
+        elif operation in {"attempts", "learning_attempts"}:
+            payload = {
+                "attempts": learning.get("attempts", []),
+                "professor_uses_validated_knowledge_only": True,
+            }
         else:
             payload = {"learning": learning, "statistics": ecosystem_service.statistics()}
         return _plain({
