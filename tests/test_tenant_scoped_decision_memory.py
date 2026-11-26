@@ -89,7 +89,7 @@ def test_decision_memory_rejects_corrupt_or_nonfinite_stored_records(tmp_path):
     storage.put(owner, "analysis:decision-index", [{"decision_id": "bad-record"}])
     storage.put(owner, "analysis:decision:bad-record", {
         **_record("bad-record").to_dict(),
-        "score": float("nan"),
+        "score": "NaN",
     })
 
     with pytest.raises(ValueError, match="numeric|domain validation"):
