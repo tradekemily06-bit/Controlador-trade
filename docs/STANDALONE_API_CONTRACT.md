@@ -8,7 +8,7 @@ This contract is for connecting the existing approved frontend without changing 
 - JSON request/response bodies use UTF-8.
 - Local loopback access is intended only for the configured single-user runtime. Remote access is denied unless remote access is explicitly enabled, a server-side access token is valid, and trusted authentication middleware injects a verified subject (`REMOTE_USER`), `controlador.identity_verified=True`, and a non-empty `controlador.tenant_id` into the WSGI environment.
 - Set `CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE=1` only when a trusted server-side middleware is actually installed and strips any client-supplied identity claims. The application does not trust identity values from ordinary HTTP headers.
-- The shared bearer token is an additional access gate, not a user identity. A middleware flag alone does not prove a provider is configured or runtime-verified. Multi-tenant data isolation is not implemented yet; the current runtime is single-identity only and must not be presented as a multi-user SaaS.
+- The shared bearer token is an additional access gate, not a user identity. A middleware flag alone does not prove a provider is configured or runtime-verified. Tenant-scoped local preferences are available, but other legacy stores and the full application lifecycle are not yet multi-tenant; the product must not be presented as production multi-user SaaS.
 - Cross-origin browser access is disabled unless `CONTROLADOR_ALLOWED_ORIGINS` contains the exact comma-separated frontend origins (scheme + host + optional port). Wildcard origins are not supported. CORS preflight is rate-limited and permits only GET, POST, DELETE and OPTIONS with Authorization/Content-Type headers.
 - The MT5 relay ingest route uses its own dedicated bearer token and HTTPS/TLS validation.
 - Never expose server tokens, provider credentials, or relay secrets in browser code.
@@ -29,6 +29,7 @@ Consolidated diagnostic for the frontend's connection/status indicators. Returns
 - external notification worker status;
 - identity policy status, including explicit unconfigured trusted identity provider and missing multi-tenant isolation;
 - decision-memory persistence mode/state, including explicit in-memory-only or persistence-error status; only `PERSISTENT_READY` is reported as durability confirmed for that local SQLite store;
+- tenant-scoped local preference-store status, explicitly not production-ready;
 - deployment marker `PROCESS_RUNNING_DEPLOYMENT_NOT_VERIFIED`.
 
 A configured/registered provider is not proof of a live connection. The deployment marker is deliberately not a production deployment claim.
@@ -75,6 +76,16 @@ Body: `{"symbol":"EURUSD","timeframe":"M5"}`. Disables that subscription.
 
 ### `GET /api/market-monitor/results?limit=50`
 Returns recent results for closed candles. Limit is 1–200. A stale, incomplete, invalid or unsupported feed must remain non-actionable/AGUARDAR.
+
+## User preferences
+
+### `GET /api/user/preferences`
+Returns preferences stored under the authenticated tenant and subject scope. On local loopback, the scope uses the configured single-user runtime identity.
+
+### `PUT /api/user/preferences`
+Body: `{"preferences":{"language":"pt-BR"}}`. The preferences value must be a JSON object. Data is stored in the dedicated tenant-state SQLite database and isolated by tenant ID. No legacy global preferences are copied or reassigned automatically.
+
+This is local tenant-scoped persistence, not proof of a production identity provider, managed database, backup/restore, or complete multi-tenant isolation. The route is informational/configuration-only and never authorizes broker execution.
 
 ## Notifications
 
