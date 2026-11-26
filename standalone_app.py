@@ -118,6 +118,15 @@ class StandaloneWSGIApplication:
                 request_id,
             )
 
+        if method == "GET" and path == "/api/market-data/providers":
+            registry = getattr(self.runtime, "market_data_registry", None)
+            payload = registry.status() if registry is not None else {"status": "NOT_CONFIGURED", "count": 0}
+            return _json_response(
+                start_response, HTTPStatus.OK,
+                {**payload, "execution_authorized": False},
+                request_id,
+            )
+
         if method == "GET" and path == "/api/assistant/status":
             readiness = self.runtime.assistant.readiness()
             return _json_response(
