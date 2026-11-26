@@ -40,6 +40,7 @@ class UnifiedEcosystemApplication:
             for area in ApplicationArea
         }
         status["all_area_handlers_connected"] = len(self._handlers) == len(ApplicationArea)
+        status["market_data_provider_status"] = getattr(self, "market_data_provider_status", "NOT_CONFIGURED")
         return status
 
     def handle(
