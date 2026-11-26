@@ -155,14 +155,35 @@ class StandaloneMarketAnalysisService:
         elif gated is not None and gated.signal.value == "AGUARDAR":
             reason = gated.reason
 
+        score = result.quality.score
+        score_semantics = "força da evidência, não probabilidade de acerto"
+        signal_card = {
+            "symbol": symbol,
+            "direction": signal,
+            "timeframe": timeframe,
+            "score": score,
+            "score_type": "EVIDENCE_STRENGTH",
+            "score_semantics": score_semantics,
+            "display": f"{symbol} · {signal} · {score}/100",
+            "state": "READY_FOR_MANUAL_REVIEW" if safe else "WAIT",
+            "probability_of_profit": None,
+            "entry_price": None,
+            "stop_loss": None,
+            "take_profit": None,
+            "manual_entry_only": True,
+            "execution_authorized": False,
+            "order_submitted": False,
+        }
+
         return {
             "status": "ANALYZED" if safe else "REASSESS_REQUIRED",
             "symbol": symbol,
             "timeframe": timeframe,
             "signal": signal,
             "candidate_signal": candidate_signal,
-            "score": result.quality.score,
-            "score_semantics": "força da evidência, não probabilidade de acerto",
+            "score": score,
+            "score_semantics": score_semantics,
+            "signal_card": signal_card,
             "reason": reason,
             "confirmed": result.analysis.confirmed,
             "quality": {
