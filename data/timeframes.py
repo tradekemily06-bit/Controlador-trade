@@ -40,6 +40,22 @@ def normalize_timeframe(timeframe: str) -> str:
     return f"{count}{unit}"
 
 
+def list_supported_timeframes(*, platform_format: bool = False) -> tuple[str, ...]:
+    """List supported fixed-duration intervals in canonical or platform form.
+
+    Calendar months and seconds are intentionally excluded: they require
+    calendar-aware boundaries or sub-minute source data, respectively.
+    """
+    if not isinstance(platform_format, bool):
+        raise ValueError("platform_format must be boolean")
+    suffixes = {"m": "M", "h": "H", "d": "D", "w": "W"}
+    limits = {"m": 59, "h": 24, "d": 31, "w": 4}
+    values = []
+    for unit, maximum in limits.items():
+        for count in range(1, maximum + 1):
+            values.append(f"{suffixes[unit]}{count}" if platform_format else f"{count}{unit}")
+    return tuple(values)
+
 def get_timeframe_interval(timeframe: str) -> timedelta:
     """Return the interval for supported minute, hour, day or week periods."""
     value = normalize_timeframe(timeframe)
