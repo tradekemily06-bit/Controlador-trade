@@ -26,7 +26,7 @@ from core.senior_context_orchestrator import SeniorContextInput, SeniorContextOr
 from integration.controlled_automation_service import ControlledAutomationService
 from core.senior_risk_reasoning import RiskDomain, RiskObservation
 from data.models import Candle
-from integration.news_provider import UnconfiguredNewsProvider
+from integration.rss_news_provider import NewsProvider, UnconfiguredNewsProvider
 from security.identity_boundary import IdentityPolicy
 from security.production_operation_gate import ProductionOperationGate
 from security.request_context import ProductionRequestContext, require_production_context
@@ -36,12 +36,12 @@ from storage.production_boundary import ProductionStoragePolicy
 class EcosystemService:
     """Application orchestration; broker execution remains outside this layer."""
 
-    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None, learning_state_store: LearningStateStore | None = None, notification_state_store: EcosystemStateStore | None = None, notification_center: EcosystemNotificationCenter | None = None, notification_outbox: PersistentNotificationOutbox | None = None) -> None:
+    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None, learning_state_store: LearningStateStore | None = None, notification_state_store: EcosystemStateStore | None = None, notification_center: EcosystemNotificationCenter | None = None, notification_outbox: PersistentNotificationOutbox | None = None, news_provider: NewsProvider | None = None) -> None:
         self.engine = engine or SignalEngine()
         self.store = decision_store or DecisionStore()
         self.memory: list[DecisionRecord] = self.store.load()
         self.risk = RiskManager()
-        self.news = UnconfiguredNewsProvider()
+        self.news = news_provider or UnconfiguredNewsProvider()
         self.identity = IdentityPolicy()
         self.production_storage = production_storage or ProductionStoragePolicy()
         self.production_gate = ProductionOperationGate(self.production_storage)
@@ -285,10 +285,28 @@ class EcosystemService:
 
     def risk_status(self) -> dict[str, Any]:
         decision = self.risk.evaluate()
-        return {"allowed": decision.allowed, "reason": decision.reason, "configured_limits": {"daily_loss_limit": self.risk.daily_loss_limit, "max_operations": self.risk.max_operations, "max_consecutive_losses": self.risk.max_consecutive_losses}, "news_provider": "UNCONFIGURED"}
+        news = self.news_status(limit=1)
+        return {"allowed": decision.allowed, "reason": decision.reason, "configured_limits": {"daily_loss_limit": self.risk.daily_loss_limit, "max_operations": self.risk.max_operations, "max_consecutive_losses": self.risk.max_consecutive_losses}, "news_provider": news["provider"]}
 
-    def news_status(self, limit: int = 10) -> dict[str, Any]:
-        return {"provider": "UNCONFIGURED", "live": False, "items": [asdict(item) for item in self.news.latest(limit=limit)]}
+    def news_status(self, limit: int = 10, symbol: str | None = None) -> dict[str, Any]:
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
+            raise ValueError("limit deve estar entre 1 e 50")
+        items = [asdict(item) for item in self.news.latest(symbol=symbol, limit=limit)]
+        status_method = getattr(self.news, "status", None)
+        provider_status = status_method() if callable(status_method) else {
+            "configured": not isinstance(self.news, UnconfiguredNewsProvider),
+            "live": False,
+        }
+        configured = bool(provider_status.get("configured", False))
+        return {
+            "provider": "RSS_ATOM" if configured else "UNCONFIGURED",
+            "configured": configured,
+            "live": bool(provider_status.get("live", False)),
+            "status": provider_status,
+            "item_count": len(items),
+            "items": items,
+            "execution_authorized": False,
+        }
 
     @staticmethod
     def _mt5_demo_status_from_observability(observability: dict[str, Any]) -> str:
