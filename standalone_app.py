@@ -127,6 +127,83 @@ class StandaloneWSGIApplication:
                 request_id,
             )
 
+        if method == "GET" and path == "/api/market-monitor/status":
+            monitor = getattr(self.runtime, "market_monitor", None)
+            payload = (
+                monitor.status()
+                if monitor is not None
+                else {
+                    "enabled": 0,
+                    "total": 0,
+                    "worker_running": False,
+                    "status": "MARKET_DATA_PROVIDER_NOT_CONFIGURED",
+                    "execution_authorized": False,
+                    "subscriptions": [],
+                }
+            )
+            return _json_response(start_response, HTTPStatus.OK, payload, request_id)
+
+        if method == "GET" and path == "/api/market-monitor/subscriptions":
+            monitor = getattr(self.runtime, "market_monitor", None)
+            subscriptions = monitor.subscriptions() if monitor is not None else []
+            return _json_response(
+                start_response, HTTPStatus.OK,
+                {"subscriptions": subscriptions, "execution_authorized": False},
+                request_id,
+            )
+
+        if method == "POST" and path == "/api/market-monitor/subscriptions":
+            monitor = getattr(self.runtime, "market_monitor", None)
+            if monitor is None:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "fonte de dados de mercado não configurada", "execution_authorized": False},
+                    request_id,
+                )
+            try:
+                payload = _read_json(environ)
+                subscription = monitor.subscribe(
+                    symbol=payload.get("symbol"),
+                    timeframe=payload.get("timeframe"),
+                )
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return _json_response(
+                    start_response, HTTPStatus.BAD_REQUEST,
+                    {"error": str(exc), "execution_authorized": False},
+                    request_id,
+                )
+            return _json_response(
+                start_response, HTTPStatus.CREATED,
+                {"subscription": subscription, "execution_authorized": False},
+                request_id,
+            )
+
+        if method == "DELETE" and path == "/api/market-monitor/subscriptions":
+            monitor = getattr(self.runtime, "market_monitor", None)
+            if monitor is None:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "fonte de dados de mercado não configurada", "execution_authorized": False},
+                    request_id,
+                )
+            try:
+                payload = _read_json(environ)
+                removed = monitor.unsubscribe(
+                    symbol=payload.get("symbol"),
+                    timeframe=payload.get("timeframe"),
+                )
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return _json_response(
+                    start_response, HTTPStatus.BAD_REQUEST,
+                    {"error": str(exc), "execution_authorized": False},
+                    request_id,
+                )
+            return _json_response(
+                start_response, HTTPStatus.OK,
+                {"disabled": removed, "execution_authorized": False},
+                request_id,
+            )
+
         if method == "GET" and path == "/api/assistant/status":
             readiness = self.runtime.assistant.readiness()
             return _json_response(
