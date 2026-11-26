@@ -83,7 +83,8 @@ class FakeRuntime:
             self.calls = []
 
         def status(self, context=None):
-            self.calls.append(("status", context.tenant_id, context.subject_id))
+            if context is not None:
+                self.calls.append(("status", context.tenant_id, context.subject_id))
             return {"enabled": 0, "total": 0, "worker_running": False, "subscriptions": [], "execution_authorized": False}
 
         def latest_results(self, limit=50, *, context):
