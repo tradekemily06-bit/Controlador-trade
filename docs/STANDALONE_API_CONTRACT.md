@@ -89,7 +89,7 @@ This is local tenant-scoped persistence, not proof of a production identity prov
 
 ## Tenant-scoped decision memory
 
-The runtime now provisions a tenant-and-subject-scoped decision-memory adapter on the local tenant SQLite store. It supports explicitly addressed save/load and manual outcome annotation, validates decision records, and never imports the legacy global decision history. This is an internal foundation component; it is not yet exposed as a remote memory API and does not replace the legacy local single-user analysis/reporting path. Remote analysis remains blocked until request-scoped analysis, statistics, report generation, and market-monitor subscriptions/results all use the verified tenant context. The adapter remains local SQLite and is not production-durable.
+The runtime provisions a tenant-and-subject-scoped decision-memory adapter on the local tenant SQLite store. Each market analysis is now saved under the configured local runtime owner using a stable ID derived from symbol, timeframe, and closed-candle timestamp. Repeated analysis of the same candle is idempotent and does not overwrite manually annotated outcomes. The adapter supports explicitly addressed save/load and manual outcome annotation, validates decision records, and never imports the legacy global decision history. The remote memory API resolves ownership from trusted server identity. This does not yet replace the legacy global statistics/reporting pipeline: remote analysis remains blocked until analysis, statistics, report generation, and market-monitor subscriptions/results all use the verified tenant context. The adapter remains local SQLite and is not production-durable.
 
 ### Decision memory API
 
