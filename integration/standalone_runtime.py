@@ -26,6 +26,7 @@ from core.notification_outbox import PersistentNotificationOutbox
 from core.ecosystem_notifications import EcosystemNotification, NotificationKind, NotificationSeverity
 from integration.market_timeframe_monitor import MarketTimeframeMonitor
 from integration.notification_outbox_worker import NotificationOutboxWorker
+from integration.rss_news_provider import RSSNewsProvider
 
 
 class StandaloneRuntime:
@@ -85,6 +86,7 @@ class StandaloneRuntime:
                 learning_state_store=LearningStateStore(ecosystem_state_store),
                 notification_state_store=ecosystem_state_store,
                 notification_outbox=self.notification_outbox,
+                news_provider=RSSNewsProvider.from_environment(),
             )
             self.intelligence = UnifiedIntelligence(
                 senior_context=self.ecosystem_service.senior_context
