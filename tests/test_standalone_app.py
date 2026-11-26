@@ -301,6 +301,33 @@ class StandaloneWSGITests(unittest.TestCase):
             ],
         )
 
+    def test_remote_market_monitor_never_reuses_another_subject_context(self):
+        runtime = FakeRuntime()
+        runtime.market_monitor.calls.clear()
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            for subject in ("alice", "bob"):
+                status, _ = call_wsgi(
+                    app, "/api/market-monitor/subscriptions",
+                    remote_addr="203.0.113.10",
+                    authorization="Bearer shared-gateway-secret",
+                    identity_verified=True, remote_user=subject, tenant_id="tenant-a",
+                )
+                self.assertEqual(status, "200 OK")
+        self.assertEqual(
+            runtime.market_monitor.calls,
+            [
+                ("subscriptions", "tenant-a", "alice"),
+                ("subscriptions", "tenant-a", "bob"),
+            ],
+        )
+
+
     def test_remote_notifications_are_isolated_by_verified_tenant_and_subject(self):
         runtime = FakeRuntime()
         runtime.tenant_state.save_notifications(
