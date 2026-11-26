@@ -108,6 +108,18 @@ class StandaloneMarketAnalysisTests(unittest.TestCase):
         self.assertEqual(result["timeframe"], "10m")
         self.assertFalse(result["execution_authorized"])
 
+    def test_platform_timeframe_alias_and_custom_interval_are_supported(self):
+        provider = FakeMarketDataProvider(candle_series(timeframe="2m"))
+        service = StandaloneMarketAnalysisService(
+            provider=provider,
+            source="CUSTOM_INTERVAL_TEST_FEED",
+            intelligence=UnifiedIntelligence(),
+        )
+        result = service.analyze(symbol="EURUSD", timeframe="M2", limit=8)
+        self.assertEqual(result["timeframe"], "2m")
+        self.assertEqual(provider.requests[0].timeframe, "2m")
+        self.assertFalse(result["execution_authorized"])
+
     def test_unsupported_timeframe_and_unbounded_limit_are_rejected(self):
         service = StandaloneMarketAnalysisService(
             provider=FakeMarketDataProvider(candle_series()),
@@ -115,7 +127,7 @@ class StandaloneMarketAnalysisTests(unittest.TestCase):
             intelligence=UnifiedIntelligence(),
         )
         with self.assertRaises(ValueError):
-            service.analyze(symbol="EURUSD", timeframe="2m")
+            service.analyze(symbol="EURUSD", timeframe="M0")
         with self.assertRaises(ValueError):
             service.analyze(symbol="EURUSD", timeframe="5m", limit=100000)
 
