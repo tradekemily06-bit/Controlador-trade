@@ -72,10 +72,35 @@ def build_standalone_application(
                 if callable(getattr(ecosystem_service, "notification_summary", None))
                 else {"status": "NOT_CONFIGURED"}
             ),
+            "notification_items": (
+                ecosystem_service.notification_items(include_info=True)
+                if callable(getattr(ecosystem_service, "notification_items", None))
+                else []
+            ),
+            "health_alerts": (
+                ecosystem_service.health_alerts()
+                if callable(getattr(ecosystem_service, "health_alerts", None))
+                else []
+            ),
             "execution_authorized": False,
         })
 
     def analysis(task: str, context: Mapping[str, Any], shared: UnifiedIntelligence):
+        operation = str(context.get("operation", "overview")).strip().lower()
+        if operation in {"statistics", "performance", "reports", "report"}:
+            return _plain({
+                "statistics": ecosystem_service.statistics(),
+                "reporting_status": "STATISTICS_AVAILABLE_REPORT_EXPORT_NOT_CONNECTED",
+                "execution_authorized": False,
+            })
+        if operation in {"news", "market_news"}:
+            limit = context.get("limit", 10)
+            if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
+                raise ValueError("limit must be an integer from 1 to 50")
+            return _plain({
+                "news": ecosystem_service.news_status(limit=limit),
+                "execution_authorized": False,
+            })
         if market_analyzer is not None:
             symbol = context.get("symbol")
             timeframe = context.get("timeframe", "5m")
@@ -107,9 +132,23 @@ def build_standalone_application(
         }
 
     def study(task: str, context: Mapping[str, Any], shared: UnifiedIntelligence):
+        operation = str(context.get("operation", "overview")).strip().lower()
+        learning = ecosystem_service.learning_summary()
+        if operation in {"sources", "learning_sources"}:
+            payload = {"learning_sources": ecosystem_service.learning_sources_view()}
+        elif operation in {"resources", "learning_resources"}:
+            payload = {"resources": ecosystem_service.learning_resources_view()}
+        elif operation in {"observations", "learning_observations"}:
+            payload = {"observations": ecosystem_service.learning_observations_view()}
+        elif operation in {"activities", "learning_activities"}:
+            payload = {
+                "activities": ecosystem_service.learning_activities_view(),
+                "professor_uses_validated_knowledge_only": True,
+            }
+        else:
+            payload = {"learning": learning, "statistics": ecosystem_service.statistics()}
         return _plain({
-            "learning": ecosystem_service.learning_summary(),
-            "statistics": ecosystem_service.statistics(),
+            **payload,
             "curriculum": [
                 {
                     "module_id": module.module_id,
