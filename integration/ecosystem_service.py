@@ -6,6 +6,7 @@ from typing import Any, Iterable
 
 from analysis.decision_record import DecisionRecord
 from analysis.decision_store import DecisionStore
+from analysis.decision_report import build_decision_report, export_decision_report
 from analysis.statistics import summarize, summarize_breakdowns, summarize_periods
 from core.ecosystem_health import build_health_alerts
 from core.ecosystem_notifications import EcosystemNotification, NotificationKind, NotificationSeverity
@@ -138,6 +139,13 @@ class EcosystemService:
     def statistics(self) -> dict[str, Any]:
         breakdowns = summarize_breakdowns(self.memory)
         return {**asdict(summarize(self.memory)), "periods": summarize_periods(self.memory), "breakdowns": {**breakdowns, "by_symbol": breakdowns["symbols"], "by_timeframe": breakdowns["timeframes"], "by_signal": breakdowns["signals"], "by_score_band": breakdowns["score_bands"]}}
+
+    def decision_report(self, *, limit: int = 1000) -> dict[str, Any]:
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
+            raise ValueError("limit deve ser um inteiro de 1 a 1000")
+        records = self.memory[-limit:]
+        report = build_decision_report(records, self.statistics())
+        return {**report, "export_json": export_decision_report(report)}
 
     def memory_view(self, limit: int = 50) -> list[dict[str, Any]]:
         if limit < 1:
