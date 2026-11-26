@@ -194,11 +194,22 @@ def build_standalone_application(
             return {"status": "NOT_CONFIGURED", "execution_authorized": False}
         if not trusted_identity or not fiscal_owner_id:
             return {"status": "TRUSTED_IDENTITY_NOT_CONFIGURED", "execution_authorized": False}
+        intelligence_route = shared.route(
+            area=ApplicationArea.ECOSYSTEM_ASSISTANT, task=task
+        )
+        architecture = shared.architecture_status()
         result = assistant.ask(
             identity=trusted_identity,
             message=task,
             fiscal_owner_id=fiscal_owner_id,
             cid=context.get("conversation_id"),
+            shared_intelligence_context={
+                "architecture": architecture["architecture"],
+                "area": intelligence_route.area.value,
+                "selected_capabilities": list(intelligence_route.selected_capabilities),
+                "shared_capabilities": architecture["shared_capabilities"],
+                "internal_knowledge": architecture["internal_knowledge"],
+            },
         )
         return _plain({**result, "execution_authorized": False})
 
