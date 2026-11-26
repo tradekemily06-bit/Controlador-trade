@@ -37,6 +37,28 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
         self.assertEqual(result["backup_restore"], "NOT_CONFIGURED")
         self.assertFalse(result["execution_authorized"])
 
+    def test_tenant_scoped_market_monitor_schema_is_recognized(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with sqlite3.connect(root / "market-timeframe-monitor.sqlite3") as connection:
+                connection.execute("""
+                    CREATE TABLE market_timeframe_watch_v2 (
+                        tenant_id TEXT, subject_id TEXT, symbol TEXT, timeframe TEXT,
+                        enabled INTEGER, created_at REAL, last_processed_candle TEXT,
+                        last_signal TEXT, last_status TEXT, last_error TEXT
+                    )
+                """)
+                connection.execute("""
+                    CREATE TABLE market_timeframe_results_v2 (
+                        tenant_id TEXT, subject_id TEXT, symbol TEXT, timeframe TEXT,
+                        candle_at TEXT, result_json TEXT, recorded_at REAL
+                    )
+                """)
+            result = standalone_storage_status(SimpleNamespace(runtime_dir=root))
+        monitor = next(item for item in result["stores"] if item["id"] == "market_timeframe_monitor")
+        self.assertEqual(monitor["state"], "HEALTHY")
+        self.assertFalse(monitor["required"])
+
     def test_missing_required_store_degrades_foundation_status(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
