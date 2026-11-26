@@ -12,7 +12,6 @@ from core.risk_manager import RiskManager
 from core.senior_context_orchestrator import SeniorContextInput
 from core.senior_risk_reasoning import RiskDomain, RiskObservation
 from core.signal_quality import SignalQualityEvaluator
-from core.trading_runtime import TradingRuntime
 from core.live_orchestrator import TradingOrchestrator
 from core.unified_intelligence import UnifiedIntelligence
 from core.p122_broker_market_data import BrokerMarketDataSnapshot
@@ -93,6 +92,12 @@ class StandaloneMarketAnalysisService:
     ) -> dict[str, Any]:
         if not isinstance(confirmed, bool) or not isinstance(filters_ok, bool):
             raise ValueError("confirmed and filters_ok must be booleans")
+        if not isinstance(symbol, str) or not symbol.strip():
+            raise ValueError("symbol is required")
+        if not isinstance(timeframe, str) or timeframe.strip().lower() not in _TIMEFRAME_SECONDS:
+            raise ValueError("timeframe is not supported by the standalone market reader")
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 3 <= limit <= 1000:
+            raise ValueError("limit must be an integer from 3 to 1000")
         request = MarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
         result = self.orchestrator.evaluate(
             request,
@@ -108,7 +113,7 @@ class StandaloneMarketAnalysisService:
             integrity=MarketDataIntegrity(max_age_seconds=max_age)
         ).assess(
             BrokerMarketDataSnapshot(
-                symbol=result.market_data.candles[-1] and symbol,
+                symbol=symbol,
                 timeframe=timeframe,
                 candles=result.market_data.candles,
                 source=result.market_data.source,
