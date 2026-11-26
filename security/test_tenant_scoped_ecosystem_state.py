@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 import unittest
 from pathlib import Path
 
@@ -84,6 +85,58 @@ class TenantScopedEcosystemStateTests(unittest.TestCase):
                 state.append_notification(
                     tenant, {"notification_id": "n1"}, limit=0
                 )
+
+
+    def test_concurrent_notification_appends_do_not_lose_events(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "tenant-state.sqlite3"
+            tenant = TenantContext("tenant-a", "alice")
+            states = [
+                TenantScopedEcosystemState(SQLiteTenantStorage(path))
+                for _ in range(8)
+            ]
+
+            def append(index):
+                state = states[index % len(states)]
+                return state.append_notification(
+                    tenant,
+                    {"notification_id": f"event-{index}", "title": f"Event {index}"},
+                )
+
+            with ThreadPoolExecutor(max_workers=12) as pool:
+                outcomes = list(pool.map(append, range(80)))
+
+            self.assertEqual(sum(outcomes), 80)
+            notifications = states[0].load_notifications(tenant)
+            self.assertEqual(len(notifications), 80)
+            self.assertEqual(
+                {item["notification_id"] for item in notifications},
+                {f"event-{index}" for index in range(80)},
+            )
+
+    def test_concurrent_duplicate_notification_is_stored_once(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "tenant-state.sqlite3"
+            tenant = TenantContext("tenant-a", "alice")
+            states = [
+                TenantScopedEcosystemState(SQLiteTenantStorage(path))
+                for _ in range(8)
+            ]
+            item = {"notification_id": "same-event", "title": "One event"}
+
+            with ThreadPoolExecutor(max_workers=12) as pool:
+                outcomes = list(
+                    pool.map(
+                        lambda index: states[index % len(states)].append_notification(
+                            tenant, item
+                        ),
+                        range(40),
+                    )
+                )
+
+            self.assertEqual(sum(outcomes), 1)
+            self.assertEqual(states[0].load_notifications(tenant), [item])
+
 
 
 if __name__ == "__main__":
