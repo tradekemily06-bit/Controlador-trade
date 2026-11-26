@@ -157,10 +157,33 @@ class StandaloneMarketAnalysisService:
 
         score = result.quality.score
         score_semantics = "força da evidência, não probabilidade de acerto"
+        signal_visual = {
+            "color": {
+                "COMPRA": "GREEN",
+                "VENDA": "RED",
+                "AGUARDAR": "YELLOW",
+            }[signal],
+            "arrow": {
+                "COMPRA": "UP",
+                "VENDA": "DOWN",
+                "AGUARDAR": "NONE",
+            }[signal],
+            "score_color": {
+                "COMPRA": "GREEN",
+                "VENDA": "RED",
+                "AGUARDAR": "YELLOW",
+            }[signal],
+            "profit_probability_color": {
+                "COMPRA": "GREEN",
+                "VENDA": "RED",
+                "AGUARDAR": "YELLOW",
+            }[signal],
+        }
         signal_card = {
             "symbol": symbol,
             "direction": signal,
             "timeframe": timeframe,
+            "visual": signal_visual,
             "score": score,
             "score_type": "EVIDENCE_STRENGTH",
             "score_semantics": score_semantics,
