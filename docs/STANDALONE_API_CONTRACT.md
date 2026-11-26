@@ -6,7 +6,9 @@ This contract is for connecting the existing approved frontend without changing 
 
 - Base URL is supplied by deployment; use HTTPS outside localhost.
 - JSON request/response bodies use UTF-8.
-- Protected application routes use the standalone bearer-token boundary when remote access is enabled.
+- Local loopback access is intended only for the configured single-user runtime. Remote access is denied unless remote access is explicitly enabled, a server-side access token is valid, and trusted authentication middleware injects a verified subject (`REMOTE_USER`), `controlador.identity_verified=True`, and a non-empty `controlador.tenant_id` into the WSGI environment.
+- Set `CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE=1` only when a trusted server-side middleware is actually installed and strips any client-supplied identity claims. The application does not trust identity values from ordinary HTTP headers.
+- The shared bearer token is an additional access gate, not a user identity. A middleware flag alone does not prove a provider is configured or runtime-verified. Multi-tenant data isolation is not implemented yet; the current runtime is single-identity only and must not be presented as a multi-user SaaS.
 - Cross-origin browser access is disabled unless `CONTROLADOR_ALLOWED_ORIGINS` contains the exact comma-separated frontend origins (scheme + host + optional port). Wildcard origins are not supported. CORS preflight is rate-limited and permits only GET, POST, DELETE and OPTIONS with Authorization/Content-Type headers.
 - The MT5 relay ingest route uses its own dedicated bearer token and HTTPS/TLS validation.
 - Never expose server tokens, provider credentials, or relay secrets in browser code.
@@ -25,6 +27,7 @@ Consolidated diagnostic for the frontend's connection/status indicators. Returns
 - assistant readiness;
 - in-app notification/outbox summary;
 - external notification worker status;
+- identity policy status, including explicit unconfigured trusted identity provider and missing multi-tenant isolation;
 - deployment marker `PROCESS_RUNNING_DEPLOYMENT_NOT_VERIFIED`.
 
 A configured/registered provider is not proof of a live connection. The deployment marker is deliberately not a production deployment claim.
