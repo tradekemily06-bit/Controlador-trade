@@ -17,6 +17,10 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
                 "fiscal-reserve.sqlite3": {
                     "fiscal_reserve_entries": "entry_id TEXT, owner_id TEXT, category TEXT, entry_type TEXT, realized_result_brl REAL, reserve_rate REAL, reserve_amount_brl REAL, reference TEXT, occurred_on TEXT, created_at TEXT, notes TEXT",
                     "fiscal_reserve_settings": "owner_id TEXT, category TEXT, rate REAL, rate_source TEXT",
+                    "fiscal_reserve_pending_foreign": "pending_id TEXT, owner_id TEXT, reference TEXT, original_amount REAL, original_currency TEXT, instrument TEXT, jurisdiction TEXT, occurred_on TEXT, status TEXT, created_at TEXT",
+                    "fiscal_pending_reviews": "review_id TEXT, owner_id TEXT, pending_id TEXT, candidate_classification TEXT, confirmed_jurisdiction TEXT, reviewer_name TEXT, reviewer_role TEXT, professional_registration TEXT, evidence_reference TEXT, reviewed_on TEXT, created_at TEXT",
+                    "fiscal_reserve_pending_domestic": "pending_id TEXT, owner_id TEXT, reference TEXT, instrument TEXT, occurred_on TEXT, status TEXT, created_at TEXT",
+                    "fiscal_domestic_pending_reviews": "review_id TEXT, owner_id TEXT, pending_id TEXT, candidate_classification TEXT, confirmed_jurisdiction TEXT, reviewer_name TEXT, reviewer_role TEXT, professional_registration TEXT, evidence_reference TEXT, reviewed_on TEXT, created_at TEXT",
                 },
                 "ecosystem-state.sqlite3": {"ecosystem_state": "key TEXT, value_json TEXT"},
                 "tenant-state.sqlite3": {"tenant_state": "tenant_id TEXT, subject_id TEXT, key TEXT, value_json TEXT, updated_at TEXT"},
@@ -36,6 +40,28 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
         self.assertEqual(result["multi_tenant_isolation"], "NOT_IMPLEMENTED")
         self.assertEqual(result["backup_restore"], "NOT_CONFIGURED")
         self.assertFalse(result["execution_authorized"])
+
+    def test_missing_fiscal_pending_queue_degrades_fiscal_store(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with sqlite3.connect(root / "fiscal-reserve.sqlite3") as connection:
+                connection.execute("""
+                    CREATE TABLE fiscal_reserve_entries (
+                        entry_id TEXT, owner_id TEXT, category TEXT, entry_type TEXT,
+                        realized_result_brl REAL, reserve_rate REAL, reserve_amount_brl REAL,
+                        reference TEXT, occurred_on TEXT, created_at TEXT, notes TEXT
+                    )
+                """)
+                connection.execute("""
+                    CREATE TABLE fiscal_reserve_settings (
+                        owner_id TEXT, category TEXT, rate REAL, rate_source TEXT
+                    )
+                """)
+            result = standalone_storage_status(SimpleNamespace(runtime_dir=root))
+        fiscal = next(item for item in result["stores"] if item["id"] == "fiscal")
+        self.assertEqual(fiscal["state"], "SCHEMA_INCOMPLETE")
+        self.assertEqual(fiscal["missing_schema"]["fiscal_reserve_pending_foreign"], ["<table>"])
+        self.assertEqual(result["required_stores"], "DEGRADED")
 
     def test_tenant_scoped_market_monitor_schema_is_recognized(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -102,6 +128,10 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
                 "fiscal-reserve.sqlite3": {
                     "fiscal_reserve_entries": "entry_id TEXT, owner_id TEXT, category TEXT, entry_type TEXT, realized_result_brl REAL, reserve_rate REAL, reserve_amount_brl REAL, reference TEXT, occurred_on TEXT, created_at TEXT, notes TEXT",
                     "fiscal_reserve_settings": "owner_id TEXT, category TEXT, rate REAL, rate_source TEXT",
+                    "fiscal_reserve_pending_foreign": "pending_id TEXT, owner_id TEXT, reference TEXT, original_amount REAL, original_currency TEXT, instrument TEXT, jurisdiction TEXT, occurred_on TEXT, status TEXT, created_at TEXT",
+                    "fiscal_pending_reviews": "review_id TEXT, owner_id TEXT, pending_id TEXT, candidate_classification TEXT, confirmed_jurisdiction TEXT, reviewer_name TEXT, reviewer_role TEXT, professional_registration TEXT, evidence_reference TEXT, reviewed_on TEXT, created_at TEXT",
+                    "fiscal_reserve_pending_domestic": "pending_id TEXT, owner_id TEXT, reference TEXT, instrument TEXT, occurred_on TEXT, status TEXT, created_at TEXT",
+                    "fiscal_domestic_pending_reviews": "review_id TEXT, owner_id TEXT, pending_id TEXT, candidate_classification TEXT, confirmed_jurisdiction TEXT, reviewer_name TEXT, reviewer_role TEXT, professional_registration TEXT, evidence_reference TEXT, reviewed_on TEXT, created_at TEXT",
                 },
                 "ecosystem-state.sqlite3": {"ecosystem_state": "key TEXT, value_json TEXT"},
                 "tenant-state.sqlite3": {"tenant_state": "tenant_id TEXT, subject_id TEXT, key TEXT, value_json TEXT, updated_at TEXT"},
@@ -129,6 +159,10 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
                 "fiscal-reserve.sqlite3": {
                     "fiscal_reserve_entries": "entry_id TEXT, owner_id TEXT, category TEXT, realized_result_brl REAL, reserve_amount_brl REAL, reference TEXT, occurred_on TEXT",
                     "fiscal_reserve_settings": "owner_id TEXT, category TEXT, rate REAL, rate_source TEXT",
+                    "fiscal_reserve_pending_foreign": "pending_id TEXT, owner_id TEXT, reference TEXT, original_amount REAL, original_currency TEXT, instrument TEXT, jurisdiction TEXT, occurred_on TEXT, status TEXT, created_at TEXT",
+                    "fiscal_pending_reviews": "review_id TEXT, owner_id TEXT, pending_id TEXT, candidate_classification TEXT, confirmed_jurisdiction TEXT, reviewer_name TEXT, reviewer_role TEXT, professional_registration TEXT, evidence_reference TEXT, reviewed_on TEXT, created_at TEXT",
+                    "fiscal_reserve_pending_domestic": "pending_id TEXT, owner_id TEXT, reference TEXT, instrument TEXT, occurred_on TEXT, status TEXT, created_at TEXT",
+                    "fiscal_domestic_pending_reviews": "review_id TEXT, owner_id TEXT, pending_id TEXT, candidate_classification TEXT, confirmed_jurisdiction TEXT, reviewer_name TEXT, reviewer_role TEXT, professional_registration TEXT, evidence_reference TEXT, reviewed_on TEXT, created_at TEXT",
                 },
                 "ecosystem-state.sqlite3": {"ecosystem_state": "key TEXT, value_json TEXT"},
                 "tenant-state.sqlite3": {"tenant_state": "tenant_id TEXT, subject_id TEXT, key TEXT, value_json TEXT, updated_at TEXT"},
