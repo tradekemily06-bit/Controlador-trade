@@ -123,7 +123,7 @@ class RSSNewsProvider(NewsProvider):
         root = ET.fromstring(raw)
         host = urlparse(final_url).hostname or "fonte"
         channel = root.find("./channel")
-        feed_title = self._text(channel.find("title")) if channel is not None else None
+        feed_title = self._text(channel.find("title")) if channel is not None else self._text(root.find("{http://www.w3.org/2005/Atom}title"))
         items: list[NewsItem] = []
         entries = root.findall(".//item")
         if not entries:
@@ -132,7 +132,7 @@ class RSSNewsProvider(NewsProvider):
             title = self._text(entry.find("title")) or self._text(entry.find("{http://www.w3.org/2005/Atom}title"))
             if not title:
                 continue
-            link_element = entry.find("link")
+            link_element = entry.find("link") or entry.find("{http://www.w3.org/2005/Atom}link")
             link = None
             if link_element is not None:
                 link = link_element.get("href") or self._text(link_element)
