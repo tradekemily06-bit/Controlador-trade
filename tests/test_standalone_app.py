@@ -331,7 +331,9 @@ class StandaloneWSGITests(unittest.TestCase):
                 app, "/api/analysis/statistics", remote_addr="203.0.113.10",
                 authorization="Bearer shared-gateway-secret",
             )
-        self.assertEqual(status, "403 Forbidden")
+        # The outer access gate rejects unverified remote identity before
+        # any tenant-scoped route can execute.
+        self.assertEqual(status, "503 Service Unavailable")
         self.assertFalse(body["execution_authorized"])
         self.assertEqual(runtime.tenant_decision_memory.contexts, [])
 
