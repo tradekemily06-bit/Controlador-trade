@@ -15,6 +15,8 @@ from finance.fiscal_reserve import FiscalReserve
 from finance.fiscal_schema import migrate_fiscal_schema
 from integration.ecosystem_service import EcosystemService
 from integration.standalone_application_factory import build_standalone_application
+from integration.standalone_market_analysis import StandaloneMarketAnalysisService
+from core.unified_intelligence import UnifiedIntelligence
 
 
 class StandaloneRuntime:
@@ -25,7 +27,13 @@ class StandaloneRuntime:
     validated separately before the Analysis area can produce a market reading.
     """
 
-    def __init__(self, runtime_dir: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        runtime_dir: str | Path | None = None,
+        *,
+        market_data_provider=None,
+        market_data_source: str | None = None,
+    ) -> None:
         configured_identity = os.getenv("CONTROLADOR_SINGLE_USER_IDENTITY", "").strip()
         if not configured_identity:
             raise RuntimeError("CONTROLADOR_SINGLE_USER_IDENTITY precisa estar configurada")
@@ -51,6 +59,18 @@ class StandaloneRuntime:
             self.ecosystem_service = EcosystemService(
                 decision_store=DecisionStore(str(self.runtime_dir / "decision-memory.sqlite3"))
             )
+            self.intelligence = UnifiedIntelligence(
+                senior_context=self.ecosystem_service.senior_context
+            )
+            self.market_analysis_service = None
+            if market_data_provider is not None:
+                if not isinstance(market_data_source, str) or not market_data_source.strip():
+                    raise ValueError("market_data_source is required when a provider is injected")
+                self.market_analysis_service = StandaloneMarketAnalysisService(
+                    provider=market_data_provider,
+                    source=market_data_source,
+                    intelligence=self.intelligence,
+                )
             self.conversation_store = AssistantConversationStore(
                 self.runtime_dir / "assistant-conversations.sqlite3"
             )
@@ -69,6 +89,8 @@ class StandaloneRuntime:
                 domestic_pending=self.domestic_pending,
                 assistant=self.assistant,
                 trusted_identity=configured_identity,
+                intelligence=self.intelligence,
+                market_analyzer=self.market_analysis_service,
             )
         except Exception:
             self.process_lock.release()
