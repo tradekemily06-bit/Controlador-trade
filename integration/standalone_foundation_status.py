@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
-from urllib.parse import quote
 from typing import Any
 
 
@@ -19,7 +18,7 @@ _DATABASES = (
 
 def _integrity(path: Path) -> str:
     # Read-only URI: readiness must never create, migrate, or mutate a database.
-    uri = f"file:{quote(str(path.resolve()))}?mode=ro"
+    uri = f"{path.resolve().as_uri()}?mode=ro"
     with sqlite3.connect(uri, uri=True, timeout=2) as connection:
         result = connection.execute("PRAGMA quick_check").fetchone()
     return str(result[0]) if result else "NO_RESULT"
