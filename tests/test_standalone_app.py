@@ -28,6 +28,16 @@ class FakeRuntime:
 
     application = Application()
 
+    class EcosystemService:
+        def notification_items(self, *, include_info=False):
+            return [{"notification_id": "n1", "title": "Sinal atualizado"}]
+
+        def notification_summary(self):
+            return {"total": 1, "external_delivery": "OUTBOX_ONLY_NO_PROVIDER"}
+
+    ecosystem_service = EcosystemService()
+    notification_worker = None
+
 
 def call_wsgi(app, path, method="GET", body=None, remote_addr="127.0.0.1"):
     raw = json.dumps(body or {}).encode("utf-8")
@@ -67,6 +77,27 @@ class StandaloneWSGITests(unittest.TestCase):
         app = StandaloneWSGIApplication(FakeRuntime())
         status, body = call_wsgi(app, "/api/orders", method="POST", body={"symbol": "EURUSD"})
         self.assertEqual(status, "404 Not Found")
+        self.assertFalse(body["execution_authorized"])
+
+    def test_notifications_endpoint_returns_persisted_inbox(self):
+        app = StandaloneWSGIApplication(FakeRuntime())
+        status, body = call_wsgi(app, "/api/notifications?limit=10")
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["count"], 1)
+        self.assertEqual(body["notifications"][0]["notification_id"], "n1")
+        self.assertFalse(body["execution_authorized"])
+
+    def test_notification_status_reports_no_external_sink_honestly(self):
+        app = StandaloneWSGIApplication(FakeRuntime())
+        status, body = call_wsgi(app, "/api/notifications/status")
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["external_delivery"], "OUTBOX_ONLY_NO_PROVIDER")
+        self.assertFalse(body["delivery_worker"]["configured"])
+
+    def test_notifications_endpoint_rejects_invalid_limit(self):
+        app = StandaloneWSGIApplication(FakeRuntime())
+        status, body = call_wsgi(app, "/api/notifications?limit=999")
+        self.assertEqual(status, "400 Bad Request")
         self.assertFalse(body["execution_authorized"])
 
     def test_remote_access_is_denied_by_default(self):
