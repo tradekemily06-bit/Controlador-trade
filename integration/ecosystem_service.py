@@ -285,8 +285,9 @@ class EcosystemService:
 
     def risk_status(self) -> dict[str, Any]:
         decision = self.risk.evaluate()
-        news = self.news_status(limit=1)
-        return {"allowed": decision.allowed, "reason": decision.reason, "configured_limits": {"daily_loss_limit": self.risk.daily_loss_limit, "max_operations": self.risk.max_operations, "max_consecutive_losses": self.risk.max_consecutive_losses}, "news_provider": news["provider"]}
+        news_status = getattr(self.news, "status", None)
+        news = news_status() if callable(news_status) else {"configured": False}
+        return {"allowed": decision.allowed, "reason": decision.reason, "configured_limits": {"daily_loss_limit": self.risk.daily_loss_limit, "max_operations": self.risk.max_operations, "max_consecutive_losses": self.risk.max_consecutive_losses}, "news_provider": "RSS_ATOM" if news.get("configured") else "UNCONFIGURED"}
 
     def news_status(self, limit: int = 10, symbol: str | None = None) -> dict[str, Any]:
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
