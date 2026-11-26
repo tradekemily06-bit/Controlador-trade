@@ -20,6 +20,8 @@ def build_decision_report(records: Iterable[DecisionRecord], statistics: dict[st
         "report_type": "STANDALONE_DECISION_REPORT",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "record_count": len(items),
+        "record_scope": "MOST_RECENT_LIMIT",
+        "statistics_scope": "ALL_STORED_DECISIONS",
         "statistics": statistics,
         "records": [item.to_dict() for item in items],
         "execution_authorized": False,
