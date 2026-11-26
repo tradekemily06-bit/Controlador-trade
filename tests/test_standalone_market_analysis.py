@@ -84,6 +84,44 @@ class StandaloneMarketAnalysisTests(unittest.TestCase):
         self.assertEqual(result["market_data"]["source"], "FAKE_TEST_FEED")
         self.assertIn(result["signal"], {"COMPRA", "VENDA", "AGUARDAR"})
 
+    def test_analysis_is_saved_to_decision_memory_with_stable_cycle_identity(self):
+        provider = FakeMarketDataProvider(candle_series())
+        saved = []
+        service = StandaloneMarketAnalysisService(
+            provider=provider,
+            source="MEMORY_TEST_FEED",
+            intelligence=UnifiedIntelligence(),
+            decision_sink=saved.append,
+        )
+
+        first = service.analyze(symbol="EURUSD", timeframe="5m", limit=8)
+        second = service.analyze(symbol="EURUSD", timeframe="5m", limit=8)
+
+        self.assertEqual(len(saved), 2)
+        self.assertEqual(saved[0].decision_id, saved[1].decision_id)
+        self.assertEqual(saved[0].symbol, "EURUSD")
+        self.assertEqual(saved[0].timeframe, "5m")
+        self.assertEqual(saved[0].signal, first["signal"])
+        self.assertEqual(saved[0].signal, second["signal"])
+        self.assertFalse(saved[0].execution_allowed)
+        self.assertEqual(first["decision_memory"]["status"], "SAVED")
+        self.assertEqual(second["decision_memory"]["status"], "SAVED")
+        self.assertEqual(first["decision_memory"]["decision_id"], saved[0].decision_id)
+
+    def test_decision_memory_failure_is_reported_without_faking_persistence(self):
+        def fail_save(_record):
+            raise OSError("storage unavailable")
+
+        service = StandaloneMarketAnalysisService(
+            provider=FakeMarketDataProvider(candle_series()),
+            source="MEMORY_FAILURE_TEST_FEED",
+            intelligence=UnifiedIntelligence(),
+            decision_sink=fail_save,
+        )
+        result = service.analyze(symbol="EURUSD", timeframe="5m", limit=8)
+        self.assertEqual(result["decision_memory"]["status"], "PERSISTENCE_ERROR")
+        self.assertEqual(result["decision_memory"]["error_class"], "OSError")
+
     def test_stale_market_data_forces_wait(self):
         provider = FakeMarketDataProvider(candle_series(age_intervals=20))
         service = StandaloneMarketAnalysisService(
