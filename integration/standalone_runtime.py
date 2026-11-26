@@ -142,6 +142,9 @@ class StandaloneRuntime:
                     provider=selected.provider,
                     source=selected.source,
                     intelligence=self.intelligence,
+                    decision_sink=lambda record: self.tenant_decision_memory.save(
+                        self.local_tenant_context, record
+                    ),
                 )
 
                 def publish_market_change(event: dict[str, Any]) -> None:
