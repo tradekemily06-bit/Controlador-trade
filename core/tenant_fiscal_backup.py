@@ -143,7 +143,7 @@ class TenantFiscalBackupService:
         if (
             not filename.startswith(expected_prefix)
             or not filename.endswith(".sqlite3")
-            or not re.fullmatch(r"[a-z0-9-]+\.sqlite3", filename)
+            or not re.fullmatch(r"[A-Za-z0-9-]+\.sqlite3", filename)
         ):
             raise ValueError("backup não pertence ao tenant e usuário autenticados")
         backup_path = self.backup_dir / filename
