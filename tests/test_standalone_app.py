@@ -171,6 +171,29 @@ def call_wsgi(app, path, method="GET", body=None, remote_addr="127.0.0.1", origi
 
 
 class StandaloneWSGITests(unittest.TestCase):
+    def test_assistant_status_reports_conversation_scope_and_remote_chat_guard(self):
+        runtime = FakeRuntime()
+        runtime.assistant = FakeRuntime.Assistant()
+        runtime.assistant.readiness = lambda: {"available": True, "status": "CONFIGURED_NOT_TESTED"}
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/assistant/status",
+                remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["conversation_scope"], "TENANT_AND_SUBJECT")
+        self.assertEqual(body["remote_chat"], "BLOCKED_FISCAL_TENANT_ISOLATION_REQUIRED")
+        self.assertTrue(body["tenant_context_available"])
+        self.assertFalse(body["execution_authorized"])
+
     def test_assistant_conversations_are_scoped_to_verified_tenant_and_subject(self):
         runtime = FakeRuntime()
         runtime.assistant = FakeRuntime.Assistant()
