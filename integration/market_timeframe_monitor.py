@@ -386,7 +386,7 @@ class MarketTimeframeMonitor:
                 self.run_once()
                 self._worker_error = None
             except Exception as exc:
-                self._worker_error = str(exc)[:500]
+                self._worker_error = type(exc).__name__
             self._stop.wait(self.poll_interval_seconds)
 
     def stop(self, timeout: float = 5.0) -> None:
@@ -404,7 +404,8 @@ class MarketTimeframeMonitor:
             "worker_running": bool(self._thread is not None and self._thread.is_alive()),
             "poll_interval_seconds": self.poll_interval_seconds,
             "close_grace_seconds": self.close_grace_seconds,
-            "worker_error": self._worker_error,
+            "worker_error_class": self._worker_error,
+            "scope": "TENANT_AND_SUBJECT",
             "execution_authorized": False,
             "subscriptions": subscriptions,
         }
