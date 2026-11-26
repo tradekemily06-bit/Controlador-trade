@@ -80,3 +80,18 @@ The UI must never display both modes together and must not infer account mode fr
 ## Integration status must be honest
 
 A route being registered is not the same as a production integration. Each area and module must distinguish: implemented in the repository, wired to the standalone runtime, provider configured, live connection tested, persistent storage verified, and end-to-end behavior tested. Current market news provider remains unconfigured. Analysis and Memory now expose a JSON report built from the standalone DecisionRecord model; it deliberately does not coerce those records into the distinct legacy OperationMemoryRecord model. Study records (sources, resources, observations, activities and attempts) are persisted through the versioned LearningStateStore when the standalone runtime supplies the shared SQLite state store. Notifications are restored and persisted through that same store and are exposed in Command Cabin; this is durable in-app notification state, not external push delivery. Mobile/web push delivery, subscriptions, background delivery and end-to-end notification testing remain unimplemented.
+
+
+## Automatic candle-close monitoring
+
+When a read-only market-data provider is configured, the standalone runtime starts a background monitor. It stores watch subscriptions in SQLite and evaluates each subscribed symbol/timeframe after the expected candle close, with a short grace period for provider publication. It verifies that the provider returned the exact expected closed candle before recording a cycle; stale or not-yet-published candles remain waiting and are retried. Subscriptions survive a process restart, but the worker itself runs only while the standalone server process is alive.
+
+The monitor accepts the same normalized timeframe syntax as the analysis service. It records results per symbol/timeframe/candle, avoids reprocessing the same candle, and creates an in-app market notification when the signal changes materially. It never submits orders. This does not by itself provide delivery to a phone/browser while the app window is closed: the backend must be hosted as a persistent service and an external push provider/worker still needs to be configured and end-to-end tested.
+
+API routes (protected by the existing standalone access boundary):
+- `GET /api/market-monitor/status` — worker and subscription status.
+- `GET /api/market-monitor/subscriptions` — persisted watch list.
+- `POST /api/market-monitor/subscriptions` — body: `{"symbol":"EURUSD","timeframe":"M5"}`.
+- `DELETE /api/market-monitor/subscriptions` — body: `{"symbol":"EURUSD","timeframe":"M5"}`.
+
+The API is backend capability only. The approved Lovable interface has not been modified or wired to these endpoints yet.
