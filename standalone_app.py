@@ -67,7 +67,22 @@ def _authorized(environ) -> tuple[bool, str]:
     supplied = authorization[7:].strip()
     if not supplied or not hmac.compare_digest(supplied, expected):
         return False, "autorização negada"
-    return True, "trusted"
+
+    # A shared API token is only an access gate, not a user identity.
+    # Remote production access additionally requires identity claims injected
+    # by trusted server-side authentication middleware (never raw HTTP headers).
+    middleware_enabled = os.getenv(
+        "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE", ""
+    ).strip().lower() in {"1", "true", "yes"}
+    authenticated = environ.get("controlador.identity_verified") is True
+    subject = str(environ.get("REMOTE_USER") or "").strip()
+    tenant_id = str(environ.get("controlador.tenant_id") or "").strip()
+    if not middleware_enabled or not authenticated or not subject or not tenant_id:
+        return False, (
+            "identidade remota verificada e tenant são obrigatórios; "
+            "token compartilhado sozinho não autentica um usuário"
+        )
+    return True, "trusted_identity"
 
 def _mt5_relay_authorized(environ) -> bool:
     expected = os.getenv("CONTROLADOR_MT5_RELAY_TOKEN", "").strip()
@@ -232,7 +247,18 @@ class StandaloneWSGIApplication:
             worker = getattr(self.runtime, "notification_worker", None)
             assistant = getattr(self.runtime, "assistant", None)
             news_status = getattr(ecosystem, "news_status", None)
+            identity_middleware = os.getenv(
+                "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE", ""
+            ).strip().lower() in {"1", "true", "yes"}
             readiness = {
+                "identity": {
+                    "runtime_identity": "SINGLE_CONFIGURED_LOCAL_IDENTITY",
+                    "remote_identity_middleware": "ENABLED" if identity_middleware else "NOT_CONFIGURED",
+                    "remote_tenant_claim": "REQUIRED",
+                    "shared_bearer_token_is_user_identity": False,
+                    "multi_tenant_isolation": "NOT_IMPLEMENTED",
+                    "real_execution": "DISABLED",
+                },
                 "architecture": architecture.get("architecture", "UNKNOWN"),
                 "areas": len(architecture.get("application_areas", [])),
                 "market_data": registry.status(probe_account_mode=False) if registry is not None else {"status": "NOT_CONFIGURED"},
