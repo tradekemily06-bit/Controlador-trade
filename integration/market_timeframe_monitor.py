@@ -45,6 +45,7 @@ class MarketTimeframeMonitor:
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._worker_error: str | None = None
         self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
@@ -96,6 +97,15 @@ class MarketTimeframeMonitor:
         normalized_timeframe = normalize_timeframe(timeframe)
         current = time.time() if now is None else float(now)
         with self._lock, self._connect() as db:
+            existing = db.execute(
+                "SELECT enabled FROM market_timeframe_watch WHERE symbol=? AND timeframe=?",
+                (normalized_symbol, normalized_timeframe),
+            ).fetchone()
+            active_count = db.execute(
+                "SELECT COUNT(*) FROM market_timeframe_watch WHERE enabled=1"
+            ).fetchone()[0]
+            if existing is None and active_count >= 100:
+                raise ValueError("limite de 100 assinaturas ativas atingido")
             db.execute(
                 """
                 INSERT INTO market_timeframe_watch(symbol, timeframe, enabled, created_at)
@@ -292,7 +302,11 @@ class MarketTimeframeMonitor:
 
     def _run(self) -> None:
         while not self._stop.is_set():
-            self.run_once()
+            try:
+                self.run_once()
+                self._worker_error = None
+            except Exception as exc:
+                self._worker_error = str(exc)[:500]
             self._stop.wait(self.poll_interval_seconds)
 
     def stop(self, timeout: float = 5.0) -> None:
@@ -310,6 +324,7 @@ class MarketTimeframeMonitor:
             "worker_running": bool(self._thread is not None and self._thread.is_alive()),
             "poll_interval_seconds": self.poll_interval_seconds,
             "close_grace_seconds": self.close_grace_seconds,
+            "worker_error": self._worker_error,
             "execution_authorized": False,
             "subscriptions": subscriptions,
         }
