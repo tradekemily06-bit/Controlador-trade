@@ -28,6 +28,7 @@ Consolidated diagnostic for the frontend's connection/status indicators. Returns
 - in-app notification/outbox summary;
 - external notification worker status;
 - identity policy status, including explicit unconfigured trusted identity provider and missing multi-tenant isolation;
+- decision-memory persistence mode/state, including explicit in-memory-only or persistence-error status; only `PERSISTENT_READY` is reported as durability confirmed for that local SQLite store;
 - deployment marker `PROCESS_RUNNING_DEPLOYMENT_NOT_VERIFIED`.
 
 A configured/registered provider is not proof of a live connection. The deployment marker is deliberately not a production deployment claim.
@@ -110,3 +111,10 @@ Returns relay inbox status. A configured relay is not proof that the user's PC i
 - The endpoint runs read-only SQLite `PRAGMA quick_check` against the five required local stores (fiscal, ecosystem state, notification outbox, decision memory, assistant conversations) and reports optional market-monitor storage separately.
 - A missing or unreadable required database degrades the reported foundation status. The check does not create, migrate, repair, or modify databases.
 - This is local SQLite integrity evidence only. It does not establish production-grade multi-tenant isolation, backup/restore, managed database availability, or deployment readiness; those remain explicitly unconfigured/not proven.
+
+
+## Decision-memory persistence status
+- `GET /api/readiness` includes `decision_memory`, reporting `mode`, `state`, `last_error_class` and `durability_confirmed`.
+- `IN_MEMORY_NOT_CONFIGURED` means decision history is not durable across process restarts.
+- `PERSISTENCE_ERROR` means SQLite initialization or I/O failed; the application may continue fail-soft, but the memory must not be described as persisted.
+- `PERSISTENT_READY` confirms that the local SQLite store initialized successfully. It does not prove backup/restore, multi-tenant isolation, or production database operations.
