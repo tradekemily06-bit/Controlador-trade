@@ -204,42 +204,6 @@ class StandaloneMarketAnalysisService:
             "execution_authorized": False,
             "order_submitted": False,
         }
-        response["decision_memory"] = {"status": "NOT_CONFIGURED"}
-        if self.decision_sink is not None:
-            candle_at = result.market_data.candles[-1].timestamp.isoformat()
-            stable_id = "market-" + sha256(
-                f"{symbol}|{timeframe}|{candle_at}".encode("utf-8")
-            ).hexdigest()[:32]
-            decision_record = DecisionRecord(
-                decision_id=stable_id,
-                created_at=candle_at,
-                symbol=symbol,
-                timeframe=timeframe,
-                signal=signal,
-                score=float(score),
-                confirmed=bool(result.analysis.confirmed),
-                reason=reason,
-                execution_allowed=False,
-            )
-            try:
-                stored = (
-                    self.decision_sink(decision_record)
-                    if decision_context is None
-                    else self.decision_sink(decision_record, decision_context)
-                )
-                response["decision_memory"] = {
-                    "status": "SAVED" if stored is not False else "ALREADY_RECORDED",
-                    "decision_id": stable_id,
-                    "scope": "CONFIGURED_RUNTIME_OWNER",
-                }
-            except Exception as exc:
-                response["decision_memory"] = {
-                    "status": "PERSISTENCE_ERROR",
-                    "error_class": type(exc).__name__,
-                    "decision_id": stable_id,
-                }
-        return response
-
         response = {
             "status": "ANALYZED" if safe else "REASSESS_REQUIRED",
             "symbol": symbol,
@@ -289,3 +253,38 @@ class StandaloneMarketAnalysisService:
             "execution_authorized": False,
             "order_submitted": False,
         }
+        response["decision_memory"] = {"status": "NOT_CONFIGURED"}
+        if self.decision_sink is not None:
+            candle_at = result.market_data.candles[-1].timestamp.isoformat()
+            stable_id = "market-" + sha256(
+                f"{symbol}|{timeframe}|{candle_at}".encode("utf-8")
+            ).hexdigest()[:32]
+            decision_record = DecisionRecord(
+                decision_id=stable_id,
+                created_at=candle_at,
+                symbol=symbol,
+                timeframe=timeframe,
+                signal=signal,
+                score=float(score),
+                confirmed=bool(result.analysis.confirmed),
+                reason=reason,
+                execution_allowed=False,
+            )
+            try:
+                stored = (
+                    self.decision_sink(decision_record)
+                    if decision_context is None
+                    else self.decision_sink(decision_record, decision_context)
+                )
+                response["decision_memory"] = {
+                    "status": "SAVED" if stored is not False else "ALREADY_RECORDED",
+                    "decision_id": stable_id,
+                    "scope": "CONFIGURED_RUNTIME_OWNER",
+                }
+            except Exception as exc:
+                response["decision_memory"] = {
+                    "status": "PERSISTENCE_ERROR",
+                    "error_class": type(exc).__name__,
+                    "decision_id": stable_id,
+                }
+        return response
