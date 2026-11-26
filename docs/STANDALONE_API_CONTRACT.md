@@ -96,6 +96,13 @@ The runtime provisions a tenant-and-subject-scoped decision-memory adapter on th
 #### `GET /api/memory/decisions?limit=100`
 Returns decision records only for the trusted tenant and subject resolved by the server. The limit is 1–2000. Local loopback uses the configured single-user identity; remote access requires verified server-injected identity.
 
+### Tenant-scoped market analysis
+
+#### `POST /api/analysis/run`
+Body: `{"symbol":"EURUSD","timeframe":"M5","limit":120}`. Runs the existing read-only market analysis pipeline for the resolved tenant and subject, then saves the resulting decision to that owner's decision memory. The timeframe is normalized by the backend and must be supported by the configured provider. `limit` is 3–1000 and defaults to 120. The server forces `confirmed=false` and `filters_ok=true`; client-supplied confirmation/filter flags are ignored. The response includes `execution_authorized: false` and `order_submitted: false`. Local requests use the configured single-user identity; remote requests require trusted server-injected tenant and subject identity. A missing provider returns `ANALYSIS_NOT_CONFIGURED`; no cached or fabricated market data is substituted.
+
+The generic cross-area `POST /api/intelligence/route` remains blocked for remote users because its handlers include shared learning, assistant, fiscal and legacy service state. The dedicated market-analysis endpoint does not invoke those shared handlers.
+
 ### Tenant-scoped analysis statistics and reports
 
 #### `GET /api/analysis/statistics`
