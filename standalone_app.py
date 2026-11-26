@@ -947,12 +947,16 @@ class StandaloneWSGIApplication:
                     request_id,
                 )
             except Exception as exc:
-                error = str(exc)
-                status = HTTPStatus.SERVICE_UNAVAILABLE
-                response = {"error": error, "execution_authorized": False}
+                # Never echo provider, fiscal repository or credential details.
+                response = {
+                    "error": "Assistente indisponível no momento; nenhuma ação foi executada.",
+                    "execution_authorized": False,
+                }
                 if getattr(exc, "conversation_id", None):
                     response["conversation_id"] = exc.conversation_id
-                return _json_response(start_response, status, response, request_id)
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE, response, request_id
+                )
             return _json_response(
                 start_response, HTTPStatus.OK,
                 {**result, "scope": "LOCAL_SINGLE_USER", "execution_authorized": False},
