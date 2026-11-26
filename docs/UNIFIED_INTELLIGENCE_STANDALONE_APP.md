@@ -70,6 +70,13 @@ The product requirement is to show a probability-of-profit estimate in addition 
 
 Risk, senior expertise, market context, research, security and audit policies are shared internal services. They do not create extra navigation areas. A module gets a separate area only if it represents a genuinely distinct user workflow that cannot reasonably live inside one of the seven existing areas.
 
+## Active DEMO / REAL validation mode
+
+The selected market-data provider may expose `get_account_mode()`. The standalone provider registry resolves that value and includes a single verified `account_mode` object in `/api/market-data/providers`:
+- `DEMO` or `REAL` only when the selected adapter explicitly reports that mode;
+- `UNAVAILABLE` with a null mode when there is no selected adapter, the adapter does not expose the capability, returns an invalid value, or raises an error.
+The UI must never display both modes together and must not infer account mode from a user preference or from the market-data feed name. This is a capability contract, not proof that a live broker adapter currently implements it. Provider registration remains distinct from live connection validation.
+
 ## Integration status must be honest
 
 A route being registered is not the same as a production integration. Each area and module must distinguish: implemented in the repository, wired to the standalone runtime, provider configured, live connection tested, persistent storage verified, and end-to-end behavior tested. Current market news provider remains unconfigured. Analysis and Memory now expose a JSON report built from the standalone DecisionRecord model; it deliberately does not coerce those records into the distinct legacy OperationMemoryRecord model. Study records (sources, resources, observations, activities and attempts) are persisted through the versioned LearningStateStore when the standalone runtime supplies the shared SQLite state store. Notifications are restored and persisted through that same store and are exposed in Command Cabin; this is durable in-app notification state, not external push delivery. Mobile/web push delivery, subscriptions, background delivery and end-to-end notification testing remain unimplemented.
