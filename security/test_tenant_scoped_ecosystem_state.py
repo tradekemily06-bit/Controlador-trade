@@ -59,6 +59,32 @@ class TenantScopedEcosystemStateTests(unittest.TestCase):
             self.assertFalse(status["production_durable"])
             self.assertFalse(status["legacy_data_migrated"])
 
+    def test_append_notification_is_idempotent_and_tenant_scoped(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = TenantScopedEcosystemState(
+                SQLiteTenantStorage(Path(directory) / "tenant-state.sqlite3")
+            )
+            alice = TenantContext("tenant-a", "alice")
+            bob = TenantContext("tenant-a", "bob")
+            item = {"notification_id": "market-eurusd-m5-1", "title": "Sinal mudou"}
+            self.assertTrue(state.append_notification(alice, item))
+            self.assertFalse(state.append_notification(alice, item))
+            self.assertEqual(state.load_notifications(alice), [item])
+            self.assertEqual(state.load_notifications(bob), [])
+
+    def test_append_notification_rejects_missing_id_and_invalid_limit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = TenantScopedEcosystemState(
+                SQLiteTenantStorage(Path(directory) / "tenant-state.sqlite3")
+            )
+            tenant = TenantContext("tenant-a", "alice")
+            with self.assertRaises(ValueError):
+                state.append_notification(tenant, {"title": "missing id"})
+            with self.assertRaises(ValueError):
+                state.append_notification(
+                    tenant, {"notification_id": "n1"}, limit=0
+                )
+
 
 if __name__ == "__main__":
     unittest.main()
