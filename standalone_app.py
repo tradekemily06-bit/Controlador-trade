@@ -240,10 +240,7 @@ class StandaloneWSGIApplication:
         # Until subscriptions/results and decision history are tenant-scoped,
         # do not expose shared market-monitor state or shared analysis writes to
         # authenticated remote users. Local single-user operation remains open.
-        if reason == "trusted_identity" and (
-            path.startswith("/api/market-monitor/")
-            or path == "/api/intelligence/route"
-        ):
+        if reason == "trusted_identity" and path == "/api/intelligence/route":
             return _json_response(
                 start_response, HTTPStatus.SERVICE_UNAVAILABLE,
                 {
@@ -387,8 +384,15 @@ class StandaloneWSGIApplication:
 
         if method == "GET" and path == "/api/market-monitor/status":
             monitor = getattr(self.runtime, "market_monitor", None)
+            tenant_context = _tenant_context_for_request(environ, reason)
+            if tenant_context is None:
+                return _json_response(
+                    start_response, HTTPStatus.FORBIDDEN,
+                    {"error": "identidade confiável necessária para consultar o monitor", "execution_authorized": False},
+                    request_id,
+                )
             payload = (
-                monitor.status()
+                monitor.status(tenant_context)
                 if monitor is not None
                 else {
                     "enabled": 0,
@@ -409,6 +413,13 @@ class StandaloneWSGIApplication:
                     {"error": "fonte de dados de mercado não configurada", "results": [], "execution_authorized": False},
                     request_id,
                 )
+            tenant_context = _tenant_context_for_request(environ, reason)
+            if tenant_context is None:
+                return _json_response(
+                    start_response, HTTPStatus.FORBIDDEN,
+                    {"error": "identidade confiável necessária para consultar resultados", "execution_authorized": False},
+                    request_id,
+                )
             try:
                 query = str(environ.get("QUERY_STRING") or "")
                 params = dict(
@@ -416,7 +427,7 @@ class StandaloneWSGIApplication:
                     if item and "=" in item
                 )
                 limit = int(params.get("limit", "50"))
-                results = monitor.latest_results(limit=limit)
+                results = monitor.latest_results(limit=limit, context=tenant_context)
             except (ValueError, TypeError):
                 return _json_response(
                     start_response, HTTPStatus.BAD_REQUEST,
@@ -431,7 +442,14 @@ class StandaloneWSGIApplication:
 
         if method == "GET" and path == "/api/market-monitor/subscriptions":
             monitor = getattr(self.runtime, "market_monitor", None)
-            subscriptions = monitor.subscriptions() if monitor is not None else []
+            tenant_context = _tenant_context_for_request(environ, reason)
+            if tenant_context is None:
+                return _json_response(
+                    start_response, HTTPStatus.FORBIDDEN,
+                    {"error": "identidade confiável necessária para consultar assinaturas", "execution_authorized": False},
+                    request_id,
+                )
+            subscriptions = monitor.subscriptions(tenant_context) if monitor is not None else []
             return _json_response(
                 start_response, HTTPStatus.OK,
                 {"subscriptions": subscriptions, "execution_authorized": False},
@@ -446,11 +464,19 @@ class StandaloneWSGIApplication:
                     {"error": "fonte de dados de mercado não configurada", "execution_authorized": False},
                     request_id,
                 )
+            tenant_context = _tenant_context_for_request(environ, reason)
+            if tenant_context is None:
+                return _json_response(
+                    start_response, HTTPStatus.FORBIDDEN,
+                    {"error": "identidade confiável necessária para criar assinatura", "execution_authorized": False},
+                    request_id,
+                )
             try:
                 payload = _read_json(environ)
                 subscription = monitor.subscribe(
                     symbol=payload.get("symbol"),
                     timeframe=payload.get("timeframe"),
+                    context=tenant_context,
                 )
             except (ValueError, TypeError, json.JSONDecodeError) as exc:
                 return _json_response(
@@ -472,11 +498,19 @@ class StandaloneWSGIApplication:
                     {"error": "fonte de dados de mercado não configurada", "execution_authorized": False},
                     request_id,
                 )
+            tenant_context = _tenant_context_for_request(environ, reason)
+            if tenant_context is None:
+                return _json_response(
+                    start_response, HTTPStatus.FORBIDDEN,
+                    {"error": "identidade confiável necessária para remover assinatura", "execution_authorized": False},
+                    request_id,
+                )
             try:
                 payload = _read_json(environ)
                 removed = monitor.unsubscribe(
                     symbol=payload.get("symbol"),
                     timeframe=payload.get("timeframe"),
+                    context=tenant_context,
                 )
             except (ValueError, TypeError, json.JSONDecodeError) as exc:
                 return _json_response(
