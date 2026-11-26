@@ -38,7 +38,7 @@ def test_monitor_subscribes_to_custom_and_platform_timeframes_persistently(tmp_p
     assert monitor.subscribe("EURUSD", "M10")["timeframe"] == "10m"
     assert monitor.subscribe("GBPUSD", "H2")["timeframe"] == "2h"
 
-    restored = MarketTimeframeMonitor(path, analyzer)
+    restored = MarketTimeframeMonitor(path, analyzer, default_context=OWNER)
     assert {(x["symbol"], x["timeframe"]) for x in restored.subscriptions()} == {
         ("EURUSD", "1m"), ("EURUSD", "10m"), ("GBPUSD", "2h")
     }
@@ -91,7 +91,7 @@ def test_monitor_processes_only_the_expected_closed_candle_once(tmp_path):
 
 def test_monitor_waits_when_provider_has_not_returned_closed_target_candle(tmp_path):
     analyzer = FakeAnalyzer()
-    monitor = MarketTimeframeMonitor(tmp_path / "monitor.sqlite3", analyzer)
+    monitor = MarketTimeframeMonitor(tmp_path / "monitor.sqlite3", analyzer, default_context=OWNER)
     monitor.subscribe("EURUSD", "M5")
     analyzer.results["5m"] = analysis_result(
         datetime(2026, 9, 7, 9, 55, tzinfo=timezone.utc),
@@ -108,7 +108,7 @@ def test_monitor_waits_when_provider_has_not_returned_closed_target_candle(tmp_p
 
 
 def test_monitor_rejects_invalid_symbols_and_timeframes(tmp_path):
-    monitor = MarketTimeframeMonitor(tmp_path / "monitor.sqlite3", FakeAnalyzer())
+    monitor = MarketTimeframeMonitor(tmp_path / "monitor.sqlite3", FakeAnalyzer(), default_context=OWNER)
 
     for symbol, timeframe in (("../EURUSD", "5m"), ("EURUSD", "M0")):
         try:
