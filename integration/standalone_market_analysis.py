@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from hashlib import sha256
+from typing import Any, Callable
+
+from analysis.decision_record import DecisionRecord
 
 from analysis.pipeline import StrategyPipeline
 from core.decision_engine import DecisionEngine
@@ -29,6 +32,7 @@ class StandaloneMarketAnalysisService:
         provider: MarketDataProvider,
         source: str,
         intelligence: UnifiedIntelligence,
+        decision_sink: Callable[[DecisionRecord], None] | None = None,
     ) -> None:
         if provider is None:
             raise ValueError("market data provider is required")
@@ -37,6 +41,9 @@ class StandaloneMarketAnalysisService:
         self.provider = provider
         self.source = source.strip()
         self.intelligence = intelligence
+        if decision_sink is not None and not callable(decision_sink):
+            raise ValueError("decision_sink must be callable")
+        self.decision_sink = decision_sink
         self.feed = MarketDataFeed(provider, source=self.source)
         self.orchestrator = TradingOrchestrator(
             feed=self.feed,
@@ -194,8 +201,39 @@ class StandaloneMarketAnalysisService:
             "execution_authorized": False,
             "order_submitted": False,
         }
+        response["decision_memory"] = {"status": "NOT_CONFIGURED"}
+        if self.decision_sink is not None:
+            candle_at = result.market_data.candles[-1].timestamp.isoformat()
+            stable_id = "market-" + sha256(
+                f"{symbol}|{timeframe}|{candle_at}".encode("utf-8")
+            ).hexdigest()[:32]
+            decision_record = DecisionRecord(
+                decision_id=stable_id,
+                created_at=candle_at,
+                symbol=symbol,
+                timeframe=timeframe,
+                signal=signal,
+                score=float(score),
+                confirmed=bool(result.analysis.confirmed),
+                reason=reason,
+                execution_allowed=False,
+            )
+            try:
+                self.decision_sink(decision_record)
+                response["decision_memory"] = {
+                    "status": "SAVED",
+                    "decision_id": stable_id,
+                    "scope": "CONFIGURED_RUNTIME_OWNER",
+                }
+            except Exception as exc:
+                response["decision_memory"] = {
+                    "status": "PERSISTENCE_ERROR",
+                    "error_class": type(exc).__name__,
+                    "decision_id": stable_id,
+                }
+        return response
 
-        return {
+        response = {
             "status": "ANALYZED" if safe else "REASSESS_REQUIRED",
             "symbol": symbol,
             "timeframe": timeframe,
