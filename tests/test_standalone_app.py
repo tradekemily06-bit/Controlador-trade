@@ -79,6 +79,35 @@ class FakeRuntime:
             return self.records[-limit:]
 
     tenant_decision_memory = TenantDecisionMemory()
+    fiscal_owner_id = "local-fiscal-owner"
+
+    class Assistant:
+        def __init__(self):
+            self.calls = []
+            self.owners = {}
+
+        def conversations(self, identity):
+            self.calls.append(("list", identity))
+            return list(self.owners.get(identity, []))
+
+        def history(self, identity, conversation_id):
+            self.calls.append(("history", identity, conversation_id))
+            if conversation_id not in self.owners.get(identity, []):
+                raise PermissionError("conversa não encontrada")
+            return [{"role": "user", "content": "privado"}]
+
+        def delete_conversation(self, identity, conversation_id):
+            self.calls.append(("delete", identity, conversation_id))
+            if conversation_id not in self.owners.get(identity, []):
+                raise PermissionError("conversa não encontrada")
+            self.owners[identity].remove(conversation_id)
+            return True
+
+        def ask(self, **kwargs):
+            self.calls.append(("ask", kwargs))
+            return {"conversation_id": "new-conversation", "answer": "Resposta", "read_only": True, "execution_allowed": False}
+
+    assistant = Assistant()
 
     class MarketMonitor:
         def __init__(self):
@@ -142,6 +171,104 @@ def call_wsgi(app, path, method="GET", body=None, remote_addr="127.0.0.1", origi
 
 
 class StandaloneWSGITests(unittest.TestCase):
+    def test_assistant_conversations_are_scoped_to_verified_tenant_and_subject(self):
+        runtime = FakeRuntime()
+        runtime.assistant = FakeRuntime.Assistant()
+        runtime.assistant.owners["tenant:tenant-a:subject:alice"] = ["alice-conversation"]
+        runtime.assistant.owners["tenant:tenant-b:subject:bob"] = ["bob-conversation"]
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status_a, body_a = call_wsgi(
+                app, "/api/assistant/conversations",
+                remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+            status_b, body_b = call_wsgi(
+                app, "/api/assistant/conversations",
+                remote_addr="203.0.113.11",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="bob", tenant_id="tenant-b",
+            )
+        self.assertEqual(status_a, "200 OK")
+        self.assertEqual(body_a["conversations"][0]["conversation_id"], "alice-conversation")
+        self.assertEqual(status_b, "200 OK")
+        self.assertEqual(body_b["conversations"][0]["conversation_id"], "bob-conversation")
+        self.assertEqual(runtime.assistant.calls[0][1], "tenant:tenant-a:subject:alice")
+        self.assertEqual(runtime.assistant.calls[1][1], "tenant:tenant-b:subject:bob")
+
+    def test_assistant_history_and_delete_cannot_cross_owner_boundary(self):
+        runtime = FakeRuntime()
+        runtime.assistant = FakeRuntime.Assistant()
+        runtime.assistant.owners["tenant:tenant-a:subject:alice"] = ["alice-conversation"]
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/assistant/conversations/history?conversation_id=alice-conversation",
+                remote_addr="203.0.113.11",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="bob", tenant_id="tenant-b",
+            )
+            delete_status, delete_body = call_wsgi(
+                app, "/api/assistant/conversations", method="DELETE",
+                body={"conversation_id": "alice-conversation"},
+                remote_addr="203.0.113.11",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="bob", tenant_id="tenant-b",
+            )
+        self.assertEqual(status, "404 Not Found")
+        self.assertEqual(delete_status, "404 Not Found")
+        self.assertFalse(delete_body.get("deleted", False))
+        self.assertEqual(runtime.assistant.owners["tenant:tenant-a:subject:alice"], ["alice-conversation"])
+
+    def test_local_assistant_ask_uses_local_tenant_context_and_fiscal_owner(self):
+        runtime = FakeRuntime()
+        runtime.assistant = FakeRuntime.Assistant()
+        app = StandaloneWSGIApplication(runtime)
+        with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
+            status, body = call_wsgi(
+                app, "/api/assistant/ask", method="POST",
+                body={"message": "Explique meu resumo fiscal"},
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["scope"], "LOCAL_SINGLE_USER")
+        self.assertFalse(body["execution_authorized"])
+        call = runtime.assistant.calls[0][1]
+        self.assertEqual(call["identity"], "tenant:local-single-user:subject:local-owner")
+        self.assertEqual(call["fiscal_owner_id"], "local-fiscal-owner")
+        self.assertEqual(call["message"], "Explique meu resumo fiscal")
+
+    def test_remote_assistant_ask_is_blocked_until_fiscal_storage_is_tenant_scoped(self):
+        runtime = FakeRuntime()
+        runtime.assistant = FakeRuntime.Assistant()
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/assistant/ask", method="POST",
+                body={"message": "Consulte meus dados fiscais"},
+                remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "503 Service Unavailable")
+        self.assertEqual(body["state"], "FISCAL_TENANT_ISOLATION_REQUIRED")
+        self.assertEqual(runtime.assistant.calls, [])
+
     def test_health_exposes_one_intelligence_and_seven_areas(self):
         app = StandaloneWSGIApplication(FakeRuntime())
         status, body = call_wsgi(app, "/api/health")
