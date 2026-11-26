@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from data.timeframes import get_timeframe_interval, normalize_timeframe
+from security.tenant_context import TenantContext
 
 
 _SYMBOL = re.compile(r"^[A-Z0-9][A-Z0-9._-]{0,31}$")
@@ -31,6 +32,7 @@ class MarketTimeframeMonitor:
         *,
         poll_interval_seconds: float = 2.0,
         close_grace_seconds: float = 3.0,
+        default_context: TenantContext | None = None,
     ) -> None:
         if analyzer is None or not callable(getattr(analyzer, "analyze", None)):
             raise ValueError("analyzer must implement analyze")
@@ -40,6 +42,9 @@ class MarketTimeframeMonitor:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.analyzer = analyzer
         self.on_result = on_result
+        if default_context is not None and not isinstance(default_context, TenantContext):
+            raise TypeError("default_context must be a trusted TenantContext")
+        self.default_context = default_context
         self.poll_interval_seconds = float(poll_interval_seconds)
         self.close_grace_seconds = float(close_grace_seconds)
         self._lock = threading.RLock()
@@ -57,7 +62,9 @@ class MarketTimeframeMonitor:
         with self._lock, self._connect() as db:
             db.execute(
                 """
-                CREATE TABLE IF NOT EXISTS market_timeframe_watch (
+                CREATE TABLE IF NOT EXISTS market_timeframe_watch_v2 (
+                    tenant_id TEXT NOT NULL,
+                    subject_id TEXT NOT NULL,
                     symbol TEXT NOT NULL,
                     timeframe TEXT NOT NULL,
                     enabled INTEGER NOT NULL DEFAULT 1,
@@ -66,22 +73,62 @@ class MarketTimeframeMonitor:
                     last_signal TEXT,
                     last_status TEXT NOT NULL DEFAULT 'WAITING',
                     last_error TEXT,
-                    PRIMARY KEY(symbol, timeframe)
+                    PRIMARY KEY(tenant_id, subject_id, symbol, timeframe)
                 )
                 """
             )
             db.execute(
                 """
-                CREATE TABLE IF NOT EXISTS market_timeframe_results (
+                CREATE TABLE IF NOT EXISTS market_timeframe_results_v2 (
+                    tenant_id TEXT NOT NULL,
+                    subject_id TEXT NOT NULL,
                     symbol TEXT NOT NULL,
                     timeframe TEXT NOT NULL,
                     candle_at TEXT NOT NULL,
                     result_json TEXT NOT NULL,
                     recorded_at REAL NOT NULL,
-                    PRIMARY KEY(symbol, timeframe, candle_at)
+                    PRIMARY KEY(tenant_id, subject_id, symbol, timeframe, candle_at)
                 )
                 """
             )
+            # The pre-tenant schema was used only by the original single-user
+            # runtime. Preserve its rows under the explicitly configured local
+            # owner; never assign them to a remote user.
+            if self.default_context is not None:
+                legacy_watch = db.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='market_timeframe_watch'"
+                ).fetchone()
+                if legacy_watch:
+                    db.execute(
+                        """
+                        INSERT OR IGNORE INTO market_timeframe_watch_v2
+                        (tenant_id, subject_id, symbol, timeframe, enabled, created_at,
+                         last_processed_candle, last_signal, last_status, last_error)
+                        SELECT ?, ?, symbol, timeframe, enabled, created_at,
+                               last_processed_candle, last_signal, last_status, last_error
+                        FROM market_timeframe_watch
+                        """,
+                        (self.default_context.tenant_id, self.default_context.subject_id),
+                    )
+                legacy_results = db.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='market_timeframe_results'"
+                ).fetchone()
+                if legacy_results:
+                    db.execute(
+                        """
+                        INSERT OR IGNORE INTO market_timeframe_results_v2
+                        (tenant_id, subject_id, symbol, timeframe, candle_at, result_json, recorded_at)
+                        SELECT ?, ?, symbol, timeframe, candle_at, result_json, recorded_at
+                        FROM market_timeframe_results
+                        """,
+                        (self.default_context.tenant_id, self.default_context.subject_id),
+                    )
+
+    def _context(self, context: TenantContext | None) -> TenantContext:
+        trusted = context if context is not None else self.default_context
+        if not isinstance(trusted, TenantContext):
+            raise PermissionError("trusted tenant context is required")
+        return trusted
 
     @staticmethod
     def _validate_symbol(symbol: str) -> str:
@@ -92,49 +139,66 @@ class MarketTimeframeMonitor:
             raise ValueError("symbol inválido")
         return value
 
-    def subscribe(self, symbol: str, timeframe: str, *, now: float | None = None) -> dict[str, Any]:
+    def subscribe(self, symbol: str, timeframe: str, *, context: TenantContext | None = None, now: float | None = None) -> dict[str, Any]:
+        trusted = self._context(context)
         normalized_symbol = self._validate_symbol(symbol)
         normalized_timeframe = normalize_timeframe(timeframe)
         current = time.time() if now is None else float(now)
         with self._lock, self._connect() as db:
             existing = db.execute(
-                "SELECT enabled FROM market_timeframe_watch WHERE symbol=? AND timeframe=?",
-                (normalized_symbol, normalized_timeframe),
+                """
+                SELECT enabled FROM market_timeframe_watch_v2
+                WHERE tenant_id=? AND subject_id=? AND symbol=? AND timeframe=?
+                """,
+                (trusted.tenant_id, trusted.subject_id, normalized_symbol, normalized_timeframe),
             ).fetchone()
             active_count = db.execute(
-                "SELECT COUNT(*) FROM market_timeframe_watch WHERE enabled=1"
+                """
+                SELECT COUNT(*) FROM market_timeframe_watch_v2
+                WHERE tenant_id=? AND subject_id=? AND enabled=1
+                """,
+                (trusted.tenant_id, trusted.subject_id),
             ).fetchone()[0]
             if (existing is None or not bool(existing["enabled"])) and active_count >= 100:
                 raise ValueError("limite de 100 assinaturas ativas atingido")
             db.execute(
                 """
-                INSERT INTO market_timeframe_watch(symbol, timeframe, enabled, created_at)
-                VALUES (?, ?, 1, ?)
-                ON CONFLICT(symbol, timeframe) DO UPDATE SET enabled=1, last_error=NULL
+                INSERT INTO market_timeframe_watch_v2
+                (tenant_id, subject_id, symbol, timeframe, enabled, created_at)
+                VALUES (?, ?, ?, ?, 1, ?)
+                ON CONFLICT(tenant_id, subject_id, symbol, timeframe)
+                DO UPDATE SET enabled=1, last_error=NULL
                 """,
-                (normalized_symbol, normalized_timeframe, current),
+                (trusted.tenant_id, trusted.subject_id, normalized_symbol, normalized_timeframe, current),
             )
         return {"symbol": normalized_symbol, "timeframe": normalized_timeframe, "enabled": True}
 
-    def unsubscribe(self, symbol: str, timeframe: str) -> bool:
+    def unsubscribe(self, symbol: str, timeframe: str, *, context: TenantContext | None = None) -> bool:
+        trusted = self._context(context)
         normalized_symbol = self._validate_symbol(symbol)
         normalized_timeframe = normalize_timeframe(timeframe)
         with self._lock, self._connect() as db:
             cursor = db.execute(
-                "UPDATE market_timeframe_watch SET enabled=0 WHERE symbol=? AND timeframe=? AND enabled=1",
-                (normalized_symbol, normalized_timeframe),
+                """
+                UPDATE market_timeframe_watch_v2 SET enabled=0
+                WHERE tenant_id=? AND subject_id=? AND symbol=? AND timeframe=? AND enabled=1
+                """,
+                (trusted.tenant_id, trusted.subject_id, normalized_symbol, normalized_timeframe),
             )
         return cursor.rowcount == 1
 
-    def subscriptions(self) -> list[dict[str, Any]]:
+    def subscriptions(self, context: TenantContext | None = None) -> list[dict[str, Any]]:
+        trusted = self._context(context)
         with self._lock, self._connect() as db:
             rows = db.execute(
                 """
                 SELECT symbol, timeframe, enabled, last_processed_candle,
                        last_signal, last_status, last_error
-                FROM market_timeframe_watch
+                FROM market_timeframe_watch_v2
+                WHERE tenant_id=? AND subject_id=?
                 ORDER BY symbol, timeframe
-                """
+                """,
+                (trusted.tenant_id, trusted.subject_id),
             ).fetchall()
         return [
             {
@@ -149,18 +213,20 @@ class MarketTimeframeMonitor:
             for row in rows
         ]
 
-    def latest_results(self, limit: int = 50) -> list[dict[str, Any]]:
+    def latest_results(self, limit: int = 50, *, context: TenantContext | None = None) -> list[dict[str, Any]]:
+        trusted = self._context(context)
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
             raise ValueError("limit must be an integer from 1 to 200")
         with self._lock, self._connect() as db:
             rows = db.execute(
                 """
                 SELECT symbol, timeframe, candle_at, result_json, recorded_at
-                FROM market_timeframe_results
+                FROM market_timeframe_results_v2
+                WHERE tenant_id=? AND subject_id=?
                 ORDER BY recorded_at DESC, symbol, timeframe
                 LIMIT ?
                 """,
-                (limit,),
+                (trusted.tenant_id, trusted.subject_id, limit),
             ).fetchall()
         return [
             {
@@ -192,17 +258,18 @@ class MarketTimeframeMonitor:
         eligible = current.astimezone(timezone.utc) - timedelta(seconds=self.close_grace_seconds)
         return self._bucket_start(eligible, interval) - timedelta(seconds=interval)
 
-    def _record_error(self, symbol: str, timeframe: str, error: Exception) -> None:
+    def _record_error(self, context: TenantContext, symbol: str, timeframe: str, error: Exception) -> None:
         with self._lock, self._connect() as db:
             db.execute(
                 """
-                UPDATE market_timeframe_watch SET last_status='DATA_UNAVAILABLE',
-                    last_error=? WHERE symbol=? AND timeframe=?
+                UPDATE market_timeframe_watch_v2 SET last_status='DATA_UNAVAILABLE',
+                    last_error=? WHERE tenant_id=? AND subject_id=? AND symbol=? AND timeframe=?
                 """,
-                (str(error)[:500], symbol, timeframe),
+                (str(error)[:500], context.tenant_id, context.subject_id, symbol, timeframe),
             )
 
     def _process(self, subscription: dict[str, Any], now: datetime) -> dict[str, Any] | None:
+        context = TenantContext(tenant_id=subscription["tenant_id"], subject_id=subscription["subject_id"])
         symbol = subscription["symbol"]
         timeframe = subscription["timeframe"]
         expected = self.expected_last_closed_candle(timeframe, now=now)
@@ -226,11 +293,11 @@ class MarketTimeframeMonitor:
                 with self._lock, self._connect() as db:
                     db.execute(
                         """
-                        UPDATE market_timeframe_watch
+                        UPDATE market_timeframe_watch_v2
                         SET last_status='WAITING_FOR_CLOSED_CANDLE', last_error=NULL
-                        WHERE symbol=? AND timeframe=?
+                        WHERE tenant_id=? AND subject_id=? AND symbol=? AND timeframe=?
                         """,
-                        (symbol, timeframe),
+                        (context.tenant_id, context.subject_id, symbol, timeframe),
                     )
                 return None
 
@@ -240,6 +307,7 @@ class MarketTimeframeMonitor:
                 "timeframe": timeframe,
                 "candle_at": expected.isoformat(),
                 "previous_signal": subscription.get("last_signal"),
+                "tenant_context": context,
                 "result": result,
             }
             # Publish side effects before marking the candle processed. If
@@ -251,36 +319,47 @@ class MarketTimeframeMonitor:
             with self._lock, self._connect() as db:
                 db.execute(
                     """
-                    INSERT OR IGNORE INTO market_timeframe_results
-                        (symbol, timeframe, candle_at, result_json, recorded_at)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT OR IGNORE INTO market_timeframe_results_v2
+                        (tenant_id, subject_id, symbol, timeframe, candle_at, result_json, recorded_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (symbol, timeframe, expected.isoformat(), serialized, time.time()),
+                    (context.tenant_id, context.subject_id, symbol, timeframe, expected.isoformat(), serialized, time.time()),
                 )
                 db.execute(
                     """
-                    UPDATE market_timeframe_watch
+                    UPDATE market_timeframe_watch_v2
                     SET last_processed_candle=?, last_signal=?, last_status=?, last_error=NULL
-                    WHERE symbol=? AND timeframe=?
+                    WHERE tenant_id=? AND subject_id=? AND symbol=? AND timeframe=?
                     """,
                     (
                         expected.isoformat(),
                         signal,
                         str(result.get("status", "ANALYZED")),
+                        context.tenant_id,
+                        context.subject_id,
                         symbol,
                         timeframe,
                     ),
                 )
             return enriched
         except Exception as exc:
-            self._record_error(symbol, timeframe, exc)
+            self._record_error(context, symbol, timeframe, exc)
             return None
 
     def run_once(self, *, now: datetime | None = None) -> list[dict[str, Any]]:
         current = now or datetime.now(timezone.utc)
         if current.tzinfo is None:
             raise ValueError("now must be timezone-aware")
-        active = [item for item in self.subscriptions() if item["enabled"]]
+        with self._lock, self._connect() as db:
+            active = [
+                dict(row) for row in db.execute(
+                    """
+                    SELECT tenant_id, subject_id, symbol, timeframe, last_processed_candle, last_signal
+                    FROM market_timeframe_watch_v2 WHERE enabled=1
+                    ORDER BY tenant_id, subject_id, symbol, timeframe
+                    """
+                ).fetchall()
+            ]
         processed = []
         for item in active:
             result = self._process(item, current.astimezone(timezone.utc))
@@ -316,8 +395,8 @@ class MarketTimeframeMonitor:
             thread.join(timeout=timeout)
         self._thread = None
 
-    def status(self) -> dict[str, Any]:
-        subscriptions = self.subscriptions()
+    def status(self, context: TenantContext | None = None) -> dict[str, Any]:
+        subscriptions = self.subscriptions(context)
         return {
             "enabled": sum(1 for item in subscriptions if item["enabled"]),
             "total": len(subscriptions),
