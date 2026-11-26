@@ -14,6 +14,9 @@ _DATABASES = (
     ("ecosystem_state", "ecosystem-state.sqlite3", True, {
         "ecosystem_state": {"key", "value_json"},
     }),
+    ("tenant_state", "tenant-state.sqlite3", True, {
+        "tenant_state": {"tenant_id", "key", "value_json", "updated_at"},
+    }),
     ("notification_outbox", "notification-outbox.sqlite3", True, {
         "notification_outbox": {"idempotency_key", "payload_json", "status", "attempts", "available_at", "lease_until", "created_at", "delivered_at", "last_error"},
     }),
