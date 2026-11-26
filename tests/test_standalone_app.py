@@ -113,6 +113,8 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(body["notification_delivery"]["state"], "NO_EXTERNAL_SINK_CONFIGURED")
         self.assertEqual(body["deployment"], "PROCESS_RUNNING_DEPLOYMENT_NOT_VERIFIED")
         self.assertEqual(body["identity"]["trusted_identity_provider"], "NOT_CONFIGURED")
+        self.assertEqual(body["tenant_state"]["status"], "LOCAL_TENANT_SCOPED_STORAGE")
+        self.assertFalse(body["tenant_state"]["production_ready"])
         self.assertEqual(body["identity"]["multi_tenant_isolation"], "NOT_IMPLEMENTED")
         self.assertFalse(body["identity"]["shared_bearer_token_is_user_identity"])
         self.assertFalse(body["execution_authorized"])
