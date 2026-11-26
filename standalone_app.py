@@ -118,6 +118,14 @@ class StandaloneWSGIApplication:
                 request_id,
             )
 
+        if method == "GET" and path == "/api/assistant/status":
+            readiness = self.runtime.assistant.readiness()
+            return _json_response(
+                start_response, HTTPStatus.OK,
+                {**readiness, "execution_authorized": False},
+                request_id,
+            )
+
         if method == "GET" and path == "/api/areas":
             architecture = self.runtime.application.architecture()
             return _json_response(
