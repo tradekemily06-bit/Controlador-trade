@@ -94,7 +94,7 @@ Returns the in-app notification inbox. Limit is 1–200. This endpoint does not 
 
 - Local loopback uses the configured single-user runtime inbox.
 - Remote requests require verified server-injected tenant and subject identity and read only the matching tenant-scoped notification collection. They never read the legacy global operational inbox.
-- Operational events are not yet automatically fanned out into tenant-scoped notification collections. The runtime exposes an explicit-recipient dispatcher for trusted event producers. Tenant inbox append is an atomic SQLite transaction with notification-ID deduplication and bounded retention, preventing concurrent writers from silently overwriting one another. There is still no global broadcast or automatic migration. Remote tenant inboxes can therefore remain empty until a producer supplies a verified recipient or an explicit consented subscription fan-out is implemented.
+- The standalone runtime now binds its configured `CONTROLADOR_SINGLE_USER_IDENTITY` to a local tenant context before starting market monitoring. A material market-signal change is published both to the legacy local operational inbox and to that explicitly addressed user's tenant-scoped inbox; the local API merges both views by notification ID. Tenant inbox append is an atomic SQLite transaction with deduplication and bounded retention. This wires market-change alerts for the configured single-user runtime only. Remote tenant inboxes still require a verified recipient or an explicit consented subscription fan-out; there is no global broadcast or automatic legacy migration.
 - This API boundary prevents cross-user reads; it does not mean the entire application or every legacy store is multi-tenant.
 
 ### `GET /api/notifications/status`
