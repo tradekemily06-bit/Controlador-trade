@@ -178,7 +178,7 @@ class StandaloneWSGIApplication:
             readiness = {
                 "architecture": architecture.get("architecture", "UNKNOWN"),
                 "areas": len(architecture.get("application_areas", [])),
-                "market_data": registry.status() if registry is not None else {"status": "NOT_CONFIGURED"},
+                "market_data": registry.status(probe_account_mode=False) if registry is not None else {"status": "NOT_CONFIGURED"},
                 "market_monitor": monitor.status() if monitor is not None else {"status": "NOT_CONFIGURED", "worker_running": False},
                 "news": news_status(limit=1) if callable(news_status) else {"status": "NOT_CONFIGURED", "live": False},
                 "assistant": assistant.readiness() if callable(getattr(assistant, "readiness", None)) else {"status": "NOT_CONFIGURED"},
@@ -198,7 +198,7 @@ class StandaloneWSGIApplication:
 
         if method == "GET" and path == "/api/market-data/providers":
             registry = getattr(self.runtime, "market_data_registry", None)
-            payload = registry.status() if registry is not None else {"status": "NOT_CONFIGURED", "count": 0}
+            payload = registry.status(probe_account_mode=False) if registry is not None else {"status": "NOT_CONFIGURED", "count": 0}
             return _json_response(
                 start_response, HTTPStatus.OK,
                 {**payload, "execution_authorized": False},
