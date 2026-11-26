@@ -91,6 +91,16 @@ This is local tenant-scoped persistence, not proof of a production identity prov
 
 The runtime now provisions a tenant-and-subject-scoped decision-memory adapter on the local tenant SQLite store. It supports explicitly addressed save/load and manual outcome annotation, validates decision records, and never imports the legacy global decision history. This is an internal foundation component; it is not yet exposed as a remote memory API and does not replace the legacy local single-user analysis/reporting path. Remote analysis remains blocked until request-scoped analysis, statistics, report generation, and market-monitor subscriptions/results all use the verified tenant context. The adapter remains local SQLite and is not production-durable.
 
+### Decision memory API
+
+#### `GET /api/memory/decisions?limit=100`
+Returns decision records only for the trusted tenant and subject resolved by the server. The limit is 1–2000. Local loopback uses the configured single-user identity; remote access requires verified server-injected identity.
+
+#### `POST /api/memory/decisions/outcome`
+Body: `{"decision_id":"...","outcome":"WIN"}`. Accepts only manual-study outcomes (`WIN`, `LOSS`, `DRAW`, `OPEN`, `VOID`) for a record already owned by the resolved tenant and subject. It cannot grant execution authority.
+
+The endpoint uses the new tenant-scoped decision store. Historical records in the legacy global decision database are not automatically copied or attributed to a user. The adapter is local SQLite and not production-durable.
+
 ## Notifications
 
 ### `GET /api/notifications?limit=50&include_info=false`
