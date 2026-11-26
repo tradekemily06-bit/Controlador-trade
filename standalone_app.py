@@ -237,6 +237,22 @@ class StandaloneWSGIApplication:
                 request_id,
             )
 
+        # Until subscriptions/results and decision history are tenant-scoped,
+        # do not expose shared market-monitor state or shared analysis writes to
+        # authenticated remote users. Local single-user operation remains open.
+        if reason == "trusted_identity" and (
+            path.startswith("/api/market-monitor/")
+            or path == "/api/intelligence/route"
+        ):
+            return _json_response(
+                start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                {
+                    "error": "recurso compartilhado bloqueado até o isolamento por usuário estar implementado",
+                    "state": "TENANT_ISOLATION_NOT_IMPLEMENTED",
+                    "execution_authorized": False,
+                },
+                request_id,
+            )
 
         if method == "GET" and path == "/api/bridge/mt5/status":
             relay = getattr(self.runtime, "mt5_relay_store", None)
