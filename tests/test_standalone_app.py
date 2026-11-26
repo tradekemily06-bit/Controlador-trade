@@ -92,6 +92,9 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(body["news"]["status"], "NOT_CONFIGURED")
         self.assertEqual(body["notification_delivery"]["state"], "NO_EXTERNAL_SINK_CONFIGURED")
         self.assertEqual(body["deployment"], "PROCESS_RUNNING_DEPLOYMENT_NOT_VERIFIED")
+        self.assertEqual(body["identity"]["trusted_identity_provider"], "NOT_CONFIGURED")
+        self.assertEqual(body["identity"]["multi_tenant_isolation"], "NOT_IMPLEMENTED")
+        self.assertFalse(body["identity"]["shared_bearer_token_is_user_identity"])
         self.assertFalse(body["execution_authorized"])
 
     def test_timeframe_catalog_exposes_supported_intervals_and_limits(self):
