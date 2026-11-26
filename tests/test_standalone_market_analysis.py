@@ -105,7 +105,7 @@ class StandaloneMarketAnalysisTests(unittest.TestCase):
         self.assertEqual(saved[0].signal, second["signal"])
         self.assertFalse(saved[0].execution_allowed)
         self.assertEqual(first["decision_memory"]["status"], "SAVED")
-        self.assertEqual(second["decision_memory"]["status"], "SAVED")
+        self.assertEqual(second["decision_memory"]["status"], "ALREADY_RECORDED")
         self.assertEqual(first["decision_memory"]["decision_id"], saved[0].decision_id)
 
     def test_decision_memory_failure_is_reported_without_faking_persistence(self):
