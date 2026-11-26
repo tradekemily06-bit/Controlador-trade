@@ -60,6 +60,15 @@ class StandaloneMarketAnalysisTests(unittest.TestCase):
         card = result["signal_card"]
         self.assertEqual(card["symbol"], "EURUSD")
         self.assertEqual(card["direction"], result["signal"])
+        expected_visual = {
+            "COMPRA": {"color": "GREEN", "arrow": "UP"},
+            "VENDA": {"color": "RED", "arrow": "DOWN"},
+            "AGUARDAR": {"color": "YELLOW", "arrow": "NONE"},
+        }[card["direction"]]
+        self.assertEqual(card["visual"]["color"], expected_visual["color"])
+        self.assertEqual(card["visual"]["arrow"], expected_visual["arrow"])
+        self.assertEqual(card["visual"]["score_color"], expected_visual["color"])
+        self.assertEqual(card["visual"]["profit_probability_color"], expected_visual["color"])
         self.assertEqual(card["timeframe"], "5m")
         self.assertEqual(card["score_type"], "EVIDENCE_STRENGTH")
         self.assertIsNone(card["probability_of_profit"])
