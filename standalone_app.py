@@ -159,11 +159,6 @@ class StandaloneWSGIApplication:
             headers = [
                 ("Content-Length", "0"),
                 *SECURITY.headers(request_id),
-                ("Access-Control-Allow-Origin", origin),
-                ("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS"),
-                ("Access-Control-Allow-Headers", "Authorization, Content-Type"),
-                ("Access-Control-Max-Age", "600"),
-                ("Vary", "Origin"),
             ]
             start_response("204 No Content", headers)
             return []
