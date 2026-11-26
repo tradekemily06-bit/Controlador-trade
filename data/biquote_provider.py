@@ -89,6 +89,16 @@ class BiQuoteProvider(MarketDataProvider):
             )
         return aggregated
 
+    @classmethod
+    def supports_timeframe(cls, timeframe: str) -> bool:
+        """Return whether a fixed interval can be derived from available closed bars."""
+        try:
+            target_seconds = int(get_timeframe_interval(normalize_timeframe(timeframe)).total_seconds())
+            cls._source_interval(target_seconds)
+            return True
+        except (TypeError, ValueError):
+            return False
+
     def fetch(self, request: MarketDataRequest) -> list[Candle]:
         timeframe = normalize_timeframe(request.timeframe)
         target_seconds = int(get_timeframe_interval(timeframe).total_seconds())
