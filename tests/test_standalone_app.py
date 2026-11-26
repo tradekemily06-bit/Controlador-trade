@@ -95,6 +95,8 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertIn("W4", body["platform"])
         self.assertNotIn("MN1", body["platform"])
         self.assertIn("months", body["excluded"])
+        self.assertEqual(body["parser_support"], "NORMALIZATION_ONLY")
+        self.assertEqual(body["provider_compatibility"]["status"], "NO_PROVIDER_SELECTED")
         self.assertFalse(body["execution_authorized"])
 
     def test_architecture_endpoint_is_read_only(self):
