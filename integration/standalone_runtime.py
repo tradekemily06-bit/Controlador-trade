@@ -23,6 +23,8 @@ from core.unified_intelligence import UnifiedIntelligence
 from core.ecosystem_state_store import EcosystemStateStore
 from core.learning_state_store import LearningStateStore
 from core.notification_outbox import PersistentNotificationOutbox
+from core.ecosystem_notifications import EcosystemNotification, NotificationKind, NotificationSeverity
+from integration.market_timeframe_monitor import MarketTimeframeMonitor
 
 
 class StandaloneRuntime:
@@ -99,6 +101,7 @@ class StandaloneRuntime:
                 selected_provider=selected_provider,
             )
             self.market_analysis_service = None
+            self.market_monitor = None
             selected = self.market_data_registry.selected()
             if selected is not None:
                 self.market_analysis_service = StandaloneMarketAnalysisService(
@@ -106,6 +109,37 @@ class StandaloneRuntime:
                     source=selected.source,
                     intelligence=self.intelligence,
                 )
+
+                def publish_market_change(event: dict[str, Any]) -> None:
+                    result = event["result"]
+                    signal = str(result.get("signal", "AGUARDAR"))
+                    previous = event.get("previous_signal")
+                    if signal == previous:
+                        return
+                    if signal == "AGUARDAR" and previous in (None, "AGUARDAR"):
+                        return
+                    symbol = event["symbol"]
+                    timeframe = event["timeframe"]
+                    candle_at = event["candle_at"]
+                    notification = EcosystemNotification(
+                        notification_id=f"market:{symbol}:{timeframe}:{candle_at}:{signal}",
+                        kind=NotificationKind.MARKET,
+                        severity=NotificationSeverity.IMPORTANT,
+                        title=f"Mudança de sinal: {symbol} {timeframe} — {signal}",
+                        message=(
+                            f"O ciclo {timeframe} de {symbol} foi atualizado. Sinal: {signal}. "
+                            "Revisão manual necessária; nenhuma ordem foi enviada."
+                        ),
+                        requires_attention=True,
+                    )
+                    self.ecosystem_service.publish_notification(notification)
+
+                self.market_monitor = MarketTimeframeMonitor(
+                    self.runtime_dir / "market-timeframe-monitor.sqlite3",
+                    self.market_analysis_service,
+                    on_result=publish_market_change,
+                )
+                self.market_monitor.start()
             self.conversation_store = AssistantConversationStore(
                 self.runtime_dir / "assistant-conversations.sqlite3"
             )
@@ -140,6 +174,8 @@ class StandaloneRuntime:
     def close(self) -> None:
         if self.closed:
             return
+        if self.market_monitor is not None:
+            self.market_monitor.stop()
         self.process_lock.release()
         self.closed = True
 
