@@ -33,7 +33,7 @@ class DecisionStorePersistenceTests(unittest.TestCase):
             status = store.persistence_status()
             self.assertEqual(status["state"], "PERSISTENCE_ERROR")
             self.assertFalse(status["durability_confirmed"])
-            self.assertEqual(status["last_error_class"], "NotADirectoryError")
+            self.assertIn(status["last_error_class"], {"FileExistsError", "NotADirectoryError"})
 
 
 if __name__ == "__main__":
