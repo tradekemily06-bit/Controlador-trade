@@ -89,12 +89,22 @@ This is local tenant-scoped persistence, not proof of a production identity prov
 
 ## Tenant-scoped decision memory
 
-The runtime provisions a tenant-and-subject-scoped decision-memory adapter on the local tenant SQLite store. Each market analysis is now saved under the configured local runtime owner using a stable ID derived from symbol, timeframe, and closed-candle timestamp. Repeated analysis of the same candle is idempotent and does not overwrite manually annotated outcomes. The adapter supports explicitly addressed save/load and manual outcome annotation, validates decision records, and never imports the legacy global decision history. The remote memory API resolves ownership from trusted server identity. This does not yet replace the legacy global statistics/reporting pipeline: remote analysis remains blocked until analysis, statistics, report generation, and market-monitor subscriptions/results all use the verified tenant context. The adapter remains local SQLite and is not production-durable.
+The runtime provisions a tenant-and-subject-scoped decision-memory adapter on the local tenant SQLite store. Each market analysis is now saved under the configured local runtime owner using a stable ID derived from symbol, timeframe, and closed-candle timestamp. Repeated analysis of the same candle is idempotent and does not overwrite manually annotated outcomes. The adapter supports explicitly addressed save/load and manual outcome annotation, validates decision records, and never imports the legacy global decision history. The remote memory API resolves ownership from trusted server identity. The dedicated statistics and report endpoints now calculate only from this tenant-scoped memory. The generic remote application route remains blocked until the broader cross-area handler lifecycle (including learning, assistant, fiscal and legacy service state) is tenant-isolated. The adapter remains local SQLite and is not production-durable.
 
 ### Decision memory API
 
 #### `GET /api/memory/decisions?limit=100`
 Returns decision records only for the trusted tenant and subject resolved by the server. The limit is 1–2000. Local loopback uses the configured single-user identity; remote access requires verified server-injected identity.
+
+### Tenant-scoped analysis statistics and reports
+
+#### `GET /api/analysis/statistics`
+Returns totals, manually recorded outcomes, historical outcome ratio, UTC periods and breakdowns by symbol, timeframe, signal and score band. The calculation loads only the decision records owned by the verified tenant and subject. The win rate is a historical ratio of manually annotated closed outcomes, not a prediction or calibrated probability.
+
+#### `GET /api/analysis/report?limit=1000`
+Builds a read-only JSON report from the same tenant-scoped decision memory. `limit` is 1–1000 for the displayed record list; report statistics are calculated over all records loaded from that owner's memory (currently bounded to 2,000 records). No legacy global `DecisionStore` data is read or reassigned. Both endpoints are available locally to the configured single user and remotely only with trusted server-injected identity.
+
+The generic `POST /api/intelligence/route` remains blocked for remote users: although these dedicated analytics endpoints are isolated, the wider area-handler lifecycle still contains shared learning, assistant, fiscal and legacy service state that has not been comprehensively converted to tenant-scoped persistence.
 
 #### `POST /api/memory/decisions/outcome`
 Body: `{"decision_id":"...","outcome":"WIN"}`. Accepts only manual-study outcomes (`WIN`, `LOSS`, `DRAW`, `OPEN`, `VOID`) for a record already owned by the resolved tenant and subject. It cannot grant execution authority.
