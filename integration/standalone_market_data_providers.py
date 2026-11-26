@@ -19,6 +19,14 @@ def build_configured_market_data_providers(
         from data.biquote_provider import BiQuoteProvider
 
         return {"biquote": (BiQuoteProvider(), "biquote_public_ohlc")}
+    if selected == "mt5_relay":
+        import os
+        from pathlib import Path
+        from integration.mt5_relay_store import MT5RelayStore
+
+        runtime_dir = Path(os.getenv("CONTROLADOR_RUNTIME_DIR", ".runtime-standalone")).resolve()
+        relay = MT5RelayStore(runtime_dir / "mt5-relay.sqlite3")
+        return {"mt5_relay": (relay, "MT5 local relay DEMO read-only")}
     if selected in {"mt5_demo", "icmarkets_mt5_demo"}:
         from execution.icmarkets_mt5_market_data import ICMarketsMT5DemoMarketDataAdapter
 
