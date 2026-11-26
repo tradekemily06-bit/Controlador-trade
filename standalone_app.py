@@ -239,8 +239,8 @@ class StandaloneWSGIApplication:
                 request_id,
             )
 
-        # Market-monitor data is tenant-scoped below. The broader analysis
-        # route remains blocked until legacy statistics/reporting are isolated.
+        # Dedicated market analysis, monitor, memory, statistics and report APIs
+        # are tenant-scoped. The generic cross-area route remains blocked.
         if reason == "trusted_identity" and path == "/api/intelligence/route":
             return _json_response(
                 start_response, HTTPStatus.SERVICE_UNAVAILABLE,
