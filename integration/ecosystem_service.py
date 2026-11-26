@@ -9,7 +9,8 @@ from analysis.decision_store import DecisionStore
 from analysis.decision_report import build_decision_report, export_decision_report
 from analysis.statistics import summarize, summarize_breakdowns, summarize_periods
 from core.ecosystem_health import build_health_alerts
-from core.ecosystem_notifications import EcosystemNotification, NotificationKind, NotificationSeverity
+from core.ecosystem_notifications import EcosystemNotification, EcosystemNotificationCenter, NotificationKind, NotificationSeverity
+from core.ecosystem_state_store import EcosystemStateStore
 from core.learning_content import ContentType, LearningActivity, LearningAttempt, LearningObservation, LearningResource, LearningStatus, normalize_tags
 from core.learning_state_store import LearningStateStore
 from core.market_data_runtime_integrity import MarketDataRuntimeReport
@@ -33,7 +34,7 @@ from storage.production_boundary import ProductionStoragePolicy
 class EcosystemService:
     """Application orchestration; broker execution remains outside this layer."""
 
-    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None, learning_state_store: LearningStateStore | None = None) -> None:
+    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None, learning_state_store: LearningStateStore | None = None, notification_state_store: EcosystemStateStore | None = None, notification_center: EcosystemNotificationCenter | None = None) -> None:
         self.engine = engine or SignalEngine()
         self.store = decision_store or DecisionStore()
         self.memory: list[DecisionRecord] = self.store.load()
@@ -52,10 +53,37 @@ class EcosystemService:
         self.learning_observations: list[LearningObservation] = learning_state.get('observations', [])
         self.learning_activities: dict[str, LearningActivity] = learning_state.get('activities', {})
         self.learning_attempts: list[LearningAttempt] = learning_state.get('attempts', [])
+        self.notification_state_store = notification_state_store
+        self.notifications = notification_center or EcosystemNotificationCenter()
+        if self.notification_state_store is not None:
+            self.notifications.restore(self.notification_state_store.load_notifications())
         self.senior_context = SeniorContextOrchestrator()
         self.automation = ControlledAutomationService(
             lifecycle_store=(operational_runtime.automation_lifecycle if operational_runtime is not None else None)
         )
+
+    def _notification_visible(self, item: EcosystemNotification) -> bool:
+        return isinstance(item, EcosystemNotification)
+
+    def _persist_notifications(self) -> None:
+        if self.notification_state_store is not None:
+            self.notification_state_store.save_notifications([
+                asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}
+                for item in self.notifications.all()
+            ])
+
+    def publish_notification(self, notification: EcosystemNotification) -> EcosystemNotification:
+        published = self.notifications.publish(notification)
+        self._persist_notifications()
+        return published
+
+    def notification_summary(self) -> dict[str, Any]:
+        counts = self.notifications.summarize(self.notifications.all())
+        return {
+            "total": len(self.notifications.all()),
+            "by_severity": counts,
+            "persistence": "SQLITE" if self.notification_state_store is not None else "IN_MEMORY",
+        }
 
     def _persist_learning_state(self) -> None:
         if self.learning_state_store is not None:
