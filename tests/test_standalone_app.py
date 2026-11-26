@@ -182,6 +182,33 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(ids, ["n1", "market-1"])
         self.assertFalse(body["execution_authorized"])
 
+    def test_remote_users_cannot_access_shared_market_monitor_or_global_analysis(self):
+        app = StandaloneWSGIApplication(FakeRuntime())
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        requests = [
+            ("/api/market-monitor/status", "GET", None),
+            ("/api/market-monitor/results", "GET", None),
+            ("/api/market-monitor/subscriptions", "GET", None),
+            ("/api/market-monitor/subscriptions", "POST", {"symbol": "EURUSD", "timeframe": "M5"}),
+            ("/api/market-monitor/subscriptions", "DELETE", {"symbol": "EURUSD", "timeframe": "M5"}),
+            ("/api/intelligence/route", "POST", {"area": "Análise", "task": "analisar"}),
+        ]
+        with patch.dict("os.environ", settings):
+            for path, method, body in requests:
+                status, response = call_wsgi(
+                    app, path, method=method, body=body,
+                    remote_addr="203.0.113.10",
+                    authorization="Bearer shared-gateway-secret",
+                    identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+                )
+                self.assertEqual(status, "503 Service Unavailable", path)
+                self.assertEqual(response["state"], "TENANT_ISOLATION_NOT_IMPLEMENTED")
+                self.assertFalse(response["execution_authorized"])
+
     def test_remote_notifications_are_isolated_by_verified_tenant_and_subject(self):
         runtime = FakeRuntime()
         runtime.tenant_state.save_notifications(
