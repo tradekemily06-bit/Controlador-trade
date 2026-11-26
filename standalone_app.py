@@ -288,6 +288,48 @@ class StandaloneWSGIApplication:
                 request_id,
             )
 
+        if method == "GET" and path == "/api/notifications":
+            try:
+                query = str(environ.get("QUERY_STRING") or "")
+                params = dict(
+                    item.split("=", 1) for item in query.split("&")
+                    if item and "=" in item
+                )
+                limit = int(params.get("limit", "50"))
+                if not 1 <= limit <= 200:
+                    raise ValueError
+                include_info = str(params.get("include_info", "false")).lower() in {"1", "true", "yes"}
+                items = self.runtime.ecosystem_service.notification_items(include_info=include_info)
+            except (ValueError, TypeError):
+                return _json_response(
+                    start_response, HTTPStatus.BAD_REQUEST,
+                    {"error": "limit deve ser um inteiro entre 1 e 200", "execution_authorized": False},
+                    request_id,
+                )
+            return _json_response(
+                start_response, HTTPStatus.OK,
+                {"notifications": items[:limit], "count": min(len(items), limit), "execution_authorized": False},
+                request_id,
+            )
+
+        if method == "GET" and path == "/api/notifications/status":
+            summary = self.runtime.ecosystem_service.notification_summary()
+            worker = getattr(self.runtime, "notification_worker", None)
+            summary["delivery_worker"] = worker.status() if worker is not None else {
+                "configured": False,
+                "running": False,
+                "state": "NO_EXTERNAL_SINK_CONFIGURED",
+            }
+            summary["external_delivery"] = (
+                "WORKER_CONFIGURED" if worker is not None
+                else "OUTBOX_ONLY_NO_PROVIDER"
+            )
+            return _json_response(
+                start_response, HTTPStatus.OK,
+                {**summary, "execution_authorized": False},
+                request_id,
+            )
+
         if method == "GET" and path == "/api/assistant/status":
             readiness = self.runtime.assistant.readiness()
             return _json_response(
