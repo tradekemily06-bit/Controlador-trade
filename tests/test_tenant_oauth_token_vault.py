@@ -1,4 +1,5 @@
 import base64
+import hashlib
 from datetime import datetime, timedelta, timezone
 
 from integration.tenant_oauth_token_vault import TenantOAuthTokenVault
@@ -6,19 +7,33 @@ from security.sqlite_tenant_storage import SQLiteTenantStorage
 from security.tenant_context import TenantContext
 from security.tenant_provider_connections import TenantProviderConnectionRegistry
 
+
 class TestOnlyCipher:
-    """Reversible fixture only; never use this as a production encryption provider."""
+    """Reversible test fixture; not cryptography and never valid in production."""
+
+    _mask = b"unit-test-only-mask"
+
+    @classmethod
+    def _xor(cls, value):
+        return bytes(byte ^ cls._mask[index % len(cls._mask)]
+                     for index, byte in enumerate(value))
+
     def encrypt(self, plaintext, *, associated_data):
-        return {"key_id": "test-key", "ciphertext": associated_data + b"|" + plaintext}
+        aad_tag = hashlib.sha256(associated_data).digest()
+        return {"key_id": "test-key", "ciphertext": aad_tag + self._xor(plaintext)}
+
     def decrypt(self, ciphertext, *, key_id, associated_data):
-        if key_id != "test-key" or not ciphertext.startswith(associated_data + b"|"):
+        aad_tag = hashlib.sha256(associated_data).digest()
+        if key_id != "test-key" or not ciphertext.startswith(aad_tag):
             raise ValueError("authentication failed")
-        return ciphertext[len(associated_data) + 1:]
+        return self._xor(ciphertext[len(aad_tag):])
+
 
 def _account(connections, owner, alias="cTrader account"):
     return connections.record_pending_connection(
         owner, provider_id="ctrader_open_api", account_alias=alias,
         account_reference="pending-" + alias, capabilities=["candles:read"])
+
 
 def test_token_vault_encrypts_and_resolves_only_for_owner(tmp_path):
     owner, other = TenantContext("tenant-a", "alice"), TenantContext("tenant-b", "bob")
@@ -41,7 +56,10 @@ def test_token_vault_encrypts_and_resolves_only_for_owner(tmp_path):
         raise AssertionError("cross-tenant token resolution must be denied")
     with vault._connect() as db:
         row = db.execute("SELECT ciphertext_b64 FROM tenant_oauth_tokens").fetchone()
-    assert b"access-secret" not in base64.b64decode(row[0])
+    stored_ciphertext = base64.b64decode(row[0])
+    assert b"access-secret" not in stored_ciphertext
+    assert b"refresh-secret" not in stored_ciphertext
+
 
 def test_token_vault_binds_ciphertext_to_connection_and_supports_revocation(tmp_path):
     owner = TenantContext("tenant-a", "alice")
@@ -55,6 +73,7 @@ def test_token_vault_binds_ciphertext_to_connection_and_supports_revocation(tmp_
     assert vault.revoke(owner, first["connection_id"]) is True
     assert vault.resolve(owner, first["connection_id"]) is None
     assert vault.revoke(owner, first["connection_id"]) is False
+
 
 def test_token_vault_rejects_expired_tokens_and_wrong_provider(tmp_path):
     owner = TenantContext("tenant-a", "alice")
