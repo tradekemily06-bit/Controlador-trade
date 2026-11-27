@@ -77,6 +77,8 @@ class BrokerMarketDataBoundary:
         for candle in raw:
             if not isinstance(candle, Candle):
                 raise ValueError("provider retornou candle de tipo inválido")
+            if not isinstance(candle.timestamp, datetime):
+                raise ValueError("provider retornou timestamp inválido")
             if candle.timestamp.tzinfo is None or candle.timestamp.utcoffset() is None:
                 raise ValueError("provider retornou timestamp sem fuso horário")
             values = (candle.open, candle.high, candle.low, candle.close, candle.volume)
@@ -102,5 +104,5 @@ class BrokerMarketDataBoundary:
             timeframe=canonical_timeframe,
             candles=normalized,
             source=self._source,
-            received_at=received_at or datetime.now().astimezone(),
+            received_at=snapshot_received_at.astimezone(timezone.utc),
         )
