@@ -88,6 +88,26 @@ def test_ctrader_exposes_broker_schedule_metadata_without_enabling_d1_w1():
     assert not callable(getattr(adapter, "expected_last_closed_candle", None))
 
 
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"schedule_time_zone": None, "schedule": ({"start_second": 0, "end_second": 604800},), "holidays": (), "calendar_metadata_status": "AVAILABLE"},
+        {"schedule_time_zone": "Europe/London", "schedule": ({"start_second": 604800, "end_second": 604800},), "holidays": (), "calendar_metadata_status": "AVAILABLE"},
+        {"schedule_time_zone": "Europe/London", "schedule": (), "holidays": (), "calendar_metadata_status": "AVAILABLE"},
+    ],
+)
+def test_ctrader_incomplete_or_invalid_schedule_metadata_is_not_exposed(metadata):
+    transport = FakeTransport()
+    transport.resolve_symbol = lambda account_id, symbol: {
+        "symbol_id": 44, "digits": 5, **metadata
+    }
+    adapter = CTraderReadOnlyMarketDataAdapter(transport, account_id=123)
+    adapter.connect()
+    adapter.handshake()
+
+    assert adapter.get_symbol_session_calendar_metadata("EURUSD") is None
+
+
 def test_ctrader_adapter_verifies_demo_and_normalizes_trendbars():
     transport = FakeTransport()
     adapter = CTraderReadOnlyMarketDataAdapter(transport, account_id=123)
