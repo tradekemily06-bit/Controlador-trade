@@ -119,6 +119,11 @@ class StandaloneMarketAnalysisService:
         if not isinstance(symbol, str) or not symbol.strip():
             raise ValueError("symbol is required")
         timeframe = normalize_timeframe(timeframe)
+        # D1/W1 session boundaries are broker-specific. This standalone service
+        # does not receive the monitor's verified session-calendar decision or
+        # the next session boundary, so it must not publish a timed signal or
+        # persist evidence/outcomes using a guessed 24h/7d interval.
+        session_calendar_available = not timeframe.endswith(("d", "w"))
         if isinstance(limit, bool) or not isinstance(limit, int) or not 3 <= limit <= 1000:
             raise ValueError("limit must be an integer from 3 to 1000")
         request = MarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
@@ -166,7 +171,8 @@ class StandaloneMarketAnalysisService:
         )
         senior_reassessment = senior_posture in {"REASSESS", "INSUFFICIENT"}
         safe = (
-            integrity.safe_for_analysis
+            session_calendar_available
+            and integrity.safe_for_analysis
             and senior_complete
             and not senior_reassessment
             and gated is not None
@@ -174,7 +180,9 @@ class StandaloneMarketAnalysisService:
         )
         signal = gated.signal.value if safe else "AGUARDAR"
         reason = gated.reason if gated is not None else result.analysis.reason
-        if not integrity.safe_for_analysis:
+        if not session_calendar_available:
+            reason = "Análise suspensa: calendário de sessão D1/W1 específico do provedor não foi validado neste serviço."
+        elif not integrity.safe_for_analysis:
             reason = f"Análise suspensa: {integrity.message}."
         elif not senior_complete or senior_reassessment:
             reason = "Análise suspensa: o raciocínio sênior identificou contexto incompleto ou uma condição que exige reavaliação."
@@ -211,7 +219,7 @@ class StandaloneMarketAnalysisService:
             "valid_until": (
                 result.market_data.candles[-1].timestamp
                 + get_timeframe_interval(timeframe) * 2
-            ).isoformat(),
+            ).isoformat() if session_calendar_available else None,
             "visual": signal_visual,
             "score": score,
             "score_type": "EVIDENCE_STRENGTH",
@@ -257,8 +265,10 @@ class StandaloneMarketAnalysisService:
                 "valid_until": (
                     result.market_data.candles[-1].timestamp
                     + get_timeframe_interval(timeframe) * 2
-                ).isoformat(),
-                "status": "VALID" if integrity.safe_for_analysis else "EXPIRED_OR_DATA_UNSAFE",
+                ).isoformat() if session_calendar_available else None,
+                "status": (
+                    "VALID" if integrity.safe_for_analysis else "EXPIRED_OR_DATA_UNSAFE"
+                ) if session_calendar_available else "SESSION_CALENDAR_UNAVAILABLE",
             },
             "candidate_signal": candidate_signal,
             "score": score,
@@ -288,7 +298,14 @@ class StandaloneMarketAnalysisService:
                     for candle in result.market_data.candles[-120:]
                 ],
             },
-            "data_integrity": integrity.to_dict(),
+            "data_integrity": {
+                **integrity.to_dict(),
+                "safe_for_analysis": bool(integrity.safe_for_analysis and session_calendar_available),
+                "session_calendar_status": (
+                    "VERIFIED_NOT_REQUIRED" if session_calendar_available
+                    else "SESSION_CALENDAR_UNAVAILABLE"
+                ),
+            },
             "senior_context": (
                 {
                     "cycle_id": senior.cycle_id,
@@ -310,6 +327,7 @@ class StandaloneMarketAnalysisService:
             and self.market_data_provenance == "REAL_MARKET_DATA"
             and isinstance(decision_context, TenantContext)
             and integrity.safe_for_analysis
+            and session_calendar_available
         ):
             last_candle = result.market_data.candles[-1]
             outcome_candle = {
@@ -345,6 +363,7 @@ class StandaloneMarketAnalysisService:
             and self.market_data_provenance == "REAL_MARKET_DATA"
             and isinstance(decision_context, TenantContext)
             and integrity.safe_for_analysis
+            and session_calendar_available
         ):
             last_candle = result.market_data.candles[-1]
             candle_at = last_candle.timestamp
