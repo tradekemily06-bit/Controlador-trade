@@ -70,6 +70,25 @@ def test_duplicate_cycle_does_not_erase_manual_outcome(tmp_path):
     assert loaded.outcome_source == "MANUAL_STUDY"
 
 
+
+def test_concurrent_duplicate_cycle_is_committed_once_without_overwriting_outcome(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    memory = TenantScopedDecisionMemory(SQLiteTenantStorage(tmp_path / "tenant.sqlite3"))
+    owner = TenantContext("tenant-a", "subject-a")
+    record = _record()
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda _: memory.save(owner, record), range(32)))
+
+    assert sum(results) == 1
+    assert [item.decision_id for item in memory.load(owner)] == [record.decision_id]
+    memory.record_outcome(owner, record.decision_id, "WIN")
+    assert memory.save(owner, record) is False
+    assert memory.load(owner)[0].outcome == "WIN"
+
+
+
 def test_decision_memory_rejects_execution_authority_and_invalid_limits(tmp_path):
     memory = TenantScopedDecisionMemory(SQLiteTenantStorage(tmp_path / "tenant.sqlite3"))
     owner = TenantContext("tenant-a", "subject-a")
