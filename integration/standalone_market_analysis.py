@@ -116,9 +116,10 @@ class StandaloneMarketAnalysisService:
             live_candle=live_candle,
         )
         interval = int(get_timeframe_interval(timeframe).total_seconds())
-        # Keep the tolerance proportional to the selected timeframe.
-        # A five-minute floor made 1m feeds appear current for several missed bars.
-        max_age = max(30, interval * 2)
+        # A closed candle may back a signal only until the next candle cycle closes.
+        # MarketDataRuntimeIntegrity compares against the expected close boundary
+        # (now - interval), so interval - 1 seconds expires it at the next boundary.
+        max_age = max(1, interval - 1)
         integrity = MarketDataRuntimeIntegrity(
             integrity=MarketDataIntegrity(max_age_seconds=max_age)
         ).assess(
@@ -192,6 +193,11 @@ class StandaloneMarketAnalysisService:
             "symbol": symbol,
             "direction": signal,
             "timeframe": timeframe,
+            "cycle_candle_at": result.market_data.candles[-1].timestamp.isoformat(),
+            "valid_until": (
+                result.market_data.candles[-1].timestamp
+                + get_timeframe_interval(timeframe) * 2
+            ).isoformat(),
             "visual": signal_visual,
             "score": score,
             "score_type": "EVIDENCE_STRENGTH",
@@ -220,6 +226,14 @@ class StandaloneMarketAnalysisService:
             "symbol": symbol,
             "timeframe": timeframe,
             "signal": signal,
+            "signal_cycle": {
+                "candle_open_at": result.market_data.candles[-1].timestamp.isoformat(),
+                "valid_until": (
+                    result.market_data.candles[-1].timestamp
+                    + get_timeframe_interval(timeframe) * 2
+                ).isoformat(),
+                "status": "VALID" if integrity.safe_for_analysis else "EXPIRED_OR_DATA_UNSAFE",
+            },
             "candidate_signal": candidate_signal,
             "score": score,
             "score_semantics": score_semantics,
