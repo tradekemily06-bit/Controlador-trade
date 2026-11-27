@@ -15,6 +15,7 @@ from security.tenant_context import TenantContext
 from security.tenant_provider_connections import TenantProviderConnectionRegistry
 from integration.tenant_market_data_sessions import TenantMarketDataSessionRegistry
 from integration.tenant_connection_timeframe_monitor import TenantConnectionTimeframeMonitor
+from integration.tenant_provider_connection_service import TenantProviderConnectionService
 from security.tenant_scoped_ecosystem_state import TenantScopedEcosystemState
 from security.tenant_scoped_decision_memory import TenantScopedDecisionMemory
 from integration.tenant_notification_dispatcher import TenantNotificationDispatcher
@@ -132,6 +133,8 @@ class StandaloneRuntime:
         market_data_providers: Mapping[str, tuple[Any, str]] | None = None,
         selected_market_data_provider: str | None = None,
         notification_sink=None,
+        provider_secret_resolver=None,
+        provider_adapter_factories: Mapping[str, Any] | None = None,
     ) -> None:
         configured_identity = os.getenv("CONTROLADOR_SINGLE_USER_IDENTITY", "").strip()
         if not configured_identity:
@@ -166,6 +169,18 @@ class StandaloneRuntime:
             self.tenant_market_data_sessions = TenantMarketDataSessionRegistry(
                 self.tenant_provider_connections
             )
+            self.tenant_provider_connection_service = None
+            if provider_secret_resolver is not None or provider_adapter_factories is not None:
+                if provider_secret_resolver is None or not provider_adapter_factories:
+                    raise RuntimeError(
+                        "provider_secret_resolver e provider_adapter_factories devem ser provisionados juntos"
+                    )
+                self.tenant_provider_connection_service = TenantProviderConnectionService(
+                    self.tenant_provider_connections,
+                    self.tenant_market_data_sessions,
+                    secret_resolver=provider_secret_resolver,
+                    adapter_factories=provider_adapter_factories,
+                )
             self.tenant_decision_memory = TenantScopedDecisionMemory(tenant_storage)
             self.local_tenant_context = TenantContext(
                 tenant_id="local-single-user",
