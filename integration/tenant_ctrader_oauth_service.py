@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Mapping
+import secrets
 import threading
 from urllib.parse import urlencode
 
@@ -60,6 +61,37 @@ class TenantCTraderOAuthService:
         self._refresh_locks: dict[str, threading.Lock] = {}
         self._refresh_locks_guard = threading.Lock()
         self.scope = scope
+
+    def provision(self, context: TenantContext, *, account_alias: str) -> dict[str, Any]:
+        """Create an owned pending cTrader connection and start OAuth consent."""
+        owner = require_tenant_context(context)
+        create_pending = getattr(self.connections, "record_pending_connection", None)
+        if not callable(create_pending):
+            raise RuntimeError("tenant registry cannot create pending provider connections")
+        pending = create_pending(
+            owner,
+            provider_id=_PROVIDER_ID,
+            account_alias=account_alias,
+            account_reference=f"pending:{secrets.token_hex(16)}",
+            capabilities=("candles:read", "candles:stream", "quotes:stream"),
+        )
+        try:
+            consent = self.begin(owner, connection_id=pending["connection_id"])
+        except Exception:
+            mark_disconnected = getattr(self.connections, "mark_disconnected", None)
+            if callable(mark_disconnected):
+                try:
+                    mark_disconnected(owner, connection_id=pending["connection_id"])
+                except Exception:
+                    pass
+            raise
+        return {
+            **pending,
+            **consent,
+            "status": "PENDING_OAUTH",
+            "account_connected": False,
+            "execution_authorized": False,
+        }
 
     def begin(self, context: TenantContext, *, connection_id: str) -> dict[str, Any]:
         owner = require_tenant_context(context)
