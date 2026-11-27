@@ -115,6 +115,57 @@ class TenantProviderConnectionRegistry:
             "execution_authorized": False,
         }
 
+    def record_pending_connection(
+        self, context: TenantContext | None, *, provider_id: str,
+        account_alias: str, account_reference: str,
+        capabilities: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Create a server-controlled pending relay enrollment; no client can assert CONNECTED."""
+        trusted = require_tenant_context(context)
+        if not isinstance(provider_id, str) or not self._PROVIDER_ID.fullmatch(provider_id):
+            raise ValueError("provider_id inválido")
+        if not isinstance(account_alias, str) or not account_alias.strip() or len(account_alias.strip()) > 80:
+            raise ValueError("account_alias inválido")
+        if not isinstance(account_reference, str) or not account_reference.strip() or len(account_reference.strip()) > 120:
+            raise ValueError("account_reference inválida")
+        clean = []
+        for value in capabilities or []:
+            if not isinstance(value, str) or not re.fullmatch(r"[a-z0-9][a-z0-9:_-]{0,63}", value):
+                raise ValueError("capability inválida")
+            if value not in clean:
+                clean.append(value)
+        if not callable(getattr(self.storage, "upsert_unique_list_item", None)):
+            raise RuntimeError("tenant storage does not support atomic broker connection updates")
+        record = {
+            "connection_id": uuid.uuid4().hex, "provider_id": provider_id,
+            "account_alias": account_alias.strip(), "account_reference": account_reference.strip(),
+            "status": "PENDING", "last_verified_at": None, "capabilities": clean,
+        }
+        saved = self.storage.upsert_unique_list_item(
+            trusted, self.STORAGE_KEY, record,
+            unique_fields=("provider_id", "account_reference"), limit=self.MAX_CONNECTIONS,
+        )
+        return {
+            "connection_id": saved["connection_id"], "provider_id": saved["provider_id"],
+            "account_alias": saved["account_alias"], "account_reference": saved["account_reference"],
+            "status": saved["status"], "capabilities": list(saved.get("capabilities", [])),
+            "read_only": True, "execution_authorized": False,
+        }
+
+    def mark_connected_after_relay_handshake(
+        self, context: TenantContext | None, *, connection_id: str,
+    ) -> bool:
+        trusted = require_tenant_context(context)
+        if not isinstance(connection_id, str) or not re.fullmatch(r"[a-f0-9]{32}", connection_id):
+            raise ValueError("connection_id inválido")
+        if not callable(getattr(self.storage, "update_list_item", None)):
+            raise RuntimeError("tenant storage does not support atomic broker connection updates")
+        return self.storage.update_list_item(
+            trusted, self.STORAGE_KEY, match_field="connection_id",
+            match_value=connection_id,
+            updates={"status": "CONNECTED", "last_verified_at": self._timestamp()},
+        )
+
     def mark_disconnected(
         self, context: TenantContext | None, *, connection_id: str
     ) -> bool:
