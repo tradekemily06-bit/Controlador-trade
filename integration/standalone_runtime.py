@@ -308,7 +308,7 @@ class StandaloneRuntime:
                 tenant_id="local-single-user",
                 subject_id=configured_identity,
             )
-            if self.tenant_oauth_refresh_worker is not None:
+            # Rebuild configured generic provider sessions only after a fresh\n            # tenant-scoped vault resolution and provider handshake.\n            self.provider_recovery_status = self.tenant_provider_connection_service.reconnect_available(\n                self.local_tenant_context\n            )\n            if self.tenant_oauth_refresh_worker is not None:
                 for refresh_owner in self.tenant_ctrader_token_vault.list_refresh_owners(limit=100):
                     self.tenant_oauth_refresh_worker.register_owner(refresh_owner)
             # Prepared owner-sharded fiscal repositories are available as an
