@@ -1832,7 +1832,7 @@ def test_daily_and_weekly_signals_wait_for_provider_session_calendar(
     tmp_path, timeframe, expected_at
 ):
     owner = TenantContext("tenant-session-calendar", "alice")
-    connection = _id("s")
+    connection = _id("b")
     session = Session("broker_without_calendar", "broker:no-calendar")
     class Registry:
         def get(self, context, *, connection_id):
@@ -1867,7 +1867,7 @@ def test_daily_and_weekly_signals_use_provider_session_boundary_for_expiry(
     tmp_path, timeframe, expected_at
 ):
     owner = TenantContext("tenant-session-calendar-valid", "alice")
-    connection = _id("t")
+    connection = _id("c")
 
     class SessionCalendarAdapter:
         def expected_last_closed_candle(self, requested_timeframe, now, *, close_grace_seconds):
