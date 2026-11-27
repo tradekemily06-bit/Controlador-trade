@@ -46,6 +46,17 @@ A user may request a fresh handshake for an existing account:
 The route validates the connection identifier and the service verifies that
 the account belongs to the requesting tenant and subject.
 
+## cTrader DEMO recovery
+
+The dedicated cTrader OAuth account service has its own recovery path. It
+reuses the saved DEMO account identifier and tenant-owned encrypted OAuth
+token, refreshes an expired access token through the configured OAuth service
+when possible, then performs a new cTrader account-authentication handshake
+before binding a new adapter. The original connection ID is preserved.
+Accounts that fail recovery remain unbound; no live account is accepted and no
+order capability is introduced. The startup result is exposed separately as
+`ctrader_recovery` in local readiness.
+
 ## Credential reference handling
 
 The connection registry stores only a validated vault pointer, never resolved
