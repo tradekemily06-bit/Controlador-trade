@@ -123,3 +123,19 @@ API:
 - The Analysis news operation exposes configured/live status, successful feed count, item count and bounded error details. Symbol filtering is a title-text filter, not a claim of complete entity recognition.
 - No feed URL is enabled by default. The provider reports unconfigured until server operators supply feed URLs. A configured feed is not proof that every article is accurate or that every market event is covered; source and publication time remain visible for human review.
 - This is read-only news ingestion. It does not authorize trading, execute actions, or turn unverified news into a signal by itself.
+
+
+## Scheduled local backups and isolated restore verification
+
+The runtime supports an opt-in periodic SQLite backup worker. It starts only when all of the following server-side settings are explicitly configured:
+
+- `CONTROLADOR_AUTOMATIC_BACKUP_ENABLED=true`
+- `CONTROLADOR_BACKUP_DIR` — absolute path outside the runtime data directory, on a persistent volume.
+- `CONTROLADOR_BACKUP_INTERVAL_SECONDS` — integer of at least 3600 seconds; defaults to 86400 (24 hours).
+
+The worker starts with the standalone server and runs only while that process remains alive. It does not run when the app/server is stopped, and its in-process schedule is not a substitute for a deployment-level scheduler or persistent hosting. Status is available through `GET /api/backup/status` and `GET /api/readiness`. The status reports the last attempt and never labels off-host replication as configured.
+
+The backup service uses an explicit database allowlist, SQLite's online backup API, an integrity check, and exclusive atomic publication. Restore verification copies a named backup into a temporary isolated SQLite database and runs an integrity check; it never replaces or writes to the live database. The fiscal tenant backup service additionally checks owner scope and foreign-key integrity.
+
+**Not yet configured or proven:** off-host replication, encryption/key management for backups, retention/deletion policy, deployment-level scheduling, restore drills against production-sized datasets, and a tested disaster-recovery objective. Do not treat local backups as protection against loss of the host or its disk. Production deployment must provide a separate protected backup destination and test restoration procedures.
+
