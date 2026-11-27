@@ -76,6 +76,13 @@ The registry is metadata-only: it is not an OAuth flow, credential vault, provid
 
 The provider status response also includes a tenant-scoped `timeframe_monitor` block with worker state and that owner's active subscriptions. The background worker resolves the adapter from the trusted tenant/account session for every cycle. Its idempotency key includes tenant, subject, connection, symbol, timeframe and candle close. A missing adapter or a candle that is not the expected closed candle cannot produce a current signal. Subscriptions are capped at 100 active symbol/timeframe pairs per account. The worker runs only while the standalone server process is alive; continuous operation after the user's computer is shut down still requires a continuously running hosted/VPS deployment.
 
+### Provider account onboarding
+
+- `POST /api/market-data/connections` — accepts only `provider_id`, `account_alias` and a tenant-owned `credential_ref` from the server's configured secret manager. Raw passwords, API keys, access tokens and refresh tokens are rejected.
+- `DELETE /api/market-data/connections/{connection_id}` — closes the bound adapter, removes its in-memory session and marks the tenant-owned connection disconnected.
+
+These routes return service-unavailable when the host has not injected a real tenant-aware secret resolver and provider adapter factories. They do not create a fake connection or trust browser-supplied connection status. A provider becomes CONNECTED only after its adapter completes a real handshake and the server binds its read-only data adapter.
+
 ### `POST /api/market-data/connections/{connection_id}/analysis`
 
 Runs read-only analysis against the server-side adapter bound to exactly one verified account connection. The connection ID is resolved only inside the authenticated tenant-and-subject scope; a connection belonging to another user or lacking an active adapter returns no session. Body: `{"symbol":"EURUSD","timeframe":"M5","limit":120}`. The response identifies the connection/provider/source used. Each account has its own adapter instance; this route does not merge feeds or imply that every provider is live. It never submits orders. Adapter bindings are process-local and require a fresh server-side handshake after restart.
