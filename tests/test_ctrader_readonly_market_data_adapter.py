@@ -173,6 +173,10 @@ def test_ctrader_d1_w1_reconciliation_report_is_observational_only():
     assert report["timeframe"] == "1d"
     assert report["sample_count"] == 1
     assert report["observed_utc_open_patterns"]
+    assert report["observed_candle_opens"][0]["open_at_utc"]
+    assert report["observed_candle_opens"][0]["open_at_provider_local"] is not None or (
+        report["session_metadata"]["timezone_validation_status"] == "NOT_VALIDATED_BY_RUNTIME"
+    )
     assert report["status"] == "OBSERVATIONS_ONLY_NOT_VALIDATED"
     assert report["calendar_validation_passed"] is False
     assert report["signal_authorized"] is False
