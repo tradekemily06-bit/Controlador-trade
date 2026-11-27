@@ -85,7 +85,7 @@ def evaluate_probability_calibration(
         if (
             not isinstance(item.forecast_id, str)
             or not item.forecast_id.strip()
-            or item.forecast_id in seen_ids
+            or item.forecast_id.strip() in seen_ids
             or not all(
                 isinstance(value, str) and value.strip()
                 for value in (item.symbol, item.timeframe, item.direction, item.model_version)
@@ -94,7 +94,10 @@ def evaluate_probability_calibration(
             or not isinstance(item.outcome, bool)
             or not isinstance(item.out_of_sample, bool)
             or not item.out_of_sample
+            or not isinstance(item.provenance, str)
             or item.provenance not in _ALLOWED_PROVENANCE
+            or not isinstance(item.forecast_at, str)
+            or not isinstance(item.resolved_at, str)
             or isinstance(item.probability, bool)
             or not isinstance(item.probability, (int, float))
             or not 0.0 <= float(item.probability) <= 1.0
@@ -113,7 +116,7 @@ def evaluate_probability_calibration(
         except ValueError:
             rejected += 1
             continue
-        seen_ids.add(item.forecast_id)
+        seen_ids.add(item.forecast_id.strip())
         key = (
             item.symbol.strip().upper(),
             canonical_timeframe,
