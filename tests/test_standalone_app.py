@@ -498,6 +498,16 @@ class StandaloneWSGITests(unittest.TestCase):
 
     def test_local_readiness_reports_provider_recovery_without_secret_material(self):
         runtime = FakeRuntime()
+        runtime.ctrader_recovery_status = [
+            {
+                "connection_id": "c" * 32,
+                "provider_id": "ctrader_open_api",
+                "status": "RECONNECT_FAILED",
+                "error_class": "PermissionError",
+                "token": "must-not-leak",
+                "execution_authorized": False,
+            },
+        ]
         runtime.provider_recovery_status = [
             {
                 "connection_id": "a" * 32,
@@ -525,6 +535,10 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertNotIn("vault://must-not-leak", serialized)
         self.assertNotIn("must-not-leak", serialized)
         self.assertFalse(body["provider_recovery"]["execution_authorized"])
+        self.assertEqual(body["ctrader_recovery"]["status"], "DEGRADED")
+        self.assertEqual(len(body["ctrader_recovery"]["accounts"]), 1)
+        self.assertNotIn("must-not-leak", json.dumps(body["ctrader_recovery"]))
+        self.assertFalse(body["ctrader_recovery"]["execution_authorized"])
 
     def test_backup_status_endpoint_never_claims_unconfigured_backup_or_replication(self):
         app = StandaloneWSGIApplication(FakeRuntime())
