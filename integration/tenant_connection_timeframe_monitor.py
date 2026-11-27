@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import re
 import sqlite3
 import threading
+import uuid
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -102,6 +103,13 @@ class TenantConnectionTimeframeMonitor:
                     result_json TEXT NOT NULL,
                     recorded_at REAL NOT NULL,
                     PRIMARY KEY(tenant_id, subject_id, connection_id, symbol, timeframe, candle_at)
+                )
+            """)
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS tenant_connection_timeframe_processing_lease (
+                    lease_key TEXT PRIMARY KEY,
+                    owner_token TEXT NOT NULL,
+                    expires_at REAL NOT NULL
                 )
             """)
             db.execute("""
@@ -445,6 +453,44 @@ class TenantConnectionTimeframeMonitor:
             """, (row["tenant_id"], row["subject_id"], row["connection_id"], row["symbol"], row["timeframe"])).fetchone()
         return bool(result and result["enabled"])
 
+    @staticmethod
+    def _processing_lease_key(row: dict[str, Any]) -> str:
+        return json.dumps([
+            row["tenant_id"], row["subject_id"], row["connection_id"],
+            row["symbol"], row["timeframe"],
+        ], ensure_ascii=False, separators=(",", ":"))
+
+    def _acquire_processing_lease(
+        self, row: dict[str, Any], *, lease_seconds: float = 300.0,
+    ) -> tuple[str, str] | None:
+        """Atomically claim a watch across workers sharing this SQLite database."""
+        if lease_seconds <= 0:
+            raise ValueError("lease_seconds deve ser positivo")
+        key = self._processing_lease_key(row)
+        token = uuid.uuid4().hex
+        now = time.time()
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            claimed = db.execute("""
+                INSERT INTO tenant_connection_timeframe_processing_lease
+                    (lease_key, owner_token, expires_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(lease_key) DO UPDATE SET
+                    owner_token=excluded.owner_token,
+                    expires_at=excluded.expires_at
+                WHERE tenant_connection_timeframe_processing_lease.expires_at <= ?
+            """, (key, token, now + lease_seconds, now)).rowcount
+            db.commit()
+        return (key, token) if claimed == 1 else None
+
+    def _release_processing_lease(self, lease: tuple[str, str]) -> None:
+        key, token = lease
+        with self._connect() as db:
+            db.execute("""
+                DELETE FROM tenant_connection_timeframe_processing_lease
+                WHERE lease_key=? AND owner_token=?
+            """, (key, token))
+
     def _process(self, row: dict[str, Any], now: datetime) -> dict[str, Any] | None:
         owner_key = (
             row["tenant_id"], row["subject_id"], row["connection_id"],
@@ -454,9 +500,15 @@ class TenantConnectionTimeframeMonitor:
             if owner_key in self._processing:
                 return None
             self._processing.add(owner_key)
+        lease = self._acquire_processing_lease(row)
+        if lease is None:
+            with self._lock:
+                self._processing.discard(owner_key)
+            return None
         try:
             return self._process_claimed(row, now)
         finally:
+            self._release_processing_lease(lease)
             with self._lock:
                 self._processing.discard(owner_key)
 
