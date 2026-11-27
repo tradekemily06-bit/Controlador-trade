@@ -30,7 +30,7 @@ class TenantCTraderOAuthService:
         client_id: str,
         redirect_uri: str,
         exchange_code: Callable[[str, str], Mapping[str, Any]],
-        scope: str = "trading",
+        scope: str = "accounts",
     ) -> None:
         if connections is None or not callable(getattr(connections, "list_connections", None)):
             raise ValueError("tenant connection registry is required")
