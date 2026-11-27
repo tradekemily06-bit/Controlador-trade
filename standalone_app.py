@@ -1126,10 +1126,39 @@ def create_application(runtime: StandaloneRuntime | None = None):
     return StandaloneWSGIApplication(owned_runtime)
 
 
+def _validate_bind_security(host: str) -> None:
+    """Prevent accidental public binding without the complete remote auth boundary."""
+    import ipaddress
+
+    normalized = host.strip().lower()
+    if normalized == "localhost":
+        return
+    try:
+        is_loopback = ipaddress.ip_address(normalized).is_loopback
+    except ValueError:
+        is_loopback = False
+    if is_loopback:
+        return
+
+    remote_required = os.getenv(
+        "CONTROLADOR_REMOTE_ACCESS_REQUIRED", ""
+    ).strip().lower() in {"1", "true", "yes"}
+    middleware_enabled = os.getenv(
+        "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE", ""
+    ).strip().lower() in {"1", "true", "yes"}
+    access_token = os.getenv("CONTROLADOR_STANDALONE_ACCESS_TOKEN", "").strip()
+    if not (remote_required and middleware_enabled and access_token):
+        raise RuntimeError(
+            "bind público bloqueado: configure acesso remoto obrigatório, "
+            "token e middleware de identidade confiável"
+        )
+
+
 def main() -> None:
+    host = os.getenv("CONTROLADOR_BIND_HOST", "127.0.0.1")
+    _validate_bind_security(host)
     runtime = StandaloneRuntime.from_environment()
     application = StandaloneWSGIApplication(runtime)
-    host = os.getenv("CONTROLADOR_BIND_HOST", "127.0.0.1")
     port = int(os.getenv("CONTROLADOR_BIND_PORT", "8765"))
     server = make_server(host, port, application, server_class=ThreadingWSGIServer)
     try:
