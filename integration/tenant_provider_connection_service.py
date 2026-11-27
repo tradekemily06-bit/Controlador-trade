@@ -131,6 +131,10 @@ class TenantProviderConnectionService:
                 source=f"{provider_id}:{connection['connection_id']}",
                 handshake_verified=True,
             )
+            self.connections.store_credential_reference(
+                owner, connection_id=connection["connection_id"],
+                credential_ref=credential_ref,
+            )
             return {
                 **connection,
                 "adapter_status": session["status"],
@@ -139,6 +143,10 @@ class TenantProviderConnectionService:
             }
         except Exception:
             if connection is not None:
+                try:
+                    self.sessions.unbind(owner, connection_id=connection["connection_id"])
+                except Exception:
+                    pass
                 try:
                     self.connections.mark_disconnected(
                         owner, connection_id=connection["connection_id"]
