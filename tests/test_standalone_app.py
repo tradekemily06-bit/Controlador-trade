@@ -1241,6 +1241,80 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(status, "400 Bad Request")
         self.assertFalse(body["execution_authorized"])
 
+
+    def test_per_account_analysis_uses_only_the_requested_tenant_adapter(self):
+        class Session:
+            connection_id = "a" * 32
+            provider_id = "broker_x"
+            source = "broker_x:account-a"
+            adapter = object()
+
+        class Sessions:
+            def get(self, context, *, connection_id):
+                assert context.tenant_id == "tenant-a"
+                assert context.subject_id == "alice"
+                assert connection_id == "a" * 32
+                return Session()
+
+        class DecisionMemory:
+            def save(self, context, record):
+                return True
+
+        runtime = FakeRuntime()
+        runtime.tenant_market_data_sessions = Sessions()
+        runtime.intelligence = object()
+        runtime.tenant_decision_memory = DecisionMemory()
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings), patch(
+            "integration.standalone_market_analysis.StandaloneMarketAnalysisService"
+        ) as analyzer_class:
+            analyzer_class.return_value.analyze.return_value = {
+                "signal": "AGUARDAR", "execution_authorized": False
+            }
+            status, body = call_wsgi(
+                app, f"/api/market-data/connections/{'a' * 32}/analysis",
+                method="POST", body={"symbol": "EURUSD", "timeframe": "M5"},
+                remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["connection"]["provider_id"], "broker_x")
+        self.assertEqual(body["connection"]["source"], "broker_x:account-a")
+        self.assertFalse(body["execution_authorized"])
+        analyzer_class.return_value.analyze.assert_called_once()
+
+    def test_per_account_analysis_returns_not_found_for_unbound_or_other_tenant_account(self):
+        class Sessions:
+            def get(self, context, *, connection_id):
+                assert context.tenant_id == "tenant-b"
+                return None
+
+        runtime = FakeRuntime()
+        runtime.tenant_market_data_sessions = Sessions()
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, f"/api/market-data/connections/{'a' * 32}/analysis",
+                method="POST", body={"symbol": "EURUSD", "timeframe": "M5"},
+                remote_addr="203.0.113.11",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="bob", tenant_id="tenant-b",
+            )
+        self.assertEqual(status, "404 Not Found")
+        self.assertEqual(body["state"], "ADAPTER_NOT_BOUND")
+        self.assertFalse(body["execution_authorized"])
+
 if __name__ == "__main__":
     unittest.main()
 
