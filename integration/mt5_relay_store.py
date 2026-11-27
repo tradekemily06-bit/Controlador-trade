@@ -21,7 +21,10 @@ class MT5RelayStore:
     SYMBOL_RE = re.compile(r"^[A-Za-z0-9._-]{1,32}$")
     TIMEFRAME_RE = re.compile(r"^(M[1-9][0-9]?|H[1-9][0-9]?|D[1-9][0-9]?|W[1-4])$", re.I)
 
-    def __init__(self, database_path: str | Path) -> None:
+    def __init__(self, database_path: str | Path, expected_source_id: str) -> None:
+        if not isinstance(expected_source_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,48}", expected_source_id):
+            raise ValueError("expected_source_id válido é obrigatório para vincular o relay")
+        self.expected_source_id = expected_source_id
         self.database_path = str(database_path)
         Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as db:
@@ -90,6 +93,8 @@ class MT5RelayStore:
         source_id = payload.get("source_id", "mt5-local")
         if not isinstance(source_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,48}", source_id):
             raise MT5RelayError("source_id inválido")
+        if source_id != self.expected_source_id:
+            raise MT5RelayError("origem não corresponde à origem provisionada neste relay")
         raw_candles = payload.get("candles")
         if not isinstance(raw_candles, list) or not raw_candles or len(raw_candles) > self.MAX_CANDLES:
             raise MT5RelayError(f"candles deve conter entre 1 e {self.MAX_CANDLES} registros")
