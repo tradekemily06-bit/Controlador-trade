@@ -194,20 +194,33 @@ class TenantConnectionTimeframeMonitor:
             if not callable(valid) or not valid():
                 return
             with self._lock:
+                # A callback retained by an old adapter may fire after account
+                # rebind/disconnect. Accept events only from the currently
+                # registered adapter for this exact tenant/account watch.
+                if key not in self._live_streams or self._live_stream_adapters.get(key) is not adapter:
+                    return
                 previous = self._live_candles.get(key)
                 previous_at = getattr(previous, "timestamp", None)
                 if previous_at is None or timestamp.astimezone(timezone.utc) >= previous_at.astimezone(timezone.utc):
                     self._live_candles[key] = candle
+        # Reserve the callback identity before subscribing so synchronous
+        # first events are not lost; roll back atomically if provider rejects.
+        with self._lock:
+            self._live_streams.add(key)
+            self._live_stream_adapters[key] = adapter
+            self._live_candles.pop(key, None)
         try:
             subscribe(symbol, timeframe, receive)
         except Exception:
             with self._lock:
+                if self._live_stream_adapters.get(key) is adapter:
+                    self._live_streams.discard(key)
+                    self._live_stream_adapters.pop(key, None)
+                    self._live_candles.pop(key, None)
                 self._live_stream_retry_at[key] = time.monotonic() + 10.0
             return False
         with self._lock:
             self._live_stream_retry_at.pop(key, None)
-            self._live_streams.add(key)
-            self._live_stream_adapters[key] = adapter
         return True
 
     def subscribe(self, context: TenantContext, connection_id: str, symbol: str, timeframe: str) -> dict[str, Any]:
