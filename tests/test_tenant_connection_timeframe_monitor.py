@@ -843,10 +843,12 @@ def test_expired_notification_worker_cannot_ack_after_outbox_reclaim(tmp_path):
     def sink(event):
         calls.append(event["event_id"])
         if len(calls) == 1:
+            raise RuntimeError("initial delivery fails")
+        if len(calls) == 2:
             entered.set()
             assert release.wait(3)
             return
-        raise RuntimeError("second owner leaves event pending")
+        raise RuntimeError("reclaimed owner leaves event pending")
 
     monitor = TenantConnectionTimeframeMonitor(
         tmp_path / "notification-lease-fence.sqlite3", sessions,
@@ -893,5 +895,5 @@ def test_expired_notification_worker_cannot_ack_after_outbox_reclaim(tmp_path):
         ).fetchone()
     assert final["lease_token"] == reclaimed["lease_token"]
     assert final["delivered_at"] is None
-    assert calls == [row["event_id"], row["event_id"]]
+    assert calls == [row["event_id"], row["event_id"], row["event_id"]]
 
