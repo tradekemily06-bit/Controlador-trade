@@ -56,6 +56,27 @@ def _stop_workers_and_report_active(workers: tuple[tuple[Any, str], ...]) -> lis
     return still_running
 
 
+def _cleanup_failed_startup(process_lock: Any, workers: tuple[tuple[Any, str], ...]) -> list[str]:
+    try:
+        still_running = _stop_workers_and_report_active(workers)
+    except Exception:
+        # A failed stop/status check is not proof that the worker exited.
+        still_running = [
+            type(worker).__name__
+            for worker, _ in workers
+            if worker is not None
+        ]
+    if still_running:
+        # Keep strong references: closing the lock file would release the OS
+        # lock while a background worker may still use SQLite.
+        _FAILED_STARTUP_LOCKS.append(
+            (process_lock, tuple(worker for worker, _ in workers if worker is not None))
+        )
+    else:
+        process_lock.release()
+    return still_running
+
+
 class StandaloneRuntime:
     """Owns one durable single-user runtime and its process-exclusive lock.
 
@@ -267,23 +288,8 @@ class StandaloneRuntime:
                 (getattr(self, "notification_worker", None), "running"),
                 (getattr(self, "backup_scheduler", None), "worker_running"),
             )
-            try:
-                still_running = _stop_workers_and_report_active(workers)
-            except Exception:
-                # A failed stop/status check is not proof that the worker exited.
-                still_running = [
-                    type(worker).__name__
-                    for worker, _ in workers
-                    if worker is not None
-                ]
-            if still_running:
-                # Keep strong references: closing the lock file would release
-                # the OS lock while a background worker may still use SQLite.
-                _FAILED_STARTUP_LOCKS.append(
-                    (self.process_lock, tuple(worker for worker, _ in workers if worker is not None))
-                )
-            else:
-                self.process_lock.release()
+            still_running = _cleanup_failed_startup(self.process_lock, workers)
+            if not still_running:
                 self.closed = True
             raise
 
