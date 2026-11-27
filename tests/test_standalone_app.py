@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import patch
 from urllib.parse import urlsplit
 
-from standalone_app import StandaloneWSGIApplication
+from standalone_app import StandaloneWSGIApplication, _validate_bind_security
 from analysis.decision_record import DecisionRecord
 
 
@@ -951,3 +951,34 @@ class StandaloneWSGITests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PublicBindSecurityTests(unittest.TestCase):
+    def test_loopback_bind_remains_available_without_remote_configuration(self):
+        with patch.dict("os.environ", {}, clear=True):
+            _validate_bind_security("127.0.0.1")
+            _validate_bind_security("::1")
+            _validate_bind_security("localhost")
+
+    def test_public_bind_is_blocked_without_complete_remote_identity_boundary(self):
+        with patch.dict("os.environ", {}, clear=True):
+            for host in ("0.0.0.0", "::", "192.0.2.10"):
+                with self.subTest(host=host):
+                    with self.assertRaisesRegex(RuntimeError, "bind público bloqueado"):
+                        _validate_bind_security(host)
+
+    def test_public_bind_requires_remote_access_token_and_trusted_middleware(self):
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "true",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "configured-test-token",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "true",
+        }
+        with patch.dict("os.environ", settings, clear=True):
+            _validate_bind_security("0.0.0.0")
+
+        for missing in settings:
+            incomplete = dict(settings)
+            incomplete.pop(missing)
+            with patch.dict("os.environ", incomplete, clear=True):
+                with self.assertRaisesRegex(RuntimeError, "bind público bloqueado"):
+                    _validate_bind_security("0.0.0.0")
