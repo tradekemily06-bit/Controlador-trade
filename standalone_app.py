@@ -559,6 +559,55 @@ class StandaloneWSGIApplication:
                 )
             return _json_response(start_response, HTTPStatus.CREATED, result, request_id)
 
+        if (
+            method == "POST"
+            and path.startswith("/api/market-data/connections/")
+            and path.endswith("/reconnect")
+        ):
+            prefix = "/api/market-data/connections/"
+            connection_id = path[len(prefix):-len("/reconnect")].strip("/")
+            if len(connection_id) != 32 or any(
+                char not in "0123456789abcdef" for char in connection_id
+            ):
+                return _json_response(
+                    start_response, HTTPStatus.BAD_REQUEST,
+                    {"error": "connection_id inválido", "execution_authorized": False},
+                    request_id,
+                )
+            try:
+                context = _tenant_context_for_request(environ, reason)
+            except Exception:
+                context = None
+            service = getattr(self.runtime, "tenant_provider_connection_service", None)
+            if context is None or service is None:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "identidade confiável ou serviço de reconexão indisponível", "execution_authorized": False},
+                    request_id,
+                )
+            try:
+                result = service.reconnect_saved(context, connection_id=connection_id)
+            except PermissionError as exc:
+                return _json_response(
+                    start_response, HTTPStatus.FORBIDDEN,
+                    {"error": str(exc), "execution_authorized": False}, request_id,
+                )
+            except (ValueError, TypeError) as exc:
+                return _json_response(
+                    start_response, HTTPStatus.BAD_REQUEST,
+                    {"error": str(exc), "execution_authorized": False}, request_id,
+                )
+            except Exception:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "não foi possível revalidar a conexão com o provedor", "execution_authorized": False},
+                    request_id,
+                )
+            return _json_response(
+                start_response, HTTPStatus.OK,
+                {**result, "execution_authorized": False}, request_id,
+            )
+
         if method == "DELETE" and path.startswith("/api/market-data/connections/"):
             connection_id = path[len("/api/market-data/connections/"):].strip("/")
             if "/" not in connection_id and connection_id:
