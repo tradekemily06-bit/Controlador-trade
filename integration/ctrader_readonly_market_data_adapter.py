@@ -158,6 +158,8 @@ class CTraderReadOnlyMarketDataAdapter:
                 ask = round(_strict_integer(ask_raw) / 100000.0, digits) if ask_raw is not None else None
                 if bid is None and ask is None:
                     return
+                if bid is not None and ask is not None and bid > ask:
+                    return
                 if (bid is not None and bid <= 0) or (ask is not None and ask <= 0):
                     return
                 timestamp = None
