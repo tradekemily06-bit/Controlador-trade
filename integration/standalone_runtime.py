@@ -14,6 +14,7 @@ from security.sqlite_tenant_storage import SQLiteTenantStorage
 from security.tenant_context import TenantContext
 from security.tenant_provider_connections import TenantProviderConnectionRegistry
 from integration.tenant_market_data_sessions import TenantMarketDataSessionRegistry
+from integration.tenant_connection_timeframe_monitor import TenantConnectionTimeframeMonitor
 from security.tenant_scoped_ecosystem_state import TenantScopedEcosystemState
 from security.tenant_scoped_decision_memory import TenantScopedDecisionMemory
 from integration.tenant_notification_dispatcher import TenantNotificationDispatcher
@@ -262,6 +263,7 @@ class StandaloneRuntime:
             )
             self.market_analysis_service = None
             self.market_monitor = None
+            self.tenant_market_monitor = None
             selected = self.market_data_registry.selected()
             self.mt5_relay_store = (
                 selected.provider if selected is not None and selected.provider_id == "mt5_relay" else None
@@ -311,6 +313,51 @@ class StandaloneRuntime:
                     default_context=self.local_tenant_context,
                 )
                 self.market_monitor.start()
+
+            def build_account_analyzer(session, context):
+                return StandaloneMarketAnalysisService(
+                    provider=session.adapter,
+                    source=session.source,
+                    intelligence=self.intelligence,
+                    decision_sink=lambda record, owner=None: self.tenant_decision_memory.save(
+                        owner or context, record
+                    ),
+                )
+
+            def publish_account_market_change(event: dict[str, Any]) -> None:
+                result = event["result"]
+                signal = str(result.get("signal", "AGUARDAR"))
+                previous = event.get("previous_signal")
+                if signal == previous or (signal == "AGUARDAR" and previous in (None, "AGUARDAR")):
+                    return
+                symbol = event["symbol"]
+                timeframe = event["timeframe"]
+                connection_id = event["connection_id"]
+                candle_at = event["candle_at"]
+                notification = EcosystemNotification(
+                    notification_id=f"market:{connection_id}:{symbol}:{timeframe}:{candle_at}:{signal}",
+                    kind=NotificationKind.MARKET,
+                    severity=NotificationSeverity.IMPORTANT,
+                    title=f"{event['provider_id']}: {symbol} {timeframe} — {signal}",
+                    message=(
+                        f"A conta conectada em {event['provider_id']} atualizou o ciclo "
+                        f"{timeframe} de {symbol}. Sinal: {signal}. "
+                        "Revisão manual necessária; nenhuma ordem foi enviada."
+                    ),
+                    requires_attention=True,
+                )
+                self.tenant_notification_dispatcher.publish(
+                    event["tenant_context"], notification
+                )
+
+            self.tenant_market_monitor = TenantConnectionTimeframeMonitor(
+                self.runtime_dir / "tenant-connection-timeframe-monitor.sqlite3",
+                self.tenant_market_data_sessions,
+                build_account_analyzer,
+                on_result=publish_account_market_change,
+            )
+            self.tenant_market_monitor.start()
+
             self.conversation_store = AssistantConversationStore(
                 self.runtime_dir / "assistant-conversations.sqlite3"
             )
@@ -336,6 +383,7 @@ class StandaloneRuntime:
         except Exception:
             workers = (
                 (getattr(self, "market_monitor", None), "worker_running"),
+                (getattr(self, "tenant_market_monitor", None), "worker_running"),
                 (getattr(self, "notification_worker", None), "running"),
                 (getattr(self, "backup_scheduler", None), "worker_running"),
             )
@@ -357,6 +405,7 @@ class StandaloneRuntime:
         # second runtime to open the same SQLite state concurrently.
         workers = (
             (self.market_monitor, "worker_running"),
+            (self.tenant_market_monitor, "worker_running"),
             (self.notification_worker, "running"),
             (self.backup_scheduler, "worker_running"),
         )
