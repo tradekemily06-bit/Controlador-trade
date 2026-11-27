@@ -140,3 +140,24 @@ def test_disconnect_revokes_stale_connected_metadata_after_process_restart(tmp_p
     result = service.disconnect(owner, connection_id=connected["connection_id"])
     assert result["status"] == "DISCONNECTED_SESSION_NOT_BOUND"
     assert connections.list_connections(owner)[0]["status"] == "DISCONNECTED"
+
+
+def test_disconnect_service_can_revoke_account_without_vault_provisioned(tmp_path):
+    storage = SQLiteTenantStorage(tmp_path / "tenant.sqlite3")
+    connections = TenantProviderConnectionRegistry(storage)
+    sessions = TenantMarketDataSessionRegistry(connections)
+    service = TenantProviderConnectionService(connections, sessions)
+    owner = TenantContext("tenant-a", "alice")
+    saved = connections.record_verified_connection(
+        owner, provider_id="broker_a", account_alias="Conta",
+        account_reference="account-123", capabilities=["candles:read"],
+        adapter_verified=True,
+    )
+    result = service.disconnect(owner, connection_id=saved["connection_id"])
+    assert result["status"] == "DISCONNECTED_SESSION_NOT_BOUND"
+    assert connections.list_connections(owner)[0]["status"] == "DISCONNECTED"
+    with pytest.raises(RuntimeError, match="cofre de credenciais"):
+        service.connect(
+            owner, provider_id="broker_a", account_alias="Conta",
+            credential_ref="vault://tenant-a/broker-a",
+        )
