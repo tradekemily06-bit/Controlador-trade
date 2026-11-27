@@ -254,7 +254,7 @@ Multiple adapters can therefore be registered and their connection states inspec
 
 Local single-user runtime returns the registered provider list, each adapter's state, source label, selected flag and bounded health metadata. A provider is only shown as `CONNECTED` when its adapter reports a fresh heartbeat; registration alone is `REGISTERED_NOT_TESTED`. This endpoint does not probe or initialize broker terminals on every poll.
 
-Verified remote identities currently receive `USER_SCOPED_PROVIDER_CONNECTIONS_NOT_CONFIGURED` with an empty provider list. The local runtime's broker connections are global operator configuration, not evidence that a remote tenant owns or authorized those accounts. Per-user connection records, credential vault, OAuth/consent lifecycle and tenant-specific adapters are still required before remote users can see their own broker connections.
+Verified remote identities receive only their own records from the tenant-and-subject-scoped metadata registry. The registry records a connection as `CONNECTED` only after trusted internal adapter code confirms a real handshake; no browser route can assert that state. The local runtime's host-level configured adapters remain separate diagnostics and are never exposed as remote tenant-owned accounts. The registry uses atomic SQLite list mutations so concurrent account registration, reverification and disconnection do not silently overwrite one another. It is still metadata-only: credential vault, OAuth/consent lifecycle, tenant-specific live adapters and real broker handshake tests remain required before users can establish connections through the product.
 
 ### TradingView connection boundary
 
