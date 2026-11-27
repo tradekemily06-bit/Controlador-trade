@@ -1315,6 +1315,78 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(body["state"], "ADAPTER_NOT_BOUND")
         self.assertFalse(body["execution_authorized"])
 
+
+    def test_account_timeframe_subscription_routes_are_tenant_scoped(self):
+        class Monitor:
+            def subscribe(self, context, connection_id, symbol, timeframe):
+                assert context.tenant_id == "tenant-a"
+                assert context.subject_id == "alice"
+                assert connection_id == "a" * 32
+                return {"symbol": symbol, "timeframe": timeframe, "enabled": True}
+
+            def subscriptions(self, context, connection_id):
+                assert context.tenant_id == "tenant-a"
+                return [{"connection_id": connection_id, "symbol": "EURUSD", "timeframe": "M5"}]
+
+            def unsubscribe(self, context, connection_id, symbol, timeframe):
+                assert context.tenant_id == "tenant-a"
+                return True
+
+        runtime = FakeRuntime()
+        runtime.tenant_market_monitor = Monitor()
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        path = f"/api/market-data/connections/{'a' * 32}/subscriptions"
+        with patch.dict("os.environ", settings):
+            status, created = call_wsgi(
+                app, path, method="POST", body={"symbol": "EURUSD", "timeframe": "M5"},
+                remote_addr="203.0.113.12", authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+            self.assertEqual(status, "201 Created")
+            self.assertTrue(created["enabled"])
+            status, listed = call_wsgi(
+                app, path, method="GET", remote_addr="203.0.113.12",
+                authorization="Bearer shared-gateway-secret", identity_verified=True,
+                remote_user="alice", tenant_id="tenant-a",
+            )
+            self.assertEqual(status, "200 OK")
+            self.assertEqual(listed["subscriptions"][0]["timeframe"], "M5")
+            status, removed = call_wsgi(
+                app, path, method="DELETE",
+                body={"symbol": "EURUSD", "timeframe": "M5"},
+                remote_addr="203.0.113.12", authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+            self.assertEqual(status, "200 OK")
+            self.assertTrue(removed["unsubscribed"])
+
+    def test_account_timeframe_subscriptions_fail_closed_without_trusted_identity(self):
+        class Monitor:
+            def subscribe(self, *args, **kwargs):
+                raise AssertionError("must not reach monitor without identity")
+
+        runtime = FakeRuntime()
+        runtime.tenant_market_monitor = Monitor()
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, f"/api/market-data/connections/{'a' * 32}/subscriptions",
+                method="POST", body={"symbol": "EURUSD", "timeframe": "M5"},
+                remote_addr="203.0.113.13", authorization="Bearer shared-gateway-secret",
+            )
+        self.assertEqual(status, "403 Forbidden")
+        self.assertFalse(body["execution_authorized"])
+
 if __name__ == "__main__":
     unittest.main()
 
