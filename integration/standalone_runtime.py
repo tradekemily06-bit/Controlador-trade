@@ -144,6 +144,7 @@ class StandaloneRuntime:
         provider_adapter_factories: Mapping[str, Any] | None = None,
         ctrader_oauth_cipher=None,
         ctrader_oauth_exchange_code=None,
+        ctrader_oauth_refresh_tokens=None,
         ctrader_oauth_client_id: str | None = None,
         ctrader_oauth_redirect_uri: str | None = None,
     ) -> None:
@@ -180,6 +181,7 @@ class StandaloneRuntime:
             ctrader_oauth_configured = any((
                 ctrader_oauth_cipher is not None,
                 ctrader_oauth_exchange_code is not None,
+                ctrader_oauth_refresh_tokens is not None,
                 ctrader_oauth_client_id is not None,
                 ctrader_oauth_redirect_uri is not None,
             ))
@@ -187,7 +189,8 @@ class StandaloneRuntime:
             if ctrader_oauth_configured:
                 if any(value is None for value in (
                     ctrader_oauth_cipher, ctrader_oauth_exchange_code,
-                    ctrader_oauth_client_id, ctrader_oauth_redirect_uri,
+                    ctrader_oauth_refresh_tokens, ctrader_oauth_client_id,
+                    ctrader_oauth_redirect_uri,
                 )):
                     raise RuntimeError(
                         "cTrader OAuth exige cipher KMS, cliente de troca, client_id e redirect_uri"
@@ -208,6 +211,7 @@ class StandaloneRuntime:
                     client_id=ctrader_oauth_client_id,
                     redirect_uri=ctrader_oauth_redirect_uri,
                     exchange_code=ctrader_oauth_exchange_code,
+                    refresh_tokens=ctrader_oauth_refresh_tokens,
                 )
             self.tenant_market_data_sessions = TenantMarketDataSessionRegistry(
                 self.tenant_provider_connections
