@@ -20,7 +20,11 @@ def test_tradingview_secret_is_hashed_and_first_valid_alert_activates_connection
     provisioned = TenantTradingViewWebhookOnboardingService(connections, vault).provision(
         owner, account_alias="TradingView principal"
     )
-    inbox = TenantTradingViewAlertInbox(tmp_path / "alerts.sqlite3", connections, vault)
+    notified = []
+    inbox = TenantTradingViewAlertInbox(
+        tmp_path / "alerts.sqlite3", connections, vault,
+        on_event=lambda context, event: notified.append((context, event)),
+    )
     payload = {
         "secret": provisioned["webhook_secret"],
         "event_id": "event-12345678",
@@ -38,6 +42,9 @@ def test_tradingview_secret_is_hashed_and_first_valid_alert_activates_connection
                    if item["connection_id"] == provisioned["connection_id"])
     assert account["status"] == "CONNECTED"
     assert inbox.list_events(owner, provisioned["connection_id"])[0]["action"] == "BUY"
+    assert len(notified) == 1
+    assert notified[0][0] == owner
+    assert notified[0][1]["event_id"] == payload["event_id"]
     with vault._connect() as db:
         row = db.execute("SELECT secret_hash FROM tenant_tradingview_webhook_secrets").fetchone()
     assert row["secret_hash"] != provisioned["webhook_secret"]
