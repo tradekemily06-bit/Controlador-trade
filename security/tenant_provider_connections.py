@@ -231,3 +231,56 @@ class TenantProviderConnectionRegistry:
             trusted, self.STORAGE_KEY, match_field="connection_id",
             match_value=connection_id, updates={"status": "DISCONNECTED"},
         )
+
+
+    @staticmethod
+    def _credential_reference_key(connection_id: str) -> str:
+        if not isinstance(connection_id, str) or not re.fullmatch(r"[a-f0-9]{32}", connection_id):
+            raise ValueError("connection_id inválido")
+        return f"broker_provider_credential_ref_v1:{connection_id}"
+
+    def store_credential_reference(
+        self, context: TenantContext | None, *, connection_id: str,
+        credential_ref: str,
+    ) -> None:
+        """Persist only a tenant-scoped vault pointer, never credential material.
+
+        The pointer is stored under a private per-connection key and is
+        intentionally omitted from list_connections/API-safe metadata.
+        """
+        trusted = require_tenant_context(context)
+        key = self._credential_reference_key(connection_id)
+        if (
+            not isinstance(credential_ref, str)
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}", credential_ref)
+        ):
+            raise ValueError("credential_ref inválida")
+        owned = any(
+            item["connection_id"] == connection_id
+            for item in self.list_connections(trusted)
+        )
+        if not owned:
+            raise PermissionError("connection does not belong to this tenant and subject")
+        self.storage.put(trusted, key, credential_ref)
+
+    def get_credential_reference(
+        self, context: TenantContext | None, *, connection_id: str,
+    ) -> str | None:
+        """Read a private vault pointer only after tenant ownership validation."""
+        trusted = require_tenant_context(context)
+        key = self._credential_reference_key(connection_id)
+        owned = any(
+            item["connection_id"] == connection_id
+            for item in self.list_connections(trusted)
+        )
+        if not owned:
+            raise PermissionError("connection does not belong to this tenant and subject")
+        value = self.storage.get(trusted, key)
+        if value is None:
+            return None
+        if (
+            not isinstance(value, str)
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}", value)
+        ):
+            raise RuntimeError("stored provider credential reference is malformed")
+        return value
