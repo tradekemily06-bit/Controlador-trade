@@ -83,3 +83,21 @@ def test_signal_evidence_rejects_untrusted_context_shape(tmp_path):
     store = TenantSignalEvidenceStore(tmp_path / "signals.sqlite3")
     with pytest.raises(PermissionError):
         store.list_signals({"tenant_id": "tenant-a", "subject_id": "alice"})
+
+
+def test_signal_evidence_capture_is_idempotent_after_restart(tmp_path):
+    store = TenantSignalEvidenceStore(tmp_path / "signals.sqlite3")
+    owner = TenantContext("tenant-a", "alice")
+    first = _record(store, owner, "restart-duplicate")
+    repeated = _record(store, owner, "restart-duplicate")
+    assert first["audit_status"] == "RECORDED"
+    assert repeated["audit_status"] == "ALREADY_RECORDED"
+    assert len(store.list_signals(owner)) == 1
+
+
+def test_signal_evidence_id_cannot_be_reused_for_different_evidence(tmp_path):
+    store = TenantSignalEvidenceStore(tmp_path / "signals.sqlite3")
+    owner = TenantContext("tenant-a", "alice")
+    _record(store, owner, "immutable-id")
+    with pytest.raises(ValueError, match="different immutable evidence"):
+        _record(store, owner, "immutable-id", direction="VENDA")
