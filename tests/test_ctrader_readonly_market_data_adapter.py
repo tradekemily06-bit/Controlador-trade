@@ -160,6 +160,35 @@ def test_ctrader_unknown_timezone_is_exposed_as_unvalidated_not_rejected():
     assert metadata["status"] == "METADATA_AVAILABLE_NOT_CALENDAR_VALIDATED"
 
 
+def test_ctrader_d1_w1_reconciliation_report_is_observational_only():
+    transport = FakeTransport()
+    adapter = CTraderReadOnlyMarketDataAdapter(transport, account_id=123)
+    adapter.connect()
+    adapter.handshake()
+
+    report = adapter.get_session_calendar_reconciliation_report(
+        "EURUSD", "1d", lookback=30
+    )
+
+    assert report["timeframe"] == "1d"
+    assert report["sample_count"] == 1
+    assert report["observed_utc_open_patterns"]
+    assert report["status"] == "OBSERVATIONS_ONLY_NOT_VALIDATED"
+    assert report["calendar_validation_passed"] is False
+    assert report["signal_authorized"] is False
+    assert report["execution_authorized"] is False
+    assert report["session_metadata"]["status"] == "METADATA_AVAILABLE_NOT_CALENDAR_VALIDATED"
+
+
+@pytest.mark.parametrize("timeframe", ["1m", "5m", "1h"])
+def test_ctrader_calendar_reconciliation_rejects_intraday_timeframes(timeframe):
+    adapter = CTraderReadOnlyMarketDataAdapter(FakeTransport(), account_id=123)
+    with pytest.raises(ValueError, match="exclusiva para D1/W1"):
+        adapter.get_session_calendar_reconciliation_report(
+            "EURUSD", timeframe, lookback=30
+        )
+
+
 def test_ctrader_adapter_verifies_demo_and_normalizes_trendbars():
     transport = FakeTransport()
     adapter = CTraderReadOnlyMarketDataAdapter(transport, account_id=123)
