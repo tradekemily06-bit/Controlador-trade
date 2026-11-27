@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime, timedelta, timezone
 
 from integration.market_data_provider_registry import MarketDataProviderRegistry
 
@@ -55,13 +56,13 @@ class MarketDataProviderRegistryTests(unittest.TestCase):
         self.assertEqual(status["account_mode"]["status"], "NOT_PROBED")
         self.assertFalse(status["account_mode"]["execution_authorized"])
 
-    def test_provider_health_status_reports_live_heartbeat_without_account_probe(self):
+    def test_provider_health_status_requires_fresh_heartbeat_without_account_probe(self):
         class HealthyRelay(FakeProvider):
             def status(self):
                 return {
                     "connected": True,
                     "account_mode": "DEMO",
-                    "last_seen": "2026-11-27T00:00:00+00:00",
+                    "last_seen": datetime.now(timezone.utc).isoformat(),
                     "source_id": "mt5-local",
                     "stored_candles": 42,
                     "secret": "must-not-leak",
@@ -77,6 +78,44 @@ class MarketDataProviderRegistryTests(unittest.TestCase):
         self.assertNotIn("secret", provider["health"])
         self.assertEqual(status["account_mode"]["status"], "NOT_PROBED")
         self.assertFalse(provider["execution_authorized"])
+
+    def test_stale_heartbeat_is_not_reported_as_connected(self):
+        class StaleRelay(FakeProvider):
+            def status(self):
+                return {
+                    "connected": True,
+                    "last_seen": (datetime.now(timezone.utc) - timedelta(seconds=31)).isoformat(),
+                }
+
+        registry = MarketDataProviderRegistry()
+        registry.register("mt5_relay", StaleRelay(), "MT5 local relay DEMO")
+        status = registry.status(probe_account_mode=False)
+        self.assertEqual(
+            status["providers"][0]["status"],
+            "HEARTBEAT_STALE_OR_UNVERIFIED",
+        )
+
+    def test_missing_timezone_or_future_heartbeat_is_not_reported_as_connected(self):
+        class InvalidRelay(FakeProvider):
+            def __init__(self, last_seen):
+                self.last_seen = last_seen
+
+            def status(self):
+                return {"connected": True, "last_seen": self.last_seen}
+
+        for last_seen in (
+            "2026-11-27T00:00:00",
+            (datetime.now(timezone.utc) + timedelta(seconds=10)).isoformat(),
+            "not-a-timestamp",
+            None,
+        ):
+            with self.subTest(last_seen=last_seen):
+                registry = MarketDataProviderRegistry()
+                registry.register("mt5_relay", InvalidRelay(last_seen), "MT5 local relay DEMO")
+                self.assertEqual(
+                    registry.status(probe_account_mode=False)["providers"][0]["status"],
+                    "HEARTBEAT_STALE_OR_UNVERIFIED",
+                )
 
     def test_provider_health_status_reports_disconnected_heartbeat(self):
         class OfflineRelay(FakeProvider):
