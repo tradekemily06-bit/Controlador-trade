@@ -339,6 +339,35 @@ class StandaloneWSGIApplication:
                 {**result, "execution_authorized": False},
                 request_id,
             )
+
+        # cTrader redirects the authorization code to this public HTTPS callback.
+        # The one-time state resolves the owner and connection server-side.
+        if method == "GET" and path == "/api/oauth/ctrader/callback":
+            direct_tls = str(environ.get("wsgi.url_scheme", "")).lower() == "https"
+            trusted_proxy_tls = (
+                os.getenv("CONTROLADOR_TRUST_PROXY_TLS", "").strip().lower() in {"1", "true", "yes"}
+                and str(environ.get("HTTP_X_FORWARDED_PROTO", "")).lower() == "https"
+            )
+            oauth_service = getattr(self.runtime, "tenant_ctrader_oauth_service", None)
+            if not (direct_tls or trusted_proxy_tls):
+                return _json_response(start_response, HTTPStatus.UNAUTHORIZED, {"error": "callback cTrader exige HTTPS", "execution_authorized": False}, request_id)
+            if oauth_service is None:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "OAuth cTrader não configurado com KMS e cliente de troca", "execution_authorized": False}, request_id)
+            query = parse_qs(str(environ.get("QUERY_STRING", "")), keep_blank_values=True)
+            state = query.get("state", [""])[0]
+            code = query.get("code", [""])[0]
+            if query.get("error"):
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": "autorização cTrader recusada pelo titular", "execution_authorized": False}, request_id)
+            try:
+                result = oauth_service.complete_callback(state=state, code=code)
+            except PermissionError as exc:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "execution_authorized": False}, request_id)
+            except (ValueError, TypeError) as exc:
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
+            except Exception:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "falha segura ao concluir OAuth cTrader", "execution_authorized": False}, request_id)
+            return _json_response(start_response, HTTPStatus.OK, result, request_id)
+
         authorized, reason = _authorized(environ)
         if not authorized:
             return _json_response(
@@ -359,6 +388,23 @@ class StandaloneWSGIApplication:
                 },
                 request_id,
             )
+
+
+        if method == "POST" and path.startswith("/api/market-data/connections/") and path.endswith("/ctrader-oauth"):
+            context = _tenant_context_for_request(environ, reason)
+            oauth_service = getattr(self.runtime, "tenant_ctrader_oauth_service", None)
+            connection_id = path[len("/api/market-data/connections/"):-len("/ctrader-oauth")].strip("/")
+            if context is None or oauth_service is None:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "identidade ou OAuth cTrader não configurado", "execution_authorized": False}, request_id)
+            try:
+                result = oauth_service.begin(context, connection_id=connection_id)
+            except PermissionError as exc:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "execution_authorized": False}, request_id)
+            except (ValueError, TypeError) as exc:
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
+            except Exception:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "não foi possível iniciar OAuth cTrader", "execution_authorized": False}, request_id)
+            return _json_response(start_response, HTTPStatus.OK, result, request_id)
 
         if method == "POST" and path == "/api/market-data/tradingview-webhook-connections":
             context = _tenant_context_for_request(environ, reason)
