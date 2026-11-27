@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from typing import Any
 
 from core.notification_outbox import PersistentNotificationOutbox, NotificationSink, redact_delivery_error
@@ -39,6 +40,7 @@ class NotificationOutboxWorker:
         self._lock = threading.Lock()
         self._last_error: str | None = None
         self._last_result: dict[str, int] | None = None
+        self._last_cycle_at: float | None = None
 
     def start(self) -> None:
         with self._lock:
@@ -56,31 +58,52 @@ class NotificationOutboxWorker:
         while not self._stop.is_set():
             try:
                 result = self.outbox.dispatch_due(self.sink, limit=self.batch_size)
-                self._last_result = {
-                    "claimed": result.claimed,
-                    "delivered": result.delivered,
-                    "retried": result.retried,
-                    "dead_lettered": result.dead_lettered,
-                }
-                self._last_error = None
+                with self._lock:
+                    self._last_result = {
+                        "claimed": result.claimed,
+                        "delivered": result.delivered,
+                        "retried": result.retried,
+                        "dead_lettered": result.dead_lettered,
+                    }
+                    self._last_error = None
+                    self._last_cycle_at = time.time()
             except Exception as exc:
-                self._last_error = redact_delivery_error(exc)
+                with self._lock:
+                    self._last_error = redact_delivery_error(exc)
+                    self._last_cycle_at = time.time()
             self._stop.wait(self.poll_interval_seconds)
 
     def stop(self, timeout: float = 5.0) -> None:
         self._stop.set()
-        thread = self._thread
+        with self._lock:
+            thread = self._thread
         if thread is not None:
             thread.join(timeout=max(0.0, timeout))
-            if not thread.is_alive():
-                self._thread = None
+            with self._lock:
+                if self._thread is thread and not thread.is_alive():
+                    self._thread = None
 
     def status(self) -> dict[str, Any]:
-        thread = self._thread
+        with self._lock:
+            thread = self._thread
+            running = bool(thread is not None and thread.is_alive())
+            last_error = self._last_error
+            last_result = dict(self._last_result) if self._last_result is not None else None
+            last_cycle_at = self._last_cycle_at
+            stop_requested = self._stop.is_set()
+        state = (
+            "STOPPING" if stop_requested and running
+            else "DEGRADED" if running and last_error
+            else "RUNNING" if running
+            else "STOPPED"
+        )
         return {
             "configured": True,
-            "running": bool(thread is not None and thread.is_alive()),
-            "last_error": self._last_error,
-            "last_result": dict(self._last_result) if self._last_result is not None else None,
+            "running": running,
+            "state": state,
+            "stop_requested": stop_requested,
+            "last_error": last_error,
+            "last_result": last_result,
+            "last_cycle_at": last_cycle_at,
             "outbox": self.outbox.status_counts(),
         }
