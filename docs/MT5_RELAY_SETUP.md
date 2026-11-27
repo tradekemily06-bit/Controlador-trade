@@ -59,6 +59,18 @@ Instale as dependências compatíveis com o terminal MetaTrader 5 e configure no
 
 Inicie o agente com `python -m integration.mt5_local_bridge_agent`. Com `CONNECTION_ID`, token e source ID próprios, ele envia para a rota tenant-scoped da conta; execute uma instância do agente por conta/terminal, cada uma com suas próprias variáveis. Sem `CONNECTION_ID`, ele usa apenas o endpoint legado de instância única. O agente confirma DEMO antes de publicar cada lote. Mantenha o processo local e o terminal MT5 em execução para que novos dados cheguem ao servidor.
 
+## Semântica de tempo dos candles MT5
+
+O campo `rate["time"]` retornado pelo pacote Python MetaTrader 5 representa o horário UTC de abertura da barra, em segundos desde Unix epoch. O adapter converte esse instante diretamente para um `datetime` UTC; não aplica deslocamento local do Windows nem tenta converter o fuso horário visual do servidor da corretora.
+
+Essa regra de timestamp é documentada pela MetaQuotes para `copy_rates_from`, `copy_rates_from_pos` e `copy_rates_range`:
+- https://www.mql5.com/pt/docs/python_metatrader5/mt5copyratesfrom_py
+- https://www.mql5.com/pt/docs/python_metatrader5/mt5copyratesfrompos_py
+
+**UTC do timestamp não equivale a calendário de sessão confirmado.** O instante UTC informa quando a barra abriu, mas não define sozinho o horário em que o broker encerra cada sessão diária ou semanal, nem feriados, pausas, horário de verão ou reabertura de mercado. Por isso, D1 e W1 continuam bloqueados pelo monitor até que o adapter forneça um calendário de sessão verificável para a conta/provedor. Não derive a próxima validade de D1/W1 somando 24 horas ou 7 dias ao timestamp.
+
+M1, M5 e demais períodos intradiários usam timestamps UTC e seus ciclos próprios. A barra em formação é excluída por `copy_rates_from_pos(..., start_pos=1, ...)`; somente barras fechadas são enviadas para análise.
+
 ## Verificação e falhas
 
 1. Consulte `GET /api/bridge/mt5/status` no contexto de operador local.
