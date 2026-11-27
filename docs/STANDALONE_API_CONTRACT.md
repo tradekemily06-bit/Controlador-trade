@@ -19,7 +19,7 @@ The backend now defines a tenant-and-subject-scoped subscription registry contra
 
 The registry refuses to initialize unless its injected store explicitly declares both `production_durable=True` and `encrypted_at_rest=True`. The current local SQLite tenant store does not satisfy this contract and is not adapted as a push-subscription store. Device IDs are opaque owner-local record keys, never identities or authorization evidence.
 
-This is a backend foundation contract only. No HTTP registration/revocation route is exposed yet; no encrypted production store, VAPID key management, Web Push sender, hosted outbox worker, browser permission flow or deployed frontend integration is configured. Push delivery remains disabled until those components and real-device tenant-isolation tests are complete.
+This is a backend foundation contract only. No HTTP registration/revocation route is exposed yet; no encrypted production store, VAPID key management, Web Push sender, hosted outbox worker, browser permission flow or deployed frontend integration is configured. Push delivery remains disabled until those components and real-device tenant-isolation tests are complete. The required sender security, SSRF/DNS-rebinding defenses, retry semantics, payload minimization and release gates are specified in [WEB_PUSH_DELIVERY_SECURITY.md](WEB_PUSH_DELIVERY_SECURITY.md).
 
 ## Core application
 
