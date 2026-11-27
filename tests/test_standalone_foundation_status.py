@@ -69,6 +69,8 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
             "DURABLE_SHARED_OAUTH_STORAGE_WITH_KMS",
             result["production_release_blockers"],
         )
+        self.assertIn("EXTERNAL_NOTIFICATION_DELIVERY_PROVIDER", result["production_release_blockers"])
+        self.assertIn("TRUSTED_IDENTITY_PROVIDER_RUNTIME_VERIFICATION", result["production_release_blockers"])
         self.assertFalse(result["execution_authorized"])
 
     def test_missing_fiscal_pending_queue_degrades_fiscal_store(self):
