@@ -51,6 +51,7 @@ def test_begin_creates_state_bound_authorization_url_without_connecting(tmp_path
     result = service.begin(owner, connection_id=account["connection_id"])
     query = parse_qs(urlparse(result["authorization_url"]).query)
     assert query["client_id"] == ["client-id"]
+    assert query["scope"] == ["accounts"]
     assert query["redirect_uri"] == ["https://app.example.com/oauth/ctrader/callback"]
     assert query["state"][0]
     assert result["state_reveal"] == "ONE_TIME"
