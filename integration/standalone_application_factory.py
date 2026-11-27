@@ -44,7 +44,7 @@ def build_standalone_application(
     market_analyzer: Any | None = None,
     market_data_registry: Any | None = None,
 ) -> UnifiedEcosystemApplication:
-    """Compose the seven areas around one shared intelligence coordinator.
+    """Compose the six approved areas around one shared intelligence coordinator.
 
     This factory is read-only with respect to trading and fiscal records.
     Fiscal write workflows require separate authenticated application actions.
@@ -105,6 +105,8 @@ def build_standalone_application(
                 "reporting_status": "DECISION_REPORT_READY",
                 "execution_authorized": False,
             })
+        if operation in {"memory", "history", "decision_memory"}:
+            return memory(task, context, shared)
         if operation in {"news", "market_news"}:
             limit = context.get("limit", 10)
             if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
@@ -269,7 +271,7 @@ def build_standalone_application(
     app.register_handler(ApplicationArea.COMMAND_CABIN, command_cabin)
     app.register_handler(ApplicationArea.ANALYSIS, analysis)
     app.register_handler(ApplicationArea.STUDY, study)
-    app.register_handler(ApplicationArea.MEMORY, memory)
+    # Memory is an internal Analysis capability, not a navigation area.
     # Register every visible area even when a dependency is absent. The handler
     # returns an explicit NOT_CONFIGURED state instead of making the area vanish
     # from dispatch or appear as an unknown route.
