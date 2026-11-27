@@ -91,3 +91,15 @@ def test_token_vault_rejects_expired_tokens_and_wrong_provider(tmp_path):
         pass
     else:
         raise AssertionError("token provider mismatch must be rejected")
+
+
+def test_token_vault_can_revoke_after_owned_connection_is_disconnected(tmp_path):
+    owner = TenantContext("tenant-a", "alice")
+    connections = TenantProviderConnectionRegistry(SQLiteTenantStorage(tmp_path / "tenant.sqlite3"))
+    account = _account(connections, owner, "disconnected")
+    vault = TenantOAuthTokenVault(tmp_path / "tokens.sqlite3", connections, TestOnlyCipher())
+    vault.store(owner, connection_id=account["connection_id"], provider_id="ctrader_open_api",
+                token_set={"access_token": "revocation-secret"})
+    assert connections.mark_disconnected(owner, connection_id=account["connection_id"]) is True
+    assert vault.revoke(owner, account["connection_id"]) is True
+    assert vault.resolve(owner, account["connection_id"]) is None
