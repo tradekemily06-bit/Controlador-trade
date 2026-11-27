@@ -106,6 +106,19 @@ def test_probability_store_rejects_non_finite_and_unrepresentable_values(tmp_pat
     assert store.calibration_records(owner) == []
 
 
+def test_forecast_store_rejects_tampered_noncanonical_tenant_context(tmp_path):
+    store = TenantForecastAuditStore(tmp_path / "forecast-identity-tamper.sqlite3")
+    owner = TenantContext("tenant-a", "alice")
+    object.__setattr__(owner, "tenant_id", " tenant-a ")
+    with pytest.raises(PermissionError):
+        store.calibration_records(owner)
+
+    owner = TenantContext("tenant-a", "alice")
+    object.__setattr__(owner, "subject_id", "alice\\n")
+    with pytest.raises(PermissionError):
+        store.calibration_records(owner)
+
+
 def test_invalid_probability_timeframe_and_identity_are_rejected(tmp_path):
     store = TenantForecastAuditStore(tmp_path / "forecast-audit.sqlite3")
     owner = TenantContext("tenant-a", "alice")
