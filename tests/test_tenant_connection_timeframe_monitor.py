@@ -1729,3 +1729,20 @@ def test_live_stream_discards_malformed_candle_without_breaking_worker(
     assert monitor.run_once(now=datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc)) == []
     assert analyzer.calls == 0
     assert monitor.subscriptions(owner)[0]["last_status"] == "WAITING_FOR_LIVE_CLOSED_CANDLE"
+
+
+def test_expected_closed_candle_normalizes_non_utc_clock_to_utc(tmp_path):
+    from datetime import timedelta
+
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "non-utc-close.sqlite3", Sessions(),
+        lambda _session, _context: Analyzer(None, "AGUARDAR"),
+        close_grace_seconds=3,
+    )
+    local_now = datetime(
+        2026, 11, 27, 9, 6, 3,
+        tzinfo=timezone(timedelta(hours=-3)),
+    )
+    assert monitor.expected_last_closed_candle(
+        "M5", local_now
+    ) == datetime(2026, 11, 27, 12, 0, tzinfo=timezone.utc)
