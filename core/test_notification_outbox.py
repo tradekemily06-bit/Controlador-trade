@@ -178,3 +178,22 @@ def test_outbox_owner_cannot_acknowledge_after_lease_expiry_without_reclaim(tmp_
     reclaimed = outbox.claim_due(now=17, lease_seconds=30)
     assert len(reclaimed) == 1
     assert reclaimed[0].lease_token != owner.lease_token
+
+
+def test_crashed_worker_reclaims_consume_retry_budget_and_dead_letter(tmp_path):
+    outbox = PersistentNotificationOutbox(
+        tmp_path / "outbox.sqlite3", max_attempts=2
+    )
+    outbox.enqueue("crash-loop-event", {"title": "Alert"}, now=10)
+
+    first_owner = outbox.claim_due(now=11, lease_seconds=5)[0]
+    assert first_owner.attempts == 1
+    # The first worker crashes. A second worker gets one final attempt.
+    second_owner = outbox.claim_due(now=17, lease_seconds=5)[0]
+    assert second_owner.attempts == 2
+
+    # The second worker also crashes. The next poll must dead-letter the event
+    # rather than retrying forever or dispatching beyond max_attempts.
+    assert outbox.claim_due(now=23, lease_seconds=5) == ()
+    assert outbox.status_counts()["DEAD"] == 1
+    assert outbox.status_counts()["IN_FLIGHT"] == 0
