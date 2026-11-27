@@ -1633,3 +1633,55 @@ class PublicBindSecurityTests(unittest.TestCase):
             )
         self.assertEqual(status, "400 Bad Request")
         self.assertIn("somente account_alias", body["error"])
+
+
+    def test_ctrader_demo_account_listing_is_tenant_scoped(self):
+        class AccountService:
+            def __init__(self): self.calls = []
+            def list_demo_accounts(self, context, *, connection_id):
+                self.calls.append((context.tenant_id, context.subject_id, connection_id))
+                return {
+                    "connection_id": connection_id,
+                    "accounts": [{"account_id": 123, "account_mode": "DEMO"}],
+                    "real_accounts_exposed": False,
+                    "execution_authorized": False,
+                }
+        runtime = FakeRuntime()
+        runtime.tenant_ctrader_account_service = AccountService()
+        app = StandaloneWSGIApplication(runtime)
+        with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
+            status, body = call_wsgi(
+                app, "/api/market-data/connections/" + "a" * 32 + "/ctrader-accounts"
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["accounts"], [{"account_id": 123, "account_mode": "DEMO"}])
+        self.assertFalse(body["real_accounts_exposed"])
+        self.assertEqual(runtime.tenant_ctrader_account_service.calls, [
+            ("local-single-user", "local-owner", "a" * 32)
+        ])
+
+    def test_ctrader_account_selection_accepts_only_account_id(self):
+        class AccountService:
+            def __init__(self): self.calls = []
+            def connect_demo(self, context, *, connection_id, account_id):
+                self.calls.append((context.tenant_id, context.subject_id, connection_id, account_id))
+                return {
+                    "connection_id": connection_id,
+                    "status": "CONNECTED",
+                    "account_mode": "DEMO",
+                    "execution_authorized": False,
+                }
+        runtime = FakeRuntime()
+        runtime.tenant_ctrader_account_service = AccountService()
+        app = StandaloneWSGIApplication(runtime)
+        with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
+            status, body = call_wsgi(
+                app, "/api/market-data/connections/" + "b" * 32 + "/ctrader-account",
+                method="POST", body={"account_id": 123},
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["account_mode"], "DEMO")
+        self.assertFalse(body["execution_authorized"])
+        self.assertEqual(runtime.tenant_ctrader_account_service.calls, [
+            ("local-single-user", "local-owner", "b" * 32, 123)
+        ])
