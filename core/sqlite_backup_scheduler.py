@@ -62,7 +62,7 @@ class SQLiteBackupScheduler:
         self._stop.set()
         thread = self._thread
         if thread is not None:
-            thread.join(timeout=max(0.0, timeout))
+            thread.join(timeout=None if timeout is None else max(0.0, timeout))
         with self._lock:
             if thread is None or not thread.is_alive():
                 self._thread = None
