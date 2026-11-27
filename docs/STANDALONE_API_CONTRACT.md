@@ -221,3 +221,14 @@ The API is device-neutral: a verified user may call it from a desktop browser, m
 - Push payloads should be privacy-minimal (event ID and generic alert), with authenticated details fetched from the API after the user opens the app. Never include fiscal balances, credentials, or full private assistant content in a push payload.
 
 This contract preserves one account and one backend across desktop and mobile; it does not create separate device accounts or a second mobile-only product.
+
+## PWA assets prepared in this repository
+
+The `web/` directory now includes:
+- `manifest.webmanifest` with standalone display mode and a scalable application icon.
+- `pwa/icon.svg` as the public install icon.
+- `service-worker.js` with a strict public-asset cache allowlist; it never caches navigation HTML, API responses, market data, fiscal data, assistant conversations, or private notifications.
+- `pwa-registration.js` as a no-layout-change registration module for the deployed frontend shell.
+- `pwa_foundation_test.py` to protect the manifest, registration and cache-safety contract.
+
+These are prepared integration assets, not proof of a deployed installable app. The registration module is intentionally not injected into the Lovable frontend; that connection must happen only when the approved frontend is explicitly integrated. The current API repository does not yet serve these assets as the public production origin. Push event handling is prepared in the service worker, but server-side push subscriptions, encrypted subscription storage, VAPID signing/sending, and device delivery validation remain unimplemented.
