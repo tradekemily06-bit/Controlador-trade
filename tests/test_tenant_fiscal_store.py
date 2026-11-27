@@ -97,3 +97,16 @@ def test_tenant_fiscal_store_isolates_ledger_and_domestic_queue(tmp_path):
         for item in alice.domestic_pending.list_pending(alice.owner_id)["items"]
     ] == ["ALICE-DOMESTIC"]
     assert bob.domestic_pending.list_pending(bob.owner_id)["items"] == []
+
+
+def test_tenant_fiscal_factory_readiness_does_not_claim_remote_or_production_ready(tmp_path):
+    factory = TenantFiscalStoreFactory(tmp_path)
+    status = factory.readiness()
+    assert status["status"] == "LOCAL_TENANT_FISCAL_SHARDED_SQLITE_PRIMITIVE"
+    assert status["tenant_context_required"] is True
+    assert status["separate_database_per_tenant_and_subject"] is True
+    assert status["remote_request_wiring"] == "NOT_ENABLED"
+    assert status["production_durable"] is False
+    assert status["backup_restore"] == "NOT_VERIFIED"
+    assert status["production_ready"] is False
+    assert status["execution_authorized"] is False
