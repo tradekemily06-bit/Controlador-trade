@@ -99,7 +99,11 @@ class CTraderReadOnlyMarketDataAdapter:
         returned_id = _field(account, "account_id")
         if returned_id is None:
             returned_id = _field(account, "ctidTraderAccountId")
-        if returned_id is None or int(returned_id) != self.account_id:
+        try:
+            verified_account_id = _strict_integer(returned_id)
+        except ValueError as exc:
+            raise PermissionError("cTrader retornou um identificador de conta inválido") from exc
+        if verified_account_id != self.account_id:
             raise PermissionError("cTrader retornou uma conta diferente da solicitada")
         if is_live is not False:
             raise PermissionError("este adaptador aceita somente conta cTrader DEMO confirmada")
