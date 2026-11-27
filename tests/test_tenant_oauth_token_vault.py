@@ -103,3 +103,33 @@ def test_token_vault_can_revoke_after_owned_connection_is_disconnected(tmp_path)
     assert connections.mark_disconnected(owner, connection_id=account["connection_id"]) is True
     assert vault.revoke(owner, account["connection_id"]) is True
     assert vault.resolve(owner, account["connection_id"]) is None
+
+
+def test_refresh_candidates_lists_only_owned_active_connections_near_expiry(tmp_path):
+    owner = TenantContext("tenant-a", "alice")
+    other = TenantContext("tenant-b", "bob")
+    connections = TenantProviderConnectionRegistry(SQLiteTenantStorage(tmp_path / "tenant.sqlite3"))
+    due = _account(connections, owner, "due")
+    future = _account(connections, owner, "future")
+    foreign = _account(connections, other, "foreign")
+    vault = TenantOAuthTokenVault(tmp_path / "tokens.sqlite3", connections, TestOnlyCipher())
+    vault.store(
+        owner, connection_id=due["connection_id"], provider_id="ctrader_open_api",
+        token_set={"access_token": "due-access", "refresh_token": "due-refresh"},
+        expires_at=(datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
+    )
+    vault.store(
+        owner, connection_id=future["connection_id"], provider_id="ctrader_open_api",
+        token_set={"access_token": "future-access", "refresh_token": "future-refresh"},
+        expires_at=(datetime.now(timezone.utc) + timedelta(hours=2)).isoformat(),
+    )
+    vault.store(
+        other, connection_id=foreign["connection_id"], provider_id="ctrader_open_api",
+        token_set={"access_token": "foreign-access", "refresh_token": "foreign-refresh"},
+        expires_at=(datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat(),
+    )
+
+    result = vault.refresh_candidates(owner, within_seconds=900)
+    assert [item["connection_id"] for item in result] == [due["connection_id"]]
+    assert "access_token" not in result[0]
+    assert "refresh_token" not in result[0]
