@@ -109,3 +109,13 @@ def test_boundary_rejects_boolean_and_text_market_prices(bad_value):
 
     with pytest.raises(ValueError, match="numérico inválido"):
         boundary.fetch(BrokerMarketDataRequest("EURUSD", "1m", 1))
+
+
+def test_boundary_rejects_naive_snapshot_received_at():
+    boundary = BrokerMarketDataBoundary(FakeProvider([candle_at(0)]), "demo-broker")
+
+    with pytest.raises(ValueError, match="received_at"):
+        boundary.fetch(
+            BrokerMarketDataRequest("EURUSD", "1m", 1),
+            received_at=datetime(2026, 9, 9, 12, 0),
+        )
