@@ -101,15 +101,30 @@ class TenantMT5RelayRegistry:
     def ingest(
         self, context: TenantContext, connection_id: str, payload: dict[str, Any]
     ) -> dict[str, Any]:
-        _, store = self._resolve(context, connection_id, allow_pending=True)
-        # A first valid, fresh DEMO batch is the relay handshake. Only then
-        # may the connection be promoted from PENDING to CONNECTED.
+        owner = require_tenant_context(context)
+        _, store = self._resolve(owner, connection_id, allow_pending=True)
+        account = next((
+            item for item in self.connections.list_connections(owner)
+            if item["connection_id"] == connection_id
+        ), None)
+        if account is None or account.get("provider_id") != "mt5_relay":
+            raise PermissionError("conexão MT5 não pertence a esta identidade")
+        account_reference = payload.get("account_reference") if isinstance(payload, dict) else None
+        if not isinstance(account_reference, str) or not re.fullmatch(r"mt5_[a-f0-9]{32}", account_reference):
+            raise PermissionError("referência pseudônima da conta MT5 ausente ou inválida")
+        if account.get("status") == "CONNECTED" and account.get("account_reference") != account_reference:
+            raise PermissionError("o terminal MT5 não corresponde à conta vinculada a esta conexão")
+        # The first valid, fresh DEMO batch binds the actual terminal identity.
         result = store.ingest(payload)
-        promoted = self.connections.mark_connected_after_relay_handshake(
-            context, connection_id=connection_id
-        )
-        if not promoted:
-            raise PermissionError("conexão MT5 não pôde ser promovida após o handshake")
+        if account.get("status") == "PENDING":
+            promoted = self.connections.mark_connected_after_provider_handshake(
+                owner,
+                connection_id=connection_id,
+                account_reference=account_reference,
+                capabilities=["candles:read", "account-mode:demo"],
+            )
+            if not promoted:
+                raise PermissionError("conexão MT5 não pôde ser promovida após o handshake")
         if self.sessions is not None:
             owner = require_tenant_context(context)
             key = (owner.tenant_id, owner.subject_id, connection_id)
