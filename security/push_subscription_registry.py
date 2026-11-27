@@ -21,10 +21,17 @@ _ALLOWED_PUSH_HOSTS = (
 
 def _is_allowed_push_host(hostname: str) -> bool:
     normalized = hostname.rstrip(".").lower()
-    # Browser push endpoints are provider-issued URLs. Accept only the exact
-    # documented service hosts; suffix matching would also admit arbitrary
-    # subdomains that are not part of the supported endpoint contract.
-    return normalized in _ALLOWED_PUSH_HOSTS
+    # Providers use a small set of documented host patterns: FCM and Apple
+    # use fixed hosts; Mozilla uses one regional/cluster label; WNS uses
+    # numbered service hosts. Never accept arbitrary nested subdomains.
+    if normalized in {"fcm.googleapis.com", "web.push.apple.com"}:
+        return True
+    labels = normalized.split(".")
+    if len(labels) == 4 and labels[1:] == ["push", "services", "mozilla.com"]:
+        return bool(re.fullmatch(r"[a-z0-9-]+", labels[0]))
+    if len(labels) == 4 and labels[1:] == ["notify", "windows", "com"]:
+        return bool(re.fullmatch(r"wns[0-9]+", labels[0]))
+    return False
 
 
 class EncryptedPushSubscriptionStore(Protocol):
