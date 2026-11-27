@@ -936,7 +936,7 @@ def test_expired_notification_lease_is_not_counted_as_delivered(tmp_path):
 
 def test_tenant_notification_outbox_dead_letters_after_bounded_attempts(tmp_path):
     owner = TenantContext("tenant-a", "alice")
-    connection = _id("g")
+    connection = _id("b")
     sessions = Sessions()
     sessions.add(owner, connection, "broker_a")
     now = datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc)
