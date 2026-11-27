@@ -524,6 +524,36 @@ class StandaloneWSGIApplication:
                 return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
             return _json_response(start_response, HTTPStatus.OK, {"events": events, "read_only": True, "execution_authorized": False}, request_id)
 
+        if method == "GET" and path == "/api/market-data/connections":
+            try:
+                context = _tenant_context_for_request(environ, reason)
+            except Exception:
+                context = None
+            registry = getattr(self.runtime, "tenant_market_data_sessions", None)
+            if context is None or registry is None:
+                return _json_response(
+                    start_response, HTTPStatus.FORBIDDEN,
+                    {"error": "identidade confiável ou registro de sessões indisponível", "execution_authorized": False},
+                    request_id,
+                )
+            try:
+                accounts = registry.status(context)
+            except PermissionError:
+                return _json_response(
+                    start_response, HTTPStatus.FORBIDDEN,
+                    {"error": "identidade confiável inválida", "execution_authorized": False},
+                    request_id,
+                )
+            return _json_response(
+                start_response, HTTPStatus.OK,
+                {
+                    "connections": accounts,
+                    "count": len(accounts),
+                    "execution_authorized": False,
+                },
+                request_id,
+            )
+
         if method == "POST" and path == "/api/market-data/connections":
             try:
                 context = _tenant_context_for_request(environ, reason)
