@@ -74,3 +74,38 @@ def test_source_and_provider_are_required():
         BrokerMarketDataBoundary(None, "demo-broker")
     with pytest.raises(ValueError):
         BrokerMarketDataBoundary(FakeProvider([]), " ")
+
+
+def test_boundary_canonicalizes_timeframe_before_provider_request():
+    class CapturingProvider(FakeProvider):
+        seen = None
+        def fetch_market_data(self, request):
+            self.seen = request
+            return self.candles
+
+    provider = CapturingProvider([candle_at(0), candle_at(1)])
+    result = BrokerMarketDataBoundary(provider, "demo-broker").fetch(
+        BrokerMarketDataRequest("eurusd", "M1", 2), received_at=BASE,
+    )
+
+    assert provider.seen.timeframe == "1m"
+    assert provider.seen.symbol == "EURUSD"
+    assert result.timeframe == "1m"
+    assert result.symbol == "EURUSD"
+
+
+def test_boundary_rejects_naive_candle_timestamp():
+    naive = Candle(datetime(2026, 9, 9, 12, 0), 100, 101, 99, 100, 10)
+    boundary = BrokerMarketDataBoundary(FakeProvider([naive]), "demo-broker")
+
+    with pytest.raises(ValueError, match="sem fuso"):
+        boundary.fetch(BrokerMarketDataRequest("EURUSD", "1m", 1))
+
+
+@pytest.mark.parametrize("bad_value", [True, "100"])
+def test_boundary_rejects_boolean_and_text_market_prices(bad_value):
+    invalid = Candle(BASE, bad_value, 101, 99, 100, 10)
+    boundary = BrokerMarketDataBoundary(FakeProvider([invalid]), "demo-broker")
+
+    with pytest.raises(ValueError, match="numérico inválido"):
+        boundary.fetch(BrokerMarketDataRequest("EURUSD", "1m", 1))
