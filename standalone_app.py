@@ -275,6 +275,23 @@ class StandaloneWSGIApplication:
                 request_id,
             )
 
+        if method == "GET" and path == "/api/backup/status":
+            scheduler = getattr(self.runtime, "backup_scheduler", None)
+            payload = (
+                scheduler.status()
+                if scheduler is not None
+                else {
+                    "provider": "LOCAL_SQLITE_SCHEDULED",
+                    "enabled": False,
+                    "worker_running": False,
+                    "status": "NOT_CONFIGURED",
+                    "off_host_replication": "NOT_CONFIGURED",
+                    "deployment_continuity": "PROCESS_LIFETIME_ONLY",
+                    "execution_authorized": False,
+                }
+            )
+            return _json_response(start_response, HTTPStatus.OK, payload, request_id)
+
         if method == "GET" and path == "/api/readiness":
             architecture = self.runtime.application.architecture()
             ecosystem = self.runtime.ecosystem_service
@@ -289,6 +306,16 @@ class StandaloneWSGIApplication:
             readiness = {
                 "identity": IdentityPolicy().status(
                     remote_identity_middleware_configured=identity_middleware
+                ),
+                "backup_scheduler": (
+                    self.runtime.backup_scheduler.status()
+                    if getattr(self.runtime, "backup_scheduler", None) is not None
+                    else {
+                        "enabled": False,
+                        "status": "NOT_CONFIGURED",
+                        "off_host_replication": "NOT_CONFIGURED",
+                        "deployment_continuity": "PROCESS_LIFETIME_ONLY",
+                    }
                 ),
                 "architecture": architecture.get("architecture", "UNKNOWN"),
                 "areas": len(architecture.get("application_areas", [])),
