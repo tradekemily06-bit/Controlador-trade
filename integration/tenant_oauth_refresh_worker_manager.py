@@ -87,6 +87,35 @@ class TenantOAuthRefreshWorkerManager:
             self._workers.clear()
             self._owners.clear()
 
+    def owner_status(self, owner: TenantContext) -> dict[str, Any]:
+        """Return refresh-worker health only for the exact trusted owner."""
+        if not isinstance(owner, TenantContext):
+            raise ValueError("trusted tenant context is required")
+        with self._lock:
+            worker = self._workers.get(owner.key)
+        if worker is None:
+            return {
+                "configured": self.oauth_service is not None,
+                "registered": False,
+                "running": False,
+                "state": "OWNER_NOT_REGISTERED",
+                "execution_authorized": False,
+            }
+        status = worker.status()
+        return {
+            "configured": status["configured"],
+            "registered": True,
+            "running": status["running"],
+            "last_scan_at": status["last_scan_at"],
+            "last_error": status["last_error"],
+            "last_result": status["last_result"],
+            "refresh_within_seconds": status["refresh_within_seconds"],
+            "state": "RUNNING" if status["running"] and status["last_error"] is None else (
+                "DEGRADED" if status["last_error"] else "STOPPED"
+            ),
+            "execution_authorized": False,
+        }
+
     @property
     def running(self) -> bool:
         with self._lock:
