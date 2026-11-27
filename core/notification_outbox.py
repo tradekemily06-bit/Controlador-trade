@@ -185,6 +185,7 @@ class PersistentNotificationOutbox:
                     now: float | None = None) -> str:
         current = time() if now is None else float(now)
         with self._lock, self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
             row = db.execute(
                 "SELECT attempts FROM notification_outbox "
                 "WHERE idempotency_key=? AND status='IN_FLIGHT' AND lease_token=? "
@@ -204,7 +205,7 @@ class PersistentNotificationOutbox:
                     self.max_backoff_seconds,
                 )
                 available_at = current + delay
-            db.execute(
+            cursor = db.execute(
                 """
                 UPDATE notification_outbox
                 SET status=?, available_at=?, lease_until=NULL, lease_token=NULL, last_error=?
@@ -213,6 +214,8 @@ class PersistentNotificationOutbox:
                 """,
                 (status, available_at, redact_delivery_error(error), idempotency_key, lease_token, current),
             )
+            if cursor.rowcount != 1:
+                raise ValueError("notification lease ownership was lost")
         return status
 
     def dispatch_due(self, sink: NotificationSink, *, limit: int = 50,
