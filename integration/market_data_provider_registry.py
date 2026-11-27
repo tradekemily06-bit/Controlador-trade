@@ -67,20 +67,40 @@ class MarketDataProviderRegistry:
             if probe_account_mode
             else {"mode": None, "status": "NOT_PROBED", "execution_authorized": False}
         )
+        providers = []
+        for item in self._providers.values():
+            provider_status = "REGISTERED_NOT_TESTED"
+            health: dict[str, Any] = {}
+            status_method = getattr(item.provider, "status", None)
+            if callable(status_method):
+                try:
+                    reported = status_method()
+                    if isinstance(reported, dict):
+                        # Expose only bounded, non-secret connection metadata.
+                        health = {
+                            key: reported[key]
+                            for key in ("connected", "account_mode", "last_seen", "source_id", "stored_candles")
+                            if key in reported
+                        }
+                        if reported.get("connected") is True:
+                            provider_status = "CONNECTED"
+                        elif reported.get("connected") is False:
+                            provider_status = "DISCONNECTED"
+                except Exception:
+                    provider_status = "STATUS_ERROR"
+            providers.append({
+                "provider_id": item.provider_id,
+                "source": item.source,
+                "status": provider_status,
+                "health": health,
+                "selected": item.provider_id == self._selected,
+                "read_only": True,
+                "execution_authorized": False,
+            })
         return {
             "selected_provider": self._selected,
             "account_mode": account_mode,
-            "providers": [
-                {
-                    "provider_id": item.provider_id,
-                    "source": item.source,
-                    "status": "REGISTERED_NOT_TESTED",
-                    "selected": item.provider_id == self._selected,
-                    "read_only": True,
-                    "execution_authorized": False,
-                }
-                for item in self._providers.values()
-            ],
+            "providers": providers,
             "count": len(self._providers),
             "provider_registered": bool(self._providers),
         }
