@@ -437,10 +437,22 @@ class TenantConnectionTimeframeMonitor:
             output.append(item)
         return output
 
-    def latest_results(self, context: TenantContext, connection_id: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
+    def latest_results(
+        self, context: TenantContext, connection_id: str | None = None,
+        limit: int = 50, *, now: datetime | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return history while fail-closing signals whose candle cycle has ended.
+
+        A result remains current only while its candle is the latest fully
+        closed candle for that exact timeframe. Historical records are retained,
+        but an expired direction is exposed as AGUARDAR to live consumers.
+        """
         owner = self._owner(context)
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
             raise ValueError("limit deve ser inteiro de 1 a 200")
+        current = now or datetime.now(timezone.utc)
+        if current.tzinfo is None:
+            raise ValueError("now deve conter fuso horário")
         args: list[Any] = [owner.tenant_id, owner.subject_id]
         sql = """
             SELECT connection_id, symbol, timeframe, candle_at, result_json, recorded_at
@@ -454,7 +466,39 @@ class TenantConnectionTimeframeMonitor:
         args.append(limit)
         with self._lock, self._connect() as db:
             rows = db.execute(sql, args).fetchall()
-        return [{**dict(row), "result": json.loads(row["result_json"])} for row in rows]
+
+        output: list[dict[str, Any]] = []
+        for raw in rows:
+            item = dict(raw)
+            result = json.loads(item["result_json"])
+            try:
+                candle_at = datetime.fromisoformat(
+                    str(item["candle_at"]).replace("Z", "+00:00")
+                )
+                if candle_at.tzinfo is None:
+                    raise ValueError("candle timestamp must be timezone-aware")
+                timeframe = normalize_timeframe(item["timeframe"])
+                interval = get_timeframe_interval(timeframe)
+                expected = self.expected_last_closed_candle(timeframe, current)
+                valid = candle_at.astimezone(timezone.utc) == expected
+                item["signal_valid"] = valid
+                item["signal_validity"] = "VALID" if valid else "EXPIRED"
+                item["signal_valid_until"] = (
+                    candle_at.astimezone(timezone.utc) + interval * 2
+                ).isoformat()
+                if not valid:
+                    result["original_signal"] = result.get("signal", "AGUARDAR")
+                    result["signal"] = "AGUARDAR"
+                    result["status"] = "SIGNAL_EXPIRED"
+            except (TypeError, ValueError, OverflowError):
+                item["signal_valid"] = False
+                item["signal_validity"] = "INVALID_TIMESTAMP_OR_TIMEFRAME"
+                result["original_signal"] = result.get("signal", "AGUARDAR")
+                result["signal"] = "AGUARDAR"
+                result["status"] = "SIGNAL_INVALID"
+            item["result"] = result
+            output.append(item)
+        return output
 
     @staticmethod
     def _bucket_start(now: datetime, interval: int) -> datetime:
