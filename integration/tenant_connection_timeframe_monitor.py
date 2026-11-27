@@ -526,11 +526,15 @@ class TenantConnectionTimeframeMonitor:
                 """, (owner.tenant_id, owner.subject_id, connection, symbol, timeframe, expected.isoformat(), serialized, time.time())).rowcount
                 if inserted == 1 and self.on_result is not None:
                     event_id = ":".join((owner.tenant_id, owner.subject_id, connection, symbol, timeframe, expected.isoformat()))
+                    notification_payload = json.dumps({
+                        "result": result, "provider_id": session.provider_id,
+                        "source": session.source, "previous_signal": row.get("last_signal"),
+                    }, ensure_ascii=False, separators=(",", ":"), default=str)
                     db.execute("""
                         INSERT OR IGNORE INTO tenant_connection_notification_outbox
                         (event_id, tenant_id, subject_id, connection_id, symbol, timeframe, candle_at, result_json, created_at)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (event_id, owner.tenant_id, owner.subject_id, connection, symbol, timeframe, expected.isoformat(), serialized, time.time()))
+                    """, (event_id, owner.tenant_id, owner.subject_id, connection, symbol, timeframe, expected.isoformat(), notification_payload, time.time()))
                 db.execute("""
                     UPDATE tenant_connection_timeframe_watch
                     SET last_processed_candle=?, last_signal=?, last_status=?, last_error=NULL
@@ -582,14 +586,18 @@ class TenantConnectionTimeframeMonitor:
                 db.commit()
             if claimed != 1:
                 continue
+            payload = json.loads(row["result_json"])
             event = {
                 "event_id": row["event_id"],
                 "tenant_context": TenantContext(row["tenant_id"], row["subject_id"]),
                 "connection_id": row["connection_id"],
+                "provider_id": payload.get("provider_id"),
+                "source": payload.get("source"),
                 "symbol": row["symbol"],
                 "timeframe": row["timeframe"],
                 "candle_at": row["candle_at"],
-                "result": json.loads(row["result_json"]),
+                "previous_signal": payload.get("previous_signal"),
+                "result": payload["result"],
             }
             try:
                 self.on_result(event)
@@ -633,6 +641,10 @@ class TenantConnectionTimeframeMonitor:
                 item = future.result()
                 if item is not None:
                     output.append(item)
+        # Retry previously failed outbox deliveries even when this tick
+        # produced no new analysis result.
+        if self.on_result is not None:
+            self.dispatch_pending_notifications(limit=100)
         return output
 
     def start(self) -> None:
