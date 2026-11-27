@@ -20,6 +20,9 @@ from integration.tenant_mt5_relay_registry import TenantMT5RelayRegistry
 from integration.tenant_mt5_relay_onboarding import TenantMT5RelayTokenVault, TenantMT5RelayOnboardingService
 from integration.tenant_tradingview_webhook_vault import TenantTradingViewWebhookVault, TenantTradingViewWebhookOnboardingService
 from integration.tenant_tradingview_alert_inbox import TenantTradingViewAlertInbox
+from integration.tenant_oauth_state_vault import TenantOAuthStateVault
+from integration.tenant_oauth_token_vault import TenantOAuthTokenVault
+from integration.tenant_ctrader_oauth_service import TenantCTraderOAuthService
 from security.tenant_scoped_ecosystem_state import TenantScopedEcosystemState
 from security.tenant_scoped_decision_memory import TenantScopedDecisionMemory
 from integration.tenant_notification_dispatcher import TenantNotificationDispatcher
@@ -139,6 +142,10 @@ class StandaloneRuntime:
         notification_sink=None,
         provider_secret_resolver=None,
         provider_adapter_factories: Mapping[str, Any] | None = None,
+        ctrader_oauth_cipher=None,
+        ctrader_oauth_exchange_code=None,
+        ctrader_oauth_client_id: str | None = None,
+        ctrader_oauth_redirect_uri: str | None = None,
     ) -> None:
         configured_identity = os.getenv("CONTROLADOR_SINGLE_USER_IDENTITY", "").strip()
         if not configured_identity:
@@ -170,6 +177,38 @@ class StandaloneRuntime:
             )
             self.tenant_state = TenantScopedEcosystemState(tenant_storage)
             self.tenant_provider_connections = TenantProviderConnectionRegistry(tenant_storage)
+            ctrader_oauth_configured = any((
+                ctrader_oauth_cipher is not None,
+                ctrader_oauth_exchange_code is not None,
+                ctrader_oauth_client_id is not None,
+                ctrader_oauth_redirect_uri is not None,
+            ))
+            self.tenant_ctrader_oauth_service = None
+            if ctrader_oauth_configured:
+                if any(value is None for value in (
+                    ctrader_oauth_cipher, ctrader_oauth_exchange_code,
+                    ctrader_oauth_client_id, ctrader_oauth_redirect_uri,
+                )):
+                    raise RuntimeError(
+                        "cTrader OAuth exige cipher KMS, cliente de troca, client_id e redirect_uri"
+                    )
+                ctrader_state_vault = TenantOAuthStateVault(
+                    self.runtime_dir / "tenant-ctrader-oauth-state.sqlite3",
+                    self.tenant_provider_connections,
+                )
+                ctrader_token_vault = TenantOAuthTokenVault(
+                    self.runtime_dir / "tenant-ctrader-oauth-tokens.sqlite3",
+                    self.tenant_provider_connections,
+                    ctrader_oauth_cipher,
+                )
+                self.tenant_ctrader_oauth_service = TenantCTraderOAuthService(
+                    self.tenant_provider_connections,
+                    ctrader_state_vault,
+                    ctrader_token_vault,
+                    client_id=ctrader_oauth_client_id,
+                    redirect_uri=ctrader_oauth_redirect_uri,
+                    exchange_code=ctrader_oauth_exchange_code,
+                )
             self.tenant_market_data_sessions = TenantMarketDataSessionRegistry(
                 self.tenant_provider_connections
             )
