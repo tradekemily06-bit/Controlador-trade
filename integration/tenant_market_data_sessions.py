@@ -6,6 +6,7 @@ a fresh server-side adapter handshake before an account can become usable.
 from __future__ import annotations
 
 import re
+import threading
 from dataclasses import dataclass
 from typing import Any
 
@@ -32,7 +33,7 @@ class TenantMarketDataSessionRegistry:
             raise ValueError("tenant provider connection registry is required")
         self.connections = connections
         self._sessions: dict[tuple[str, str, str], TenantMarketDataSession] = {}
-        self._lock = __import__("threading").RLock()
+        self._lock = threading.RLock()
 
     @staticmethod
     def _connection_id(value: str) -> str:
