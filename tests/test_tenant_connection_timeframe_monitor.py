@@ -1,4 +1,6 @@
 from datetime import datetime, timedelta, timezone
+
+import pytest
 import threading
 import time
 
@@ -104,6 +106,42 @@ def test_latest_results_expires_signal_at_next_timeframe_close(tmp_path):
     assert expired[0]["result"]["signal"] == "AGUARDAR"
     assert expired[0]["result"]["status"] == "SIGNAL_EXPIRED"
 
+
+
+
+@pytest.mark.parametrize(
+    ("timeframe", "analysis_now", "expired_now", "candle_at"),
+    [
+        ("M1", "2026-11-27T12:01:06+00:00", "2026-11-27T12:02:06+00:00", "2026-11-27T12:00:00+00:00"),
+        ("M5", "2026-11-27T12:06:06+00:00", "2026-11-27T12:11:06+00:00", "2026-11-27T12:00:00+00:00"),
+        ("M15", "2026-11-27T12:16:06+00:00", "2026-11-27T12:31:06+00:00", "2026-11-27T12:00:00+00:00"),
+    ],
+)
+def test_signal_expiry_tracks_selected_timeframe(
+    tmp_path, timeframe, analysis_now, expired_now, candle_at
+):
+    owner = TenantContext(f"tenant-{timeframe.lower()}", "alice")
+    connection = _id(timeframe[0].lower() * 32)
+    sessions = Sessions()
+    sessions.add(owner, connection, "broker_a")
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / f"expiry-{timeframe}.sqlite3", sessions,
+        lambda _session, _context: Analyzer(candle_at, "VENDA"),
+    )
+    monitor.subscribe(owner, connection, "EURUSD", timeframe)
+    assert len(monitor.run_once(now=datetime.fromisoformat(analysis_now))) == 1
+    current = monitor.latest_results(
+        owner, connection, now=datetime.fromisoformat(analysis_now)
+    )
+    assert current[0]["signal_valid"] is True
+    assert current[0]["result"]["signal"] == "VENDA"
+
+    expired = monitor.latest_results(
+        owner, connection, now=datetime.fromisoformat(expired_now)
+    )
+    assert expired[0]["signal_valid"] is False
+    assert expired[0]["result"]["signal"] == "AGUARDAR"
+    assert expired[0]["result"]["original_signal"] == "VENDA"
 
 
 def test_delayed_notification_is_downgraded_after_its_candle_expires(tmp_path):
