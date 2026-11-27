@@ -351,7 +351,7 @@ def test_live_closed_candle_stream_gates_account_timeframe_analysis(tmp_path):
         is_valid=lambda: True,
     )
     adapter.callback({
-        "account_id": 123, "symbol": "EURUSD", "timeframe": "5m",
+        "account_id": 123, "symbol": "EURUSD", "timeframe": "M5",
         "candle": candle, "closed": True,
     })
     results = monitor.run_once(now=now)
