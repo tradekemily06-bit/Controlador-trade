@@ -13,6 +13,7 @@ from typing import Any
 
 from data.timeframes import normalize_timeframe
 from security.tenant_context import TenantContext
+from security.tenant_storage import require_tenant_context
 
 
 _ALLOWED_DIRECTIONS = {"COMPRA", "VENDA", "AGUARDAR"}
@@ -32,9 +33,7 @@ def _utc(value: str, field: str) -> str:
 
 
 def _owner(context: TenantContext) -> TenantContext:
-    if not isinstance(context, TenantContext):
-        raise PermissionError("trusted tenant context is required")
-    return context
+    return require_tenant_context(context)
 
 
 class TenantSignalEvidenceStore:
