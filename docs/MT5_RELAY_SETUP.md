@@ -2,6 +2,19 @@
 
 Este runbook configura uma única instância do relay para uma única origem MT5. Ele não conecta uma corretora por meio do navegador e não cria suporte multi-conta automaticamente.
 
+## Relay multi-conta isolado por identidade (novo caminho)
+
+O runtime também oferece a rota por conta:
+
+- `POST /api/bridge/mt5/connections/{connection_id}/candles` recebe candles para uma única conexão.
+- O bearer token é resolvido por um serviço de segredos injetado no host. O contrato é `resolve(token) -> (TenantContext, connection_id)`; o resolvedor deve armazenar/verificar hashes de tokens e devolver identidade obtida do cadastro do servidor, nunca de campos enviados pelo cliente.
+- `StandaloneRuntime` aceita `tenant_mt5_relay_source_id_resolver(context, connection_id)` e `tenant_mt5_relay_token_resolver`. Sem ambos os serviços reais provisionados pelo host, o fluxo permanece fechado e retorna indisponível.
+- A rota exige HTTPS direto ou TLS terminado por proxy explicitamente confiável. O token deve estar vinculado ao mesmo `connection_id` da URL. O tenant, subject, source ID e caminho do banco nunca vêm do payload.
+- O registry cria um SQLite separado por tenant/subject/conta, e o store continua impondo DEMO, frescor, UUID anti-replay e validação dos candles.
+- Essa rota é somente ingestão de dados; não habilita ordens nem execução REAL.
+
+O endpoint antigo `/api/bridge/mt5/candles` com token global permanece legado para operação local/instância única. Não o use como mecanismo de autenticação multi-conta ou para apresentar contas independentes.
+
 ## Limites atuais
 
 - O agente local usa o adapter `ICMarketsMT5DemoMarketDataAdapter`: atualmente, esta implementação concreta é IC Markets MT5 DEMO.
