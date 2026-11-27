@@ -64,7 +64,7 @@ class TenantCTraderAccountService:
                 tokens = self.token_vault.resolve(owner, connection_id)
         if not isinstance(tokens, dict) or not isinstance(tokens.get("access_token"), str) or not tokens["access_token"]:
             raise PermissionError("token OAuth cTrader ausente, expirado ou não autorizado")
-        return tokens["access_token]
+        return tokens["access_token"]
 
     def list_demo_accounts(
         self, context: TenantContext, *, connection_id: str
