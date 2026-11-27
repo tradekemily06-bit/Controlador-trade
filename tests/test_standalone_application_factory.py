@@ -198,7 +198,13 @@ class StandaloneApplicationFactoryTests(unittest.TestCase):
         )
         self.assertEqual(report["result"]["reporting_status"], "DECISION_REPORT_READY")
         self.assertEqual(report["result"]["report"]["report_type"], "STANDALONE_DECISION_REPORT")
-        self.assertEqual(memory_report["result"]["report"]["record_count"], 0)
+        memory_view = app.handle(
+            area=ApplicationArea.ANALYSIS,
+            task="consultar memória",
+            context={"operation": "memory"},
+        )
+        self.assertEqual(memory_view["result"]["records"], [])
+        self.assertEqual(memory_view["result"]["statistics"]["total"], 0)
         self.assertFalse(report["execution_authorized"])
         self.assertFalse(memory_report["execution_authorized"])
 
