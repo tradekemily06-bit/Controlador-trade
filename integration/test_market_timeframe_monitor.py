@@ -230,3 +230,38 @@ def test_monitor_requires_trusted_context_without_local_default(tmp_path):
         pass
     else:
         raise AssertionError("unscoped market subscription was accepted")
+
+
+
+def test_monitor_stop_timeout_keeps_worker_visible_until_it_exits(tmp_path):
+    import threading
+    import time
+
+    monitor = MarketTimeframeMonitor(
+        tmp_path / "monitor.sqlite3", FakeAnalyzer(), default_context=OWNER
+    )
+    entered = threading.Event()
+    release = threading.Event()
+
+    def blocked_run_once():
+        entered.set()
+        release.wait(timeout=2)
+        return []
+
+    monitor.run_once = blocked_run_once
+    monitor.start()
+    assert entered.wait(timeout=1)
+
+    monitor.stop(timeout=0.01)
+    assert monitor.status()["worker_running"] is True
+    first_thread = monitor._thread
+
+    # Calling start while the original worker is still alive must not
+    # create a duplicate polling loop.
+    monitor.start()
+    assert monitor._thread is first_thread
+
+    release.set()
+    monitor.stop(timeout=1)
+    assert monitor.status()["worker_running"] is False
+    assert monitor._thread is None
