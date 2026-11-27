@@ -39,19 +39,21 @@ class TenantProviderConnectionService:
         connections: TenantProviderConnectionRegistry,
         sessions: TenantMarketDataSessionRegistry,
         *,
-        secret_resolver: Any,
-        adapter_factories: Mapping[str, Callable[[Mapping[str, Any]], Any]],
+        secret_resolver: Any | None = None,
+        adapter_factories: Mapping[str, Callable[[Mapping[str, Any]], Any]] | None = None,
     ) -> None:
         if connections is None or sessions is None:
             raise ValueError("connection and session registries are required")
-        if not callable(getattr(secret_resolver, "resolve", None)):
+        if secret_resolver is not None and not callable(getattr(secret_resolver, "resolve", None)):
             raise ValueError("tenant secret resolver must implement resolve(context, reference)")
-        if not isinstance(adapter_factories, Mapping) or not adapter_factories:
-            raise ValueError("at least one trusted provider adapter factory is required")
+        if adapter_factories is not None and not isinstance(adapter_factories, Mapping):
+            raise ValueError("adapter_factories deve ser um mapeamento confiável")
+        if bool(secret_resolver) != bool(adapter_factories):
+            raise ValueError("secret resolver e adapter factories devem ser provisionados juntos")
         self.connections = connections
         self.sessions = sessions
         self.secret_resolver = secret_resolver
-        self.adapter_factories = dict(adapter_factories)
+        self.adapter_factories = dict(adapter_factories or {})
         for provider_id, factory in self.adapter_factories.items():
             if not isinstance(provider_id, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,47}", provider_id):
                 raise ValueError("provider_id inválido")
@@ -67,6 +69,8 @@ class TenantProviderConnectionService:
         credential_ref: str,
     ) -> dict[str, Any]:
         owner = require_tenant_context(context)
+        if self.secret_resolver is None or not self.adapter_factories:
+            raise RuntimeError("cofre de credenciais e factories de provedores não provisionados")
         if provider_id not in self.adapter_factories:
             raise ValueError("provider não habilitado neste servidor")
         if not isinstance(credential_ref, str) or not _CREDENTIAL_REF.fullmatch(credential_ref):
