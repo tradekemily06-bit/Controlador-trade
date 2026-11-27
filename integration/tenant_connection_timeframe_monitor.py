@@ -572,8 +572,8 @@ class TenantConnectionTimeframeMonitor:
         return datetime.fromtimestamp(bucket, tz=timezone.utc)
 
     def expected_last_closed_candle(self, timeframe: str, now: datetime) -> datetime:
-        if now.tzinfo is None:
-            raise ValueError("now deve conter fuso horário")
+        if not isinstance(now, datetime) or now.tzinfo is None or now.utcoffset() is None:
+            raise ValueError("now deve ser datetime com fuso horário válido")
         interval = int(get_timeframe_interval(normalize_timeframe(timeframe)).total_seconds())
         eligible = now.astimezone(timezone.utc) - timedelta(seconds=self.close_grace_seconds)
         return self._bucket_start(eligible, interval) - timedelta(seconds=interval)
