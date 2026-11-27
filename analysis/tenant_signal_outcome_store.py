@@ -94,6 +94,56 @@ class TenantSignalOutcomeStore:
             )
         return result
 
+    def resolve_pending_for_candle(
+        self,
+        context: TenantContext,
+        *,
+        source_id: str,
+        candle: Mapping[str, Any],
+        provenance: str,
+    ) -> list[dict[str, Any]]:
+        """Resolve only pending signals whose next candle is this exact bar.
+
+        Source identity is mandatory so one broker account's candle cannot
+        resolve another account's signal, even for the same tenant/symbol.
+        """
+        if not isinstance(context, TenantContext):
+            raise PermissionError("trusted tenant context is required")
+        if not isinstance(source_id, str) or not source_id.strip():
+            raise ValueError("source_id is required")
+        symbol = candle.get("symbol")
+        timeframe = candle.get("timeframe")
+        open_time = candle.get("open_time")
+        if not all(isinstance(value, str) and value.strip() for value in (symbol, timeframe, open_time)):
+            raise ValueError("candle identity and open_time are required")
+        from data.timeframes import normalize_timeframe
+        canonical_timeframe = normalize_timeframe(timeframe)
+        with self._connect() as db:
+            rows = db.execute(
+                """SELECT e.signal_id FROM tenant_signal_evidence e
+                LEFT JOIN tenant_signal_outcomes o
+                  ON o.tenant_id=e.tenant_id AND o.subject_id=e.subject_id
+                 AND o.signal_id=e.signal_id
+                WHERE e.tenant_id=? AND e.subject_id=? AND e.source_id=?
+                  AND e.symbol=? AND e.timeframe=? AND e.candle_close_at=?
+                  AND o.signal_id IS NULL
+                ORDER BY e.observed_at ASC""",
+                (
+                    context.tenant_id, context.subject_id, source_id.strip(),
+                    symbol.strip().upper(), canonical_timeframe, open_time,
+                ),
+            ).fetchall()
+        resolved = []
+        for row in rows:
+            try:
+                resolved.append(self.resolve(
+                    context, row["signal_id"], candle, provenance=provenance
+                ))
+            except ValueError as exc:
+                if "immutable once resolved" not in str(exc):
+                    raise
+        return resolved
+
     def list_outcomes(self, context: TenantContext) -> list[dict[str, Any]]:
         if not isinstance(context, TenantContext):
             raise PermissionError("trusted tenant context is required")
