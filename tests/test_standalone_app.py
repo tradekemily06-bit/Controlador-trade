@@ -1695,3 +1695,44 @@ class PublicBindSecurityTests(unittest.TestCase):
         self.assertEqual(runtime.tenant_ctrader_account_service.calls, [
             ("local-single-user", "local-owner", "b" * 32, 123)
         ])
+
+
+    def test_remote_provider_status_exposes_only_requesting_owners_oauth_refresh_health(self):
+        class Connections:
+            def list_connections(self, context):
+                assert context.tenant_id == "tenant-a"
+                assert context.subject_id == "alice"
+                return []
+
+        class RefreshWorkers:
+            def owner_status(self, context):
+                assert context.tenant_id == "tenant-a"
+                assert context.subject_id == "alice"
+                return {
+                    "configured": True, "registered": True, "running": True,
+                    "state": "RUNNING", "execution_authorized": False,
+                }
+
+            def status(self):
+                raise AssertionError("global worker counts must never be exposed remotely")
+
+        runtime = FakeRuntime()
+        runtime.tenant_provider_connections = Connections()
+        runtime.tenant_oauth_refresh_worker = RefreshWorkers()
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/market-data/providers",
+                remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["oauth_token_refresh"]["state"], "RUNNING")
+        self.assertNotIn("registered_owner_count", body["oauth_token_refresh"])
+        self.assertFalse(body["oauth_token_refresh"]["execution_authorized"])
