@@ -26,7 +26,14 @@ class FakeTransport:
 
     def resolve_symbol(self, account_id, symbol):
         self.calls.append(("resolve", account_id, symbol))
-        return {"symbol_id": 44, "digits": 5}
+        return {
+            "symbol_id": 44,
+            "digits": 5,
+            "schedule_time_zone": "Europe/London",
+            "schedule": ({"start_second": 3600, "end_second": 604800},),
+            "holidays": (),
+            "calendar_metadata_status": "AVAILABLE",
+        }
 
     def get_trendbars(self, account_id, symbol_id, period, count):
         self.calls.append(("bars", account_id, symbol_id, period, count))
@@ -61,6 +68,24 @@ class FakeTransport:
 
     def disconnect(self):
         self.connected = False
+
+
+def test_ctrader_exposes_broker_schedule_metadata_without_enabling_d1_w1():
+    transport = FakeTransport()
+    adapter = CTraderReadOnlyMarketDataAdapter(transport, account_id=123)
+    adapter.connect()
+    adapter.handshake()
+
+    calendar = adapter.get_symbol_session_calendar_metadata("EURUSD")
+
+    assert calendar["provider_id"] == "ctrader_open_api"
+    assert calendar["account_id"] == 123
+    assert calendar["schedule_time_zone"] == "Europe/London"
+    assert calendar["schedule"] == ({"start_second": 3600, "end_second": 604800},)
+    assert calendar["holidays"] == ()
+    assert calendar["status"] == "METADATA_AVAILABLE_NOT_CALENDAR_VALIDATED"
+    # Schedule metadata is not proof of how this broker aggregates D1/W1 bars.
+    assert not callable(getattr(adapter, "expected_last_closed_candle", None))
 
 
 def test_ctrader_adapter_verifies_demo_and_normalizes_trendbars():
