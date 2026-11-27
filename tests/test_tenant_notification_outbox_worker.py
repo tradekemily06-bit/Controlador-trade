@@ -46,6 +46,32 @@ def test_tenant_notification_worker_starts_delivers_and_stops(tmp_path):
 
 
 
+
+def test_outbox_failure_diagnostic_never_persists_provider_exception_text(tmp_path):
+    storage = SQLiteTenantStorage(tmp_path / "tenant-error.sqlite3")
+    dispatcher = TenantNotificationDispatcher(TenantScopedEcosystemState(storage))
+    owner = TenantContext("tenant-1", "subject-1")
+    event = EcosystemNotification(
+        notification_id="provider-secret-error", kind=NotificationKind.SECURITY,
+        severity=NotificationSeverity.ERROR, title="Falha", message="Falha no provedor",
+    )
+    dispatcher.publish(owner, event)
+    item = dispatcher.outbox.claim_due(now=100.0, lease_seconds=30.0)[0]
+    dispatcher.outbox.mark_failed(
+        item, RuntimeError("Bearer super-secret-value customer=email@example.com"),
+        now=101.0,
+    )
+    with storage._connect() as db:
+        row = db.execute(
+            "SELECT last_error FROM tenant_notification_outbox WHERE tenant_id=? AND subject_id=? AND notification_id=?",
+            ("tenant-1", "subject-1", "provider-secret-error"),
+        ).fetchone()
+    assert row["last_error"] == "RuntimeError"
+    assert "super-secret-value" not in row["last_error"]
+    assert "email@example.com" not in row["last_error"]
+
+
+
 def test_worker_status_does_not_expose_other_tenants_queue_counts(tmp_path):
     storage = SQLiteTenantStorage(tmp_path / "tenant.sqlite3")
     dispatcher = TenantNotificationDispatcher(TenantScopedEcosystemState(storage))
