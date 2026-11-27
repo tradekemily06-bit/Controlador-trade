@@ -134,6 +134,18 @@ class PersistentNotificationOutbox:
         claimed: list[NotificationOutboxItem] = []
         with self._lock, self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
+            # A worker can crash after claiming an event without ever
+            # recording a delivery failure. Count those expired claims toward
+            # the same retry budget and dead-letter exhausted events here.
+            db.execute(
+                """
+                UPDATE notification_outbox
+                SET status='DEAD', lease_until=NULL, lease_token=NULL,
+                    last_error='delivery lease expired; retry budget exhausted'
+                WHERE status='IN_FLIGHT' AND lease_until <= ? AND attempts >= ?
+                """,
+                (current, self.max_attempts),
+            )
             rows = db.execute(
                 """
                 SELECT idempotency_key, payload_json, attempts
