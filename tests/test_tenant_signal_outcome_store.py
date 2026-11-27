@@ -126,6 +126,26 @@ def test_closed_candle_resolves_only_the_matching_provider_connection(tmp_path):
     )[0]["signal_id"] == "account-b-signal"
 
 
+def test_wait_decision_is_not_sent_to_directional_resolver(tmp_path):
+    evidence, outcomes = _store(tmp_path)
+    owner = TenantContext("tenant-a", "alice")
+    evidence.record_signal(
+        owner, signal_id="wait-signal", source_id="account-1",
+        symbol="EURUSD", timeframe="M1", direction="AGUARDAR",
+        model_version="technical-v1", evidence_score=40,
+        score_semantics="EVIDENCE_STRENGTH_NOT_WIN_PROBABILITY",
+        candle_close_at="2026-11-27T10:01:00Z",
+        observed_at="2026-11-27T10:01:02Z",
+        valid_until="2026-11-27T10:02:00Z",
+        provenance="REAL_MARKET_DATA",
+    )
+    assert outcomes.resolve_pending_for_candle(
+        owner, source_id="account-1", candle=_candle(),
+        provenance="REAL_MARKET_DATA",
+    ) == []
+    assert outcomes.list_outcomes(owner) == []
+
+
 def test_outcome_store_rejects_untrusted_context(tmp_path):
     _, outcomes = _store(tmp_path)
     with pytest.raises(PermissionError):
