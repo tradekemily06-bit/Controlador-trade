@@ -174,3 +174,28 @@ def test_old_quote_queue_overflow_does_not_keep_connection_degraded(tmp_path):
     )
     status = sessions.status(owner)[0]
     assert status["health_status"] == "CONNECTED"
+
+
+def test_process_restart_discards_adapter_binding_without_falsely_claiming_connected(tmp_path):
+    database = tmp_path / "tenant-session-restart.sqlite3"
+    owner = TenantContext("tenant-restart", "alice")
+    first_storage = SQLiteTenantStorage(database)
+    first_connections = TenantProviderConnectionRegistry(first_storage)
+    first_sessions = TenantMarketDataSessionRegistry(first_connections)
+    account = _verified(first_connections, owner, "Conta A", "account-a")
+    first_sessions.bind(
+        owner, connection_id=account["connection_id"], adapter=FakeAdapter(),
+        source="broker_x:account-a", handshake_verified=True,
+    )
+    assert first_sessions.status(owner)[0]["adapter_status"] == "BOUND"
+
+    # A new process reconstructs durable metadata but not the old Python adapter.
+    restarted_storage = SQLiteTenantStorage(database)
+    restarted_connections = TenantProviderConnectionRegistry(restarted_storage)
+    restarted_sessions = TenantMarketDataSessionRegistry(restarted_connections)
+    status = restarted_sessions.status(owner)[0]
+
+    assert status["status"] == "CONNECTED"  # durable metadata only
+    assert status["adapter_status"] == "NOT_BOUND"
+    assert status["health_status"] == "NOT_BOUND"
+    assert restarted_sessions.get(owner, connection_id=account["connection_id"]) is None
