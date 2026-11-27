@@ -39,8 +39,7 @@ execution evidence.
 
 ## Required next integration steps
 
-1. Create a forecast record atomically with each emitted analysis decision,
-   before any outcome is available.
+1. Implement and validate a genuine probability-producing model, then persist its forecast atomically before any outcome is available. Do not convert the technical evidence score or directional candle labels into probabilities.
 2. Define an outcome resolver with explicit entry/exit and invalidation rules,
    candle-source identity, and conservative handling when stop and target occur
    inside the same candle.
