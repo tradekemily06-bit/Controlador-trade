@@ -31,6 +31,33 @@ The adapter receives a host-owned transport implementing:
 
 The provider onboarding factory must create a distinct transport and adapter for each account using tenant-owned OAuth credentials. The adapter serializes historical trendbar requests to respect Spotware's five-requests-per-second historical-data limit per connection.
 
+## Candle timestamp and session-boundary contract
+
+Spotware defines `utcTimestampInMinutes` as the Unix timestamp (in minutes)
+of the nominal start of the trendbar. The adapter converts it to an
+timezone-aware UTC `datetime`; it does not reinterpret the value as local
+computer time or broker-wall-clock time.
+
+The timeframe monitor currently computes its expected close from fixed UTC
+interval buckets (including UTC day boundaries and a Monday-anchored UTC week).
+It then requires an exact timestamp match before analysis or notification.
+This is intentionally fail-closed: a D1/W1 bar whose broker session opens on a
+different UTC boundary is withheld rather than shifted, relabeled, or analyzed
+as if it belonged to another candle.
+
+**Important limitation:** a UTC timestamp does not by itself prove that a
+provider's D1/W1 session boundary matches the monitor's UTC bucket. Before
+enabling D1/W1 signals for a specific cTrader broker/account, compare several
+actual historical and live bar open timestamps with that broker's documented
+session convention, including daylight-saving transitions and weekend reopen.
+If the boundaries differ, provider-specific session-calendar support must be
+implemented and tested before those periods are considered signal-ready. Do not
+weaken the exact candle match to make a mismatched feed appear fresh.
+
+M1/M5 and other intraday periods are also matched by exact provider candle-open
+timestamp and canonical timeframe; no timeframe may reuse another period's
+statistics or candle history.
+
 ## Runtime integration and current limitation
 
 The official Spotware DEMO transport is now implemented in
