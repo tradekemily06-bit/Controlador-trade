@@ -273,3 +273,56 @@ def test_live_stream_rebinds_when_provider_adapter_instance_changes(tmp_path):
     assert first.unsubscribed is True
     assert second.callback is not None
     assert monitor.status(owner)["live_streams"] == 1
+
+
+def test_disconnected_stream_provider_reconnects_before_subscribing(tmp_path):
+    owner = TenantContext("tenant-a", "alice")
+    class Adapter:
+        account_id = 321
+        def __init__(self):
+            self.connected = False
+            self.reconnect_calls = 0
+            self.callback = None
+        def status(self):
+            return {"connected": self.connected}
+        def reconnect(self):
+            self.reconnect_calls += 1
+            self.connected = True
+            return {"account_mode": "DEMO"}
+        def subscribe_live_candles(self, symbol, timeframe, callback):
+            assert self.connected is True
+            self.callback = callback
+    adapter = Adapter()
+    session = Session("ctrader_open_api", "ctrader:321", adapter)
+    class Registry:
+        def get(self, context, *, connection_id): return session
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "reconnect-before-subscribe.sqlite3", Registry(),
+        lambda _session, _context: Analyzer("2026-11-27T12:00:00+00:00", "AGUARDAR"),
+    )
+    result = monitor.subscribe(owner, _id("f"), "EURUSD", "M5")
+    assert adapter.reconnect_calls == 1
+    assert adapter.callback is not None
+    assert result["live_candle_stream"] == "BOUND"
+
+
+def test_stream_capable_disconnected_provider_fails_closed_without_reconnect(tmp_path):
+    owner = TenantContext("tenant-a", "alice")
+    now = datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc)
+    class Adapter:
+        account_id = 654
+        def status(self): return {"connected": False}
+        def subscribe_live_candles(self, symbol, timeframe, callback):
+            raise RuntimeError("offline")
+    session = Session("ctrader_open_api", "ctrader:654", Adapter())
+    class Registry:
+        def get(self, context, *, connection_id): return session
+    analyzer = Analyzer("2026-11-27T12:00:00+00:00", "COMPRA")
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "stream-fail-closed.sqlite3", Registry(),
+        lambda _session, _context: analyzer,
+    )
+    monitor.subscribe(owner, _id("1"), "EURUSD", "M5")
+    assert monitor.run_once(now=now) == []
+    assert analyzer.calls == 0
+    assert monitor.subscriptions(owner)[0]["last_status"] == "LIVE_STREAM_UNAVAILABLE"
