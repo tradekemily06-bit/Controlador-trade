@@ -121,7 +121,7 @@ def test_signal_expiry_tracks_selected_timeframe(
     tmp_path, timeframe, analysis_now, expired_now, candle_at
 ):
     owner = TenantContext(f"tenant-{timeframe.lower()}", "alice")
-    connection = _id(timeframe[0].lower() * 32)
+    connection = _id("d")
     sessions = Sessions()
     sessions.add(owner, connection, "broker_a")
     monitor = TenantConnectionTimeframeMonitor(
