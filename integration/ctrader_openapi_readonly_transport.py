@@ -399,7 +399,11 @@ class CTraderOpenApiReadOnlyTransport:
         key = (symbol_id, period.strip().upper())
         with self._lock:
             if key in self._trendbar_callbacks:
-                raise ValueError("já existe assinatura de trendbar para este símbolo/período")
+                # Reconnect restores the transport's existing subscriptions. The
+                # monitor may then bind again; replace the consumer callback
+                # without sending a duplicate Spotware subscription request.
+                self._trendbar_callbacks[key] = callback
+                return
         # Spot events are the required carrier for live trendbars in Spotware Open API.
         if symbol_id not in self._spot_callbacks:
             self.subscribe_spots(account_id, symbol_id, lambda _event: None)
