@@ -7,6 +7,7 @@ between account sessions. The worker performs analysis only.
 from __future__ import annotations
 
 import json
+import math
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import re
 import sqlite3
@@ -582,8 +583,13 @@ class TenantConnectionTimeframeMonitor:
         self, row: dict[str, Any], *, lease_seconds: float = 300.0,
     ) -> tuple[str, str] | None:
         """Atomically claim a watch across workers sharing this SQLite database."""
-        if lease_seconds <= 0:
-            raise ValueError("lease_seconds deve ser positivo")
+        if (
+            isinstance(lease_seconds, bool)
+            or not isinstance(lease_seconds, (int, float))
+            or not math.isfinite(lease_seconds)
+            or lease_seconds <= 0
+        ):
+            raise ValueError("lease_seconds deve ser um número finito positivo")
         key = self._processing_lease_key(row)
         token = uuid.uuid4().hex
         now = time.time()
