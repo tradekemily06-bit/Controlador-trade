@@ -6,6 +6,7 @@ It is not a production shared database and never approves or emits a probability
 from __future__ import annotations
 
 import sqlite3
+from math import isfinite
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -91,8 +92,12 @@ class TenantForecastAuditStore:
             raise ValueError("direction must be COMPRA or VENDA")
         if isinstance(probability, bool) or not isinstance(probability, (int, float)):
             raise ValueError("probability must be numeric")
-        if not 0.0 <= float(probability) <= 1.0:
-            raise ValueError("probability must be between 0 and 1")
+        try:
+            probability_value = float(probability)
+        except (OverflowError, ValueError) as exc:
+            raise ValueError("probability must be finite and between 0 and 1") from exc
+        if not isfinite(probability_value) or not 0.0 <= probability_value <= 1.0:
+            raise ValueError("probability must be finite and between 0 and 1")
         timestamp = _utc(forecast_at).isoformat()
         canonical_timeframe = normalize_timeframe(timeframe)
         with self._connect() as db:
@@ -105,7 +110,7 @@ class TenantForecastAuditStore:
                     owner.tenant_id, owner.subject_id, forecast_id.strip(),
                     symbol.strip().upper(), canonical_timeframe,
                     direction.strip().upper(), model_version.strip(),
-                    float(probability), timestamp,
+                    probability_value, timestamp,
                 ),
             )
         return {
