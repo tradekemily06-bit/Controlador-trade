@@ -1305,6 +1305,52 @@ def test_live_stream_rejects_missing_account_identity(tmp_path):
     assert monitor.subscriptions(owner)[0]["last_status"] == "LIVE_STREAM_UNAVAILABLE"
 
 
+def test_old_callback_cannot_reenter_after_unsubscribe_and_resubscribe_same_adapter(tmp_path):
+    from types import SimpleNamespace
+
+    owner = TenantContext("tenant-stream-generation", "alice")
+    expected = datetime(2026, 11, 27, 12, 0, tzinfo=timezone.utc)
+
+    class Adapter:
+        account_id = 987
+        def __init__(self):
+            self.callbacks = []
+        def subscribe_live_candles(self, symbol, timeframe, callback):
+            self.callbacks.append(callback)
+        def unsubscribe_live_candles(self, symbol, timeframe):
+            pass
+
+    adapter = Adapter()
+    session = Session("ctrader_open_api", "ctrader:987", adapter)
+
+    class Registry:
+        def get(self, context, *, connection_id):
+            return session if context == owner else None
+
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "stream-generation.sqlite3",
+        Registry(),
+        lambda _session, _context: Analyzer(expected.isoformat(), "COMPRA"),
+    )
+    connection = _id("g")
+    monitor.subscribe(owner, connection, "EURUSD", "M5")
+    old_callback = adapter.callbacks[-1]
+    assert monitor.unsubscribe(owner, connection, "EURUSD", "M5") is True
+    monitor.subscribe(owner, connection, "EURUSD", "M5")
+    new_callback = adapter.callbacks[-1]
+    assert new_callback is not old_callback
+
+    stale_candle = SimpleNamespace(timestamp=expected, is_valid=lambda: True)
+    current_candle = SimpleNamespace(timestamp=expected, is_valid=lambda: True)
+    event = {"account_id": 987, "symbol": "EURUSD", "timeframe": "M5", "closed": True}
+    old_callback({**event, "candle": stale_candle})
+    key = (owner.tenant_id, owner.subject_id, connection, "EURUSD", "5m")
+    assert key not in monitor._live_candles
+
+    new_callback({**event, "candle": current_candle})
+    assert monitor._live_candles[key] is current_candle
+
+
 def test_live_stream_rejects_boolean_account_id_that_equals_integer_one(tmp_path):
     from types import SimpleNamespace
 
