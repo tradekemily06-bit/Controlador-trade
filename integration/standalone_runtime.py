@@ -29,6 +29,8 @@ from core.unified_intelligence import UnifiedIntelligence
 from core.ecosystem_state_store import EcosystemStateStore
 from core.learning_state_store import LearningStateStore
 from core.notification_outbox import PersistentNotificationOutbox
+from core.sqlite_backup_service import SQLiteBackupService
+from core.sqlite_backup_scheduler import SQLiteBackupScheduler
 from core.ecosystem_notifications import EcosystemNotification, NotificationKind, NotificationSeverity
 from integration.market_timeframe_monitor import MarketTimeframeMonitor
 from integration.notification_outbox_worker import NotificationOutboxWorker
@@ -105,6 +107,32 @@ class StandaloneRuntime:
                     self.notification_outbox, notification_sink
                 )
                 self.notification_worker.start()
+            self.backup_scheduler = None
+            backup_enabled = os.getenv(
+                "CONTROLADOR_AUTOMATIC_BACKUP_ENABLED", ""
+            ).strip().lower() in {"1", "true", "yes"}
+            if backup_enabled:
+                backup_dir_value = os.getenv("CONTROLADOR_BACKUP_DIR", "").strip()
+                if not backup_dir_value:
+                    raise RuntimeError(
+                        "CONTROLADOR_BACKUP_DIR é obrigatório quando backups automáticos estão habilitados"
+                    )
+                interval_value = os.getenv(
+                    "CONTROLADOR_BACKUP_INTERVAL_SECONDS", "86400"
+                ).strip()
+                try:
+                    backup_interval = int(interval_value)
+                except ValueError as exc:
+                    raise RuntimeError(
+                        "CONTROLADOR_BACKUP_INTERVAL_SECONDS deve ser um inteiro"
+                    ) from exc
+                backup_service = SQLiteBackupService(
+                    self.runtime_dir, backup_dir_value
+                )
+                self.backup_scheduler = SQLiteBackupScheduler(
+                    backup_service, interval_seconds=backup_interval
+                )
+                self.backup_scheduler.start()
             self.ecosystem_service = EcosystemService(
                 decision_store=DecisionStore(str(self.runtime_dir / "decision-memory.sqlite3")),
                 learning_state_store=LearningStateStore(ecosystem_state_store),
@@ -216,6 +244,9 @@ class StandaloneRuntime:
             worker = getattr(self, "notification_worker", None)
             if worker is not None:
                 worker.stop()
+            backup_scheduler = getattr(self, "backup_scheduler", None)
+            if backup_scheduler is not None:
+                backup_scheduler.stop()
             self.process_lock.release()
             self.closed = True
             raise
@@ -231,6 +262,8 @@ class StandaloneRuntime:
             self.market_monitor.stop()
         if self.notification_worker is not None:
             self.notification_worker.stop()
+        if self.backup_scheduler is not None:
+            self.backup_scheduler.stop()
         self.process_lock.release()
         self.closed = True
 
