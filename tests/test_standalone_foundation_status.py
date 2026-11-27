@@ -47,6 +47,9 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
                 "tenant-tradingview-webhook-secrets.sqlite3": {
                     "tenant_tradingview_webhook_secrets": "secret_hash TEXT, tenant_id TEXT, subject_id TEXT, connection_id TEXT, revoked INTEGER",
                 },
+                "tenant-tradingview-alerts.sqlite3": {
+                    "tenant_tradingview_alert_events": "tenant_id TEXT, subject_id TEXT, connection_id TEXT, event_id TEXT, ticker TEXT, interval TEXT, action TEXT, price REAL, fired_at TEXT, received_at TEXT, payload_json TEXT",
+                },
                 "notification-outbox.sqlite3": {"notification_outbox": "idempotency_key TEXT, payload_json TEXT, status TEXT, attempts INTEGER, available_at REAL, lease_until REAL, lease_token TEXT, created_at REAL, delivered_at REAL, last_error TEXT"},
                 "decision-memory.sqlite3": {"decisions": "decision_id TEXT, created_at TEXT, symbol TEXT, timeframe TEXT, signal TEXT, score REAL, confirmed INTEGER, reason TEXT, execution_allowed INTEGER, outcome TEXT, outcome_source TEXT"},
                 "assistant-conversations.sqlite3": {
