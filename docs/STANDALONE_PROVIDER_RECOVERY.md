@@ -52,11 +52,13 @@ states, and exception classes only. Credential references and secret material
 are excluded. Remote readiness remains an infrastructure-only contract and
 does not expose local account recovery details.
 
-Provider onboarding also rejects any handshake capability outside the
-read-only market-data scope. Capabilities must end in `:read` or `:stream`,
-except the explicit `account-mode:demo` marker. A provider advertising
-`orders:write`, trading scopes, or another write capability is rejected and
-its adapter is closed before a connection is persisted.
+Provider onboarding also rejects any handshake capability outside an
+explicit allowlist: `candles:read`, `candles:stream`, `quotes:read`,
+`quotes:stream`, `symbols:read`, `account:read`, `market-data:read`,
+`market-data:stream`, and `account-mode:demo`. At least one candle capability
+is mandatory. A provider advertising `orders:write`, an unknown capability,
+or quotes without candle access is rejected and its adapter is closed before
+a connection is persisted.
 
 All provider adapters remain read-only and every recovery result carries
 `execution_authorized: false`. This mechanism does not configure a production
