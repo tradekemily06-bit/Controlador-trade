@@ -408,6 +408,46 @@ class StandaloneWSGIApplication:
                 return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "não foi possível provisionar a conexão OAuth cTrader", "execution_authorized": False}, request_id)
             return _json_response(start_response, HTTPStatus.CREATED, result, request_id)
 
+        ctrader_accounts_prefix = "/api/market-data/connections/"
+        ctrader_accounts_suffix = "/ctrader-accounts"
+        if method == "GET" and path.startswith(ctrader_accounts_prefix) and path.endswith(ctrader_accounts_suffix):
+            context = _tenant_context_for_request(environ, reason)
+            account_service = getattr(self.runtime, "tenant_ctrader_account_service", None)
+            connection_id = path[len(ctrader_accounts_prefix):-len(ctrader_accounts_suffix)].strip("/")
+            if context is None or account_service is None:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "identidade ou seleção segura de conta cTrader indisponível", "execution_authorized": False}, request_id)
+            try:
+                result = account_service.list_demo_accounts(context, connection_id=connection_id)
+            except PermissionError as exc:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "execution_authorized": False}, request_id)
+            except (ValueError, TypeError) as exc:
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
+            except Exception:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "não foi possível listar contas DEMO cTrader", "execution_authorized": False}, request_id)
+            return _json_response(start_response, HTTPStatus.OK, result, request_id)
+
+        ctrader_account_suffix = "/ctrader-account"
+        if method == "POST" and path.startswith(ctrader_accounts_prefix) and path.endswith(ctrader_account_suffix):
+            context = _tenant_context_for_request(environ, reason)
+            account_service = getattr(self.runtime, "tenant_ctrader_account_service", None)
+            connection_id = path[len(ctrader_accounts_prefix):-len(ctrader_account_suffix)].strip("/")
+            if context is None or account_service is None:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "identidade ou seleção segura de conta cTrader indisponível", "execution_authorized": False}, request_id)
+            try:
+                payload = _read_json(environ)
+                if set(payload) != {"account_id"}:
+                    raise ValueError("envie somente account_id; tokens e credenciais permanecem no servidor")
+                result = account_service.connect_demo(
+                    context, connection_id=connection_id, account_id=payload["account_id"]
+                )
+            except PermissionError as exc:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "execution_authorized": False}, request_id)
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
+            except Exception:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "não foi possível verificar e conectar a conta DEMO cTrader", "execution_authorized": False}, request_id)
+            return _json_response(start_response, HTTPStatus.OK, result, request_id)
+
         if method == "POST" and path.startswith("/api/market-data/connections/") and path.endswith("/ctrader-oauth"):
             context = _tenant_context_for_request(environ, reason)
             oauth_service = getattr(self.runtime, "tenant_ctrader_oauth_service", None)
