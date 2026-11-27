@@ -113,53 +113,55 @@ class TenantMarketDataSessionRegistry:
     def status(self, context: TenantContext | None) -> list[dict[str, Any]]:
         owner = require_tenant_context(context)
         accounts = self.connections.list_connections(owner)
-        output = []
         with self._lock:
-            for account in accounts:
-                session = self._sessions.get(
-                    (owner.tenant_id, owner.subject_id, account["connection_id"])
-                )
-                health: dict[str, Any] = {}
-                health_status = "NOT_BOUND"
-                if session is not None:
-                    health_status = "UNVERIFIED"
-                    status_method = getattr(session.adapter, "status", None)
-                    if callable(status_method):
-                        try:
-                            reported = status_method()
-                            if isinstance(reported, dict):
-                                health = {
-                                    key: reported[key]
-                                    for key in ("connected", "account_mode", "last_seen", "source_id", "stored_candles")
-                                    if key in reported
-                                }
-                                if reported.get("connected") is False:
-                                    health_status = "DISCONNECTED"
-                                elif reported.get("connected") is True:
-                                    raw_seen = reported.get("last_seen")
-                                    try:
-                                        seen = datetime.fromisoformat(str(raw_seen).replace("Z", "+00:00"))
-                                        age = (
-                                            datetime.now(timezone.utc)
-                                            - seen.astimezone(timezone.utc)
-                                        ).total_seconds() if seen.tzinfo else float("inf")
-                                    except (TypeError, ValueError, OverflowError):
-                                        age = float("inf")
-                                    health_status = (
-                                        "CONNECTED" if -5 <= age <= 30
-                                        else "HEARTBEAT_STALE_OR_UNVERIFIED"
-                                    )
-                        except Exception:
-                            health_status = "STATUS_ERROR"
-                output.append({
-                    "connection_id": account["connection_id"],
-                    "provider_id": account["provider_id"],
-                    "account_alias": account["account_alias"],
-                    "status": account["status"],
-                    "adapter_status": "BOUND" if session is not None else "NOT_BOUND",
-                    "health_status": health_status,
-                    "health": health,
-                    "read_only": True,
-                    "execution_authorized": False,
-                })
+            sessions = dict(self._sessions)
+
+        output = []
+        for account in accounts:
+            session = sessions.get(
+                (owner.tenant_id, owner.subject_id, account["connection_id"])
+            )
+            health: dict[str, Any] = {}
+            health_status = "NOT_BOUND"
+            if session is not None:
+                health_status = "UNVERIFIED"
+                status_method = getattr(session.adapter, "status", None)
+                if callable(status_method):
+                    try:
+                        reported = status_method()
+                        if isinstance(reported, dict):
+                            health = {
+                                key: reported[key]
+                                for key in ("connected", "account_mode", "last_seen", "source_id", "stored_candles")
+                                if key in reported
+                            }
+                            if reported.get("connected") is False:
+                                health_status = "DISCONNECTED"
+                            elif reported.get("connected") is True:
+                                raw_seen = reported.get("last_seen")
+                                try:
+                                    seen = datetime.fromisoformat(str(raw_seen).replace("Z", "+00:00"))
+                                    age = (
+                                        datetime.now(timezone.utc)
+                                        - seen.astimezone(timezone.utc)
+                                    ).total_seconds() if seen.tzinfo else float("inf")
+                                except (TypeError, ValueError, OverflowError):
+                                    age = float("inf")
+                                health_status = (
+                                    "CONNECTED" if -5 <= age <= 30
+                                    else "HEARTBEAT_STALE_OR_UNVERIFIED"
+                                )
+                    except Exception:
+                        health_status = "STATUS_ERROR"
+            output.append({
+                "connection_id": account["connection_id"],
+                "provider_id": account["provider_id"],
+                "account_alias": account["account_alias"],
+                "status": account["status"],
+                "adapter_status": "BOUND" if session is not None else "NOT_BOUND",
+                "health_status": health_status,
+                "health": health,
+                "read_only": True,
+                "execution_authorized": False,
+            })
         return output
