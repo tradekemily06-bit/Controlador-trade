@@ -40,6 +40,35 @@ def test_feed_normalizes_valid_provider_data_and_applies_limit():
     assert result.source == "paper"
 
 
+def test_feed_overlays_same_timestamp_live_closed_candle():
+    history = candles(3)
+    live = Candle(history[-1].timestamp, 102, 104, 101, 103.5, 25)
+    result = MarketDataFeed(Provider(history), source="stream").fetch(
+        MarketDataRequest("EURUSD", "1m", 3), live_candle=live
+    )
+    assert result.candles[-1].close == 103.5
+    assert result.candles[-1].volume == 25
+
+
+def test_feed_appends_only_contiguous_live_candle():
+    history = candles(3)
+    live = Candle(history[-1].timestamp + timedelta(minutes=1), 103, 105, 102, 104.5, 30)
+    result = MarketDataFeed(Provider(history), source="stream").fetch(
+        MarketDataRequest("EURUSD", "1m", 4), live_candle=live
+    )
+    assert len(result.candles) == 4
+    assert result.candles[-1] == live
+
+
+def test_feed_rejects_live_candle_with_history_gap():
+    history = candles(3)
+    live = Candle(history[-1].timestamp + timedelta(minutes=2), 103, 105, 102, 104.5, 30)
+    with pytest.raises(ValueError, match="not contiguous"):
+        MarketDataFeed(Provider(history), source="stream").fetch(
+            MarketDataRequest("EURUSD", "1m", 4), live_candle=live
+        )
+
+
 def test_feed_rejects_empty_provider_response():
     with pytest.raises(ValueError, match="no candles"):
         MarketDataFeed(Provider([])).fetch(MarketDataRequest("EURUSD", "1m", 1))
