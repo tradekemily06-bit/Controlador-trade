@@ -36,3 +36,21 @@ def test_unknown_timeframe_is_not_safe_for_analysis():
     )
     assert report.health is MarketDataHealth.UNKNOWN
     assert report.safe_for_analysis is False
+
+
+def test_weekly_timeframe_uses_its_own_interval_and_alias():
+    base = datetime(2026, 1, 5, tzinfo=timezone.utc)
+    candles = tuple(
+        Candle(base + timedelta(weeks=i), 100, 101, 99, 100, 1)
+        for i in range(2)
+    )
+    for timeframe in ("1w", "W1"):
+        weekly = BrokerMarketDataSnapshot(
+            "EURUSD", timeframe, candles, "TEST_PROVIDER",
+            base + timedelta(weeks=2),
+        )
+        report = MarketDataRuntimeIntegrity().assess(
+            weekly, now=base + timedelta(weeks=2)
+        )
+        assert report.health is MarketDataHealth.HEALTHY
+        assert report.safe_for_analysis is True
