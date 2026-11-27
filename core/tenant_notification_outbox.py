@@ -174,7 +174,7 @@ class TenantNotificationOutbox:
                     UPDATE tenant_notification_outbox SET status='IN_FLIGHT',
                         attempts=?, lease_until=?, lease_token=?, last_error=NULL
                     WHERE tenant_id=? AND subject_id=? AND notification_id=?
-                """, (attempts, current + lease_seconds, token, row["tenant_id"],
+                """, (attempts, current + lease, token, row["tenant_id"],
                       row["subject_id"], row["notification_id"]))
                 claimed.append(TenantOutboxItem(
                     idempotency_key=hashlib.sha256(json.dumps([row["tenant_id"], row["subject_id"], row["notification_id"]], separators=(",", ":")).encode("utf-8")).hexdigest(),
