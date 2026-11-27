@@ -23,6 +23,15 @@ execution permission.
 Accounts explicitly disconnected by the user remain disconnected. Startup
 recovery does not reconnect them.
 
+## Connection inventory
+
+The trusted tenant-scoped inventory is available through
+`GET /api/market-data/connections`. It returns only the requesting identity's
+account metadata and the current process-local adapter binding/health state.
+A persisted `CONNECTED` record with no in-memory adapter is reported as
+`adapter_status: NOT_BOUND` and `health_status: NOT_BOUND`; the API does not
+pretend a prior process's connection is live.
+
 ## Explicit reconnection
 
 A user may request a fresh handshake for an existing account:
