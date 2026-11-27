@@ -146,14 +146,14 @@ class TenantMarketDataSessionRegistry:
                                     health_status = "STREAM_BACKPRESSURE"
                                 else:
                                     raw_seen = reported.get("last_seen")
-                                try:
-                                    seen = datetime.fromisoformat(str(raw_seen).replace("Z", "+00:00"))
-                                    age = (
-                                        datetime.now(timezone.utc)
-                                        - seen.astimezone(timezone.utc)
-                                    ).total_seconds() if seen.tzinfo else float("inf")
-                                except (TypeError, ValueError, OverflowError):
-                                    age = float("inf")
+                                    try:
+                                        seen = datetime.fromisoformat(str(raw_seen).replace("Z", "+00:00"))
+                                        age = (
+                                            datetime.now(timezone.utc)
+                                            - seen.astimezone(timezone.utc)
+                                        ).total_seconds() if seen.tzinfo else float("inf")
+                                    except (TypeError, ValueError, OverflowError):
+                                        age = float("inf")
                                     health_status = (
                                         "CONNECTED" if -5 <= age <= 30
                                         else "HEARTBEAT_STALE_OR_UNVERIFIED"
