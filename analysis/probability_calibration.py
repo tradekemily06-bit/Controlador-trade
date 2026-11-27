@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from math import log
 from typing import Iterable
 
+from data.timeframes import normalize_timeframe
+
 
 _ALLOWED_PROVENANCE = {"REAL_MARKET_DATA", "VERIFIED_REAL_EXECUTION"}
 
@@ -64,7 +66,11 @@ def evaluate_probability_calibration(
     observations alone prove calibration. Even after the threshold, the
     output remains EVALUATED_REQUIRES_REVIEW and exposes no approved chance.
     """
-    if isinstance(minimum_sample_count, bool) or minimum_sample_count < 2:
+    if (
+        isinstance(minimum_sample_count, bool)
+        or not isinstance(minimum_sample_count, int)
+        or minimum_sample_count < 2
+    ):
         raise ValueError("minimum_sample_count must be an integer >= 2")
     if isinstance(bin_count, bool) or not isinstance(bin_count, int) or bin_count < 2:
         raise ValueError("bin_count must be an integer >= 2")
@@ -77,9 +83,14 @@ def evaluate_probability_calibration(
             rejected += 1
             continue
         if (
-            not item.forecast_id
+            not isinstance(item.forecast_id, str)
+            or not item.forecast_id.strip()
             or item.forecast_id in seen_ids
-            or not all((item.symbol, item.timeframe, item.direction, item.model_version))
+            or not all(
+                isinstance(value, str) and value.strip()
+                for value in (item.symbol, item.timeframe, item.direction, item.model_version)
+            )
+            or item.direction.strip().upper() not in {"COMPRA", "VENDA"}
             or not isinstance(item.outcome, bool)
             or not isinstance(item.out_of_sample, bool)
             or not item.out_of_sample
@@ -97,8 +108,18 @@ def evaluate_probability_calibration(
         except (TypeError, ValueError):
             rejected += 1
             continue
+        try:
+            canonical_timeframe = normalize_timeframe(item.timeframe)
+        except ValueError:
+            rejected += 1
+            continue
         seen_ids.add(item.forecast_id)
-        key = (item.symbol.upper(), item.timeframe.lower(), item.direction.upper(), item.model_version)
+        key = (
+            item.symbol.strip().upper(),
+            canonical_timeframe,
+            item.direction.strip().upper(),
+            item.model_version.strip(),
+        )
         groups.setdefault(key, []).append(item)
 
     results: dict[str, dict[str, object]] = {}
@@ -118,6 +139,7 @@ def evaluate_probability_calibration(
                 "log_loss": None,
                 "reliability_bins": [],
                 "rejected_records": rejected,
+                "rejected_records_total": rejected,
             }
             continue
 
@@ -161,6 +183,7 @@ def evaluate_probability_calibration(
             "log_loss": log_loss,
             "reliability_bins": bins,
             "rejected_records": rejected,
+            "rejected_records_total": rejected,
             "approval_note": (
                 "Métricas fora da amostra calculadas; ainda exigem revisão de "
                 "estabilidade, intervalos de confiança e critérios de aceitação."
