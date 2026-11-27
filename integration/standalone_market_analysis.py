@@ -183,11 +183,9 @@ class StandaloneMarketAnalysisService:
                 "VENDA": "RED",
                 "AGUARDAR": "YELLOW",
             }[signal],
-            "profit_probability_color": {
-                "COMPRA": "GREEN",
-                "VENDA": "RED",
-                "AGUARDAR": "YELLOW",
-            }[signal],
+            # Probability is not calibrated yet; never color it as a
+            # directional confidence cue based only on COMPRA/VENDA.
+            "profit_probability_color": "NEUTRAL",
         }
         signal_card = {
             "symbol": symbol,
@@ -205,6 +203,18 @@ class StandaloneMarketAnalysisService:
             "display": f"{symbol} · {signal} · {score}/100",
             "state": "READY_FOR_MANUAL_REVIEW" if safe else "WAIT",
             "probability_of_profit": None,
+            "profit_estimate": {
+                "status": "NOT_AVAILABLE",
+                "value": None,
+                "unit": "PRICE_OR_ACCOUNT_CURRENCY",
+                "reason": "Sem preço executável, tamanho de posição, alvo, custos e modelo de saída validados; não inventar lucro estimado.",
+            },
+            "risk_estimate": {
+                "status": "NOT_AVAILABLE",
+                "value": None,
+                "unit": "PRICE_OR_ACCOUNT_CURRENCY",
+                "reason": "Sem preço executável, invalidação/stop, exposição e custos validados; não inventar risco estimado.",
+            },
             "profit_probability": {
                 "status": "NOT_CALIBRATED",
                 "value": None,
