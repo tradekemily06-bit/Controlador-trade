@@ -224,5 +224,35 @@ class SQLiteBackupServiceTests(unittest.TestCase):
 
 
 
+    def test_tenant_tradingview_alert_history_is_included_in_backups(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "runtime"
+            backups = root / "backups"
+            runtime.mkdir()
+            source = runtime / "tenant-tradingview-alerts.sqlite3"
+            with sqlite3.connect(source) as db:
+                db.execute(
+                    "CREATE TABLE tenant_tradingview_alert_events "
+                    "(tenant_id TEXT, subject_id TEXT, connection_id TEXT, event_id TEXT, payload_json TEXT)"
+                )
+                db.execute(
+                    "INSERT INTO tenant_tradingview_alert_events VALUES (?, ?, ?, ?, ?)",
+                    ("tenant-a", "user-a", "connection-1", "event-0001", '{"action":"BUY"}'),
+                )
+            result = SQLiteBackupService(runtime, backups).backup(["tenant_tradingview_alerts"])
+            item = result["results"][0]
+            self.assertEqual(item["status"], "BACKUP_CREATED")
+            with sqlite3.connect(backups / item["filename"]) as db:
+                self.assertEqual(
+                    db.execute(
+                        "SELECT tenant_id, subject_id, connection_id, event_id "
+                        "FROM tenant_tradingview_alert_events"
+                    ).fetchone(),
+                    ("tenant-a", "user-a", "connection-1", "event-0001"),
+                )
+
+
+
 if __name__ == "__main__":
     unittest.main()
