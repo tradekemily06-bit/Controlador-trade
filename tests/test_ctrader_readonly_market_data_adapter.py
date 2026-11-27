@@ -372,3 +372,19 @@ def test_ctrader_declares_supported_timeframes(timeframe):
 def test_ctrader_does_not_declare_unsupported_timeframes(timeframe):
     assert CTraderReadOnlyMarketDataAdapter.supports_timeframe(timeframe) is False
 
+
+
+def test_ctrader_adapter_normalizes_platform_timeframe_aliases_at_every_boundary():
+    transport = FakeTransport()
+    adapter = CTraderReadOnlyMarketDataAdapter(transport, account_id=123)
+    adapter.connect()
+    adapter.handshake()
+
+    adapter.fetch(MarketDataRequest("EURUSD", "M1", 10))
+    assert transport.calls[-1] == ("bars", 123, 44, "M1", 10)
+
+    received = []
+    adapter.subscribe_live_candles("EURUSD", "M5", received.append)
+    assert ("subscribe_live_trendbars", 123, 44, "M5") in transport.calls
+    adapter.unsubscribe_live_candles("EURUSD", "M5")
+    assert transport.calls[-1] == ("unsubscribe_live_trendbars", 123, 44, "M5")
