@@ -137,8 +137,6 @@ class StandaloneRuntime:
         notification_sink=None,
         provider_secret_resolver=None,
         provider_adapter_factories: Mapping[str, Any] | None = None,
-        tenant_mt5_relay_source_id_resolver=None,
-        tenant_mt5_relay_token_resolver=None,
     ) -> None:
         configured_identity = os.getenv("CONTROLADOR_SINGLE_USER_IDENTITY", "").strip()
         if not configured_identity:
@@ -177,16 +175,12 @@ class StandaloneRuntime:
                 self.runtime_dir / "tenant-mt5-relay-tokens.sqlite3",
                 self.tenant_provider_connections,
             )
-            self.tenant_mt5_relay_token_resolver = (
-                tenant_mt5_relay_token_resolver or self.tenant_mt5_relay_token_vault
-            )
-            source_id_resolver = (
-                tenant_mt5_relay_source_id_resolver or self.tenant_mt5_relay_token_vault.source_id
-            )
+            self.tenant_mt5_relay_token_resolver = self.tenant_mt5_relay_token_vault
             self.tenant_mt5_relay_registry = TenantMT5RelayRegistry(
                 self.tenant_provider_connections,
                 self.runtime_dir / "tenant-mt5-relays",
-                source_id_resolver,
+                self.tenant_mt5_relay_token_vault.source_id,
+                sessions=self.tenant_market_data_sessions,
             )
             self.tenant_mt5_relay_onboarding = TenantMT5RelayOnboardingService(
                 self.tenant_provider_connections, self.tenant_mt5_relay_token_vault
