@@ -181,11 +181,16 @@ class TenantProviderConnectionRegistry:
         }
         unique_update = getattr(self.storage, "update_list_item_unique", None)
         if callable(unique_update):
-            return unique_update(
-                trusted, self.STORAGE_KEY, match_field="connection_id",
-                match_value=connection_id, updates=updates,
-                unique_fields=("provider_id", "account_reference"),
-            )
+            try:
+                return unique_update(
+                    trusted, self.STORAGE_KEY, match_field="connection_id",
+                    match_value=connection_id, updates=updates,
+                    unique_fields=("provider_id", "account_reference"),
+                )
+            except ValueError as exc:
+                if "unique tenant list identity already exists" in str(exc):
+                    raise ValueError("esta conta do provedor já está vinculada a outra conexão") from exc
+                raise
         if any(
             item["connection_id"] != connection_id
             and item["provider_id"] == target["provider_id"]
