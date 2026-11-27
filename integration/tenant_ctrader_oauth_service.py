@@ -195,7 +195,12 @@ class TenantCTraderOAuthService:
         with self._refresh_locks_guard:
             lock = self._refresh_locks.setdefault(connection_id, threading.Lock())
         with lock:
-            current = self.token_vault.resolve(owner, connection_id)
+            # Access-token expiry must not prevent use of the separately
+            # encrypted refresh token. Normal adapter resolution remains
+            # fail-closed for expired access tokens.
+            current = self.token_vault.resolve(
+                owner, connection_id, allow_expired_access_for_refresh=True
+            )
             if not isinstance(current, Mapping) or not current.get("refresh_token"):
                 raise PermissionError("cTrader refresh token is unavailable or revoked")
             payload = self.refresh_tokens(current["refresh_token"])
