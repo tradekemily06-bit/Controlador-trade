@@ -3,8 +3,18 @@
 ## Standalone runtime wiring
 
 ```python
+from security.postgres_encrypted_push_subscription_store import (
+    PostgresEncryptedPushSubscriptionStore,
+)
+
+# Run initialize_schema() separately as a deployment migration.
+subscription_store = PostgresEncryptedPushSubscriptionStore(
+    postgres_connection_factory,
+    secret_manager.get_push_encryption_key,
+    key_version="push-subscriptions-v1",
+)
 subscription_registry, notification_sink = build_tenant_web_push_components(
-    shared_durable_backend,
+    subscription_store,
     secret_manager.get_vapid_private_key,
     subject="mailto:ops@example.com",
 )
