@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 from datetime import datetime, timezone
 from typing import Any
@@ -125,6 +126,29 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
             if account is None or not self._is_demo_account(account, mt5):
                 raise MT5MarketDataError("conta MT5 não confirmada como DEMO")
             return "DEMO"
+        finally:
+            mt5.shutdown()
+
+    def get_account_reference(self) -> str:
+        """Return a stable pseudonymous reference for the confirmed DEMO login/server."""
+        mt5 = self._module()
+        if not self._initialize(mt5):
+            raise MT5MarketDataError(f"MT5 indisponível: {self._last_error(mt5)}")
+        try:
+            terminal = mt5.terminal_info()
+            account = mt5.account_info()
+            if terminal is None or not bool(getattr(terminal, "connected", False)):
+                raise MT5MarketDataError("terminal MT5 não está conectado")
+            if account is None or not self._is_demo_account(account, mt5):
+                raise MT5MarketDataError("conta MT5 não confirmada como DEMO")
+            login = getattr(account, "login", None)
+            server = getattr(account, "server", None)
+            if isinstance(login, bool) or not isinstance(login, int) or login <= 0:
+                raise MT5MarketDataError("login MT5 não pôde ser confirmado")
+            if not isinstance(server, str) or not server.strip():
+                raise MT5MarketDataError("servidor MT5 não pôde ser confirmado")
+            digest = hashlib.sha256(f"{login}@{server.strip()}".encode("utf-8")).hexdigest()[:32]
+            return "mt5_" + digest
         finally:
             mt5.shutdown()
 

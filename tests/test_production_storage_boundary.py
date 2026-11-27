@@ -36,3 +36,14 @@ def test_unconfigured_store_fails_closed():
         store.load("1", tenant_id="tenant-a")
     with pytest.raises(RuntimeError, match="storage provider is not configured"):
         store.list(tenant_id="tenant-a")
+
+
+
+def test_storage_policy_rejects_truthy_strings_and_non_string_tenant_ids():
+    with pytest.raises(ValueError, match="provider_configured must be a boolean"):
+        ProductionStoragePolicy(provider_configured="false")
+    policy = ProductionStoragePolicy(
+        provider_configured=True, tenant_scoped=True, durable=True
+    )
+    assert policy.authorize_write(authenticated="false", tenant_id="tenant-a") is False
+    assert policy.authorize_write(authenticated=True, tenant_id=123) is False

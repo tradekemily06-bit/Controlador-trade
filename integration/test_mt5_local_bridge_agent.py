@@ -8,6 +8,9 @@ class FakeDemoAdapter:
     def get_account_mode(self):
         return "DEMO"
 
+    def get_account_reference(self):
+        return "mt5_" + "a" * 32
+
     def fetch_market_data(self, request):
         return (
             Candle(datetime(2026, 11, 26, 12, 0, tzinfo=timezone.utc), 1.1, 1.2, 1.0, 1.15, 100),
@@ -28,6 +31,7 @@ def test_publish_once_posts_only_confirmed_demo_candles(monkeypatch):
     assert url.startswith("https://")
     assert token == "secret"
     assert payload["account_mode"] == "DEMO"
+    assert payload["account_reference"] == "mt5_" + "a" * 32
     assert payload["symbol"] == "EURUSD"
     assert payload["message_id"]
     assert payload["sent_at"]
@@ -46,3 +50,50 @@ def test_publish_once_refuses_unconfirmed_account(monkeypatch):
         assert "DEMO" in str(exc)
     else:
         raise AssertionError("expected DEMO account guard")
+
+
+def test_build_relay_endpoint_supports_tenant_scoped_multi_account_path():
+    connection_id = "a" * 32
+    assert agent.build_relay_endpoint(
+        "https://app.example.com/", connection_id
+    ) == f"https://app.example.com/api/bridge/mt5/connections/{connection_id}/candles"
+
+
+def test_build_relay_endpoint_keeps_legacy_route_only_without_connection_id():
+    assert agent.build_relay_endpoint("https://app.example.com") == (
+        "https://app.example.com/api/bridge/mt5/candles"
+    )
+
+
+def test_build_relay_endpoint_rejects_invalid_connection_id_and_http():
+    for value in ("not-an-id", "../" + "a" * 32):
+        try:
+            agent.build_relay_endpoint("https://app.example.com", value)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("invalid connection ID must be rejected")
+    try:
+        agent.build_relay_endpoint("http://app.example.com", "a" * 32)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("HTTP relay endpoint must be rejected")
+
+
+def test_retry_delay_uses_bounded_exponential_backoff_and_resets_after_success():
+    assert agent.compute_retry_delay(5, 0) == 5
+    assert agent.compute_retry_delay(5, 1) == 10
+    assert agent.compute_retry_delay(5, 2) == 20
+    assert agent.compute_retry_delay(5, 20) == 60
+    assert agent.compute_retry_delay(5, 1, max_backoff_seconds=7) == 7
+
+
+def test_retry_delay_rejects_invalid_inputs():
+    for interval, failures in ((0, 1), (5, -1), (5, True)):
+        try:
+            agent.compute_retry_delay(interval, failures)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("invalid retry configuration must be rejected")

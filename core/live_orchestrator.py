@@ -13,6 +13,7 @@ from core.operational_state import OperationalState
 from core.signal_quality import SignalQuality
 from core.senior_context_cycle import SeniorContextCycle
 from data.feed import MarketDataFeed, MarketDataRequest, MarketDataResult
+from data.models import Candle
 
 
 @dataclass(frozen=True)
@@ -69,9 +70,10 @@ class TradingOrchestrator:
         daily_result=None,
         operations_count=None,
         consecutive_losses=None,
+        live_candle: Candle | None = None,
     ) -> OrchestrationResult:
         timestamp = datetime.now(timezone.utc)
-        market_data = self.feed.fetch(request)
+        market_data = self.feed.fetch(request, live_candle=live_candle)
         if market_context is None:
             market_context = self.market_context_engine.evaluate_from_candles(
                 candles=list(market_data.candles),

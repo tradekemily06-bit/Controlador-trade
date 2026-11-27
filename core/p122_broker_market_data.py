@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Protocol, Sequence
 
 from data.models import Candle
 from data.normalizer import normalize_candle
 from data.validator import validate_candles
+from data.timeframes import normalize_timeframe
 
 
 @dataclass(frozen=True)
@@ -59,24 +60,50 @@ class BrokerMarketDataBoundary:
         if not isinstance(request, BrokerMarketDataRequest):
             raise TypeError("request deve ser BrokerMarketDataRequest")
 
-        raw_result = self._provider.fetch_market_data(request)
+        snapshot_received_at = received_at or datetime.now(timezone.utc)
+        if (
+            not isinstance(snapshot_received_at, datetime)
+            or snapshot_received_at.tzinfo is None
+            or snapshot_received_at.utcoffset() is None
+        ):
+            raise ValueError("received_at deve conter fuso horário")
+
+        canonical_timeframe = normalize_timeframe(request.timeframe)
+        canonical_request = BrokerMarketDataRequest(
+            symbol=request.symbol.strip().upper(),
+            timeframe=canonical_timeframe,
+            limit=request.limit,
+        )
+        supports_timeframe = getattr(self._provider, "supports_timeframe", None)
+        if callable(supports_timeframe) and supports_timeframe(canonical_timeframe) is not True:
+            raise ValueError("provider não confirma suporte ao timeframe solicitado")
+        raw_result = self._provider.fetch_market_data(canonical_request)
         if raw_result is None:
             raise ValueError("provider retornou None")
         raw = tuple(raw_result)
         if not raw:
             raise ValueError("provider não retornou candles")
 
-        normalized = tuple(
-            normalize_candle(
-                timestamp=c.timestamp,
-                open=c.open,
-                high=c.high,
-                low=c.low,
-                close=c.close,
-                volume=c.volume,
-            )
-            for c in raw
-        )
+        normalized_items = []
+        for candle in raw:
+            if not isinstance(candle, Candle):
+                raise ValueError("provider retornou candle de tipo inválido")
+            if not isinstance(candle.timestamp, datetime):
+                raise ValueError("provider retornou timestamp inválido")
+            if candle.timestamp.tzinfo is None or candle.timestamp.utcoffset() is None:
+                raise ValueError("provider retornou timestamp sem fuso horário")
+            values = (candle.open, candle.high, candle.low, candle.close, candle.volume)
+            if any(isinstance(value, (bool, str, bytes)) for value in values):
+                raise ValueError("provider retornou campo numérico inválido")
+            normalized_items.append(normalize_candle(
+                timestamp=candle.timestamp.astimezone(timezone.utc),
+                open=candle.open,
+                high=candle.high,
+                low=candle.low,
+                close=candle.close,
+                volume=candle.volume,
+            ))
+        normalized = tuple(normalized_items)
         if not validate_candles(list(normalized)):
             raise ValueError("provider retornou sequência de candles inválida")
 
@@ -84,9 +111,9 @@ class BrokerMarketDataBoundary:
             normalized = normalized[-request.limit:]
 
         return BrokerMarketDataSnapshot(
-            symbol=request.symbol.strip(),
-            timeframe=request.timeframe.strip(),
+            symbol=canonical_request.symbol,
+            timeframe=canonical_timeframe,
             candles=normalized,
             source=self._source,
-            received_at=received_at or datetime.now().astimezone(),
+            received_at=snapshot_received_at.astimezone(timezone.utc),
         )

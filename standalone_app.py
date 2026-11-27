@@ -8,6 +8,7 @@ from __future__ import annotations
 import hmac
 import json
 import os
+import re
 from http import HTTPStatus
 from socketserver import ThreadingMixIn
 from wsgiref.simple_server import WSGIServer, make_server
@@ -20,6 +21,7 @@ from integration.standalone_foundation_status import standalone_storage_status
 from security.identity_boundary import IdentityPolicy
 from security.wsgi_identity import trusted_tenant_context_from_wsgi
 from security.tenant_context import TenantContext
+from integration.tenant_web_push_wsgi import TenantPushSubscriptionWSGI
 from data.timeframes import list_supported_timeframes
 from analysis.tenant_decision_analytics import summarize_tenant_decisions, build_tenant_decision_report
 
@@ -126,6 +128,37 @@ def _mt5_relay_authorized(environ) -> bool:
     return direct_tls or trusted_proxy_tls
 
 
+def _tenant_mt5_relay_identity(environ, resolver):
+    """Resolve a per-account relay bearer token to a trusted owner and connection."""
+    if resolver is None or not callable(getattr(resolver, "resolve", None)):
+        return None
+    authorization = str(environ.get("HTTP_AUTHORIZATION") or "")
+    if not authorization.startswith("Bearer "):
+        return None
+    token = authorization[7:].strip()
+    if not token or len(token) > 512:
+        return None
+    direct_tls = str(environ.get("wsgi.url_scheme", "")).lower() == "https"
+    trusted_proxy_tls = (
+        os.getenv("CONTROLADOR_TRUST_PROXY_TLS", "").strip().lower() in {"1", "true", "yes"}
+        and str(environ.get("HTTP_X_FORWARDED_PROTO", "")).lower() == "https"
+    )
+    if not (direct_tls or trusted_proxy_tls):
+        return None
+    try:
+        resolved = resolver.resolve(token)
+    except Exception:
+        return None
+    if not isinstance(resolved, tuple) or len(resolved) != 2:
+        return None
+    context, connection_id = resolved
+    if not isinstance(context, TenantContext):
+        return None
+    if not isinstance(connection_id, str) or not re.fullmatch(r"[a-f0-9]{32}", connection_id):
+        return None
+    return context, connection_id
+
+
 def _read_json(environ) -> dict[str, Any]:
     raw_length = environ.get("CONTENT_LENGTH") or "0"
     try:
@@ -148,6 +181,23 @@ class StandaloneWSGIApplication:
         if runtime is None or runtime.closed:
             raise ValueError("runtime standalone ativo é obrigatório")
         self.runtime = runtime
+        registry = getattr(runtime, "tenant_push_subscription_registry", None)
+        self.push_subscription_app = None
+        if registry is not None:
+            self.push_subscription_app = TenantPushSubscriptionWSGI(
+                registry,
+                context_resolver=self._push_tenant_context,
+                # The standalone API uses bearer-token access plus exact-origin
+                # CORS; it does not authenticate via ambient browser cookies.
+                mutation_authorizer=lambda environ: _authorized(environ)[0],
+            )
+
+    @staticmethod
+    def _push_tenant_context(environ):
+        authorized, reason = _authorized(environ)
+        if not authorized:
+            return None
+        return _tenant_context_for_request(environ, reason)
 
     def __call__(self, environ, start_response):
         request_id = SECURITY.request_id()
@@ -203,6 +253,82 @@ class StandaloneWSGIApplication:
             start_response("204 No Content", headers)
             return []
 
+        webhook_prefix = "/api/webhooks/tradingview/"
+        if method == "POST" and path.startswith(webhook_prefix):
+            connection_id = path[len(webhook_prefix):].strip("/")
+            vault = getattr(self.runtime, "tenant_tradingview_webhook_vault", None)
+            inbox = getattr(self.runtime, "tenant_tradingview_alert_inbox", None)
+            direct_tls = str(environ.get("wsgi.url_scheme", "")).lower() == "https"
+            trusted_proxy_tls = (
+                os.getenv("CONTROLADOR_TRUST_PROXY_TLS", "").strip().lower() in {"1", "true", "yes"}
+                and str(environ.get("HTTP_X_FORWARDED_PROTO", "")).lower() == "https"
+            )
+            if not (direct_tls or trusted_proxy_tls):
+                return _json_response(start_response, HTTPStatus.UNAUTHORIZED, {"error": "webhook TradingView exige HTTPS", "execution_authorized": False}, request_id)
+            if vault is None or inbox is None:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "webhook TradingView não provisionado", "execution_authorized": False}, request_id)
+            try:
+                payload = _read_json(environ)
+                resolved = vault.resolve_secret(payload.get("secret"))
+                if not isinstance(resolved, tuple) or len(resolved) != 2:
+                    return _json_response(start_response, HTTPStatus.UNAUTHORIZED, {"error": "segredo do webhook inválido", "execution_authorized": False}, request_id)
+                context, token_connection_id = resolved
+                if token_connection_id != connection_id:
+                    return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": "segredo não pertence à conexão solicitada", "execution_authorized": False}, request_id)
+                result = inbox.ingest(context, connection_id, payload)
+            except PermissionError as exc:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "execution_authorized": False}, request_id)
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
+            except Exception:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "falha ao receber alerta TradingView", "execution_authorized": False}, request_id)
+            return _json_response(start_response, HTTPStatus.ACCEPTED, result, request_id)
+
+        tenant_mt5_prefix = "/api/bridge/mt5/connections/"
+        if method == "POST" and path.startswith(tenant_mt5_prefix) and path.endswith("/candles"):
+            connection_id = path[len(tenant_mt5_prefix):-len("/candles")].strip("/")
+            relay_identity = _tenant_mt5_relay_identity(
+                environ, getattr(self.runtime, "tenant_mt5_relay_token_resolver", None)
+            )
+            if relay_identity is None:
+                return _json_response(
+                    start_response, HTTPStatus.UNAUTHORIZED,
+                    {"error": "token de relay por conta inválido ou TLS não confirmado", "execution_authorized": False},
+                    request_id,
+                )
+            context, token_connection_id = relay_identity
+            if connection_id != token_connection_id:
+                return _json_response(
+                    start_response, HTTPStatus.FORBIDDEN,
+                    {"error": "token não pertence à conexão solicitada", "execution_authorized": False},
+                    request_id,
+                )
+            relay_registry = getattr(self.runtime, "tenant_mt5_relay_registry", None)
+            if relay_registry is None:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "relay MT5 por conta não provisionado no servidor", "execution_authorized": False},
+                    request_id,
+                )
+            try:
+                payload = _read_json(environ)
+                result = relay_registry.ingest(context, connection_id, payload)
+            except PermissionError as exc:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "execution_authorized": False}, request_id)
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
+            except Exception:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "falha ao receber candles da conta MT5", "execution_authorized": False},
+                    request_id,
+                )
+            return _json_response(
+                start_response, HTTPStatus.ACCEPTED,
+                {**result, "connection_id": connection_id, "read_only": True, "execution_authorized": False},
+                request_id,
+            )
+
         if method == "POST" and path == "/api/bridge/mt5/candles":
             if not _mt5_relay_authorized(environ):
                 return _json_response(
@@ -231,6 +357,35 @@ class StandaloneWSGIApplication:
                 {**result, "execution_authorized": False},
                 request_id,
             )
+
+        # cTrader redirects the authorization code to this public HTTPS callback.
+        # The one-time state resolves the owner and connection server-side.
+        if method == "GET" and path == "/api/oauth/ctrader/callback":
+            direct_tls = str(environ.get("wsgi.url_scheme", "")).lower() == "https"
+            trusted_proxy_tls = (
+                os.getenv("CONTROLADOR_TRUST_PROXY_TLS", "").strip().lower() in {"1", "true", "yes"}
+                and str(environ.get("HTTP_X_FORWARDED_PROTO", "")).lower() == "https"
+            )
+            oauth_service = getattr(self.runtime, "tenant_ctrader_oauth_service", None)
+            if not (direct_tls or trusted_proxy_tls):
+                return _json_response(start_response, HTTPStatus.UNAUTHORIZED, {"error": "callback cTrader exige HTTPS", "execution_authorized": False}, request_id)
+            if oauth_service is None:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "OAuth cTrader não configurado com KMS e cliente de troca", "execution_authorized": False}, request_id)
+            query = parse_qs(str(environ.get("QUERY_STRING", "")), keep_blank_values=True)
+            state = query.get("state", [""])[0]
+            code = query.get("code", [""])[0]
+            if query.get("error"):
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": "autorização cTrader recusada pelo titular", "execution_authorized": False}, request_id)
+            try:
+                result = oauth_service.complete_callback(state=state, code=code)
+            except PermissionError as exc:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "execution_authorized": False}, request_id)
+            except (ValueError, TypeError) as exc:
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
+            except Exception:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "falha segura ao concluir OAuth cTrader", "execution_authorized": False}, request_id)
+            return _json_response(start_response, HTTPStatus.OK, result, request_id)
+
         authorized, reason = _authorized(environ)
         if not authorized:
             return _json_response(
@@ -238,6 +393,13 @@ class StandaloneWSGIApplication:
                 {"error": reason, "execution_authorized": False},
                 request_id,
             )
+
+        # Push registration/revocation shares the same verified tenant identity
+        # and bearer-token authorization boundary as the standalone analyst API.
+        if self.push_subscription_app is not None:
+            push_response = self.push_subscription_app(environ, start_response)
+            if push_response is not None:
+                return push_response
 
         # Dedicated market analysis, monitor, memory, statistics and report APIs
         # are tenant-scoped. The generic cross-area route remains blocked.
@@ -251,6 +413,290 @@ class StandaloneWSGIApplication:
                 },
                 request_id,
             )
+
+
+        if method == "POST" and path == "/api/market-data/ctrader-oauth-connections":
+            context = _tenant_context_for_request(environ, reason)
+            oauth_service = getattr(self.runtime, "tenant_ctrader_oauth_service", None)
+            if context is None or oauth_service is None:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "identidade ou OAuth cTrader não configurado", "execution_authorized": False}, request_id)
+            try:
+                payload = _read_json(environ)
+                if set(payload) != {"account_alias"}:
+                    raise ValueError("envie somente account_alias; credenciais e tokens são tratados pelo servidor")
+                result = oauth_service.provision(context, account_alias=payload["account_alias"])
+            except PermissionError as exc:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "execution_authorized": False}, request_id)
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
+            except Exception:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "não foi possível provisionar a conexão OAuth cTrader", "execution_authorized": False}, request_id)
+            return _json_response(start_response, HTTPStatus.CREATED, result, request_id)
+
+        ctrader_accounts_prefix = "/api/market-data/connections/"
+        ctrader_accounts_suffix = "/ctrader-accounts"
+        if method == "GET" and path.startswith(ctrader_accounts_prefix) and path.endswith(ctrader_accounts_suffix):
+            context = _tenant_context_for_request(environ, reason)
+            account_service = getattr(self.runtime, "tenant_ctrader_account_service", None)
+            connection_id = path[len(ctrader_accounts_prefix):-len(ctrader_accounts_suffix)].strip("/")
+            if context is None or account_service is None:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "identidade ou seleção segura de conta cTrader indisponível", "execution_authorized": False}, request_id)
+            try:
+                result = account_service.list_demo_accounts(context, connection_id=connection_id)
+            except PermissionError as exc:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "execution_authorized": False}, request_id)
+            except (ValueError, TypeError) as exc:
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
+            except Exception:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "não foi possível listar contas DEMO cTrader", "execution_authorized": False}, request_id)
+            return _json_response(start_response, HTTPStatus.OK, result, request_id)
+
+        ctrader_account_suffix = "/ctrader-account"
+        if method == "POST" and path.startswith(ctrader_accounts_prefix) and path.endswith(ctrader_account_suffix):
+            context = _tenant_context_for_request(environ, reason)
+            account_service = getattr(self.runtime, "tenant_ctrader_account_service", None)
+            connection_id = path[len(ctrader_accounts_prefix):-len(ctrader_account_suffix)].strip("/")
+            if context is None or account_service is None:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "identidade ou seleção segura de conta cTrader indisponível", "execution_authorized": False}, request_id)
+            try:
+                payload = _read_json(environ)
+                if set(payload) != {"account_id"}:
+                    raise ValueError("envie somente account_id; tokens e credenciais permanecem no servidor")
+                result = account_service.connect_demo(
+                    context, connection_id=connection_id, account_id=payload["account_id"]
+                )
+            except PermissionError as exc:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "execution_authorized": False}, request_id)
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
+            except Exception:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "não foi possível verificar e conectar a conta DEMO cTrader", "execution_authorized": False}, request_id)
+            return _json_response(start_response, HTTPStatus.OK, result, request_id)
+
+        if method == "POST" and path.startswith("/api/market-data/connections/") and path.endswith("/ctrader-oauth"):
+            context = _tenant_context_for_request(environ, reason)
+            oauth_service = getattr(self.runtime, "tenant_ctrader_oauth_service", None)
+            connection_id = path[len("/api/market-data/connections/"):-len("/ctrader-oauth")].strip("/")
+            if context is None or oauth_service is None:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "identidade ou OAuth cTrader não configurado", "execution_authorized": False}, request_id)
+            try:
+                result = oauth_service.begin(context, connection_id=connection_id)
+            except PermissionError as exc:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "execution_authorized": False}, request_id)
+            except (ValueError, TypeError) as exc:
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
+            except Exception:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "não foi possível iniciar OAuth cTrader", "execution_authorized": False}, request_id)
+            return _json_response(start_response, HTTPStatus.OK, result, request_id)
+
+        if method == "POST" and path == "/api/market-data/tradingview-webhook-connections":
+            context = _tenant_context_for_request(environ, reason)
+            onboarding = getattr(self.runtime, "tenant_tradingview_webhook_onboarding", None)
+            if context is None or onboarding is None:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "identidade ou provisionador TradingView indisponível", "execution_authorized": False}, request_id)
+            try:
+                payload = _read_json(environ)
+                if set(payload) != {"account_alias"}:
+                    raise ValueError("envie somente account_alias; segredo do webhook é gerado pelo servidor")
+                result = onboarding.provision(context, account_alias=payload["account_alias"])
+            except PermissionError as exc:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "execution_authorized": False}, request_id)
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
+            except Exception:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "não foi possível provisionar webhook TradingView", "execution_authorized": False}, request_id)
+            return _json_response(start_response, HTTPStatus.CREATED, result, request_id)
+
+        if method == "POST" and path == "/api/market-data/mt5-relay-connections":
+            context = _tenant_context_for_request(environ, reason)
+            onboarding = getattr(self.runtime, "tenant_mt5_relay_onboarding", None)
+            if context is None or onboarding is None:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "identidade ou provisionador seguro de relay indisponível", "execution_authorized": False},
+                    request_id,
+                )
+            try:
+                payload = _read_json(environ)
+                if set(payload) != {"account_alias"}:
+                    raise ValueError("envie somente account_alias; tokens são gerados pelo servidor")
+                result = onboarding.provision(context, account_alias=payload["account_alias"])
+            except PermissionError as exc:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "execution_authorized": False}, request_id)
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
+            except Exception:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "não foi possível provisionar o relay MT5", "execution_authorized": False},
+                    request_id,
+                )
+            return _json_response(start_response, HTTPStatus.CREATED, result, request_id)
+
+        tv_alert_prefix = "/api/market-data/connections/"
+        tv_alert_suffix = "/tradingview-alerts"
+        if method == "GET" and path.startswith(tv_alert_prefix) and path.endswith(tv_alert_suffix):
+            context = _tenant_context_for_request(environ, reason)
+            inbox = getattr(self.runtime, "tenant_tradingview_alert_inbox", None)
+            connection_id = path[len(tv_alert_prefix):-len(tv_alert_suffix)].strip("/")
+            if context is None or inbox is None:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": "identidade ou inbox TradingView indisponível", "execution_authorized": False}, request_id)
+            try:
+                query = parse_qs(str(environ.get("QUERY_STRING", "")), keep_blank_values=True)
+                limit = int(query.get("limit", ["50"])[0])
+                events = inbox.list_events(context, connection_id, limit=limit)
+            except (ValueError, TypeError) as exc:
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
+            return _json_response(start_response, HTTPStatus.OK, {"events": events, "read_only": True, "execution_authorized": False}, request_id)
+
+        if method == "GET" and path == "/api/market-data/connections":
+            try:
+                context = _tenant_context_for_request(environ, reason)
+            except Exception:
+                context = None
+            registry = getattr(self.runtime, "tenant_market_data_sessions", None)
+            if context is None or registry is None:
+                return _json_response(
+                    start_response, HTTPStatus.FORBIDDEN,
+                    {"error": "identidade confiável ou registro de sessões indisponível", "execution_authorized": False},
+                    request_id,
+                )
+            try:
+                accounts = registry.status(context)
+            except PermissionError:
+                return _json_response(
+                    start_response, HTTPStatus.FORBIDDEN,
+                    {"error": "identidade confiável inválida", "execution_authorized": False},
+                    request_id,
+                )
+            return _json_response(
+                start_response, HTTPStatus.OK,
+                {
+                    "connections": accounts,
+                    "count": len(accounts),
+                    "execution_authorized": False,
+                },
+                request_id,
+            )
+
+        if method == "POST" and path == "/api/market-data/connections":
+            try:
+                context = _tenant_context_for_request(environ, reason)
+            except Exception:
+                context = None
+            service = getattr(self.runtime, "tenant_provider_connection_service", None)
+            if context is None or service is None:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "identidade confiável ou cofre de credenciais do servidor indisponível", "execution_authorized": False},
+                    request_id,
+                )
+            try:
+                payload = _read_json(environ)
+                allowed = {"provider_id", "account_alias", "credential_ref"}
+                if set(payload) - allowed or not allowed.issubset(payload):
+                    raise ValueError("envie somente provider_id, account_alias e credential_ref; segredos não são aceitos pela API")
+                result = service.connect(
+                    context,
+                    provider_id=payload["provider_id"],
+                    account_alias=payload["account_alias"],
+                    credential_ref=payload["credential_ref"],
+                )
+            except PermissionError as exc:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "execution_authorized": False}, request_id)
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
+            except Exception:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "não foi possível verificar a conexão com o provedor", "execution_authorized": False},
+                    request_id,
+                )
+            return _json_response(start_response, HTTPStatus.CREATED, result, request_id)
+
+        if (
+            method == "POST"
+            and path.startswith("/api/market-data/connections/")
+            and path.endswith("/reconnect")
+        ):
+            prefix = "/api/market-data/connections/"
+            connection_id = path[len(prefix):-len("/reconnect")].strip("/")
+            if len(connection_id) != 32 or any(
+                char not in "0123456789abcdef" for char in connection_id
+            ):
+                return _json_response(
+                    start_response, HTTPStatus.BAD_REQUEST,
+                    {"error": "connection_id inválido", "execution_authorized": False},
+                    request_id,
+                )
+            try:
+                context = _tenant_context_for_request(environ, reason)
+            except Exception:
+                context = None
+            service = getattr(self.runtime, "tenant_provider_connection_service", None)
+            if context is None or service is None:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "identidade confiável ou serviço de reconexão indisponível", "execution_authorized": False},
+                    request_id,
+                )
+            try:
+                result = service.reconnect_saved(context, connection_id=connection_id)
+            except PermissionError as exc:
+                return _json_response(
+                    start_response, HTTPStatus.FORBIDDEN,
+                    {"error": str(exc), "execution_authorized": False}, request_id,
+                )
+            except (ValueError, TypeError) as exc:
+                return _json_response(
+                    start_response, HTTPStatus.BAD_REQUEST,
+                    {"error": str(exc), "execution_authorized": False}, request_id,
+                )
+            except Exception:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "não foi possível revalidar a conexão com o provedor", "execution_authorized": False},
+                    request_id,
+                )
+            return _json_response(
+                start_response, HTTPStatus.OK,
+                {**result, "execution_authorized": False}, request_id,
+            )
+
+        if method == "DELETE" and path.startswith("/api/market-data/connections/"):
+            connection_id = path[len("/api/market-data/connections/"):].strip("/")
+            if "/" not in connection_id and connection_id:
+                try:
+                    context = _tenant_context_for_request(environ, reason)
+                except Exception:
+                    context = None
+                service = getattr(self.runtime, "tenant_provider_connection_service", None)
+                if context is None or service is None:
+                    return _json_response(
+                        start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                        {"error": "identidade confiável ou serviço de conexões indisponível", "execution_authorized": False},
+                        request_id,
+                    )
+                try:
+                    token_vault = getattr(self.runtime, "tenant_mt5_relay_token_vault", None)
+                    if token_vault is not None:
+                        token_vault.revoke(context, connection_id)
+                    tv_vault = getattr(self.runtime, "tenant_tradingview_webhook_vault", None)
+                    if tv_vault is not None:
+                        tv_vault.revoke(context, connection_id)
+                    ctrader_vault = getattr(self.runtime, "tenant_ctrader_token_vault", None)
+                    if ctrader_vault is not None:
+                        ctrader_vault.revoke(context, connection_id)
+                    result = service.disconnect(context, connection_id=connection_id)
+                except (ValueError, TypeError) as exc:
+                    return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
+                except Exception:
+                    return _json_response(
+                        start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                        {"error": "não foi possível encerrar a conexão", "execution_authorized": False},
+                        request_id,
+                    )
+                return _json_response(start_response, HTTPStatus.OK, result, request_id)
 
         if method == "GET" and path == "/api/market-data/providers":
             # User-owned connections are always resolved from trusted tenant
@@ -267,9 +713,41 @@ class StandaloneWSGIApplication:
                 }
             else:
                 connections = connection_registry.list_connections(context)
+                session_registry = getattr(self.runtime, "tenant_market_data_sessions", None)
                 payload = {
                     "status": "AVAILABLE" if connections else "NO_VERIFIED_CONNECTIONS",
                     "connections": connections,
+                    "adapter_sessions": (
+                        session_registry.status(context)
+                        if session_registry is not None else []
+                    ),
+                    "timeframe_monitor": (
+                        self.runtime.tenant_market_monitor.status(context)
+                        if getattr(self.runtime, "tenant_market_monitor", None) is not None
+                        else {"worker_running": False, "enabled": 0, "total": 0}
+                    ),
+                    "oauth_token_refresh": (
+                        self.runtime.tenant_oauth_refresh_worker.owner_status(context)
+                        if getattr(self.runtime, "tenant_oauth_refresh_worker", None) is not None
+                        else {
+                            "configured": False,
+                            "registered": False,
+                            "running": False,
+                            "state": "NOT_CONFIGURED",
+                            "execution_authorized": False,
+                        }
+                    ),
+                    "connection_onboarding": {
+                        "connect_enabled": bool(
+                            getattr(self.runtime, "tenant_provider_connection_service", None)
+                            and self.runtime.tenant_provider_connection_service.secret_resolver is not None
+                            and self.runtime.tenant_provider_connection_service.adapter_factories
+                        ),
+                        "disconnect_enabled": getattr(
+                            self.runtime, "tenant_provider_connection_service", None
+                        ) is not None,
+                        "credential_values_accepted": False,
+                    },
                     "count": len(connections),
                     "scope": "TENANT_AND_SUBJECT" if reason == "trusted_identity" else "LOCAL_SINGLE_USER",
                     "execution_authorized": False,
@@ -367,6 +845,7 @@ class StandaloneWSGIApplication:
                         "market_monitor": "USE_TENANT_SCOPED_STATUS_ENDPOINT",
                         "storage_details": "NOT_EXPOSED_IN_SHARED_READINESS",
                         "deployment": "PROCESS_RUNNING_DEPLOYMENT_NOT_VERIFIED",
+                        "deployment_topology": "SINGLE_HOST_SQLITE_MULTI_REPLICA_BLOCKED",
                         "scope": "INFRASTRUCTURE_ONLY",
                         "execution_authorized": False,
                     },
@@ -409,6 +888,77 @@ class StandaloneWSGIApplication:
                 ),
                 "notifications": ecosystem.notification_summary() if callable(getattr(ecosystem, "notification_summary", None)) else {"status": "NOT_CONFIGURED"},
                 "notification_delivery": worker.status() if worker is not None else {"configured": False, "running": False, "state": "NO_EXTERNAL_SINK_CONFIGURED"},
+                "oauth_token_refresh": (
+                    self.runtime.tenant_oauth_refresh_worker.status()
+                    if getattr(self.runtime, "tenant_oauth_refresh_worker", None) is not None
+                    else {
+                        "configured": False,
+                        "running": False,
+                        "registered_owner_count": 0,
+                        "state": "NOT_CONFIGURED",
+                        "execution_authorized": False,
+                    }
+                ),
+                "provider_recovery": (
+                    {
+                        "status": (
+                            "NO_SAVED_CONNECTIONS" if not self.runtime.provider_recovery_status
+                            else "DEGRADED" if any(
+                                item.get("status") in {"RECOVERY_NOT_CONFIGURED", "RECONNECT_FAILED"}
+                                for item in self.runtime.provider_recovery_status
+                            )
+                            else "RECOVERY_ATTEMPTED"
+                        ),
+                        "accounts": [
+                            {
+                                key: item[key]
+                                for key in (
+                                    "connection_id", "provider_id", "status",
+                                    "adapter_status", "error_class", "execution_authorized",
+                                )
+                                if key in item
+                            }
+                            for item in self.runtime.provider_recovery_status
+                        ],
+                        "execution_authorized": False,
+                    }
+                    if isinstance(getattr(self.runtime, "provider_recovery_status", None), list)
+                    else {
+                        "status": "NOT_CONFIGURED",
+                        "accounts": [],
+                        "execution_authorized": False,
+                    }
+                ),
+                "ctrader_recovery": (
+                    {
+                        "status": (
+                            "NO_SAVED_CONNECTIONS" if not self.runtime.ctrader_recovery_status
+                            else "DEGRADED" if any(
+                                item.get("status") == "RECONNECT_FAILED"
+                                for item in self.runtime.ctrader_recovery_status
+                            )
+                            else "RECOVERY_ATTEMPTED"
+                        ),
+                        "accounts": [
+                            {
+                                key: item[key]
+                                for key in (
+                                    "connection_id", "provider_id", "status",
+                                    "adapter_status", "error_class", "execution_authorized",
+                                )
+                                if key in item
+                            }
+                            for item in self.runtime.ctrader_recovery_status
+                        ],
+                        "execution_authorized": False,
+                    }
+                    if isinstance(getattr(self.runtime, "ctrader_recovery_status", None), list)
+                    else {
+                        "status": "NOT_CONFIGURED",
+                        "accounts": [],
+                        "execution_authorized": False,
+                    }
+                ),
                 "storage_foundation": standalone_storage_status(self.runtime),
                 "tenant_state": (
                     self.runtime.tenant_state.readiness()
@@ -426,6 +976,10 @@ class StandaloneWSGIApplication:
                     else {"status": "NOT_CONFIGURED", "production_ready": False}
                 ),
                 "deployment": "PROCESS_RUNNING_DEPLOYMENT_NOT_VERIFIED",
+                "deployment_topology": getattr(
+                    self.runtime, "deployment_topology",
+                    {"deployment_topology": "UNKNOWN", "multi_replica_ready": False},
+                ),
                 "execution_authorized": False,
             }
             return _json_response(start_response, HTTPStatus.OK, readiness, request_id)
@@ -496,7 +1050,10 @@ class StandaloneWSGIApplication:
 
         if method == "GET" and path == "/api/market-monitor/status":
             monitor = getattr(self.runtime, "market_monitor", None)
-            tenant_context = _tenant_context_for_request(environ, reason)
+            try:
+                tenant_context = _tenant_context_for_request(environ, reason)
+            except Exception:
+                tenant_context = None
             if tenant_context is None:
                 return _json_response(
                     start_response, HTTPStatus.FORBIDDEN,
@@ -777,6 +1334,140 @@ class StandaloneWSGIApplication:
                 request_id,
             )
 
+        if path.startswith("/api/market-data/connections/") and path.endswith("/subscriptions"):
+            try:
+                context = _tenant_context_for_request(environ, reason)
+            except Exception:
+                context = None
+            monitor = getattr(self.runtime, "tenant_market_monitor", None)
+            if context is None or monitor is None:
+                return _json_response(
+                    start_response, HTTPStatus.FORBIDDEN,
+                    {"error": "monitor de ciclos por conta ou identidade confiável indisponível", "execution_authorized": False},
+                    request_id,
+                )
+            connection_id = path[len("/api/market-data/connections/"):-len("/subscriptions")].strip("/")
+            if len(connection_id) != 32 or any(char not in "0123456789abcdef" for char in connection_id):
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": "connection_id inválido", "execution_authorized": False}, request_id)
+            try:
+                if method == "POST":
+                    payload = _read_json(environ)
+                    item = monitor.subscribe(context, connection_id, payload.get("symbol"), payload.get("timeframe"))
+                    return _json_response(start_response, HTTPStatus.CREATED, item, request_id)
+                if method == "GET":
+                    return _json_response(
+                        start_response, HTTPStatus.OK,
+                        {"subscriptions": monitor.subscriptions(context, connection_id), "execution_authorized": False},
+                        request_id,
+                    )
+                if method == "DELETE":
+                    payload = _read_json(environ)
+                    removed = monitor.unsubscribe(context, connection_id, payload.get("symbol"), payload.get("timeframe"))
+                    return _json_response(start_response, HTTPStatus.OK, {"unsubscribed": removed, "execution_authorized": False}, request_id)
+            except PermissionError as exc:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "execution_authorized": False}, request_id)
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
+
+        if method == "GET" and path == "/api/market-data/timeframe-results":
+            try:
+                context = _tenant_context_for_request(environ, reason)
+            except Exception:
+                context = None
+            monitor = getattr(self.runtime, "tenant_market_monitor", None)
+            if context is None or monitor is None:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": "identidade ou monitor indisponível", "execution_authorized": False}, request_id)
+            query = parse_qs(str(environ.get("QUERY_STRING", "")), keep_blank_values=True)
+            connection_values = query.get("connection_id", [])
+            limit_values = query.get("limit", ["50"])
+            try:
+                connection_id = connection_values[0] if connection_values else None
+                limit = int(limit_values[0])
+                results = monitor.latest_results(context, connection_id, limit)
+            except (ValueError, TypeError) as exc:
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
+            return _json_response(start_response, HTTPStatus.OK, {"results": results, "execution_authorized": False}, request_id)
+
+        if method == "POST" and path.startswith("/api/market-data/connections/") and path.endswith("/analysis"):
+            tenant_context = _tenant_context_for_request(environ, reason)
+            if tenant_context is None:
+                return _json_response(
+                    start_response, HTTPStatus.FORBIDDEN,
+                    {"error": "identidade confiável necessária para análise por conta", "execution_authorized": False},
+                    request_id,
+                )
+            connection_id = path[len("/api/market-data/connections/"):-len("/analysis")].strip("/")
+            if len(connection_id) != 32 or any(char not in "0123456789abcdef" for char in connection_id):
+                return _json_response(
+                    start_response, HTTPStatus.BAD_REQUEST,
+                    {"error": "connection_id inválido", "execution_authorized": False},
+                    request_id,
+                )
+            session_registry = getattr(self.runtime, "tenant_market_data_sessions", None)
+            session = (
+                session_registry.get(tenant_context, connection_id=connection_id)
+                if session_registry is not None else None
+            )
+            if session is None:
+                return _json_response(
+                    start_response, HTTPStatus.NOT_FOUND,
+                    {"error": "conexão sem adaptador ativo para esta identidade", "state": "ADAPTER_NOT_BOUND", "execution_authorized": False},
+                    request_id,
+                )
+            try:
+                payload = _read_json(environ)
+                symbol = payload.get("symbol")
+                timeframe = payload.get("timeframe")
+                limit = payload.get("limit", 120)
+                if not isinstance(symbol, str) or not symbol.strip():
+                    raise ValueError("symbol é obrigatório")
+                if not isinstance(timeframe, str) or not timeframe.strip():
+                    raise ValueError("timeframe é obrigatório")
+                if isinstance(limit, bool) or not isinstance(limit, int) or not 3 <= limit <= 1000:
+                    raise ValueError("limit deve ser um inteiro de 3 a 1000")
+                from integration.standalone_market_analysis import StandaloneMarketAnalysisService
+                analyzer = StandaloneMarketAnalysisService(
+                    provider=session.adapter,
+                    source=session.source,
+                    intelligence=self.runtime.intelligence,
+                    decision_sink=lambda record, context=None: self.runtime.tenant_decision_memory.save(
+                        context or tenant_context, record
+                    ),
+                )
+                result = analyzer.analyze(
+                    symbol=symbol.strip(),
+                    timeframe=timeframe.strip(),
+                    limit=limit,
+                    confirmed=False,
+                    filters_ok=True,
+                    decision_context=tenant_context,
+                )
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return _json_response(
+                    start_response, HTTPStatus.BAD_REQUEST,
+                    {"error": str(exc), "execution_authorized": False},
+                    request_id,
+                )
+            except Exception:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "análise desta conexão indisponível; nenhuma ordem foi enviada", "execution_authorized": False},
+                    request_id,
+                )
+            return _json_response(
+                start_response, HTTPStatus.OK,
+                {
+                    **result,
+                    "connection": {
+                        "connection_id": session.connection_id,
+                        "provider_id": session.provider_id,
+                        "source": session.source,
+                    },
+                    "execution_authorized": False,
+                },
+                request_id,
+            )
+
         if method == "POST" and path == "/api/analysis/run":
             tenant_context = _tenant_context_for_request(environ, reason)
             if tenant_context is None:
@@ -992,10 +1683,18 @@ class StandaloneWSGIApplication:
                 "running": False,
                 "state": "NO_EXTERNAL_SINK_CONFIGURED",
             }
-            external_delivery = (
-                "WORKER_CONFIGURED" if worker is not None
-                else "OUTBOX_ONLY_NO_PROVIDER"
-            )
+            if worker is None:
+                external_delivery = "OUTBOX_ONLY_NO_PROVIDER"
+            elif delivery_worker.get("state") == "DEGRADED":
+                external_delivery = "WORKER_DEGRADED"
+            elif delivery_worker.get("running") is True:
+                external_delivery = "WORKER_RUNNING"
+            else:
+                external_delivery = "WORKER_STOPPED"
+            tenant_delivery_worker = getattr(self.runtime, "tenant_notification_worker", None)
+            tenant_delivery_status = tenant_delivery_worker.status() if tenant_delivery_worker is not None else {
+                "configured": False, "running": False, "state": "NO_TENANT_EXTERNAL_SINK_CONFIGURED",
+            }
             if reason == "trusted_identity":
                 tenant_context = _tenant_context_for_request(environ, reason)
                 tenant_state = getattr(self.runtime, "tenant_state", None)
@@ -1005,15 +1704,54 @@ class StandaloneWSGIApplication:
                         {"error": "status individual de notificações não configurado", "execution_authorized": False},
                         request_id,
                     )
-                # Never expose the legacy global inbox count to a remote tenant.
+                # Never expose another owner's inbox, outbox or worker counters.
                 tenant_items = tenant_state.load_notifications(tenant_context)
+                tenant_delivery_status = (
+                    tenant_delivery_worker.status(tenant_context)
+                    if tenant_delivery_worker is not None else {
+                        "configured": False, "running": False,
+                        "state": "NO_TENANT_EXTERNAL_SINK_CONFIGURED",
+                    }
+                )
+                tenant_dispatcher = getattr(self.runtime, "tenant_notification_dispatcher", None)
+                tenant_outbox_status = (
+                    tenant_dispatcher.outbox.status_counts(tenant_context)
+                    if tenant_dispatcher is not None else {
+                        "PENDING": 0, "IN_FLIGHT": 0, "DELIVERED": 0, "DEAD": 0,
+                    }
+                )
                 summary = {
                     "total": len(tenant_items),
                     "scope": "TENANT_SCOPED",
+                    "tenant_outbox": tenant_outbox_status,
+                    "tenant_delivery_worker": tenant_delivery_status,
+                    "tenant_external_delivery": (
+                        "WORKER_DEGRADED" if tenant_delivery_status.get("state") == "DEGRADED"
+                        else "WORKER_RUNNING" if tenant_delivery_status.get("running") is True
+                        else "OUTBOX_ONLY_NO_PROVIDER"
+                    ),
                 }
             else:
                 summary = self.runtime.ecosystem_service.notification_summary()
                 summary["scope"] = "LOCAL_SINGLE_USER"
+                local_context = getattr(self.runtime, "local_tenant_context", None)
+                local_dispatcher = getattr(self.runtime, "tenant_notification_dispatcher", None)
+                if local_context is not None and local_dispatcher is not None:
+                    local_tenant_worker = getattr(self.runtime, "tenant_notification_worker", None)
+                    local_tenant_status = (
+                        local_tenant_worker.status(local_context)
+                        if local_tenant_worker is not None else {
+                            "configured": False, "running": False,
+                            "state": "NO_TENANT_EXTERNAL_SINK_CONFIGURED",
+                        }
+                    )
+                    summary["tenant_outbox"] = local_dispatcher.outbox.status_counts(local_context)
+                    summary["tenant_delivery_worker"] = local_tenant_status
+                    summary["tenant_external_delivery"] = (
+                        "WORKER_DEGRADED" if local_tenant_status.get("state") == "DEGRADED"
+                        else "WORKER_RUNNING" if local_tenant_status.get("running") is True
+                        else "OUTBOX_ONLY_NO_PROVIDER"
+                    )
             summary["delivery_worker"] = delivery_worker
             summary["external_delivery"] = external_delivery
             return _json_response(

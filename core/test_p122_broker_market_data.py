@@ -74,3 +74,79 @@ def test_source_and_provider_are_required():
         BrokerMarketDataBoundary(None, "demo-broker")
     with pytest.raises(ValueError):
         BrokerMarketDataBoundary(FakeProvider([]), " ")
+
+
+def test_boundary_canonicalizes_timeframe_before_provider_request():
+    class CapturingProvider(FakeProvider):
+        seen = None
+        def fetch_market_data(self, request):
+            self.seen = request
+            return self.candles
+
+    provider = CapturingProvider([candle_at(0), candle_at(1)])
+    result = BrokerMarketDataBoundary(provider, "demo-broker").fetch(
+        BrokerMarketDataRequest("eurusd", "M1", 2), received_at=BASE,
+    )
+
+    assert provider.seen.timeframe == "1m"
+    assert provider.seen.symbol == "EURUSD"
+    assert result.timeframe == "1m"
+    assert result.symbol == "EURUSD"
+
+
+def test_boundary_rejects_naive_candle_timestamp():
+    naive = Candle(datetime(2026, 9, 9, 12, 0), 100, 101, 99, 100, 10)
+    boundary = BrokerMarketDataBoundary(FakeProvider([naive]), "demo-broker")
+
+    with pytest.raises(ValueError, match="sem fuso"):
+        boundary.fetch(BrokerMarketDataRequest("EURUSD", "1m", 1))
+
+
+@pytest.mark.parametrize("bad_value", [True, "100"])
+def test_boundary_rejects_boolean_and_text_market_prices(bad_value):
+    invalid = Candle(BASE, bad_value, 101, 99, 100, 10)
+    boundary = BrokerMarketDataBoundary(FakeProvider([invalid]), "demo-broker")
+
+    with pytest.raises(ValueError, match="numérico inválido"):
+        boundary.fetch(BrokerMarketDataRequest("EURUSD", "1m", 1))
+
+
+def test_boundary_rejects_naive_snapshot_received_at():
+    boundary = BrokerMarketDataBoundary(FakeProvider([candle_at(0)]), "demo-broker")
+
+    with pytest.raises(ValueError, match="received_at"):
+        boundary.fetch(
+            BrokerMarketDataRequest("EURUSD", "1m", 1),
+            received_at=datetime(2026, 9, 9, 12, 0),
+        )
+
+def test_boundary_rejects_timeframe_not_confirmed_by_provider():
+    class RestrictedProvider(FakeProvider):
+        def supports_timeframe(self, timeframe):
+            return timeframe == "5m"
+
+    provider = RestrictedProvider([candle_at(0), candle_at(1)])
+    boundary = BrokerMarketDataBoundary(provider, "demo-broker")
+
+    with pytest.raises(ValueError, match="não confirma suporte"):
+        boundary.fetch(BrokerMarketDataRequest("EURUSD", "1m", 2))
+
+def test_invalid_received_at_is_rejected_before_provider_access():
+    class TrackingProvider(FakeProvider):
+        called = False
+
+        def fetch_market_data(self, request):
+            self.called = True
+            return self.candles
+
+    provider = TrackingProvider([candle_at(0)])
+    boundary = BrokerMarketDataBoundary(provider, "demo-broker")
+
+    with pytest.raises(ValueError, match="received_at"):
+        boundary.fetch(
+            BrokerMarketDataRequest("EURUSD", "1m", 1),
+            received_at=datetime(2026, 9, 9, 12, 0),
+        )
+
+    assert provider.called is False
+

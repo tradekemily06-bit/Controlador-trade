@@ -37,7 +37,7 @@ class LocalStore(SecureStore):
     production_durable = False
 
 
-def _subscription(endpoint="https://push.example.test/send/abc"):
+def _subscription(endpoint="https://fcm.googleapis.com/send/abc"):
     return PushSubscriptionInput(
         endpoint=endpoint,
         p256dh=_b64(b"\x04" + bytes(range(1, 65))),
@@ -71,7 +71,7 @@ def test_registering_same_device_rotates_subscription():
     owner = TenantContext("tenant-a", "alice")
 
     registry.register(owner, "phone-1", _subscription())
-    registry.register(owner, "phone-1", _subscription("https://push.example.test/send/new"))
+    registry.register(owner, "phone-1", _subscription("https://fcm.googleapis.com/send/new"))
     assert len(registry.list_devices(owner)) == 1
     assert store.records[(owner.key, "phone-1")]["endpoint"].endswith("/new")
 
@@ -81,7 +81,16 @@ def test_registering_same_device_rotates_subscription():
     [
         "http://push.example.test/send/abc",
         "https://user:password@push.example.test/send/abc",
-        "https://push.example.test/send/abc#fragment",
+        "https://fcm.googleapis.com/send/abc#fragment",
+        "https://127.0.0.1/latest/meta-data",
+        "https://localhost/send/abc",
+        "https://attacker.example.test/send/abc",
+        "https://fcm.googleapis.com.evil.test/send/abc",
+        "https://evil.fcm.googleapis.com/send/abc",
+        "https://evil.push.services.mozilla.com/wpush/v2/token",
+        "https://evil.notify.windows.com/w/?token",
+        "https://evil.push.apple.com/Q1token",
+        "https://fcm.googleapis.com:8443/send/abc",
     ],
 )
 def test_rejects_unsafe_push_endpoints(endpoint):
@@ -93,7 +102,7 @@ def test_rejects_unsafe_push_endpoints(endpoint):
 def test_rejects_invalid_web_push_key_lengths():
     registry = TenantPushSubscriptionRegistry(SecureStore())
     invalid = PushSubscriptionInput(
-        endpoint="https://push.example.test/send/abc",
+        endpoint="https://fcm.googleapis.com/send/abc",
         p256dh=_b64(b"short"),
         auth=_b64(bytes(16)),
     )
@@ -117,3 +126,16 @@ def test_registry_rejects_missing_trusted_owner():
     registry = TenantPushSubscriptionRegistry(SecureStore())
     with pytest.raises(PermissionError):
         registry.list_devices(None)
+
+
+def test_accepts_supported_browser_push_service_domains():
+    registry = TenantPushSubscriptionRegistry(SecureStore())
+    owner = TenantContext("tenant-a", "alice")
+    for index, endpoint in enumerate((
+        "https://fcm.googleapis.com/fcm/send/token",
+        "https://updates.push.services.mozilla.com/wpush/v2/token",
+        "https://wns2.notify.windows.com/w/?token",
+        "https://web.push.apple.com/Q1token",
+    )):
+        registry.register(owner, f"phone-{index}", _subscription(endpoint))
+    assert len(registry.list_devices(owner)) == 4

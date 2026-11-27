@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import base64
 import io
 import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import urlsplit
 
 from standalone_app import StandaloneWSGIApplication, _validate_bind_security
 from analysis.decision_record import DecisionRecord
+from security.push_subscription_registry import TenantPushSubscriptionRegistry
 
 
 class FakeRuntime:
@@ -138,7 +142,7 @@ class FakeRuntime:
     market_monitor = MarketMonitor()
 
 
-def call_wsgi(app, path, method="GET", body=None, remote_addr="127.0.0.1", origin=None, include_headers=False, authorization=None, identity_verified=False, remote_user=None, tenant_id=None):
+def call_wsgi(app, path, method="GET", body=None, remote_addr="127.0.0.1", origin=None, include_headers=False, authorization=None, identity_verified=False, remote_user=None, tenant_id=None, scheme="http"):
     raw = json.dumps(body or {}).encode("utf-8")
     parsed_path = urlsplit(path)
     environ = {
@@ -148,6 +152,7 @@ def call_wsgi(app, path, method="GET", body=None, remote_addr="127.0.0.1", origi
         "REMOTE_ADDR": remote_addr,
         "CONTENT_LENGTH": str(len(raw)),
         "wsgi.input": io.BytesIO(raw),
+        "wsgi.url_scheme": scheme,
     }
     if origin is not None:
         environ["HTTP_ORIGIN"] = origin
@@ -482,6 +487,10 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertFalse(body["decision_memory"]["durability_confirmed"])
         self.assertEqual(body["notification_delivery"]["state"], "NO_EXTERNAL_SINK_CONFIGURED")
         self.assertEqual(body["deployment"], "PROCESS_RUNNING_DEPLOYMENT_NOT_VERIFIED")
+        self.assertEqual(
+            body["deployment_topology"],
+            {"deployment_topology": "UNKNOWN", "multi_replica_ready": False},
+        )
         self.assertEqual(body["identity"]["trusted_identity_provider"], "NOT_CONFIGURED")
         self.assertEqual(body["tenant_state"]["status"], "LOCAL_TENANT_SCOPED_STORAGE")
         self.assertFalse(body["tenant_state"]["production_ready"])
@@ -494,6 +503,50 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertFalse(body["backup_scheduler"]["enabled"])
         self.assertEqual(body["backup_scheduler"]["status"], "NOT_CONFIGURED")
         self.assertFalse(body["execution_authorized"])
+
+    def test_local_readiness_reports_provider_recovery_without_secret_material(self):
+        runtime = FakeRuntime()
+        runtime.ctrader_recovery_status = [
+            {
+                "connection_id": "c" * 32,
+                "provider_id": "ctrader_open_api",
+                "status": "RECONNECT_FAILED",
+                "error_class": "PermissionError",
+                "token": "must-not-leak",
+                "execution_authorized": False,
+            },
+        ]
+        runtime.provider_recovery_status = [
+            {
+                "connection_id": "a" * 32,
+                "provider_id": "broker_a",
+                "status": "RECONNECT_FAILED",
+                "error_class": "PermissionError",
+                "credential_ref": "vault://must-not-leak",
+                "secret": "must-not-leak",
+                "execution_authorized": False,
+            },
+            {
+                "connection_id": "b" * 32,
+                "provider_id": "broker_b",
+                "status": "RECONNECTED",
+                "adapter_status": "ADAPTER_BOUND",
+                "execution_authorized": False,
+            },
+        ]
+        app = StandaloneWSGIApplication(runtime)
+        status, body = call_wsgi(app, "/api/readiness")
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["provider_recovery"]["status"], "DEGRADED")
+        self.assertEqual(len(body["provider_recovery"]["accounts"]), 2)
+        serialized = json.dumps(body["provider_recovery"])
+        self.assertNotIn("vault://must-not-leak", serialized)
+        self.assertNotIn("must-not-leak", serialized)
+        self.assertFalse(body["provider_recovery"]["execution_authorized"])
+        self.assertEqual(body["ctrader_recovery"]["status"], "DEGRADED")
+        self.assertEqual(len(body["ctrader_recovery"]["accounts"]), 1)
+        self.assertNotIn("must-not-leak", json.dumps(body["ctrader_recovery"]))
+        self.assertFalse(body["ctrader_recovery"]["execution_authorized"])
 
     def test_backup_status_endpoint_never_claims_unconfigured_backup_or_replication(self):
         app = StandaloneWSGIApplication(FakeRuntime())
@@ -991,6 +1044,9 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(body["scope"], "INFRASTRUCTURE_ONLY")
         self.assertEqual(body["tenant_readiness"], "AVAILABLE_ONLY_THROUGH_SCOPED_ENDPOINTS")
         self.assertEqual(body["notifications"], "USE_TENANT_SCOPED_STATUS_ENDPOINT")
+        self.assertEqual(
+            body["deployment_topology"], "SINGLE_HOST_SQLITE_MULTI_REPLICA_BLOCKED"
+        )
         self.assertNotIn("private_global_counter", body)
         self.assertNotIn("storage_foundation", body)
         self.assertNotIn("decision_memory", body)
@@ -1068,6 +1124,103 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(status, "200 OK")
         self.assertEqual(body["external_delivery"], "OUTBOX_ONLY_NO_PROVIDER")
         self.assertFalse(body["delivery_worker"]["configured"])
+
+    def test_local_notification_status_reports_tenant_outbox_separately(self):
+        from integration.tenant_notification_dispatcher import TenantNotificationDispatcher
+        from security.sqlite_tenant_storage import SQLiteTenantStorage
+        from security.tenant_context import TenantContext
+        from security.tenant_scoped_ecosystem_state import TenantScopedEcosystemState
+        from core.ecosystem_notifications import EcosystemNotification, NotificationKind, NotificationSeverity
+
+        runtime = FakeRuntime()
+        runtime.local_tenant_context = TenantContext("local-single-user", "local-user")
+        with tempfile.TemporaryDirectory() as directory:
+            state = TenantScopedEcosystemState(SQLiteTenantStorage(Path(directory) / "tenant-state.sqlite3"))
+            runtime.tenant_notification_dispatcher = TenantNotificationDispatcher(state)
+            runtime.tenant_notification_dispatcher.publish(
+                runtime.local_tenant_context,
+                EcosystemNotification(
+                    notification_id="local-tenant-event", kind=NotificationKind.MARKET,
+                    severity=NotificationSeverity.INFO, title="EURUSD", message="Novo sinal",
+                ),
+            )
+            app = StandaloneWSGIApplication(runtime)
+            status, body = call_wsgi(app, "/api/notifications/status")
+            self.assertEqual(status, "200 OK")
+            self.assertEqual(body["tenant_outbox"]["PENDING"], 1)
+            self.assertEqual(body["tenant_external_delivery"], "OUTBOX_ONLY_NO_PROVIDER")
+            self.assertFalse(body["tenant_delivery_worker"]["configured"])
+
+    def test_notification_status_distinguishes_configured_but_stopped_worker(self):
+        runtime = FakeRuntime()
+
+        class StoppedWorker:
+            def status(self):
+                return {
+                    "configured": True,
+                    "running": False,
+                    "state": "STOPPED",
+                    "last_error": None,
+                    "last_result": None,
+                    "outbox": {"PENDING": 1, "IN_FLIGHT": 0, "DELIVERED": 0, "DEAD": 0},
+                }
+
+        runtime.notification_worker = StoppedWorker()
+        app = StandaloneWSGIApplication(runtime)
+        status, body = call_wsgi(app, "/api/notifications/status")
+
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["external_delivery"], "WORKER_STOPPED")
+        self.assertTrue(body["delivery_worker"]["configured"])
+        self.assertFalse(body["delivery_worker"]["running"])
+        self.assertEqual(body["delivery_worker"]["outbox"]["PENDING"], 1)
+
+    def test_notification_status_surfaces_degraded_worker(self):
+        runtime = FakeRuntime()
+
+        class DegradedWorker:
+            def status(self):
+                return {
+                    "configured": True,
+                    "running": True,
+                    "state": "DEGRADED",
+                    "last_error": "provider timeout",
+                    "last_result": None,
+                    "outbox": {"PENDING": 1, "IN_FLIGHT": 0, "DELIVERED": 0, "DEAD": 0},
+                }
+
+        runtime.notification_worker = DegradedWorker()
+        app = StandaloneWSGIApplication(runtime)
+        status, body = call_wsgi(app, "/api/notifications/status")
+
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["external_delivery"], "WORKER_DEGRADED")
+        self.assertTrue(body["delivery_worker"]["running"])
+        self.assertEqual(body["delivery_worker"]["state"], "DEGRADED")
+
+    def test_notification_status_reports_running_worker(self):
+        runtime = FakeRuntime()
+
+        class RunningWorker:
+            def status(self):
+                return {
+                    "configured": True,
+                    "running": True,
+                    "state": "RUNNING",
+                    "last_error": None,
+                    "last_result": {"claimed": 1, "delivered": 1, "retried": 0, "dead_lettered": 0},
+                    "last_cycle_at": 123.0,
+                    "outbox": {"PENDING": 0, "IN_FLIGHT": 0, "DELIVERED": 1, "DEAD": 0},
+                }
+
+        runtime.notification_worker = RunningWorker()
+        app = StandaloneWSGIApplication(runtime)
+        status, body = call_wsgi(app, "/api/notifications/status")
+
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["external_delivery"], "WORKER_RUNNING")
+        self.assertTrue(body["delivery_worker"]["running"])
+        self.assertEqual(body["delivery_worker"]["last_result"]["delivered"], 1)
 
     def test_remote_notification_status_counts_only_verified_subject_notifications(self):
         runtime = FakeRuntime()
@@ -1241,6 +1394,372 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(status, "400 Bad Request")
         self.assertFalse(body["execution_authorized"])
 
+
+    def test_per_account_analysis_uses_only_the_requested_tenant_adapter(self):
+        class Session:
+            connection_id = "a" * 32
+            provider_id = "broker_x"
+            source = "broker_x:account-a"
+            adapter = object()
+
+        class Sessions:
+            def get(self, context, *, connection_id):
+                assert context.tenant_id == "tenant-a"
+                assert context.subject_id == "alice"
+                assert connection_id == "a" * 32
+                return Session()
+
+        class DecisionMemory:
+            def save(self, context, record):
+                return True
+
+        runtime = FakeRuntime()
+        runtime.tenant_market_data_sessions = Sessions()
+        runtime.intelligence = object()
+        runtime.tenant_decision_memory = DecisionMemory()
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings), patch(
+            "integration.standalone_market_analysis.StandaloneMarketAnalysisService"
+        ) as analyzer_class:
+            analyzer_class.return_value.analyze.return_value = {
+                "signal": "AGUARDAR", "execution_authorized": False
+            }
+            status, body = call_wsgi(
+                app, f"/api/market-data/connections/{'a' * 32}/analysis",
+                method="POST", body={"symbol": "EURUSD", "timeframe": "M5"},
+                remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["connection"]["provider_id"], "broker_x")
+        self.assertEqual(body["connection"]["source"], "broker_x:account-a")
+        self.assertFalse(body["execution_authorized"])
+        analyzer_class.return_value.analyze.assert_called_once()
+
+    def test_per_account_analysis_returns_not_found_for_unbound_or_other_tenant_account(self):
+        class Sessions:
+            def get(self, context, *, connection_id):
+                assert context.tenant_id == "tenant-b"
+                return None
+
+        runtime = FakeRuntime()
+        runtime.tenant_market_data_sessions = Sessions()
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, f"/api/market-data/connections/{'a' * 32}/analysis",
+                method="POST", body={"symbol": "EURUSD", "timeframe": "M5"},
+                remote_addr="203.0.113.11",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="bob", tenant_id="tenant-b",
+            )
+        self.assertEqual(status, "404 Not Found")
+        self.assertEqual(body["state"], "ADAPTER_NOT_BOUND")
+        self.assertFalse(body["execution_authorized"])
+
+
+    def test_account_timeframe_subscription_routes_are_tenant_scoped(self):
+        class Monitor:
+            def subscribe(self, context, connection_id, symbol, timeframe):
+                assert context.tenant_id == "tenant-a"
+                assert context.subject_id == "alice"
+                assert connection_id == "a" * 32
+                return {"symbol": symbol, "timeframe": timeframe, "enabled": True}
+
+            def subscriptions(self, context, connection_id):
+                assert context.tenant_id == "tenant-a"
+                return [{"connection_id": connection_id, "symbol": "EURUSD", "timeframe": "M5"}]
+
+            def unsubscribe(self, context, connection_id, symbol, timeframe):
+                assert context.tenant_id == "tenant-a"
+                return True
+
+        runtime = FakeRuntime()
+        runtime.tenant_market_monitor = Monitor()
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        path = f"/api/market-data/connections/{'a' * 32}/subscriptions"
+        with patch.dict("os.environ", settings):
+            status, created = call_wsgi(
+                app, path, method="POST", body={"symbol": "EURUSD", "timeframe": "M5"},
+                remote_addr="203.0.113.12", authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+            self.assertEqual(status, "201 Created")
+            self.assertTrue(created["enabled"])
+            status, listed = call_wsgi(
+                app, path, method="GET", remote_addr="203.0.113.12",
+                authorization="Bearer shared-gateway-secret", identity_verified=True,
+                remote_user="alice", tenant_id="tenant-a",
+            )
+            self.assertEqual(status, "200 OK")
+            self.assertEqual(listed["subscriptions"][0]["timeframe"], "M5")
+            status, removed = call_wsgi(
+                app, path, method="DELETE",
+                body={"symbol": "EURUSD", "timeframe": "M5"},
+                remote_addr="203.0.113.12", authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+            self.assertEqual(status, "200 OK")
+            self.assertTrue(removed["unsubscribed"])
+
+    def test_account_timeframe_subscriptions_fail_closed_without_trusted_identity(self):
+        class Monitor:
+            def subscribe(self, *args, **kwargs):
+                raise AssertionError("must not reach monitor without identity")
+
+        runtime = FakeRuntime()
+        runtime.tenant_market_monitor = Monitor()
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, f"/api/market-data/connections/{'a' * 32}/subscriptions",
+                method="POST", body={"symbol": "EURUSD", "timeframe": "M5"},
+                remote_addr="203.0.113.13", authorization="Bearer shared-gateway-secret",
+            )
+        self.assertEqual(status, "503 Service Unavailable")
+        self.assertFalse(body["execution_authorized"])
+
+
+    def test_provider_connection_inventory_is_tenant_scoped_and_reports_runtime_binding(self):
+        class SessionRegistry:
+            def __init__(self):
+                self.contexts = []
+
+            def status(self, context):
+                self.contexts.append(context)
+                return [{
+                    "connection_id": "a" * 32,
+                    "provider_id": "broker_a",
+                    "account_alias": "Conta A",
+                    "status": "CONNECTED",
+                    "adapter_status": "NOT_BOUND",
+                    "health_status": "NOT_BOUND",
+                    "health": {},
+                    "read_only": True,
+                    "execution_authorized": False,
+                }]
+
+        runtime = FakeRuntime()
+        registry = SessionRegistry()
+        runtime.tenant_market_data_sessions = registry
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/market-data/connections", method="GET",
+                remote_addr="203.0.113.24",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["count"], 1)
+        self.assertEqual(body["connections"][0]["adapter_status"], "NOT_BOUND")
+        self.assertEqual(body["connections"][0]["health_status"], "NOT_BOUND")
+        self.assertEqual(registry.contexts[0].tenant_id, "tenant-a")
+        self.assertEqual(registry.contexts[0].subject_id, "alice")
+        self.assertFalse(body["execution_authorized"])
+
+    def test_provider_connect_api_accepts_only_tenant_owned_credential_reference(self):
+        class ConnectionService:
+            def __init__(self):
+                self.calls = []
+
+            def connect(self, context, **kwargs):
+                self.calls.append((context, kwargs))
+                return {
+                    "connection_id": "a" * 32,
+                    "provider_id": kwargs["provider_id"],
+                    "status": "CONNECTED",
+                    "execution_authorized": False,
+                }
+
+        runtime = FakeRuntime()
+        service = ConnectionService()
+        runtime.tenant_provider_connection_service = service
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        headers = {
+            "remote_addr": "203.0.113.21",
+            "authorization": "Bearer shared-gateway-secret",
+            "identity_verified": True,
+            "remote_user": "alice",
+            "tenant_id": "tenant-a",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/market-data/connections", method="POST",
+                body={
+                    "provider_id": "broker_a",
+                    "account_alias": "Conta A",
+                    "credential_ref": "vault://tenant-a/broker-a",
+                },
+                **headers,
+            )
+        self.assertEqual(status, "201 Created")
+        self.assertEqual(service.calls[0][0].tenant_id, "tenant-a")
+        self.assertEqual(
+            service.calls[0][1]["credential_ref"], "vault://tenant-a/broker-a"
+        )
+        self.assertFalse(body["execution_authorized"])
+
+    def test_provider_reconnect_api_requires_trusted_owner_and_revalidates_saved_account(self):
+        class ConnectionService:
+            def __init__(self):
+                self.calls = []
+
+            def reconnect_saved(self, context, *, connection_id):
+                self.calls.append((context, connection_id))
+                return {
+                    "connection_id": connection_id,
+                    "provider_id": "broker_a",
+                    "status": "CONNECTED",
+                    "adapter_status": "ADAPTER_BOUND",
+                    "read_only": True,
+                    "execution_authorized": False,
+                }
+
+        runtime = FakeRuntime()
+        service = ConnectionService()
+        runtime.tenant_provider_connection_service = service
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, f"/api/market-data/connections/{'a' * 32}/reconnect",
+                method="POST",
+                remote_addr="203.0.113.22",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["status"], "CONNECTED")
+        self.assertEqual(body["adapter_status"], "ADAPTER_BOUND")
+        self.assertEqual(service.calls[0][0].tenant_id, "tenant-a")
+        self.assertEqual(service.calls[0][0].subject_id, "alice")
+        self.assertEqual(service.calls[0][1], "a" * 32)
+        self.assertFalse(body["execution_authorized"])
+
+    def test_provider_reconnect_api_rejects_invalid_connection_id(self):
+        class ConnectionService:
+            def reconnect_saved(self, *args, **kwargs):
+                raise AssertionError("invalid connection IDs must be rejected first")
+
+        runtime = FakeRuntime()
+        runtime.tenant_provider_connection_service = ConnectionService()
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/market-data/connections/not-an-id/reconnect",
+                method="POST",
+                remote_addr="203.0.113.23",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "400 Bad Request")
+        self.assertFalse(body["execution_authorized"])
+
+    def test_provider_connect_api_rejects_raw_credentials_in_request_body(self):
+        class ConnectionService:
+            def connect(self, *args, **kwargs):
+                raise AssertionError("raw credentials must be rejected before service call")
+
+        runtime = FakeRuntime()
+        runtime.tenant_provider_connection_service = ConnectionService()
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/market-data/connections", method="POST",
+                body={
+                    "provider_id": "broker_a", "account_alias": "Conta A",
+                    "credential_ref": "vault://tenant-a/broker-a",
+                    "api_key": "must-not-enter-the-application",
+                },
+                remote_addr="203.0.113.22",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "400 Bad Request")
+        self.assertFalse(body["execution_authorized"])
+
+    def test_provider_disconnect_api_revokes_only_authenticated_account_binding(self):
+        class ConnectionService:
+            def disconnect(self, context, *, connection_id):
+                assert context.tenant_id == "tenant-a"
+                assert connection_id == "a" * 32
+                return {"disconnected": True, "status": "DISCONNECTED", "execution_authorized": False}
+
+        class CTraderTokenVault:
+            def __init__(self): self.revoked = []
+            def revoke(self, context, connection_id):
+                self.revoked.append((context.tenant_id, context.subject_id, connection_id))
+                return True
+
+        runtime = FakeRuntime()
+        runtime.tenant_provider_connection_service = ConnectionService()
+        runtime.tenant_ctrader_token_vault = CTraderTokenVault()
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, f"/api/market-data/connections/{'a' * 32}", method="DELETE",
+                remote_addr="203.0.113.23",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertTrue(body["disconnected"])
+        self.assertFalse(body["execution_authorized"])
+        self.assertEqual(runtime.tenant_ctrader_token_vault.revoked, [
+            ("tenant-a", "alice", "a" * 32)
+        ])
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -1274,3 +1793,302 @@ class PublicBindSecurityTests(unittest.TestCase):
             with patch.dict("os.environ", incomplete, clear=True):
                 with self.assertRaisesRegex(RuntimeError, "bind público bloqueado"):
                     _validate_bind_security("0.0.0.0")
+
+    def test_ctrader_oauth_callback_requires_https_and_uses_one_time_state_service(self):
+        class OAuth:
+            def __init__(self):
+                self.calls = []
+
+            def complete_callback(self, *, state, code):
+                self.calls.append((state, code))
+                return {
+                    "status": "OAUTH_TOKEN_STORED_PENDING_DEMO_HANDSHAKE",
+                    "account_connected": False,
+                    "execution_authorized": False,
+                }
+
+        runtime = FakeRuntime()
+        runtime.tenant_ctrader_oauth_service = OAuth()
+        app = StandaloneWSGIApplication(runtime)
+        status, body = call_wsgi(
+            app, "/api/oauth/ctrader/callback?state=opaque-state&code=one-time-code",
+            scheme="http",
+        )
+        self.assertEqual(status, "401 Unauthorized")
+        self.assertEqual(runtime.tenant_ctrader_oauth_service.calls, [])
+        status, body = call_wsgi(
+            app, "/api/oauth/ctrader/callback?state=opaque-state&code=one-time-code",
+            scheme="https",
+        )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(runtime.tenant_ctrader_oauth_service.calls, [("opaque-state", "one-time-code")])
+        self.assertFalse(body["account_connected"])
+        self.assertFalse(body["execution_authorized"])
+
+    def test_ctrader_oauth_start_is_scoped_to_local_identity(self):
+        class OAuth:
+            def __init__(self):
+                self.calls = []
+
+            def begin(self, context, *, connection_id):
+                self.calls.append((context.tenant_id, context.subject_id, connection_id))
+                return {
+                    "authorization_url": "https://id.ctrader.com/consent?state=opaque",
+                    "state_reveal": "ONE_TIME",
+                    "execution_authorized": False,
+                }
+
+        runtime = FakeRuntime()
+        runtime.tenant_ctrader_oauth_service = OAuth()
+        app = StandaloneWSGIApplication(runtime)
+        with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
+            status, body = call_wsgi(
+                app, "/api/market-data/connections/" + "a" * 32 + "/ctrader-oauth",
+                method="POST",
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(runtime.tenant_ctrader_oauth_service.calls, [
+            ("local-single-user", "local-owner", "a" * 32)
+        ])
+        self.assertFalse(body["execution_authorized"])
+
+
+
+    def test_ctrader_oauth_provision_creates_pending_connection_from_alias_only(self):
+        class OAuth:
+            def __init__(self):
+                self.calls = []
+            def provision(self, context, *, account_alias):
+                self.calls.append((context.tenant_id, context.subject_id, account_alias))
+                return {
+                    "connection_id": "c" * 32,
+                    "provider_id": "ctrader_open_api",
+                    "status": "PENDING_OAUTH",
+                    "authorization_url": "https://id.ctrader.com/consent?state=one-time",
+                    "account_connected": False,
+                    "execution_authorized": False,
+                }
+
+        runtime = FakeRuntime()
+        runtime.tenant_ctrader_oauth_service = OAuth()
+        app = StandaloneWSGIApplication(runtime)
+        with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
+            status, body = call_wsgi(
+                app,
+                "/api/market-data/ctrader-oauth-connections",
+                method="POST",
+                body={"account_alias": "Demo principal"},
+            )
+        self.assertEqual(status, "201 Created")
+        self.assertEqual(runtime.tenant_ctrader_oauth_service.calls, [
+            ("local-single-user", "local-owner", "Demo principal")
+        ])
+        self.assertEqual(body["status"], "PENDING_OAUTH")
+        self.assertFalse(body["account_connected"])
+        self.assertFalse(body["execution_authorized"])
+
+    def test_ctrader_oauth_provision_rejects_extra_credentials_in_request(self):
+        class OAuth:
+            def provision(self, context, *, account_alias):
+                raise AssertionError("provision must not be called")
+        runtime = FakeRuntime()
+        runtime.tenant_ctrader_oauth_service = OAuth()
+        app = StandaloneWSGIApplication(runtime)
+        with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
+            status, body = call_wsgi(
+                app,
+                "/api/market-data/ctrader-oauth-connections",
+                method="POST",
+                body={"account_alias": "Demo", "access_token": "should-not-be-accepted"},
+            )
+        self.assertEqual(status, "400 Bad Request")
+        self.assertIn("somente account_alias", body["error"])
+
+
+    def test_ctrader_demo_account_listing_is_tenant_scoped(self):
+        class AccountService:
+            def __init__(self): self.calls = []
+            def list_demo_accounts(self, context, *, connection_id):
+                self.calls.append((context.tenant_id, context.subject_id, connection_id))
+                return {
+                    "connection_id": connection_id,
+                    "accounts": [{"account_id": 123, "account_mode": "DEMO"}],
+                    "real_accounts_exposed": False,
+                    "execution_authorized": False,
+                }
+        runtime = FakeRuntime()
+        runtime.tenant_ctrader_account_service = AccountService()
+        app = StandaloneWSGIApplication(runtime)
+        with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
+            status, body = call_wsgi(
+                app, "/api/market-data/connections/" + "a" * 32 + "/ctrader-accounts"
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["accounts"], [{"account_id": 123, "account_mode": "DEMO"}])
+        self.assertFalse(body["real_accounts_exposed"])
+        self.assertEqual(runtime.tenant_ctrader_account_service.calls, [
+            ("local-single-user", "local-owner", "a" * 32)
+        ])
+
+    def test_ctrader_account_selection_accepts_only_account_id(self):
+        class AccountService:
+            def __init__(self): self.calls = []
+            def connect_demo(self, context, *, connection_id, account_id):
+                self.calls.append((context.tenant_id, context.subject_id, connection_id, account_id))
+                return {
+                    "connection_id": connection_id,
+                    "status": "CONNECTED",
+                    "account_mode": "DEMO",
+                    "execution_authorized": False,
+                }
+        runtime = FakeRuntime()
+        runtime.tenant_ctrader_account_service = AccountService()
+        app = StandaloneWSGIApplication(runtime)
+        with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
+            status, body = call_wsgi(
+                app, "/api/market-data/connections/" + "b" * 32 + "/ctrader-account",
+                method="POST", body={"account_id": 123},
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["account_mode"], "DEMO")
+        self.assertFalse(body["execution_authorized"])
+        self.assertEqual(runtime.tenant_ctrader_account_service.calls, [
+            ("local-single-user", "local-owner", "b" * 32, 123)
+        ])
+
+
+    def test_remote_provider_status_exposes_only_requesting_owners_oauth_refresh_health(self):
+        class Connections:
+            def list_connections(self, context):
+                assert context.tenant_id == "tenant-a"
+                assert context.subject_id == "alice"
+                return []
+
+        class RefreshWorkers:
+            def owner_status(self, context):
+                assert context.tenant_id == "tenant-a"
+                assert context.subject_id == "alice"
+                return {
+                    "configured": True, "registered": True, "running": True,
+                    "state": "RUNNING", "execution_authorized": False,
+                }
+
+            def status(self):
+                raise AssertionError("global worker counts must never be exposed remotely")
+
+        runtime = FakeRuntime()
+        runtime.tenant_provider_connections = Connections()
+        runtime.tenant_oauth_refresh_worker = RefreshWorkers()
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/market-data/providers",
+                remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["oauth_token_refresh"]["state"], "RUNNING")
+        self.assertNotIn("registered_owner_count", body["oauth_token_refresh"])
+        self.assertFalse(body["oauth_token_refresh"]["execution_authorized"])
+
+
+
+class PushSubscriptionStandaloneRouteTests(unittest.TestCase):
+    class Store:
+        production_durable = True
+        encrypted_at_rest = True
+
+        def __init__(self):
+            self.rows = {}
+
+        def list_for_owner(self, context):
+            return [
+                {**value, "device_id": device}
+                for (tenant, subject, device), value in self.rows.items()
+                if tenant == context.tenant_id and subject == context.subject_id
+            ]
+
+        def put_for_owner(self, context, device_id, record):
+            self.rows[(context.tenant_id, context.subject_id, device_id)] = record
+
+        def delete_for_owner(self, context, device_id):
+            return self.rows.pop((context.tenant_id, context.subject_id, device_id), None) is not None
+
+    @staticmethod
+    def subscription_payload():
+        public_key = b"\x04" + b"p" * 64
+        return {
+            "device_id": "browser-1",
+            "subscription": {
+                "endpoint": "https://fcm.googleapis.com/fcm/send/example",
+                "keys": {
+                    "p256dh": base64.urlsafe_b64encode(public_key).decode().rstrip("="),
+                    "auth": base64.urlsafe_b64encode(b"a" * 16).decode().rstrip("="),
+                },
+                "expirationTime": None,
+            },
+        }
+
+    def test_push_subscription_routes_mount_only_when_registry_is_injected(self):
+        runtime = FakeRuntime()
+        runtime.tenant_push_subscription_registry = TenantPushSubscriptionRegistry(self.Store())
+        app = StandaloneWSGIApplication(runtime)
+        with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
+            status, created = call_wsgi(
+                app, "/api/push/subscriptions", method="POST",
+                body=self.subscription_payload(),
+            )
+            self.assertEqual(status, "201 Created")
+            self.assertEqual(created["device"]["status"], "ACTIVE")
+
+            status, listed = call_wsgi(app, "/api/push/subscriptions")
+            self.assertEqual(status, "200 OK")
+            self.assertEqual(listed["devices"][0]["device_id"], "browser-1")
+            self.assertNotIn("endpoint", listed["devices"][0])
+
+            status, revoked = call_wsgi(
+                app, "/api/push/subscriptions/browser-1", method="DELETE",
+            )
+            self.assertEqual(status, "200 OK")
+            self.assertTrue(revoked["device"]["revoked"])
+
+    def test_push_routes_use_verified_remote_tenant_and_deny_missing_identity(self):
+        runtime = FakeRuntime()
+        runtime.tenant_push_subscription_registry = TenantPushSubscriptionRegistry(self.Store())
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, denied = call_wsgi(
+                app, "/api/push/subscriptions",
+                remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+            )
+            self.assertEqual(status, "503 Service Unavailable")
+
+            status, created = call_wsgi(
+                app, "/api/push/subscriptions", method="POST",
+                body=self.subscription_payload(),
+                remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+            self.assertEqual(status, "201 Created")
+
+            status, bob = call_wsgi(
+                app, "/api/push/subscriptions",
+                remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="bob", tenant_id="tenant-a",
+            )
+            self.assertEqual(status, "200 OK")
+            self.assertEqual(bob["devices"], [])

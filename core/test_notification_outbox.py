@@ -133,3 +133,103 @@ def test_failure_diagnostics_redact_urls_and_credentials(tmp_path):
     assert "private-key-value" not in error
     assert "[URL REDACTED]" in error
     assert "Bearer [REDACTED]" in error
+
+
+
+def test_expired_outbox_owner_cannot_acknowledge_or_fail_reclaimed_event(tmp_path):
+    outbox = PersistentNotificationOutbox(tmp_path / "outbox.sqlite3")
+    outbox.enqueue("lease-fenced-event", {"title": "Alert"}, now=10)
+
+    old_owner = outbox.claim_due(now=11, lease_seconds=5)[0]
+    new_owner = outbox.claim_due(now=17, lease_seconds=30)[0]
+
+    assert old_owner.lease_token != new_owner.lease_token
+    assert outbox.mark_delivered(
+        old_owner.idempotency_key, old_owner.lease_token, now=18
+    ) is False
+    with pytest.raises(ValueError):
+        outbox.mark_failed(
+            old_owner.idempotency_key, old_owner.lease_token,
+            "late failure from expired worker", now=18,
+        )
+
+    assert outbox.status_counts()["IN_FLIGHT"] == 1
+    assert outbox.mark_delivered(
+        new_owner.idempotency_key, new_owner.lease_token, now=19
+    ) is True
+    assert outbox.status_counts()["DELIVERED"] == 1
+
+
+
+def test_outbox_owner_cannot_acknowledge_after_lease_expiry_without_reclaim(tmp_path):
+    outbox = PersistentNotificationOutbox(tmp_path / "outbox.sqlite3")
+    outbox.enqueue("expired-only-event", {"title": "Alert"}, now=10)
+    owner = outbox.claim_due(now=11, lease_seconds=5)[0]
+
+    assert outbox.mark_delivered(
+        owner.idempotency_key, owner.lease_token, now=16
+    ) is False
+    with pytest.raises(ValueError):
+        outbox.mark_failed(
+            owner.idempotency_key, owner.lease_token,
+            "late provider failure", now=16,
+        )
+    assert outbox.status_counts()["IN_FLIGHT"] == 1
+    reclaimed = outbox.claim_due(now=17, lease_seconds=30)
+    assert len(reclaimed) == 1
+    assert reclaimed[0].lease_token != owner.lease_token
+
+
+def test_crashed_worker_reclaims_consume_retry_budget_and_dead_letter(tmp_path):
+    outbox = PersistentNotificationOutbox(
+        tmp_path / "outbox.sqlite3", max_attempts=2
+    )
+    outbox.enqueue("crash-loop-event", {"title": "Alert"}, now=10)
+
+    first_owner = outbox.claim_due(now=11, lease_seconds=5)[0]
+    assert first_owner.attempts == 1
+    # The first worker crashes. A second worker gets one final attempt.
+    second_owner = outbox.claim_due(now=17, lease_seconds=5)[0]
+    assert second_owner.attempts == 2
+
+    # The second worker also crashes. The next poll must dead-letter the event
+    # rather than retrying forever or dispatching beyond max_attempts.
+    assert outbox.claim_due(now=23, lease_seconds=5) == ()
+    assert outbox.status_counts()["DEAD"] == 1
+    assert outbox.status_counts()["IN_FLIGHT"] == 0
+
+
+def test_lost_lease_does_not_abort_remaining_batch_items(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "outbox.sqlite3"
+    outbox = PersistentNotificationOutbox(path)
+    outbox.enqueue("lease-lost", {"title": "First"}, now=10)
+    outbox.enqueue("still-valid", {"title": "Second"}, now=10)
+
+    class LeaseExpiringSink:
+        def __init__(self):
+            self.delivered = []
+
+        def deliver(self, idempotency_key, payload):
+            if idempotency_key == "lease-lost":
+                with sqlite3.connect(path) as db:
+                    db.execute(
+                        "UPDATE notification_outbox SET lease_until=0 "
+                        "WHERE idempotency_key=?",
+                        (idempotency_key,),
+                    )
+                raise RuntimeError("provider failed after lease expiry")
+            self.delivered.append((idempotency_key, dict(payload)))
+
+    sink = LeaseExpiringSink()
+    result = outbox.dispatch_due(sink, now=100, lease_seconds=60)
+
+    assert result.claimed == 2
+    assert result.delivered == 1
+    assert result.retried == 0
+    assert result.dead_lettered == 0
+    assert sink.delivered == [("still-valid", {"title": "Second"})]
+    counts = outbox.status_counts()
+    assert counts["DELIVERED"] == 1
+    assert counts["IN_FLIGHT"] == 1

@@ -30,6 +30,7 @@ class SQLiteTenantStorage(TenantStorageBoundary):
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path, timeout=10)
+        connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA busy_timeout = 10000")
         return connection
 
@@ -299,6 +300,52 @@ class SQLiteTenantStorage(TenantStorageBoundary):
             if target is None:
                 connection.rollback()
                 return False
+            target.update(json.loads(encoded_updates))
+            encoded = json.dumps(current, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+            connection.execute(
+                """UPDATE tenant_state SET value_json=?, updated_at=CURRENT_TIMESTAMP
+                WHERE tenant_id=? AND subject_id=? AND key=?""",
+                (encoded, tenant_id, subject_id, normalized_key),
+            )
+            connection.commit()
+        return True
+
+    def update_list_item_unique(
+        self, context: TenantContext, key: str, *, match_field: str,
+        match_value: str, updates: dict[str, Any], unique_fields: tuple[str, ...],
+    ) -> bool:
+        """Atomically update one list item while enforcing tenant-local uniqueness."""
+        tenant_id, subject_id, normalized_key = self._scope(context, key)
+        if not isinstance(match_field, str) or not match_field or not isinstance(match_value, str):
+            raise ValueError("match field and value are required")
+        if not isinstance(updates, dict) or not updates or not isinstance(unique_fields, tuple) or not unique_fields:
+            raise ValueError("updates and unique_fields are required")
+        identity = tuple(updates.get(field) for field in unique_fields)
+        if any(not isinstance(value, str) or not value for value in identity):
+            raise ValueError("unique update fields must be non-empty strings")
+        encoded_updates = json.dumps(updates, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT value_json FROM tenant_state WHERE tenant_id=? AND subject_id=? AND key=?",
+                (tenant_id, subject_id, normalized_key),
+            ).fetchone()
+            current = [] if row is None else json.loads(row[0])
+            if not isinstance(current, list) or any(not isinstance(entry, dict) for entry in current):
+                raise ValueError("stored tenant list has an invalid shape")
+            target = next((entry for entry in current if entry.get(match_field) == match_value), None)
+            if target is None:
+                connection.rollback()
+                return False
+            duplicate = next((
+                entry for entry in current
+                if entry is not target and all(
+                    entry.get(field) == value for field, value in zip(unique_fields, identity)
+                )
+            ), None)
+            if duplicate is not None:
+                connection.rollback()
+                raise ValueError("unique tenant list identity already exists")
             target.update(json.loads(encoded_updates))
             encoded = json.dumps(current, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
             connection.execute(

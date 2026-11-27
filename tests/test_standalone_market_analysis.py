@@ -7,6 +7,7 @@ from core.unified_intelligence import UnifiedIntelligence
 from data.models import Candle
 from data.timeframes import get_timeframe_interval
 from integration.standalone_market_analysis import StandaloneMarketAnalysisService
+from security.tenant_context import TenantContext
 
 
 class FakeMarketDataProvider:
@@ -39,6 +40,31 @@ def candle_series(timeframe="5m", count=8, age_intervals=1):
 
 
 class StandaloneMarketAnalysisTests(unittest.TestCase):
+    def test_live_candle_is_used_by_the_analysis_pipeline(self):
+        candles = candle_series()
+        provider = FakeMarketDataProvider(candles)
+        service = StandaloneMarketAnalysisService(
+            provider=provider,
+            source="LIVE_OVERLAY_TEST",
+            intelligence=UnifiedIntelligence(),
+        )
+        base = candles[-1]
+        live = Candle(
+            timestamp=base.timestamp,
+            open=base.open,
+            high=base.high + 0.001,
+            low=base.low,
+            close=base.close + 0.0005,
+            volume=base.volume + 10,
+        )
+        result = service.analyze(
+            symbol="EURUSD", timeframe="5m", limit=8, live_candle=live
+        )
+        self.assertEqual(result["market_data"]["last_candle_at"], live.timestamp.isoformat())
+        self.assertEqual(result["market_data"]["ohlcv"][-1]["close"], live.close)
+        self.assertEqual(result["market_data"]["ohlcv"][-1]["volume"], live.volume)
+        self.assertFalse(result["execution_allowed"])
+
     def test_provider_neutral_analysis_never_authorizes_execution(self):
         provider = FakeMarketDataProvider(candle_series())
         intelligence = UnifiedIntelligence()
@@ -68,10 +94,14 @@ class StandaloneMarketAnalysisTests(unittest.TestCase):
         self.assertEqual(card["visual"]["color"], expected_visual["color"])
         self.assertEqual(card["visual"]["arrow"], expected_visual["arrow"])
         self.assertEqual(card["visual"]["score_color"], expected_visual["color"])
-        self.assertEqual(card["visual"]["profit_probability_color"], expected_visual["color"])
+        self.assertEqual(card["visual"]["profit_probability_color"], "NEUTRAL")
         self.assertEqual(card["timeframe"], "5m")
         self.assertEqual(card["score_type"], "EVIDENCE_STRENGTH")
         self.assertIsNone(card["probability_of_profit"])
+        self.assertEqual(card["profit_estimate"]["status"], "NOT_AVAILABLE")
+        self.assertIsNone(card["profit_estimate"]["value"])
+        self.assertEqual(card["risk_estimate"]["status"], "NOT_AVAILABLE")
+        self.assertIsNone(card["risk_estimate"]["value"])
         self.assertEqual(card["profit_probability"]["status"], "NOT_CALIBRATED")
         self.assertIsNone(card["profit_probability"]["value"])
         self.assertTrue(card["profit_probability"]["calibration_required"])
@@ -114,6 +144,24 @@ class StandaloneMarketAnalysisTests(unittest.TestCase):
         self.assertEqual(first["decision_memory"]["status"], "SAVED")
         self.assertEqual(second["decision_memory"]["status"], "ALREADY_RECORDED")
         self.assertEqual(first["decision_memory"]["decision_id"], record.decision_id)
+
+
+    def test_decision_memory_identity_isolated_by_provider_account_source(self):
+        provider = FakeMarketDataProvider(candle_series())
+        intelligence = UnifiedIntelligence()
+        account_a = StandaloneMarketAnalysisService(
+            provider=provider, source="broker:account-a", intelligence=intelligence
+        )
+        account_b = StandaloneMarketAnalysisService(
+            provider=provider, source="broker:account-b", intelligence=intelligence
+        )
+        candle_at = "2026-11-27T12:00:00+00:00"
+        id_a = account_a._decision_record_id("EURUSD", "5m", candle_at)
+        id_b = account_b._decision_record_id("EURUSD", "5m", candle_at)
+        self.assertNotEqual(id_a, id_b)
+        self.assertEqual(
+            id_a, account_a._decision_record_id("EURUSD", "5m", candle_at)
+        )
 
     def test_decision_memory_failure_is_reported_without_faking_persistence(self):
         def fail_save(_record):
@@ -165,6 +213,47 @@ class StandaloneMarketAnalysisTests(unittest.TestCase):
         self.assertEqual(provider.requests[0].timeframe, "2m")
         self.assertFalse(result["execution_authorized"])
 
+    def test_daily_weekly_fail_closed_without_provider_session_calendar(self):
+        for timeframe in ("1d", "1w"):
+            with self.subTest(timeframe=timeframe):
+                provider = FakeMarketDataProvider(
+                    candle_series(timeframe=timeframe, age_intervals=1)
+                )
+                evidence_calls = []
+                outcome_calls = []
+                service = StandaloneMarketAnalysisService(
+                    provider=provider,
+                    source="SESSION_CALENDAR_TEST_FEED",
+                    intelligence=UnifiedIntelligence(),
+                    market_data_provenance="REAL_MARKET_DATA",
+                    signal_source_id="session-calendar-test",
+                    signal_evidence_sink=lambda *args, **kwargs: evidence_calls.append(kwargs),
+                    signal_outcome_sink=lambda *args, **kwargs: outcome_calls.append(kwargs),
+                )
+
+                result = service.analyze(
+                    symbol="EURUSD",
+                    timeframe=timeframe,
+                    limit=8,
+                    decision_context=TenantContext("tenant-a", "subject-a"),
+                )
+
+                self.assertEqual(result["signal"], "AGUARDAR")
+                self.assertEqual(result["status"], "REASSESS_REQUIRED")
+                self.assertEqual(
+                    result["signal_cycle"]["status"],
+                    "SESSION_CALENDAR_UNAVAILABLE",
+                )
+                self.assertIsNone(result["signal_cycle"]["valid_until"])
+                self.assertFalse(result["data_integrity"]["safe_for_analysis"])
+                self.assertEqual(
+                    result["data_integrity"]["session_calendar_status"],
+                    "SESSION_CALENDAR_UNAVAILABLE",
+                )
+                self.assertEqual(evidence_calls, [])
+                self.assertEqual(outcome_calls, [])
+                self.assertFalse(result["execution_allowed"])
+
     def test_unsupported_timeframe_and_unbounded_limit_are_rejected(self):
         service = StandaloneMarketAnalysisService(
             provider=FakeMarketDataProvider(candle_series()),
@@ -175,6 +264,41 @@ class StandaloneMarketAnalysisTests(unittest.TestCase):
             service.analyze(symbol="EURUSD", timeframe="M0")
         with self.assertRaises(ValueError):
             service.analyze(symbol="EURUSD", timeframe="5m", limit=100000)
+
+
+    def test_signal_cycle_expires_at_next_timeframe_close(self):
+        interval = get_timeframe_interval("5m")
+        candles = candle_series(timeframe="5m", age_intervals=2)
+        # The latest closed candle's next-cycle close is already due.
+        provider = FakeMarketDataProvider(candles)
+        service = StandaloneMarketAnalysisService(
+            provider=provider,
+            source="EXPIRED_CYCLE_TEST_FEED",
+            intelligence=UnifiedIntelligence(),
+        )
+
+        result = service.analyze(symbol="EURUSD", timeframe="5m", limit=8)
+
+        self.assertEqual(result["signal"], "AGUARDAR")
+        self.assertEqual(result["signal_cycle"]["status"], "EXPIRED_OR_DATA_UNSAFE")
+        self.assertFalse(result["execution_allowed"])
+
+    def test_delayed_one_minute_feed_forces_wait(self):
+        provider = FakeMarketDataProvider(
+            candle_series(timeframe="1m", age_intervals=5)
+        )
+        service = StandaloneMarketAnalysisService(
+            provider=provider,
+            source="DELAYED_ONE_MINUTE_TEST_FEED",
+            intelligence=UnifiedIntelligence(),
+        )
+
+        result = service.analyze(symbol="EURUSD", timeframe="1m", limit=8)
+
+        self.assertTrue(result["data_integrity"]["stale"])
+        self.assertEqual(result["signal"], "AGUARDAR")
+        self.assertEqual(result["status"], "REASSESS_REQUIRED")
+        self.assertFalse(result["execution_allowed"])
 
 
 if __name__ == "__main__":

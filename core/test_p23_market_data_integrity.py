@@ -30,6 +30,7 @@ def test_gap_data():
     report = MarketDataIntegrity().assess(data, now=base + timedelta(minutes=2), expected_interval_seconds=60)
     assert report.health is MarketDataHealth.GAP
     assert report.gap_count == 1
+    assert "sem calendário da sessão" in report.message
 
 
 def test_invalid_order_is_rejected():

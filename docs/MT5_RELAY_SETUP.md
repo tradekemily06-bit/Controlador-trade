@@ -2,6 +2,27 @@
 
 Este runbook configura uma única instância do relay para uma única origem MT5. Ele não conecta uma corretora por meio do navegador e não cria suporte multi-conta automaticamente.
 
+## Relay multi-conta isolado por identidade (novo caminho)
+
+O runtime também oferece a rota por conta:
+
+- `POST /api/bridge/mt5/connections/{connection_id}/candles` recebe candles para uma única conexão.
+- O bearer token é resolvido por um serviço de segredos injetado no host. O contrato é `resolve(token) -> (TenantContext, connection_id)`; o resolvedor deve armazenar/verificar hashes de tokens e devolver identidade obtida do cadastro do servidor, nunca de campos enviados pelo cliente.
+- `StandaloneRuntime` aceita `tenant_mt5_relay_source_id_resolver(context, connection_id)` e `tenant_mt5_relay_token_resolver`. Sem ambos os serviços reais provisionados pelo host, o fluxo permanece fechado e retorna indisponível.
+- A rota exige HTTPS direto ou TLS terminado por proxy explicitamente confiável. O token deve estar vinculado ao mesmo `connection_id` da URL. O tenant, subject, source ID e caminho do banco nunca vêm do payload.
+- O registry cria um SQLite separado por tenant/subject/conta, e o store continua impondo DEMO, frescor, UUID anti-replay e validação dos candles.
+- Essa rota é somente ingestão de dados; não habilita ordens nem execução REAL.
+
+O endpoint antigo `/api/bridge/mt5/candles` com token global permanece legado para operação local/instância única. Não o use como mecanismo de autenticação multi-conta ou para apresentar contas independentes.
+
+## Provisionamento de uma conta MT5 pelo aplicativo
+
+O backend oferece `POST /api/market-data/mt5-relay-connections` para a identidade autenticada. O corpo aceita somente `account_alias`; o servidor gera `connection_id`, `source_id` e um bearer token aleatório de alta entropia. O token é revelado uma única vez e somente seu SHA-256 é persistido no cofre SQLite local do runtime.
+
+A conexão nasce em `PENDING`. O primeiro lote recebido em `POST /api/bridge/mt5/connections/{connection_id}/candles` precisa passar pelas validações de origem, UUID, timestamp, candles, `account_mode=DEMO` e referência pseudônima derivada do login/servidor do terminal. O backend vincula essa referência à conexão no primeiro handshake e rejeita lotes posteriores se outro login/servidor for usado com o mesmo token. O login bruto não é armazenado. Só após esse primeiro lote válido o backend promove a conta para `CONNECTED`. Qualquer conta em outro modo permanece pendente e sem análise.
+
+A rota `DELETE /api/market-data/connections/{connection_id}` revoga também o token do relay. O token não deve ser copiado para o frontend Lovable nem enviado em logs ou tickets. Se o token de uso único for perdido, revogue a conexão e faça novo provisionamento.
+
 ## Limites atuais
 
 - O agente local usa o adapter `ICMarketsMT5DemoMarketDataAdapter`: atualmente, esta implementação concreta é IC Markets MT5 DEMO.
@@ -28,13 +49,27 @@ Não reutilize o mesmo token, banco ou source ID entre contas. Proteja os segred
 Instale as dependências compatíveis com o terminal MetaTrader 5 e configure no ambiente do agente local:
 
 - `CONTROLADOR_MT5_RELAY_URL`: URL HTTPS base do aplicativo hospedado.
-- `CONTROLADOR_MT5_RELAY_TOKEN`: o mesmo segredo provisionado no servidor.
-- `CONTROLADOR_MT5_RELAY_SOURCE_ID`: exatamente o mesmo identificador fixo provisionado no servidor.
+- `CONTROLADOR_MT5_RELAY_TOKEN`: token de uso único provisionado para esta conexão.
+- `CONTROLADOR_MT5_RELAY_CONNECTION_ID`: ID de 32 caracteres hexadecimais retornado pelo provisionamento da conta. Quando definido, o agente usa `/api/bridge/mt5/connections/{connection_id}/candles`; sem ele, permanece no endpoint legado global.
+- `CONTROLADOR_MT5_RELAY_SOURCE_ID`: identificador de origem retornado pelo provisionamento do servidor, exatamente igual ao cadastrado para esta conexão. É obrigatório no modo multi-conta.
+- `CONTROLADOR_MT5_TERMINAL_PATH`: caminho opcional do `terminal64.exe` desta instalação MT5. Configure um caminho distinto em cada instância quando operar várias contas/terminais.
 - `CONTROLADOR_MT5_SYMBOLS`: lista separada por vírgulas dos símbolos disponíveis na conta.
 - `CONTROLADOR_MT5_TIMEFRAMES`: períodos suportados pelo adapter, separados por vírgulas.
 - Opcional: `CONTROLADOR_MT5_RELAY_INTERVAL` (padrão 5 segundos) e `CONTROLADOR_MT5_RELAY_CANDLE_LIMIT` (padrão 250, máximo 500).
 
-Inicie o agente com `python -m integration.mt5_local_bridge_agent`. Ele confirma DEMO antes de publicar cada lote. Mantenha o processo local e o terminal MT5 em execução para que novos dados cheguem ao servidor.
+Inicie o agente com `python -m integration.mt5_local_bridge_agent`. Com `CONNECTION_ID`, token e source ID próprios, ele envia para a rota tenant-scoped da conta; execute uma instância do agente por conta/terminal, cada uma com suas próprias variáveis. Sem `CONNECTION_ID`, ele usa apenas o endpoint legado de instância única. O agente confirma DEMO antes de publicar cada lote. Mantenha o processo local e o terminal MT5 em execução para que novos dados cheguem ao servidor.
+
+## Semântica de tempo dos candles MT5
+
+O campo `rate["time"]` retornado pelo pacote Python MetaTrader 5 representa o horário UTC de abertura da barra, em segundos desde Unix epoch. O adapter converte esse instante diretamente para um `datetime` UTC; não aplica deslocamento local do Windows nem tenta converter o fuso horário visual do servidor da corretora.
+
+Essa regra de timestamp é documentada pela MetaQuotes para `copy_rates_from`, `copy_rates_from_pos` e `copy_rates_range`:
+- https://www.mql5.com/pt/docs/python_metatrader5/mt5copyratesfrom_py
+- https://www.mql5.com/pt/docs/python_metatrader5/mt5copyratesfrompos_py
+
+**UTC do timestamp não equivale a calendário de sessão confirmado.** O instante UTC informa quando a barra abriu, mas não define sozinho o horário em que o broker encerra cada sessão diária ou semanal, nem feriados, pausas, horário de verão ou reabertura de mercado. Por isso, D1 e W1 continuam bloqueados pelo monitor até que o adapter forneça um calendário de sessão verificável para a conta/provedor. Não derive a próxima validade de D1/W1 somando 24 horas ou 7 dias ao timestamp.
+
+M1, M5 e demais períodos intradiários usam timestamps UTC e seus ciclos próprios. A barra em formação é excluída por `copy_rates_from_pos(..., start_pos=1, ...)`; somente barras fechadas são enviadas para análise.
 
 ## Verificação e falhas
 

@@ -87,6 +87,42 @@ class SQLiteBackupServiceTests(unittest.TestCase):
             with sqlite3.connect(backups / item["filename"]) as db:
                 self.assertEqual(db.execute("SELECT tenant_id, subject_id, key FROM tenant_state").fetchone(), ("tenant-a", "user-a", "prefs"))
 
+    def test_tenant_signal_evidence_and_outcomes_are_included_in_backups(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "runtime"
+            backups = root / "backups"
+            runtime.mkdir()
+            from analysis.tenant_signal_evidence_store import TenantSignalEvidenceStore
+            from analysis.tenant_signal_outcome_store import TenantSignalOutcomeStore
+            from security.tenant_context import TenantContext
+
+            evidence = TenantSignalEvidenceStore(runtime / "tenant-signal-evidence.sqlite3")
+            outcomes = TenantSignalOutcomeStore(evidence)
+            owner = TenantContext("tenant-a", "subject-a")
+            evidence.record_signal(
+                owner, signal_id="signal-1", symbol="EURUSD", timeframe="M1",
+                direction="COMPRA", model_version="test-v1", evidence_score=70,
+                score_semantics="EVIDENCE_STRENGTH_NOT_WIN_PROBABILITY",
+                candle_close_at="2026-11-27T10:01:00Z",
+                observed_at="2026-11-27T10:01:02Z",
+                valid_until="2026-11-27T10:02:00Z",
+                provenance="REAL_MARKET_DATA",
+            )
+            outcomes.resolve(owner, "signal-1", {
+                "symbol": "EURUSD", "timeframe": "M1",
+                "open_time": "2026-11-27T10:01:00Z",
+                "open": 1.1, "high": 1.2, "low": 1.0, "close": 1.15,
+            }, provenance="REAL_MARKET_DATA")
+
+            result = SQLiteBackupService(runtime, backups).backup(["tenant_signal_evidence"])
+            item = result["results"][0]
+            self.assertEqual(item["status"], "BACKUP_CREATED")
+            with sqlite3.connect(backups / item["filename"]) as db:
+                self.assertEqual(db.execute("SELECT COUNT(*) FROM tenant_signal_evidence").fetchone()[0], 1)
+                self.assertEqual(db.execute("SELECT COUNT(*) FROM tenant_signal_outcomes").fetchone()[0], 1)
+                self.assertEqual(db.execute("PRAGMA foreign_key_check").fetchall(), [])
+
     def test_backup_rejects_symlink_source(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -136,3 +172,33 @@ class SQLiteBackupServiceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+def test_tenant_notification_outbox_is_included_in_tenant_state_backup(tmp_path):
+    from core.ecosystem_notifications import EcosystemNotification, NotificationKind, NotificationSeverity
+    from integration.tenant_notification_dispatcher import TenantNotificationDispatcher
+    from security.sqlite_tenant_storage import SQLiteTenantStorage
+    from security.tenant_context import TenantContext
+    from security.tenant_scoped_ecosystem_state import TenantScopedEcosystemState
+
+    runtime = tmp_path / "runtime"
+    backups = tmp_path / "backups"
+    runtime.mkdir()
+    storage = SQLiteTenantStorage(runtime / "tenant-state.sqlite3")
+    dispatcher = TenantNotificationDispatcher(TenantScopedEcosystemState(storage))
+    dispatcher.publish(
+        TenantContext("tenant-backup", "subject-backup"),
+        EcosystemNotification(
+            notification_id="backup-event", kind=NotificationKind.SYSTEM_UPDATE,
+            severity=NotificationSeverity.INFO, title="Backup", message="Preservar fila",
+        ),
+    )
+    result = SQLiteBackupService(runtime, backups).backup(["tenant_state"])
+    item = result["results"][0]
+    assert item["status"] == "BACKUP_CREATED"
+    with sqlite3.connect(backups / item["filename"]) as db:
+        row = db.execute(
+            "SELECT tenant_id, subject_id, notification_id, status FROM tenant_notification_outbox"
+        ).fetchone()
+    assert row == ("tenant-backup", "subject-backup", "backup-event", "PENDING")

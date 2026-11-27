@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -42,6 +43,18 @@ def _post_json(url: str, token: str, payload: dict[str, Any], timeout: float = 1
         raise RuntimeError(f"relay rejeitou lote: HTTP {exc.code}") from exc
 
 
+def build_relay_endpoint(base_url: str, connection_id: str | None = None) -> str:
+    base = base_url.rstrip("/")
+    if not base.lower().startswith("https://"):
+        raise ValueError("relay URL deve usar HTTPS")
+    if connection_id is None or not connection_id.strip():
+        return base + "/api/bridge/mt5/candles"
+    connection = connection_id.strip()
+    if not re.fullmatch(r"[a-f0-9]{32}", connection):
+        raise ValueError("CONTROLADOR_MT5_RELAY_CONNECTION_ID inválido")
+    return base + f"/api/bridge/mt5/connections/{connection}/candles"
+
+
 def publish_once(
     adapter: ICMarketsMT5DemoMarketDataAdapter,
     relay_url: str,
@@ -53,6 +66,12 @@ def publish_once(
 ) -> int:
     if adapter.get_account_mode() != "DEMO":
         raise RuntimeError("terminal MT5 não confirmou conta DEMO")
+    account_reference_reader = getattr(adapter, "get_account_reference", None)
+    if not callable(account_reference_reader):
+        raise RuntimeError("adapter MT5 não oferece referência estável da conta")
+    account_reference = account_reference_reader()
+    if not isinstance(account_reference, str) or not re.fullmatch(r"mt5_[a-f0-9]{32}", account_reference):
+        raise RuntimeError("referência pseudônima da conta MT5 inválida")
     sent = 0
     for symbol in symbols:
         for timeframe in timeframes:
@@ -62,6 +81,7 @@ def publish_once(
                 continue
             payload = {
                 "source_id": source_id,
+                "account_reference": account_reference,
                 "message_id": str(uuid.uuid4()),
                 "sent_at": datetime.now(timezone.utc).isoformat(),
                 "account_mode": "DEMO",
@@ -84,6 +104,20 @@ def publish_once(
     return sent
 
 
+def compute_retry_delay(
+    interval_seconds: float,
+    failure_count: int,
+    *,
+    max_backoff_seconds: float = 60.0,
+) -> float:
+    """Return bounded exponential retry delay for transient relay failures."""
+    if interval_seconds <= 0 or max_backoff_seconds <= 0:
+        raise ValueError("retry intervals must be positive")
+    if isinstance(failure_count, bool) or not isinstance(failure_count, int) or failure_count < 0:
+        raise ValueError("failure_count must be a non-negative integer")
+    return min(max_backoff_seconds, interval_seconds * (2 ** min(failure_count, 20)))
+
+
 def main() -> None:
     base_url = _required("CONTROLADOR_MT5_RELAY_URL").rstrip("/")
     if not base_url.lower().startswith("https://"):
@@ -95,19 +129,34 @@ def main() -> None:
         raise RuntimeError("configure ao menos um símbolo e um timeframe")
     interval = max(2.0, float(os.getenv("CONTROLADOR_MT5_RELAY_INTERVAL", "5")))
     limit = min(500, max(20, int(os.getenv("CONTROLADOR_MT5_RELAY_CANDLE_LIMIT", "250"))))
-    source_id = os.getenv("CONTROLADOR_MT5_RELAY_SOURCE_ID", "mt5-local").strip() or "mt5-local"
-    adapter = ICMarketsMT5DemoMarketDataAdapter()
-    relay_url = base_url + "/api/bridge/mt5/candles"
+    connection_id = os.getenv("CONTROLADOR_MT5_RELAY_CONNECTION_ID", "").strip() or None
+    source_id = os.getenv("CONTROLADOR_MT5_RELAY_SOURCE_ID", "").strip()
+    if connection_id is not None and not source_id:
+        raise RuntimeError("CONTROLADOR_MT5_RELAY_SOURCE_ID é obrigatório no modo multi-conta")
+    if not source_id:
+        source_id = "mt5-local"
+    terminal_path = os.getenv("CONTROLADOR_MT5_TERMINAL_PATH", "").strip() or None
+    adapter = ICMarketsMT5DemoMarketDataAdapter(terminal_path=terminal_path)
+    relay_url = build_relay_endpoint(base_url, connection_id)
+    failure_count = 0
     while True:
         started = time.monotonic()
         try:
             count = publish_once(adapter, relay_url, token, symbols, timeframes, limit, source_id)
+            failure_count = 0
+            delay = interval
             print(f"MT5 relay: {count} candles enviados; conta DEMO confirmada")
         except Exception as exc:
-            # Error messages are bounded and never include secrets.
-            print(f"MT5 relay indisponível: {str(exc)[:240]}")
+            # Error messages are bounded and never include secrets. Backoff
+            # prevents a disconnected terminal or API from being hammered.
+            failure_count += 1
+            delay = compute_retry_delay(interval, failure_count)
+            print(
+                f"MT5 relay indisponível: {str(exc)[:240]}; "
+                f"nova tentativa em {delay:.1f}s"
+            )
         elapsed = time.monotonic() - started
-        time.sleep(max(0.5, interval - elapsed))
+        time.sleep(max(0.5, delay - elapsed))
 
 
 if __name__ == "__main__":

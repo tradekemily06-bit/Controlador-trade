@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import sqlite3
 from datetime import datetime, timezone
@@ -56,6 +57,19 @@ class MT5RelayStore:
                 )
             """)
 
+    @staticmethod
+    def _finite_number(value: Any) -> float:
+        """Accept JSON numeric values only; reject bools, strings and non-finite magnitudes."""
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("numeric candle field required")
+        try:
+            number = float(value)
+            if not math.isfinite(number):
+                raise ValueError("finite candle field required")
+        except (OverflowError, ValueError) as exc:
+            raise ValueError("finite candle field required") from exc
+        return number
+
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.database_path, timeout=10)
         db.row_factory = sqlite3.Row
@@ -106,13 +120,16 @@ class MT5RelayStore:
                 timestamp = datetime.fromisoformat(str(item["timestamp"]).replace("Z", "+00:00"))
                 if timestamp.tzinfo is None:
                     raise ValueError("timestamp sem fuso")
+                timestamp = timestamp.astimezone(timezone.utc)
+                if (timestamp - datetime.now(timezone.utc)).total_seconds() > 10:
+                    raise ValueError("candle timestamp is in the future")
                 candle = Candle(
-                    timestamp=timestamp.astimezone(timezone.utc),
-                    open=float(item["open"]),
-                    high=float(item["high"]),
-                    low=float(item["low"]),
-                    close=float(item["close"]),
-                    volume=float(item.get("volume", 0)),
+                    timestamp=timestamp,
+                    open=self._finite_number(item["open"]),
+                    high=self._finite_number(item["high"]),
+                    low=self._finite_number(item["low"]),
+                    close=self._finite_number(item["close"]),
+                    volume=self._finite_number(item.get("volume", 0)),
                 )
             except (KeyError, TypeError, ValueError, OverflowError) as exc:
                 raise MT5RelayError("formato de candle inválido") from exc
@@ -124,6 +141,8 @@ class MT5RelayStore:
             raise MT5RelayError("candles duplicados no mesmo lote")
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as db:
+            # Serialize read/compare/write so concurrent batches cannot race.
+            db.execute("BEGIN IMMEDIATE")
             # One relay database is permanently bound to its first source.
             # Never let a bearer-token holder switch accounts by changing an
             # untrusted payload field; separate accounts need separate stores.
@@ -139,15 +158,29 @@ class MT5RelayStore:
                 (message_id, now),
             )
             for candle in parsed:
+                candle_timestamp = candle.timestamp.isoformat()
+                existing = db.execute(
+                    """SELECT open,high,low,close,volume FROM mt5_relay_candles
+                    WHERE symbol=? AND timeframe=? AND timestamp=?""",
+                    (symbol, timeframe, candle_timestamp),
+                ).fetchone()
+                incoming_values = (
+                    candle.open, candle.high, candle.low, candle.close, candle.volume
+                )
+                if existing is not None:
+                    stored_values = tuple(
+                        float(existing[key]) for key in ("open", "high", "low", "close", "volume")
+                    )
+                    if stored_values != incoming_values:
+                        raise MT5RelayError(
+                            "candle já armazenado recebeu valores diferentes; histórico imutável"
+                        )
+                    continue
                 db.execute(
                     """INSERT INTO mt5_relay_candles
                     (symbol,timeframe,timestamp,open,high,low,close,volume)
-                    VALUES (?,?,?,?,?,?,?,?)
-                    ON CONFLICT(symbol,timeframe,timestamp) DO UPDATE SET
-                    open=excluded.open, high=excluded.high, low=excluded.low,
-                    close=excluded.close, volume=excluded.volume""",
-                    (symbol, timeframe, candle.timestamp.isoformat(), candle.open,
-                     candle.high, candle.low, candle.close, candle.volume),
+                    VALUES (?,?,?,?,?,?,?,?)""",
+                    (symbol, timeframe, candle_timestamp, *incoming_values),
                 )
             db.execute(
                 """INSERT INTO mt5_relay_state(singleton,account_mode,last_seen,source_id)
@@ -199,21 +232,49 @@ class MT5RelayStore:
             raise MT5RelayError("ponte MT5 sem heartbeat DEMO recente")
         return "DEMO"
 
+    @staticmethod
+    def _timeframe_seconds(timeframe: str) -> int:
+        match = re.fullmatch(r"(M|H|D|W)([1-9][0-9]?)", timeframe.upper())
+        if match is None:
+            return 60
+        unit, amount = match.groups()
+        multiplier = {"M": 60, "H": 3600, "D": 86400, "W": 604800}[unit]
+        return multiplier * int(amount)
+
     def status(self) -> dict[str, Any]:
         try:
             mode = self.get_account_mode()
             connected = True
         except MT5RelayError:
             mode, connected = None, False
+        now = datetime.now(timezone.utc)
         with self._connect() as db:
             count = db.execute("SELECT COUNT(*) FROM mt5_relay_candles").fetchone()[0]
             state = db.execute("SELECT last_seen,source_id FROM mt5_relay_state WHERE singleton=1").fetchone()
+            latest_rows = db.execute(
+                """SELECT symbol,timeframe,MAX(timestamp) AS last_candle_at
+                FROM mt5_relay_candles GROUP BY symbol,timeframe
+                ORDER BY symbol,timeframe"""
+            ).fetchall()
+        series = []
+        for row in latest_rows:
+            candle_at = datetime.fromisoformat(row["last_candle_at"])
+            age = max(0.0, (now - candle_at.astimezone(timezone.utc)).total_seconds())
+            interval = self._timeframe_seconds(row["timeframe"])
+            series.append({
+                "symbol": row["symbol"],
+                "timeframe": row["timeframe"],
+                "last_candle_at": row["last_candle_at"],
+                "candle_age_seconds": round(age, 3),
+                "data_fresh": connected and age <= interval * 2 + 10,
+            })
         return {
             "connected": connected,
             "account_mode": mode,
             "last_seen": state["last_seen"] if state else None,
             "source_id": state["source_id"] if state else None,
             "stored_candles": int(count),
+            "series": series,
             "read_only": True,
             "execution_authorized": False,
         }

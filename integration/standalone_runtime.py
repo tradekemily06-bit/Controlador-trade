@@ -8,11 +8,26 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from analysis.decision_store import DecisionStore
+from analysis.tenant_signal_evidence_store import TenantSignalEvidenceStore
+from analysis.tenant_signal_outcome_store import TenantSignalOutcomeStore
 from assistant.chat_service import EcosystemAssistant
 from assistant.conversation_store import AssistantConversationStore
 from security.sqlite_tenant_storage import SQLiteTenantStorage
 from security.tenant_context import TenantContext
 from security.tenant_provider_connections import TenantProviderConnectionRegistry
+from integration.tenant_market_data_sessions import TenantMarketDataSessionRegistry
+from integration.tenant_connection_timeframe_monitor import TenantConnectionTimeframeMonitor
+from integration.deployment_topology_guard import validate_single_replica_sqlite_topology
+from integration.tenant_provider_connection_service import TenantProviderConnectionService
+from integration.tenant_mt5_relay_registry import TenantMT5RelayRegistry
+from integration.tenant_mt5_relay_onboarding import TenantMT5RelayTokenVault, TenantMT5RelayOnboardingService
+from integration.tenant_tradingview_webhook_vault import TenantTradingViewWebhookVault, TenantTradingViewWebhookOnboardingService
+from integration.tenant_tradingview_alert_inbox import TenantTradingViewAlertInbox
+from integration.tenant_oauth_state_vault import TenantOAuthStateVault
+from integration.tenant_oauth_token_vault import TenantOAuthTokenVault
+from integration.tenant_ctrader_oauth_service import TenantCTraderOAuthService
+from integration.tenant_oauth_refresh_worker_manager import TenantOAuthRefreshWorkerManager
+from integration.tenant_ctrader_account_service import TenantCTraderAccountService
 from security.tenant_scoped_ecosystem_state import TenantScopedEcosystemState
 from security.tenant_scoped_decision_memory import TenantScopedDecisionMemory
 from integration.tenant_notification_dispatcher import TenantNotificationDispatcher
@@ -38,7 +53,24 @@ from core.sqlite_backup_scheduler import SQLiteBackupScheduler
 from core.ecosystem_notifications import EcosystemNotification, NotificationKind, NotificationSeverity
 from integration.market_timeframe_monitor import MarketTimeframeMonitor
 from integration.notification_outbox_worker import NotificationOutboxWorker
+from integration.tenant_notification_outbox_worker import TenantNotificationOutboxWorker
 from integration.rss_news_provider import RSSNewsProvider
+
+
+_REAL_MARKET_DATA_PROVIDER_IDS = frozenset({
+    "mt5_relay",
+    "mt5_demo",
+    "ctrader_open_api",
+})
+
+
+def _market_data_provenance_for_provider(provider_id: str | None) -> str | None:
+    """Only explicitly verified read-only market-data integrations enter audit."""
+    return (
+        "REAL_MARKET_DATA"
+        if isinstance(provider_id, str) and provider_id.strip() in _REAL_MARKET_DATA_PROVIDER_IDS
+        else None
+    )
 
 
 # Failed startup workers may be blocked in an external provider/sink. Retain
@@ -73,14 +105,29 @@ def _release_failed_startup_lock_when_safe(
 
 
 def _stop_workers_and_report_active(workers: tuple[tuple[Any, str], ...]) -> list[str]:
+    """Best-effort stop every worker; uncertainty always keeps the process lock held.
+
+    A failure in one provider or notification worker must not prevent the
+    remaining workers from receiving their shutdown request. A stop/status
+    exception is treated as potentially active, never as proof of termination.
+    """
     still_running: list[str] = []
     for worker, running_key in workers:
         if worker is None:
             continue
-        worker.stop()
-        status = worker.status()
-        if status.get(running_key) is not False:
-            still_running.append(type(worker).__name__)
+        name = type(worker).__name__
+        try:
+            worker.stop()
+        except Exception:
+            still_running.append(name)
+            continue
+        try:
+            status = worker.status()
+        except Exception:
+            still_running.append(name)
+            continue
+        if not isinstance(status, dict) or status.get(running_key) is not False:
+            still_running.append(name)
     return still_running
 
 
@@ -130,10 +177,27 @@ class StandaloneRuntime:
         market_data_providers: Mapping[str, tuple[Any, str]] | None = None,
         selected_market_data_provider: str | None = None,
         notification_sink=None,
+        tenant_notification_sink=None,
+        tenant_push_subscription_registry=None,
+        provider_secret_resolver=None,
+        provider_adapter_factories: Mapping[str, Any] | None = None,
+        ctrader_oauth_cipher=None,
+        ctrader_oauth_http_client=None,
+        ctrader_oauth_exchange_code=None,
+        ctrader_oauth_refresh_tokens=None,
+        ctrader_oauth_client_id: str | None = None,
+        ctrader_oauth_redirect_uri: str | None = None,
+        ctrader_refresh_lease_provider=None,
+        ctrader_transport_factory=None,
     ) -> None:
         configured_identity = os.getenv("CONTROLADOR_SINGLE_USER_IDENTITY", "").strip()
         if not configured_identity:
             raise RuntimeError("CONTROLADOR_SINGLE_USER_IDENTITY precisa estar configurada")
+
+        # The current runtime uses local SQLite and process-local adapters.
+        # Fail closed when the deployment declares multiple replicas; readiness
+        # must not rely on operators remembering an undocumented topology limit.
+        self.deployment_topology = validate_single_replica_sqlite_topology()
 
         self.runtime_dir = Path(
             runtime_dir or os.getenv("CONTROLADOR_RUNTIME_DIR", ".runtime-standalone")
@@ -142,6 +206,7 @@ class StandaloneRuntime:
         self.process_lock = RuntimeProcessLock(self.runtime_dir / "standalone-app.lock")
         self.process_lock.acquire()
         self.closed = False
+        self.tenant_push_subscription_registry = tenant_push_subscription_registry
 
         try:
             fiscal_database = self.runtime_dir / "fiscal-reserve.sqlite3"
@@ -161,11 +226,153 @@ class StandaloneRuntime:
             )
             self.tenant_state = TenantScopedEcosystemState(tenant_storage)
             self.tenant_provider_connections = TenantProviderConnectionRegistry(tenant_storage)
+            if ctrader_oauth_http_client is not None:
+                if ctrader_oauth_exchange_code is not None or ctrader_oauth_refresh_tokens is not None:
+                    raise RuntimeError("use ctrader_oauth_http_client ou callbacks separados, não ambos")
+                ctrader_oauth_exchange_code = getattr(ctrader_oauth_http_client, "exchange_code", None)
+                ctrader_oauth_refresh_tokens = getattr(ctrader_oauth_http_client, "refresh_tokens", None)
+                if ctrader_transport_factory is None:
+                    ctrader_transport_factory = getattr(
+                        ctrader_oauth_http_client, "create_readonly_transport", None
+                    )
+            ctrader_oauth_configured = any((
+                ctrader_oauth_cipher is not None,
+                ctrader_oauth_http_client is not None,
+                ctrader_oauth_exchange_code is not None,
+                ctrader_oauth_refresh_tokens is not None,
+                ctrader_oauth_client_id is not None,
+                ctrader_oauth_redirect_uri is not None,
+            ))
+            self.tenant_ctrader_oauth_service = None
+            self.tenant_ctrader_account_service = None
+            self.tenant_ctrader_token_vault = None
+            self.tenant_oauth_refresh_worker = None
+            ctrader_token_vault = None
+            if ctrader_oauth_configured:
+                if any(value is None for value in (
+                    ctrader_oauth_cipher, ctrader_oauth_exchange_code,
+                    ctrader_oauth_refresh_tokens, ctrader_oauth_client_id,
+                    ctrader_oauth_redirect_uri,
+                )):
+                    raise RuntimeError(
+                        "cTrader OAuth exige cipher KMS, cliente de troca, client_id e redirect_uri"
+                    )
+                ctrader_state_vault = TenantOAuthStateVault(
+                    self.runtime_dir / "tenant-ctrader-oauth-state.sqlite3",
+                    self.tenant_provider_connections,
+                )
+                ctrader_token_vault = TenantOAuthTokenVault(
+                    self.runtime_dir / "tenant-ctrader-oauth-tokens.sqlite3",
+                    self.tenant_provider_connections,
+                    ctrader_oauth_cipher,
+                )
+                self.tenant_ctrader_token_vault = ctrader_token_vault
+                self.tenant_ctrader_oauth_service = TenantCTraderOAuthService(
+                    self.tenant_provider_connections,
+                    ctrader_state_vault,
+                    ctrader_token_vault,
+                    client_id=ctrader_oauth_client_id,
+                    redirect_uri=ctrader_oauth_redirect_uri,
+                    exchange_code=ctrader_oauth_exchange_code,
+                    refresh_tokens=ctrader_oauth_refresh_tokens,
+                    refresh_lease_provider=ctrader_refresh_lease_provider,
+                    on_tokens_stored=lambda owner: self.tenant_oauth_refresh_worker.register_owner(owner),
+                )
+            if self.tenant_ctrader_oauth_service is not None:
+                self.tenant_oauth_refresh_worker = TenantOAuthRefreshWorkerManager(
+                    self.tenant_ctrader_token_vault,
+                    self.tenant_ctrader_oauth_service,
+                    max_owners=100,
+                    poll_interval_seconds=60,
+                    refresh_within_seconds=900,
+                )
+            self.tenant_market_data_sessions = TenantMarketDataSessionRegistry(
+                self.tenant_provider_connections
+            )
+            if ctrader_transport_factory is not None:
+                if not callable(ctrader_transport_factory) or ctrader_token_vault is None:
+                    raise RuntimeError("cTrader account selection requires OAuth token vault and trusted transport factory")
+                self.tenant_ctrader_account_service = TenantCTraderAccountService(
+                    self.tenant_provider_connections,
+                    self.tenant_market_data_sessions,
+                    ctrader_token_vault,
+                    transport_factory=ctrader_transport_factory,
+                    oauth_service=self.tenant_ctrader_oauth_service,
+                )
+            self.tenant_mt5_relay_token_vault = TenantMT5RelayTokenVault(
+                self.runtime_dir / "tenant-mt5-relay-tokens.sqlite3",
+                self.tenant_provider_connections,
+            )
+            self.tenant_mt5_relay_token_resolver = self.tenant_mt5_relay_token_vault
+            self.tenant_mt5_relay_registry = TenantMT5RelayRegistry(
+                self.tenant_provider_connections,
+                self.runtime_dir / "tenant-mt5-relays",
+                self.tenant_mt5_relay_token_vault.source_id,
+                sessions=self.tenant_market_data_sessions,
+            )
+            self.tenant_mt5_relay_onboarding = TenantMT5RelayOnboardingService(
+                self.tenant_provider_connections, self.tenant_mt5_relay_token_vault
+            )
+            self.tenant_tradingview_webhook_vault = TenantTradingViewWebhookVault(
+                self.runtime_dir / "tenant-tradingview-webhook-secrets.sqlite3",
+                self.tenant_provider_connections,
+            )
+            self.tenant_tradingview_webhook_onboarding = TenantTradingViewWebhookOnboardingService(
+                self.tenant_provider_connections, self.tenant_tradingview_webhook_vault
+            )
+            def publish_tradingview_alert(context, event):
+                notification = EcosystemNotification(
+                    notification_id=f"tradingview:{event['connection_id']}:{event['event_id']}",
+                    kind=NotificationKind.MARKET,
+                    severity=NotificationSeverity.IMPORTANT,
+                    title=f"Alerta TradingView: {event['ticker']} — {event['action']}",
+                    message=(
+                        f"TradingView enviou um alerta {event['action']} para {event['ticker']} "
+                        f"no intervalo {event['interval']}. Evento recebido e armazenado; "
+                        "nenhuma ordem foi enviada."
+                    ),
+                    requires_attention=True,
+                )
+                self.tenant_notification_dispatcher.publish(context, notification)
+
+            self.tenant_tradingview_alert_inbox = TenantTradingViewAlertInbox(
+                self.runtime_dir / "tenant-tradingview-alerts.sqlite3",
+                self.tenant_provider_connections,
+                self.tenant_tradingview_webhook_vault,
+                on_event=publish_tradingview_alert,
+            )
+            self.tenant_provider_connection_service = TenantProviderConnectionService(
+                self.tenant_provider_connections,
+                self.tenant_market_data_sessions,
+                secret_resolver=provider_secret_resolver,
+                adapter_factories=provider_adapter_factories,
+            )
             self.tenant_decision_memory = TenantScopedDecisionMemory(tenant_storage)
             self.local_tenant_context = TenantContext(
                 tenant_id="local-single-user",
                 subject_id=configured_identity,
             )
+            self.signal_evidence_store = TenantSignalEvidenceStore(
+                self.runtime_dir / "tenant-signal-evidence.sqlite3"
+            )
+            self.signal_outcome_store = TenantSignalOutcomeStore(
+                self.signal_evidence_store
+            )
+            # Rebuild configured generic provider sessions only after a fresh
+            # tenant-scoped vault resolution and provider handshake.
+            self.provider_recovery_status = self.tenant_provider_connection_service.reconnect_available(
+                self.local_tenant_context
+            )
+            self.ctrader_recovery_status = []
+            if self.tenant_oauth_refresh_worker is not None:
+                for refresh_owner in self.tenant_ctrader_token_vault.list_refresh_owners(limit=100):
+                    self.tenant_oauth_refresh_worker.register_owner(refresh_owner)
+            if self.tenant_ctrader_account_service is not None:
+                self.ctrader_recovery_status = (
+                    self.tenant_ctrader_account_service.reconnect_available(
+                        self.local_tenant_context
+                    )
+                )
             # Prepared owner-sharded fiscal repositories are available as an
             # internal primitive; remote HTTP requests remain fail-closed until
             # trusted identity, durable storage and recovery are production-ready.
@@ -178,6 +385,12 @@ class StandaloneRuntime:
             self.notification_outbox = PersistentNotificationOutbox(
                 self.runtime_dir / "notification-outbox.sqlite3"
             )
+            self.tenant_notification_worker = None
+            if tenant_notification_sink is not None:
+                self.tenant_notification_worker = TenantNotificationOutboxWorker(
+                    self.tenant_notification_dispatcher.outbox, tenant_notification_sink
+                )
+                self.tenant_notification_worker.start()
             self.notification_worker = None
             if notification_sink is not None:
                 self.notification_worker = NotificationOutboxWorker(
@@ -258,6 +471,7 @@ class StandaloneRuntime:
             )
             self.market_analysis_service = None
             self.market_monitor = None
+            self.tenant_market_monitor = None
             selected = self.market_data_registry.selected()
             self.mt5_relay_store = (
                 selected.provider if selected is not None and selected.provider_id == "mt5_relay" else None
@@ -270,6 +484,10 @@ class StandaloneRuntime:
                     decision_sink=lambda record, context=None: self.tenant_decision_memory.save(
                         context or self.local_tenant_context, record
                     ),
+                    signal_evidence_sink=self.signal_evidence_store.record_signal,
+                    signal_outcome_sink=self.signal_outcome_store.resolve_pending_for_candle,
+                    market_data_provenance=_market_data_provenance_for_provider(selected.provider_id),
+                    signal_source_id=f"{selected.provider_id}:{selected.source}",
                 )
 
                 def publish_market_change(event: dict[str, Any]) -> None:
@@ -307,6 +525,55 @@ class StandaloneRuntime:
                     default_context=self.local_tenant_context,
                 )
                 self.market_monitor.start()
+
+            def build_account_analyzer(session, context):
+                return StandaloneMarketAnalysisService(
+                    provider=session.adapter,
+                    source=session.source,
+                    intelligence=self.intelligence,
+                    decision_sink=lambda record, owner=None: self.tenant_decision_memory.save(
+                        owner or context, record
+                    ),
+                    signal_evidence_sink=self.signal_evidence_store.record_signal,
+                    signal_outcome_sink=self.signal_outcome_store.resolve_pending_for_candle,
+                    market_data_provenance=_market_data_provenance_for_provider(session.provider_id),
+                    signal_source_id=session.connection_id,
+                )
+
+            def publish_account_market_change(event: dict[str, Any]) -> None:
+                result = event["result"]
+                signal = str(result.get("signal", "AGUARDAR"))
+                previous = event.get("previous_signal")
+                if signal == previous or (signal == "AGUARDAR" and previous in (None, "AGUARDAR")):
+                    return
+                symbol = event["symbol"]
+                timeframe = event["timeframe"]
+                connection_id = event["connection_id"]
+                candle_at = event["candle_at"]
+                notification = EcosystemNotification(
+                    notification_id=f"market:{connection_id}:{symbol}:{timeframe}:{candle_at}:{signal}",
+                    kind=NotificationKind.MARKET,
+                    severity=NotificationSeverity.IMPORTANT,
+                    title=f"{event['provider_id']}: {symbol} {timeframe} — {signal}",
+                    message=(
+                        f"A conta conectada em {event['provider_id']} atualizou o ciclo "
+                        f"{timeframe} de {symbol}. Sinal: {signal}. "
+                        "Revisão manual necessária; nenhuma ordem foi enviada."
+                    ),
+                    requires_attention=True,
+                )
+                self.tenant_notification_dispatcher.publish(
+                    event["tenant_context"], notification
+                )
+
+            self.tenant_market_monitor = TenantConnectionTimeframeMonitor(
+                self.runtime_dir / "tenant-connection-timeframe-monitor.sqlite3",
+                self.tenant_market_data_sessions,
+                build_account_analyzer,
+                on_result=publish_account_market_change,
+            )
+            self.tenant_market_monitor.start()
+
             self.conversation_store = AssistantConversationStore(
                 self.runtime_dir / "assistant-conversations.sqlite3"
             )
@@ -332,6 +599,9 @@ class StandaloneRuntime:
         except Exception:
             workers = (
                 (getattr(self, "market_monitor", None), "worker_running"),
+                (getattr(self, "tenant_market_monitor", None), "worker_running"),
+                (getattr(self, "tenant_oauth_refresh_worker", None), "running"),
+                (getattr(self, "tenant_notification_worker", None), "running"),
                 (getattr(self, "notification_worker", None), "running"),
                 (getattr(self, "backup_scheduler", None), "worker_running"),
             )
@@ -353,6 +623,9 @@ class StandaloneRuntime:
         # second runtime to open the same SQLite state concurrently.
         workers = (
             (self.market_monitor, "worker_running"),
+            (getattr(self, "tenant_market_monitor", None), "worker_running"),
+            (getattr(self, "tenant_oauth_refresh_worker", None), "running"),
+            (getattr(self, "tenant_notification_worker", None), "running"),
             (self.notification_worker, "running"),
             (self.backup_scheduler, "worker_running"),
         )

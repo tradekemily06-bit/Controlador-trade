@@ -1,0 +1,5 @@
+## Trusted provider connection orchestration
+
+`TenantProviderConnectionService` is the host-side onboarding boundary for provider accounts. It resolves a tenant-owned credential reference through an injected secret resolver, constructs a provider-specific adapter, requires a successful adapter handshake, stores only account metadata, and binds the adapter to that tenant/account session. On disconnect it closes the adapter, removes the runtime binding and marks the account disconnected.
+
+The service deliberately has no built-in credential vault and no generic provider credentials endpoint. Production deployment must inject a real tenant-aware secret manager and provider factories that perform genuine provider handshakes. A reference such as `vault://...` is only a test example, not a configured vault. Raw API keys, passwords, access tokens and refresh tokens must never be written to SQLite metadata, logs, browser state or source control. All returned connection capabilities are read-only; execution remains unauthorized.

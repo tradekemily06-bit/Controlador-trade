@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Protocol, Sequence
 
 from data.models import Candle
 from data.normalizer import normalize_candle
 from data.validator import validate_candles
+from data.timeframes import get_timeframe_interval
 
 
 @dataclass(frozen=True)
@@ -47,7 +48,13 @@ class MarketDataFeed:
         self._provider = provider
         self._source = source.strip()
 
-    def fetch(self, request: MarketDataRequest, received_at: datetime | None = None) -> MarketDataResult:
+    def fetch(
+        self,
+        request: MarketDataRequest,
+        received_at: datetime | None = None,
+        *,
+        live_candle: Candle | None = None,
+    ) -> MarketDataResult:
         if not isinstance(request, MarketDataRequest):
             raise TypeError("request must be MarketDataRequest")
         raw = tuple(self._provider.fetch(request))
@@ -66,6 +73,31 @@ class MarketDataFeed:
         )
         if not validate_candles(list(normalized)):
             raise ValueError("provider returned invalid candle sequence")
+        if live_candle is not None:
+            if not isinstance(live_candle, Candle):
+                raise TypeError("live_candle must be a validated Candle")
+            if live_candle.timestamp.tzinfo is None:
+                raise ValueError("live candle timestamp must be timezone-aware")
+            overlay = normalize_candle(
+                timestamp=live_candle.timestamp,
+                open=live_candle.open,
+                high=live_candle.high,
+                low=live_candle.low,
+                close=live_candle.close,
+                volume=live_candle.volume,
+            )
+            last_at = normalized[-1].timestamp
+            if last_at.tzinfo is None:
+                raise ValueError("provider candle timestamp must be timezone-aware")
+            delta = overlay.timestamp.astimezone(timezone.utc) - last_at.astimezone(timezone.utc)
+            if delta.total_seconds() == 0:
+                normalized = (*normalized[:-1], overlay)
+            elif delta == get_timeframe_interval(request.timeframe):
+                normalized = (*normalized, overlay)
+            else:
+                raise ValueError("live candle is not contiguous with the validated provider history")
+            if not validate_candles(list(normalized)):
+                raise ValueError("live candle overlay produced an invalid sequence")
         if len(normalized) > request.limit:
             normalized = normalized[-request.limit:]
         return MarketDataResult(

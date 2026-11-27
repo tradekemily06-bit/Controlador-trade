@@ -37,3 +37,18 @@ def test_real_execution_can_never_make_the_gate_ready() -> None:
     assert state.ready is False
     assert state.authorize_protected_operation() is False
     assert state.status()["real_execution"] == "ENABLED"
+
+
+
+def test_production_security_gate_rejects_truthy_string_flags():
+    import pytest
+
+    with pytest.raises(ValueError, match="trusted_identity must be a boolean"):
+        SaaSProductionSecurityState(
+            trusted_identity="false",
+            tenant_isolated_durable_storage=True,
+            secure_transport=True,
+            secret_management=True,
+            durable_audit=True,
+            centralized_rate_limiting=True,
+        )

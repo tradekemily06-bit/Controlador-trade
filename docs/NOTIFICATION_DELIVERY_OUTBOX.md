@@ -27,6 +27,28 @@ browser while the application is closed until a real provider, subscription
 management, production worker configuration, and end-to-end device delivery test
 are configured.
 
+The tenant-scoped market/provider alert path now writes the in-app inbox and
+`tenant_notification_outbox` in the same SQLite transaction. The outbox is
+partitioned by tenant, subject and notification ID; its worker sends the exact
+recipient identity to a tenant-aware sink, uses collision-resistant idempotency
+keys, lease ownership, retries, and dead-letter handling. The tenant notification
+status endpoint reports only the authenticated owner's outbox counts and worker
+state. A local tenant outbox cannot be claimed or delivered by another owner.
+
+The tenant-aware worker is an optional runtime dependency:
+`StandaloneRuntime(tenant_notification_sink=...)`. The default environment
+still supplies no sink, so external delivery remains disabled and status reports
+`NO_TENANT_EXTERNAL_SINK_CONFIGURED` / `OUTBOX_ONLY_NO_PROVIDER`. The worker
+and queue are now connected, but a real tenant-aware delivery adapter, consented
+device-subscription storage, VAPID credentials, browser/PWA lifecycle and
+end-to-end phone/browser delivery test remain required. Never describe an event
+as delivered merely because it is present in the outbox or the worker is running.
+
+This tenant outbox shares `tenant-state.sqlite3`, which is included in the
+allowlisted local SQLite backup. It remains single-host development storage;
+multi-replica production still requires a shared transactional database and
+distributed lease fencing.
+
 No provider credentials or user subscription data are stored in source code.
 The delivery adapter must be configured server-side and must never authorize
 trading or money movement.

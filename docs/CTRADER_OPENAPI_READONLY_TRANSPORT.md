@@ -1,0 +1,106 @@
+# cTrader Open API — transporte DEMO somente leitura
+
+O adaptador de candles existente agora pode usar o transporte oficial Spotware em
+`integration/ctrader_openapi_readonly_transport.py`.
+
+## Limites e garantias
+
+- Usa exclusivamente `EndPoints.PROTOBUF_DEMO_HOST`; não existe seletor LIVE.
+- Carrega o SDK oficial sob demanda. Sem o pacote, a inicialização falha com
+  mensagem explícita, sem simular conexão.
+- Um reactor Twisted compartilhado atende os clientes do processo; não inicia
+  um reactor por conta e não tenta reiniciá-lo após encerramento.
+- Cada instância de transporte representa uma conta e recebe token OAuth e
+  credenciais da aplicação por injeção confiável do servidor.
+- A lista de contas autorizadas pelo token é consultada no servidor Spotware.
+  A conta selecionada precisa ter `isLive == false`; a autenticação da conta
+  ocorre somente depois dessa verificação.
+- Expõe apenas autenticação de aplicação/conta, leitura de símbolos e leitura
+  histórica de trendbars. Não implementa mensagens de ordem, cancelamento,
+  alteração de posição ou movimentação financeira.
+- Erros de rede são reduzidos a mensagens genéricas para não expor credenciais.
+
+## Instalação opcional
+
+No ambiente de execução que habilitar cTrader, instalar o SDK mantido pela
+Spotware:
+
+```bash
+python -m pip install ctrader-open-api
+```
+
+O pacote não é uma dependência obrigatória do aplicativo inteiro. MT5, TradingView
+e os demais módulos não devem depender da presença do SDK cTrader.
+
+## Encadeamento
+
+1. Resolver client ID/secret e access token no backend, nunca no navegador.
+2. Criar uma instância por conta com `CTraderOpenApiReadOnlyTransport`.
+3. Chamar `connect()`.
+4. Usar `CTraderReadOnlyMarketDataAdapter.handshake()`: autenticação da
+   aplicação, consulta das contas concedidas pelo OAuth, bloqueio de conta REAL
+   e autenticação da conta DEMO.
+5. Só depois do handshake verificado, registrar/bindar o adaptador na sessão
+   isolada do tenant.
+6. Consultar candles históricos pelo adaptador. O adaptador limita chamadas
+   históricas a cinco por segundo por conexão.
+7. Para cotação atual, chamar `subscribe_live_quotes(symbol, callback)`. O
+   transporte assina `ProtoOASubscribeSpotsReq`, solicita timestamp e encaminha
+   bid/ask para uma fila limitada processada fora do reactor. O callback recebe
+   valores normalizados, horário do provedor e horário de recebimento. Use
+   `unsubscribe_live_quotes(symbol)` ao encerrar a assinatura.
+
+## O que ainda não está concluído
+
+Este commit entrega o transporte de protocolo e seus limites de segurança, mas
+não configura credenciais de aplicação, KMS de produção, worker de renovação,
+provisionamento de conta no ambiente hospedado nem conexão real com uma conta
+DEMO. O streaming de cotações spot (bid/ask) e o streaming de trendbars por timeframe
+agora têm implementação e testes de contrato, mas ainda não foram validados com
+uma conta Spotware real. O transporte segue a ordem exigida pela Spotware:
+assinatura spot antes da assinatura de trendbar. Os eventos de trendbar são
+normalizados para o modelo Candle e marcados como fechados, conforme o contrato
+da API. A integração do callback de candles ao worker/monitor multi-tenant de
+análise ainda precisa ser concluída. Cotações spot isoladas nunca são tratadas
+como candles fechados. Não marcar conta como conectada nem mostrar dados
+como atuais sem handshake e heartbeat reais.
+
+
+## Streaming de candles por timeframe
+
+Após autenticar uma conta DEMO, o adaptador expõe
+`subscribe_live_candles(symbol, timeframe, callback)` para os períodos
+suportados. O transporte cria primeiro a assinatura spot exigida pela Spotware
+e, em seguida, a assinatura `ProtoOASubscribeLiveTrendbarReq`. Os eventos
+`ProtoOASpotEvent` carregam as trendbars correspondentes; cada barra é
+convertida do formato relativo (preço baixo + deltas, dividido por 100000) e
+entregue ao callback como um objeto `Candle`, com `closed: true`. O
+cancelamento usa `unsubscribe_live_candles`.
+
+A assinatura tem escopo de conta, símbolo e período. Callbacks são executados
+pela fila limitada fora do reactor. A fila e o número de streams ativos são
+expostos no status da conexão. Ainda é necessário ligar esse callback ao
+monitor multi-tenant, validar timestamps e fechamento em ambiente DEMO real e
+testar reconexão/reassinatura após queda de rede.
+
+## Reconexão e rotação do token OAuth
+
+O transporte mantém o conjunto de assinaturas spot/trendbar desejadas e oferece
+`reconnect()` para autenticar novamente a mesma conta DEMO e restaurar primeiro
+as assinaturas spot e depois as trendbars. O monitor multi-tenant descarta
+callbacks atrasados de adaptadores substituídos e só aceita candles da instância
+atualmente vinculada àquela conexão.
+
+No fluxo tenant-scoped, o adaptador recebe um `access_token_resolver` criado
+pelo serviço de contas com o contexto autenticado e o `connection_id` fixos.
+Antes de reconectar, ele consulta novamente o cofre OAuth criptografado; assim,
+um token rotacionado pelo worker pode substituir o token antigo mantido em
+memória pelo transporte. Se o token atual não puder ser resolvido, a atualização
+falhar ou o transporte não suportar a rotação, a reconexão falha fechada e o
+adaptador não informa estado DEMO conectado.
+
+Esse mecanismo possui testes automatizados de contrato, mas ainda exige
+validação prática com credenciais Spotware, KMS de produção e uma conta DEMO
+real. O worker de renovação e a infraestrutura de lease compartilhado também
+precisam estar configurados no ambiente hospedado antes de operar em múltiplas
+réplicas.

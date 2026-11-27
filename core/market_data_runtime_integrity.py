@@ -5,18 +5,7 @@ from datetime import datetime, timedelta
 
 from core.p122_broker_market_data import BrokerMarketDataSnapshot
 from core.p23_market_data_integrity import MarketDataHealth, MarketDataIntegrity, MarketDataIntegrityReport
-
-
-_TIMEFRAME_SECONDS = {
-    "1m": 60,
-    "5m": 300,
-    "10m": 600,
-    "15m": 900,
-    "30m": 1800,
-    "1h": 3600,
-    "4h": 14400,
-    "1d": 86400,
-}
+from data.timeframes import get_timeframe_interval, normalize_timeframe
 
 
 @dataclass(frozen=True)
@@ -72,7 +61,10 @@ class MarketDataRuntimeIntegrity:
 
         interval = expected_interval_seconds
         if interval is None:
-            interval = _TIMEFRAME_SECONDS.get(snapshot.timeframe.strip().lower())
+            try:
+                interval = int(get_timeframe_interval(normalize_timeframe(snapshot.timeframe)).total_seconds())
+            except (TypeError, ValueError, OverflowError):
+                interval = None
 
         # Candle.timestamp is the bar's opening time (MT5 copy_rates_* contract),
         # and the adapter excludes the currently forming bar. Evaluate freshness

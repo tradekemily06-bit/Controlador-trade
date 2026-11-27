@@ -26,6 +26,11 @@ class ProductionStoragePolicy:
     tenant_scoped: bool = True
     durable: bool = False
 
+    def __post_init__(self) -> None:
+        for name in ("required", "provider_configured", "tenant_scoped", "durable"):
+            if type(getattr(self, name)) is not bool:
+                raise ValueError(f"{name} must be a boolean")
+
     def status(self) -> dict[str, object]:
         if not self.required:
             state = "OPTIONAL"
@@ -46,9 +51,18 @@ class ProductionStoragePolicy:
         }
 
     def authorize_write(self, *, authenticated: bool, tenant_id: str | None) -> bool:
+        if type(authenticated) is not bool:
+            return False
         if not self.required:
-            return True
-        return bool(authenticated and tenant_id and tenant_id.strip() and self.provider_configured and self.tenant_scoped and self.durable)
+            return authenticated and isinstance(tenant_id, str) and bool(tenant_id.strip())
+        return (
+            authenticated is True
+            and isinstance(tenant_id, str)
+            and bool(tenant_id.strip())
+            and self.provider_configured is True
+            and self.tenant_scoped is True
+            and self.durable is True
+        )
 
     def authorize_read(self, *, authenticated: bool, tenant_id: str | None) -> bool:
         return self.authorize_write(authenticated=authenticated, tenant_id=tenant_id)

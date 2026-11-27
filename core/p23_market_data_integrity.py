@@ -26,7 +26,12 @@ class MarketDataIntegrityReport:
 
 
 class MarketDataIntegrity:
-    """Read-only integrity checks for chronological market data."""
+    """Read-only integrity checks for chronological market data.
+
+    GAP means an observed timestamp discontinuity, not proven packet loss.
+    Without an instrument/provider trading calendar this layer cannot tell
+    a legitimate market closure from missing market data.
+    """
 
     def __init__(self, *, max_age_seconds: int = 300) -> None:
         if isinstance(max_age_seconds, bool) or not isinstance(max_age_seconds, int) or max_age_seconds <= 0:
@@ -122,7 +127,7 @@ class MarketDataIntegrity:
                 expected_interval_seconds,
                 gap_count,
                 False,
-                "há lacunas na sequência de candles",
+                "há descontinuidades entre candles; sem calendário da sessão, não é possível distinguir fechamento de mercado de perda de dados",
             )
         return MarketDataIntegrityReport(
             MarketDataHealth.HEALTHY,

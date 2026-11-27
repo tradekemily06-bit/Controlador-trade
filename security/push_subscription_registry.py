@@ -11,6 +11,27 @@ from security.tenant_storage import require_tenant_context
 
 
 _DEVICE_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+_ALLOWED_PUSH_HOSTS = (
+    "fcm.googleapis.com",
+    "push.services.mozilla.com",
+    "notify.windows.com",
+    "push.apple.com",
+)
+
+
+def _is_allowed_push_host(hostname: str) -> bool:
+    normalized = hostname.rstrip(".").lower()
+    # Providers use a small set of documented host patterns: FCM and Apple
+    # use fixed hosts; Mozilla uses one regional/cluster label; WNS uses
+    # numbered service hosts. Never accept arbitrary nested subdomains.
+    if normalized in {"fcm.googleapis.com", "web.push.apple.com"}:
+        return True
+    labels = normalized.split(".")
+    if normalized == "updates.push.services.mozilla.com":
+        return True
+    if len(labels) == 4 and labels[1:] == ["notify", "windows", "com"]:
+        return bool(re.fullmatch(r"wns[0-9]+", labels[0]))
+    return False
 
 
 class EncryptedPushSubscriptionStore(Protocol):
@@ -55,14 +76,30 @@ def _validate_endpoint(value: str) -> str:
     if not isinstance(value, str) or len(value) > 4096:
         raise ValueError("endpoint is invalid")
     parsed = urlsplit(value)
+    hostname = parsed.hostname or ""
+    try:
+        # Reject malformed ports and IP literals before any sender can make a request.
+        port = parsed.port
+        is_ip_literal = False
+        import ipaddress
+        try:
+            ipaddress.ip_address(hostname)
+            is_ip_literal = True
+        except ValueError:
+            pass
+    except ValueError as exc:
+        raise ValueError("endpoint host or port is invalid") from exc
     if (
         parsed.scheme != "https"
-        or not parsed.hostname
+        or not hostname
+        or is_ip_literal
+        or port not in (None, 443)
+        or not _is_allowed_push_host(hostname)
         or parsed.username is not None
         or parsed.password is not None
         or parsed.fragment
     ):
-        raise ValueError("endpoint must be an HTTPS push URL without credentials or fragment")
+        raise ValueError("endpoint must use an approved HTTPS browser push service without credentials or fragment")
     return value
 
 

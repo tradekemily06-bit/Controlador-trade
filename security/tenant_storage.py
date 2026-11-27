@@ -9,9 +9,9 @@ from security.tenant_context import TenantContext
 class TenantStorageBoundary(ABC):
     """Provider-neutral contract for tenant-scoped durable storage.
 
-    Implementations must never accept a missing tenant context. Local or
-    in-memory implementations must not claim production durability merely by
-    implementing this interface.
+    Implementations must never accept a missing or malformed tenant context.
+    Local or in-memory implementations must not claim production durability
+    merely by implementing this interface.
     """
 
     production_durable: bool = False
@@ -34,7 +34,21 @@ class TenantStorageBoundary(ABC):
 
 
 def require_tenant_context(context: TenantContext | None) -> TenantContext:
-    """Fail closed when storage is accessed without trusted tenant scope."""
-    if context is None:
+    """Require a canonical context object supplied by the trusted auth boundary.
+
+    This validates the context's shape; it does not authenticate the caller.
+    Remote authentication and context construction remain the responsibility
+    of the trusted server-side identity middleware.
+    """
+    if type(context) is not TenantContext:
         raise PermissionError("trusted tenant context is required")
+    for value in (context.tenant_id, context.subject_id):
+        if (
+            not isinstance(value, str)
+            or not value
+            or value != value.strip()
+            or len(value) > 256
+            or any(ord(character) < 32 or ord(character) == 127 for character in value)
+        ):
+            raise PermissionError("canonical tenant context is required")
     return context
