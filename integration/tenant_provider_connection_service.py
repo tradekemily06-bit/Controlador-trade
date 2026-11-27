@@ -155,7 +155,20 @@ class TenantProviderConnectionService:
         owner = require_tenant_context(context)
         session = self.sessions.get(owner, connection_id=connection_id)
         if session is None:
-            return {"disconnected": False, "status": "NOT_BOUND", "execution_authorized": False}
+            # A process restart intentionally discards adapter objects. The
+            # owner must still be able to revoke stale CONNECTED metadata.
+            owned = any(
+                item["connection_id"] == connection_id
+                for item in self.connections.list_connections(owner)
+            )
+            if not owned:
+                return {"disconnected": False, "status": "NOT_BOUND", "execution_authorized": False}
+            marked = self.connections.mark_disconnected(owner, connection_id=connection_id)
+            return {
+                "disconnected": bool(marked),
+                "status": "DISCONNECTED_SESSION_NOT_BOUND" if marked else "NOT_BOUND",
+                "execution_authorized": False,
+            }
         error = None
         close = getattr(session.adapter, "disconnect", None) or getattr(session.adapter, "close", None)
         try:
