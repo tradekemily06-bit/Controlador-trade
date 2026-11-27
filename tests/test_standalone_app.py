@@ -496,6 +496,36 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(body["backup_scheduler"]["status"], "NOT_CONFIGURED")
         self.assertFalse(body["execution_authorized"])
 
+    def test_local_readiness_reports_provider_recovery_without_secret_material(self):
+        runtime = FakeRuntime()
+        runtime.provider_recovery_status = [
+            {
+                "connection_id": "a" * 32,
+                "provider_id": "broker_a",
+                "status": "RECONNECT_FAILED",
+                "error_class": "PermissionError",
+                "credential_ref": "vault://must-not-leak",
+                "secret": "must-not-leak",
+                "execution_authorized": False,
+            },
+            {
+                "connection_id": "b" * 32,
+                "provider_id": "broker_b",
+                "status": "RECONNECTED",
+                "adapter_status": "ADAPTER_BOUND",
+                "execution_authorized": False,
+            },
+        ]
+        app = StandaloneWSGIApplication(runtime)
+        status, body = call_wsgi(app, "/api/readiness")
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["provider_recovery"]["status"], "DEGRADED")
+        self.assertEqual(len(body["provider_recovery"]["accounts"]), 2)
+        serialized = json.dumps(body["provider_recovery"])
+        self.assertNotIn("vault://must-not-leak", serialized)
+        self.assertNotIn("must-not-leak", serialized)
+        self.assertFalse(body["provider_recovery"]["execution_authorized"])
+
     def test_backup_status_endpoint_never_claims_unconfigured_backup_or_replication(self):
         app = StandaloneWSGIApplication(FakeRuntime())
         status, body = call_wsgi(app, "/api/backup/status")
