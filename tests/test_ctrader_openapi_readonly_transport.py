@@ -114,3 +114,73 @@ def test_spot_subscription_rejects_other_account_and_duplicate_symbol():
         transport.subscribe_spots(88, 9002, lambda _event: None)
     with pytest.raises(ValueError, match="já existe"):
         transport.subscribe_spots(77, 9001, lambda _event: None)
+
+
+
+def test_live_trendbar_subscription_sends_spots_first_and_uses_period():
+    from threading import Event, RLock
+    import queue
+
+    class Request:
+        def __init__(self):
+            self.ctidTraderAccountId = None
+            self.symbolId = []
+            self.period = None
+            self.subscribeToSpotTimestamp = False
+
+    class Period:
+        @staticmethod
+        def Value(value):
+            return {"M1": 1, "M5": 5}[value]
+
+    transport = object.__new__(CTraderOpenApiReadOnlyTransport)
+    transport._account_authenticated = True
+    transport._account_id = 77
+    transport._messages = {
+        "subscribe_spots": Request,
+        "subscribe_trendbars": Request,
+    }
+    transport._period_enum = Period
+    transport._lock = RLock()
+    transport._spot_callbacks = {}
+    transport._trendbar_callbacks = {}
+    transport._spot_queue = queue.Queue(maxsize=2048)
+    transport._spot_worker = None
+    transport._spot_worker_stop = Event()
+    transport._spot_overflow_count = 0
+    transport._start_spot_worker = lambda: None
+    sent = []
+    transport._send = sent.append
+
+    transport.subscribe_live_trendbars(77, 9001, "M5", lambda _event: None)
+
+    assert len(sent) == 2
+    spot_request, trendbar_request = sent
+    assert spot_request.ctidTraderAccountId == 77
+    assert list(spot_request.symbolId) == [9001]
+    assert spot_request.subscribeToSpotTimestamp is True
+    assert trendbar_request.ctidTraderAccountId == 77
+    assert trendbar_request.symbolId == 9001
+    assert trendbar_request.period == 5
+    assert (9001, "M5") in transport._trendbar_callbacks
+
+
+def test_live_trendbar_subscription_rejects_duplicate_and_other_account():
+    from threading import Event, RLock
+    import queue
+
+    transport = object.__new__(CTraderOpenApiReadOnlyTransport)
+    transport._account_authenticated = True
+    transport._account_id = 77
+    transport._trendbar_callbacks = {(9001, "M5"): lambda _event: None}
+    transport._spot_callbacks = {}
+    transport._lock = RLock()
+    transport._spot_queue = queue.Queue(maxsize=2048)
+    transport._spot_worker = None
+    transport._spot_worker_stop = Event()
+    transport._spot_overflow_count = 0
+
+    with pytest.raises(PermissionError):
+        transport.subscribe_live_trendbars(88, 9002, "M5", lambda _event: None)
+    with pytest.raises(ValueError, match="já existe"):
+        transport.subscribe_live_trendbars(77, 9001, "M5", lambda _event: None)
