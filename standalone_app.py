@@ -819,7 +819,6 @@ class StandaloneWSGIApplication:
             monitor = getattr(self.runtime, "tenant_market_monitor", None)
             if context is None or monitor is None:
                 return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": "identidade ou monitor indisponível", "execution_authorized": False}, request_id)
-            from urllib.parse import parse_qs
             query = parse_qs(str(environ.get("QUERY_STRING", "")), keep_blank_values=True)
             connection_values = query.get("connection_id", [])
             limit_values = query.get("limit", ["50"])
