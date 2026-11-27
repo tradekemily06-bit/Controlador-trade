@@ -104,6 +104,20 @@ def publish_once(
     return sent
 
 
+def compute_retry_delay(
+    interval_seconds: float,
+    failure_count: int,
+    *,
+    max_backoff_seconds: float = 60.0,
+) -> float:
+    """Return bounded exponential retry delay for transient relay failures."""
+    if interval_seconds <= 0 or max_backoff_seconds <= 0:
+        raise ValueError("retry intervals must be positive")
+    if isinstance(failure_count, bool) or not isinstance(failure_count, int) or failure_count < 0:
+        raise ValueError("failure_count must be a non-negative integer")
+    return min(max_backoff_seconds, interval_seconds * (2 ** min(failure_count, 20)))
+
+
 def main() -> None:
     base_url = _required("CONTROLADOR_MT5_RELAY_URL").rstrip("/")
     if not base_url.lower().startswith("https://"):
@@ -124,16 +138,25 @@ def main() -> None:
     terminal_path = os.getenv("CONTROLADOR_MT5_TERMINAL_PATH", "").strip() or None
     adapter = ICMarketsMT5DemoMarketDataAdapter(terminal_path=terminal_path)
     relay_url = build_relay_endpoint(base_url, connection_id)
+    failure_count = 0
     while True:
         started = time.monotonic()
         try:
             count = publish_once(adapter, relay_url, token, symbols, timeframes, limit, source_id)
+            failure_count = 0
+            delay = interval
             print(f"MT5 relay: {count} candles enviados; conta DEMO confirmada")
         except Exception as exc:
-            # Error messages are bounded and never include secrets.
-            print(f"MT5 relay indisponível: {str(exc)[:240]}")
+            # Error messages are bounded and never include secrets. Backoff
+            # prevents a disconnected terminal or API from being hammered.
+            failure_count += 1
+            delay = compute_retry_delay(interval, failure_count)
+            print(
+                f"MT5 relay indisponível: {str(exc)[:240]}; "
+                f"nova tentativa em {delay:.1f}s"
+            )
         elapsed = time.monotonic() - started
-        time.sleep(max(0.5, interval - elapsed))
+        time.sleep(max(0.5, delay - elapsed))
 
 
 if __name__ == "__main__":
