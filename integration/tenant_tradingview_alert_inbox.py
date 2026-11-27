@@ -39,8 +39,8 @@ class TenantTradingViewAlertInbox:
     ) -> None:
         if connections is None or not callable(getattr(connections, "list_connections", None)):
             raise ValueError("tenant provider connection registry is required")
-        if not callable(secret_resolver):
-            raise ValueError("trusted per-connection webhook secret resolver is required")
+        if not callable(secret_resolver) and not callable(getattr(secret_resolver, "verify", None)):
+            raise ValueError("trusted per-connection webhook secret resolver/verifier is required")
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.connections = connections
