@@ -86,6 +86,7 @@ def test_registering_same_device_rotates_subscription():
         "https://localhost/send/abc",
         "https://attacker.example.test/send/abc",
         "https://fcm.googleapis.com.evil.test/send/abc",
+        "https://fcm.googleapis.com:8443/send/abc",
     ],
 )
 def test_rejects_unsafe_push_endpoints(endpoint):
