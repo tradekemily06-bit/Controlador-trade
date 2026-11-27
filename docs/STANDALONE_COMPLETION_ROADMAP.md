@@ -9,6 +9,20 @@ This roadmap defines the evidence required to call the independent application c
 - No EA and no broker order submission. Market analysis and notifications are informational and require human review.
 - DEMO-first. REAL remains unavailable until separately reviewed, explicitly authorized, and validated; this roadmap does not authorize REAL execution.
 
+## Evidence status — 27 November 2026
+
+This is the current implementation boundary, not a release declaration:
+
+| Front | Implemented in repository | Still required before claiming complete |
+|---|---|---|
+| Analysis and signal validity | Per-timeframe closed-candle cycles; expiry; tenant/account/source isolation; signal evidence and next-candle directional outcomes; strict separation from profit probability | Validate continuous real provider feeds, complete walk-forward dataset and separately approved calibrated probability model; verify costs/executable outcomes before any profit estimate |
+| Provider connections | MT5 outbound DEMO relay; cTrader official DEMO transport, OAuth/token-vault contracts, account recovery and closed-candle stream wired to tenant timeframe monitor | Provision secrets/KMS and a real provider account; demonstrate handshake, fresh stream, candle continuity, restart/reconnect and signal cycle in the hosted environment; verify each advertised interval per provider |
+| Notifications | Tenant-scoped transactional inbox/outbox, background worker contract, retries, dead-lettering, idempotency, owner-scoped status and local backup coverage | Configure a real tenant-aware delivery sink; deploy encrypted device subscriptions, VAPID/Web Push sender and hosted worker; test delivery/revocation on physical devices while app/browser is closed |
+| Production foundation | Fail-closed identity/storage/security contracts, local SQLite topology guard, backup/restore primitives and container smoke tests | Deploy trusted identity, shared transactional database, distributed leases, KMS, TLS, durable audit, centralized rate limits, off-host backup and restore drill |
+| Lovable integration | Existing API and notification endpoints are available; backend work preserves the frontend as the visual source of truth | Complete screen-by-screen integration and browser network acceptance in the owner-managed Lovable environment; this repository work does not claim that frontend integration has been verified |
+
+The current automated CI run is evidence of code/test/build behavior only. It does not prove real-account connectivity, production provisioning, physical-device delivery or user acceptance. SQLite remains single-host/single-runtime, external push remains disabled by default, and REAL execution remains disabled.
+
 ## Phase A — Foundation and reuse
 
 **Goal:** establish the stable backend used by every area.
