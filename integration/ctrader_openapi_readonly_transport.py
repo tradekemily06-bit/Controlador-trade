@@ -268,6 +268,17 @@ class CTraderOpenApiReadOnlyTransport:
             self.disconnect()
             raise TimeoutError("conexão TCP DEMO do cTrader não foi estabelecida")
 
+    def update_access_token(self, access_token: str) -> None:
+        """Replace the OAuth access token from the tenant-scoped server vault.
+
+        The caller must resolve the token for the same tenant connection. This
+        method never logs or returns token material.
+        """
+        if not isinstance(access_token, str) or not access_token.strip():
+            raise ValueError("token OAuth cTrader atualizado é obrigatório")
+        with self._reconnect_lock:
+            self._access_token = access_token.strip()
+
     def reconnect(self) -> dict[str, Any]:
         """Re-authenticate the selected DEMO account and restore read-only streams."""
         with self._reconnect_lock:
