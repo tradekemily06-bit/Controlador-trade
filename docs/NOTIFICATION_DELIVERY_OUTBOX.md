@@ -27,6 +27,17 @@ browser while the application is closed until a real provider, subscription
 management, production worker configuration, and end-to-end device delivery test
 are configured.
 
+Important scope distinction: the legacy/shared ecosystem notification path can enqueue into
+this outbox, but the tenant-scoped market/provider alert path currently writes to
+the recipient's in-app tenant inbox through `TenantNotificationDispatcher` and
+does not yet atomically enqueue the same event into an external-delivery outbox.
+Therefore a new market signal, MT5/cTrader connection event, or TradingView alert
+must not be described as delivered to a phone/browser outside the in-app inbox.
+The missing work is a tenant-scoped transactional outbox in the same storage
+transaction as the tenant inbox write, plus a tenant-aware delivery sink and
+subscription/consent routing. Reusing the global outbox without that ownership
+boundary would risk cross-tenant delivery and is intentionally not done.
+
 No provider credentials or user subscription data are stored in source code.
 The delivery adapter must be configured server-side and must never authorize
 trading or money movement.
