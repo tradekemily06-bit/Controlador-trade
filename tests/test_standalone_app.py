@@ -184,13 +184,23 @@ class StandaloneWSGITests(unittest.TestCase):
                     "provider_registered": True,
                 }
 
+        class Connections:
+            def list_connections(self, context):
+                assert context.tenant_id == "local-single-user"
+                assert context.subject_id == "local-owner"
+                return []
+
         runtime = FakeRuntime()
         runtime.market_data_registry = Registry()
+        runtime.tenant_provider_connections = Connections()
         app = StandaloneWSGIApplication(runtime)
-        status, body = call_wsgi(app, "/api/market-data/providers")
+        settings = {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(app, "/api/market-data/providers")
         self.assertEqual(status, "200 OK")
         self.assertEqual(body["providers"][0]["provider_id"], "mt5_relay")
         self.assertEqual(body["scope"], "LOCAL_SINGLE_USER")
+        self.assertEqual(body["connections"], [])
         self.assertFalse(body["execution_authorized"])
 
     def test_market_data_provider_status_does_not_leak_global_connections_to_remote_users(self):
@@ -215,7 +225,9 @@ class StandaloneWSGITests(unittest.TestCase):
             )
         self.assertEqual(status, "200 OK")
         self.assertEqual(body["status"], "USER_SCOPED_PROVIDER_CONNECTIONS_NOT_CONFIGURED")
-        self.assertEqual(body["providers"], [])
+        self.assertEqual(body["connections"], [])
+        self.assertEqual(body["count"], 0)
+        self.assertNotIn("providers", body)
         self.assertFalse(body["execution_authorized"])
 
 
