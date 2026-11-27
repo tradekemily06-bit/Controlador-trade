@@ -186,6 +186,10 @@ class StandaloneRuntime:
                     raise RuntimeError("use ctrader_oauth_http_client ou callbacks separados, não ambos")
                 ctrader_oauth_exchange_code = getattr(ctrader_oauth_http_client, "exchange_code", None)
                 ctrader_oauth_refresh_tokens = getattr(ctrader_oauth_http_client, "refresh_tokens", None)
+                if ctrader_transport_factory is None:
+                    ctrader_transport_factory = getattr(
+                        ctrader_oauth_http_client, "create_readonly_transport", None
+                    )
             ctrader_oauth_configured = any((
                 ctrader_oauth_cipher is not None,
                 ctrader_oauth_http_client is not None,
