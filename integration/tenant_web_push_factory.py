@@ -37,6 +37,12 @@ def build_tenant_web_push_components(
     Pass the returned notification_sink to StandaloneRuntime only after the
     host has completed its own deployment readiness checks.
     """
+    # Fail during composition rather than after the first user attempts to
+    # subscribe. The key remains supplied by the host secret manager and is
+    # never retained by this factory.
+    encryption_key = encryption_key_provider()
+    if not isinstance(encryption_key, bytes) or len(encryption_key) != 32:
+        raise RuntimeError("push subscription encryption key must be 32 secret-managed bytes")
     store = EncryptedTenantPushSubscriptionStore(
         backend,
         encryption_key_provider,
