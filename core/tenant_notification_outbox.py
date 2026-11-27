@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import uuid
@@ -153,7 +154,7 @@ class TenantNotificationOutbox:
                 """, (attempts, current + lease_seconds, token, row["tenant_id"],
                       row["subject_id"], row["notification_id"]))
                 claimed.append(TenantOutboxItem(
-                    idempotency_key=f"{row['tenant_id']}:{row['subject_id']}:{row['notification_id']}",
+                    idempotency_key=hashlib.sha256(json.dumps([row["tenant_id"], row["subject_id"], row["notification_id"]], separators=(",", ":")).encode("utf-8")).hexdigest(),
                     tenant_id=str(row["tenant_id"]), subject_id=str(row["subject_id"]),
                     notification_id=str(row["notification_id"]),
                     payload=json.loads(row["payload_json"]), attempts=attempts, lease_token=token,
