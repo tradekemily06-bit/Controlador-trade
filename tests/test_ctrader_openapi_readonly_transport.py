@@ -50,6 +50,66 @@ def test_transport_rejects_unsafe_timeout_before_loading_sdk():
 
 
 
+def test_resolve_symbol_fetches_full_broker_schedule_and_holidays():
+    class SymbolsRequest:
+        def __init__(self):
+            self.ctidTraderAccountId = None
+
+    class SymbolByIdRequest:
+        def __init__(self):
+            self.ctidTraderAccountId = None
+            self.symbolId = []
+
+    transport = object.__new__(CTraderOpenApiReadOnlyTransport)
+    transport._account_authenticated = True
+    transport._account_id = 77
+    transport._symbols_cache = {}
+    transport._messages = {
+        "symbols": SymbolsRequest,
+        "symbol_by_id": SymbolByIdRequest,
+    }
+    sent = []
+
+    def send(request):
+        sent.append(request)
+        if isinstance(request, SymbolsRequest):
+            return {"symbol": [{"symbolName": "EURUSD", "symbolId": 9001, "digits": 5}]}
+        return {"symbol": [{
+            "symbolId": 9001,
+            "scheduleTimeZone": "Europe/London",
+            "schedule": [{"startSecond": 3600, "endSecond": 604800}],
+            "holiday": [{
+                "name": "Broker holiday",
+                "description": "Market closed",
+                "scheduleTimeZone": "Europe/London",
+                "holidayDate": 20819,
+                "isRecurring": False,
+                "startSecond": 0,
+                "endSecond": 86400,
+            }],
+        }]}
+
+    transport._send = send
+
+    result = transport.resolve_symbol(77, "EURUSD")
+
+    assert len(sent) == 2
+    assert sent[1].ctidTraderAccountId == 77
+    assert list(sent[1].symbolId) == [9001]
+    assert result["calendar_metadata_status"] == "AVAILABLE"
+    assert result["schedule_time_zone"] == "Europe/London"
+    assert result["schedule"] == ({"start_second": 3600, "end_second": 604800},)
+    assert result["holidays"] == ({
+        "name": "Broker holiday",
+        "description": "Market closed",
+        "schedule_time_zone": "Europe/London",
+        "holiday_date": 20819,
+        "is_recurring": False,
+        "start_second": 0,
+        "end_second": 86400,
+    },)
+
+
 def test_spot_subscription_is_account_scoped_and_uses_timestamp():
     from threading import Event, RLock
     import queue
