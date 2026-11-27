@@ -7,6 +7,7 @@ from core.unified_intelligence import UnifiedIntelligence
 from data.models import Candle
 from data.timeframes import get_timeframe_interval
 from integration.standalone_market_analysis import StandaloneMarketAnalysisService
+from security.tenant_context import TenantContext
 
 
 class FakeMarketDataProvider:
@@ -234,9 +235,7 @@ class StandaloneMarketAnalysisTests(unittest.TestCase):
                     symbol="EURUSD",
                     timeframe=timeframe,
                     limit=8,
-                    decision_context=__import__(
-                        "security.tenant_context", fromlist=["TenantContext"]
-                    ).TenantContext("tenant-a", "subject-a"),
+                    decision_context=TenantContext("tenant-a", "subject-a"),
                 )
 
                 self.assertEqual(result["signal"], "AGUARDAR")
