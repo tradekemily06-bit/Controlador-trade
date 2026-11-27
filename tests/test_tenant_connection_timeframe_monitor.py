@@ -237,3 +237,39 @@ def test_live_stream_rejects_wrong_account_and_unclosed_candles(tmp_path):
     adapter.callback({"account_id": 456, "symbol": "EURUSD", "timeframe": "5m", "candle": candle, "closed": False})
     assert monitor.run_once(now=now) == []
     assert analyzer.calls == 0
+
+
+def test_live_stream_rebinds_when_provider_adapter_instance_changes(tmp_path):
+    owner = TenantContext("tenant-a", "alice")
+    now = datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc)
+
+    class Adapter:
+        account_id = 789
+        def __init__(self):
+            self.callback = None
+            self.unsubscribed = False
+        def subscribe_live_candles(self, symbol, timeframe, callback):
+            self.callback = callback
+        def unsubscribe_live_candles(self, symbol, timeframe):
+            self.unsubscribed = True
+
+    first, second = Adapter(), Adapter()
+    class Registry:
+        session = Session("ctrader_open_api", "ctrader:789", first)
+        def get(self, context, *, connection_id):
+            return self.session if context == owner else None
+
+    registry = Registry()
+    analyzer = Analyzer("2026-11-27T12:00:00+00:00", "AGUARDAR")
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "stream-rebind.sqlite3", registry,
+        lambda _session, _context: analyzer,
+    )
+    monitor.subscribe(owner, _id("e"), "EURUSD", "M5")
+    assert first.callback is not None
+
+    registry.session = Session("ctrader_open_api", "ctrader:789", second)
+    assert monitor.run_once(now=now) == []
+    assert first.unsubscribed is True
+    assert second.callback is not None
+    assert monitor.status(owner)["live_streams"] == 1
