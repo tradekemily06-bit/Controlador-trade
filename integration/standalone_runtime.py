@@ -56,7 +56,7 @@ def _release_failed_startup_lock_when_safe(
     while True:
         try:
             if all(
-                worker.status().get(running_key) is not False
+                worker.status().get(running_key) is False
                 for worker, running_key in workers
             ):
                 process_lock.release()
