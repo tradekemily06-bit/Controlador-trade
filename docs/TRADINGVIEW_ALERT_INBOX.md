@@ -26,6 +26,8 @@ Expected JSON fields:
 - `fired_at`: ISO 8601 timestamp with timezone
 - `price`: optional positive number
 
+The authenticated history endpoint is `GET /api/market-data/connections/{connection_id}/tradingview-alerts?limit=50` (limit 1–200). Accepted alerts are also routed to the owning tenant's notification dispatcher; downstream delivery still depends on a configured notification sink/worker.
+
 ## Important limitation
 
 A TradingView webhook is an alert delivery, not a continuous market-data or candle stream. It must not be represented as a live broker feed or used by itself to claim that every timeframe is current. Continuous analysis still requires a supported broker/exchange market-data adapter or another verified candle source.
