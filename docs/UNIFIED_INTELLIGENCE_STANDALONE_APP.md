@@ -54,7 +54,7 @@ The product requirement is to show a probability-of-profit estimate in addition 
 - This remains an analyst feature only. Probability is informational, not a guarantee or an instruction to enter; the user decides and places any trade manually.
 
 
-## Functional module placement (no extra navigation areas)
+## Functional module placement (six visible areas; no extra navigation areas)
 
 | Existing module/function | Destination |
 | --- | --- |
@@ -62,13 +62,13 @@ The product requirement is to show a probability-of-profit estimate in addition 
 | Market news, statistics and performance summaries | Analysis |
 | Reports and export | Analysis / Memory, depending on whether the user is analyzing or retrieving history |
 | Laboratory, replay, simulator, Professor, curriculum and learning resources | Study |
-| Decision journal, outcomes, operational history, audit trail and validated knowledge | Memory |
+| Decision journal, outcomes, operational history, audit trail and validated knowledge | Analysis (history/results) and Study (validated learning) |
 | Command/status dashboard, risk state, kill switch and operational alerts | Command Cabin |
 | Brazilian and foreign fiscal queues, records and document review | Tax Reserve |
 | Cross-area explanations and read-only questions | Ecosystem Assistant |
 | Broker/provider connections, preferences, identity, access, security and configuration | Central |
 
-Risk, senior expertise, market context, research, security and audit policies are shared internal services. They do not create extra navigation areas. A module gets a separate area only if it represents a genuinely distinct user workflow that cannot reasonably live inside one of the seven existing areas.
+Risk, senior expertise, market context, research, security and audit policies are shared internal services. They do not create extra navigation areas. A module gets a separate area only if it represents a genuinely distinct user workflow that cannot reasonably live inside one of the six approved areas.
 
 ## Active DEMO / REAL validation mode
 
@@ -149,3 +149,8 @@ The backup service uses an explicit database allowlist, SQLite's online backup A
 
 **Not yet configured or proven:** off-host replication, encryption/key management for backups, retention/deletion policy, deployment-level scheduling, restore drills against production-sized datasets, and a tested disaster-recovery objective. Do not treat local backups as protection against loss of the host or its disk. Production deployment must provide a separate protected backup destination and test restoration procedures.
 
+
+
+## Approved navigation boundary
+
+The standalone application exposes exactly six visible areas: Cabine de Comando, Análise, Estudo, Reserva Fiscal, Assistente do Ecossistema and Central. Decision memory, history, outcomes, audit trail and validated knowledge remain internal capabilities used inside Analysis and Study. The legacy API area value `memory` is accepted as an alias to Analysis for compatibility; it is not returned by `/api/areas` and does not create another navigation item.
