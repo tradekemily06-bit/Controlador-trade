@@ -81,7 +81,7 @@ The provider status response also includes a tenant-scoped `timeframe_monitor` b
 - `POST /api/market-data/connections` — accepts only `provider_id`, `account_alias` and a tenant-owned `credential_ref` from the server's configured secret manager. Raw passwords, API keys, access tokens and refresh tokens are rejected.
 - `DELETE /api/market-data/connections/{connection_id}` — closes the bound adapter, removes its in-memory session and marks the tenant-owned connection disconnected.
 
-These routes return service-unavailable when the host has not injected a real tenant-aware secret resolver and provider adapter factories. They do not create a fake connection or trust browser-supplied connection status. A provider becomes CONNECTED only after its adapter completes a real handshake and the server binds its read-only data adapter.
+These routes return service-unavailable when the host has not injected a real tenant-aware secret resolver and provider adapter factories. The provider status response exposes `connection_onboarding.connect_enabled` and `disconnect_enabled` so the UI can distinguish unavailable credential provisioning from a disconnected account. They do not create a fake connection or trust browser-supplied connection status. A provider becomes CONNECTED only after its adapter completes a real handshake and the server binds its read-only data adapter.
 
 ### `POST /api/market-data/connections/{connection_id}/analysis`
 
