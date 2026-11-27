@@ -235,6 +235,37 @@ class StandaloneWSGIApplication:
             start_response("204 No Content", headers)
             return []
 
+        webhook_prefix = "/api/webhooks/tradingview/"
+        if method == "POST" and path.startswith(webhook_prefix):
+            connection_id = path[len(webhook_prefix):].strip("/")
+            vault = getattr(self.runtime, "tenant_tradingview_webhook_vault", None)
+            inbox = getattr(self.runtime, "tenant_tradingview_alert_inbox", None)
+            direct_tls = str(environ.get("wsgi.url_scheme", "")).lower() == "https"
+            trusted_proxy_tls = (
+                os.getenv("CONTROLADOR_TRUST_PROXY_TLS", "").strip().lower() in {"1", "true", "yes"}
+                and str(environ.get("HTTP_X_FORWARDED_PROTO", "")).lower() == "https"
+            )
+            if not (direct_tls or trusted_proxy_tls):
+                return _json_response(start_response, HTTPStatus.UNAUTHORIZED, {"error": "webhook TradingView exige HTTPS", "execution_authorized": False}, request_id)
+            if vault is None or inbox is None:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "webhook TradingView não provisionado", "execution_authorized": False}, request_id)
+            try:
+                payload = _read_json(environ)
+                resolved = vault.resolve_secret(payload.get("secret"))
+                if not isinstance(resolved, tuple) or len(resolved) != 2:
+                    return _json_response(start_response, HTTPStatus.UNAUTHORIZED, {"error": "segredo do webhook inválido", "execution_authorized": False}, request_id)
+                context, token_connection_id = resolved
+                if token_connection_id != connection_id:
+                    return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": "segredo não pertence à conexão solicitada", "execution_authorized": False}, request_id)
+                result = inbox.ingest(context, connection_id, payload)
+            except PermissionError as exc:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "execution_authorized": False}, request_id)
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
+            except Exception:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "falha ao receber alerta TradingView", "execution_authorized": False}, request_id)
+            return _json_response(start_response, HTTPStatus.ACCEPTED, result, request_id)
+
         tenant_mt5_prefix = "/api/bridge/mt5/connections/"
         if method == "POST" and path.startswith(tenant_mt5_prefix) and path.endswith("/candles"):
             connection_id = path[len(tenant_mt5_prefix):-len("/candles")].strip("/")
