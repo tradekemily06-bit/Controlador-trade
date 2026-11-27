@@ -42,7 +42,7 @@ class TenantMT5RelayRegistry:
             raise ValueError("connection_id inválido")
         return value
 
-    def _resolve(self, context: TenantContext, connection_id: str) -> tuple[tuple[str, str, str], MT5RelayStore]:
+    def _resolve(self, context: TenantContext, connection_id: str, *, allow_pending: bool = False) -> tuple[tuple[str, str, str], MT5RelayStore]:
         owner = require_tenant_context(context)
         connection = self._connection_id(connection_id)
         account = next(
@@ -54,8 +54,9 @@ class TenantMT5RelayRegistry:
             raise PermissionError("conexão MT5 não pertence a esta identidade")
         if account.get("provider_id") != "mt5_relay":
             raise PermissionError("conexão não é do provider mt5_relay")
-        if account.get("status") != "CONNECTED":
-            raise PermissionError("conexão MT5 precisa de handshake vigente")
+        allowed_statuses = {"CONNECTED", "PENDING"} if allow_pending else {"CONNECTED"}
+        if account.get("status") not in allowed_statuses:
+            raise PermissionError("conexão MT5 precisa de provisionamento/handshake vigente")
         source_id = self.source_id_resolver(owner, connection)
         if not isinstance(source_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,48}", source_id):
             raise PermissionError("origem MT5 não provisionada pelo servidor")
@@ -75,10 +76,14 @@ class TenantMT5RelayRegistry:
     def ingest(
         self, context: TenantContext, connection_id: str, payload: dict[str, Any]
     ) -> dict[str, Any]:
-        _, store = self._resolve(context, connection_id)
-        # MT5RelayStore independently enforces DEMO, freshness, UUID replay
-        # protection, candle validity, and the server-provisioned source id.
-        return store.ingest(payload)
+        _, store = self._resolve(context, connection_id, allow_pending=True)
+        # A first valid, fresh DEMO batch is the relay handshake. Only then
+        # may the connection be promoted from PENDING to CONNECTED.
+        result = store.ingest(payload)
+        self.connections.mark_connected_after_relay_handshake(
+            context, connection_id=connection_id
+        )
+        return result
 
     def fetch(
         self, context: TenantContext, connection_id: str, request: MarketDataRequest
