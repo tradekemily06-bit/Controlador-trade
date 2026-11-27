@@ -622,6 +622,17 @@ class StandaloneWSGIApplication:
                         if getattr(self.runtime, "tenant_market_monitor", None) is not None
                         else {"worker_running": False, "enabled": 0, "total": 0}
                     ),
+                    "oauth_token_refresh": (
+                        self.runtime.tenant_oauth_refresh_worker.owner_status(context)
+                        if getattr(self.runtime, "tenant_oauth_refresh_worker", None) is not None
+                        else {
+                            "configured": False,
+                            "registered": False,
+                            "running": False,
+                            "state": "NOT_CONFIGURED",
+                            "execution_authorized": False,
+                        }
+                    ),
                     "connection_onboarding": {
                         "connect_enabled": bool(
                             getattr(self.runtime, "tenant_provider_connection_service", None)
@@ -772,6 +783,17 @@ class StandaloneWSGIApplication:
                 ),
                 "notifications": ecosystem.notification_summary() if callable(getattr(ecosystem, "notification_summary", None)) else {"status": "NOT_CONFIGURED"},
                 "notification_delivery": worker.status() if worker is not None else {"configured": False, "running": False, "state": "NO_EXTERNAL_SINK_CONFIGURED"},
+                "oauth_token_refresh": (
+                    self.runtime.tenant_oauth_refresh_worker.status()
+                    if getattr(self.runtime, "tenant_oauth_refresh_worker", None) is not None
+                    else {
+                        "configured": False,
+                        "running": False,
+                        "registered_owner_count": 0,
+                        "state": "NOT_CONFIGURED",
+                        "execution_authorized": False,
+                    }
+                ),
                 "storage_foundation": standalone_storage_status(self.runtime),
                 "tenant_state": (
                     self.runtime.tenant_state.readiness()
