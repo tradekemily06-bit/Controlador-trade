@@ -188,3 +188,87 @@ def test_provider_handshake_promotion_updates_reference_and_rejects_duplicate(tm
             owner, connection_id=second["connection_id"],
             account_reference="12345", capabilities=["candles:read"],
         )
+
+
+def test_saved_provider_reconnects_after_process_restart_with_fresh_handshake(tmp_path):
+    database = tmp_path / "tenant-provider-restart.sqlite3"
+    owner = TenantContext("tenant-a", "alice")
+    vault = Vault()
+    first_adapters = []
+
+    first_storage = SQLiteTenantStorage(database)
+    first_connections = TenantProviderConnectionRegistry(first_storage)
+    first_sessions = TenantMarketDataSessionRegistry(first_connections)
+    first_service = TenantProviderConnectionService(
+        first_connections, first_sessions, secret_resolver=vault,
+        adapter_factories={"broker_a": lambda credentials: (
+            first_adapters.append(Adapter(credentials)) or first_adapters[-1]
+        )},
+    )
+    first = first_service.connect(
+        owner, provider_id="broker_a", account_alias="Conta principal",
+        credential_ref="vault://tenant-a/broker-a",
+    )
+    assert first["connection_id"]
+    assert "credential_ref" not in first_connections.list_connections(owner)[0]
+
+    # New registry/session/service objects represent a new application process.
+    second_storage = SQLiteTenantStorage(database)
+    second_connections = TenantProviderConnectionRegistry(second_storage)
+    second_sessions = TenantMarketDataSessionRegistry(second_connections)
+    second_adapters = []
+    second_service = TenantProviderConnectionService(
+        second_connections, second_sessions, secret_resolver=vault,
+        adapter_factories={"broker_a": lambda credentials: (
+            second_adapters.append(Adapter(credentials)) or second_adapters[-1]
+        )},
+    )
+    assert second_sessions.status(owner) == []
+    assert second_connections.list_connections(owner)[0]["status"] == "CONNECTED"
+
+    recovered = second_service.reconnect_saved(
+        owner, connection_id=first["connection_id"]
+    )
+
+    assert recovered["connection_id"] == first["connection_id"]
+    assert recovered["status"] == "CONNECTED"
+    assert recovered["adapter_status"] == "ADAPTER_BOUND"
+    assert second_sessions.get(owner, connection_id=first["connection_id"]).adapter is second_adapters[0]
+    assert second_adapters[0] is not first_adapters[0]
+    assert vault.calls == [
+        (owner, "vault://tenant-a/broker-a"),
+        (owner, "vault://tenant-a/broker-a"),
+    ]
+
+
+def test_failed_saved_provider_reconnect_remains_disconnected(tmp_path):
+    database = tmp_path / "tenant-provider-failed-restart.sqlite3"
+    owner = TenantContext("tenant-a", "alice")
+    vault = Vault()
+
+    first_storage = SQLiteTenantStorage(database)
+    first_connections = TenantProviderConnectionRegistry(first_storage)
+    first_sessions = TenantMarketDataSessionRegistry(first_connections)
+    first_service = TenantProviderConnectionService(
+        first_connections, first_sessions, secret_resolver=vault,
+        adapter_factories={"broker_a": lambda credentials: Adapter(credentials)},
+    )
+    first = first_service.connect(
+        owner, provider_id="broker_a", account_alias="Conta principal",
+        credential_ref="vault://tenant-a/broker-a",
+    )
+
+    second_storage = SQLiteTenantStorage(database)
+    second_connections = TenantProviderConnectionRegistry(second_storage)
+    second_sessions = TenantMarketDataSessionRegistry(second_connections)
+    second_service = TenantProviderConnectionService(
+        second_connections, second_sessions, secret_resolver=vault,
+        adapter_factories={"broker_a": lambda credentials: Adapter(credentials, verified=False)},
+    )
+
+    with pytest.raises(PermissionError, match="handshake"):
+        second_service.reconnect_saved(owner, connection_id=first["connection_id"])
+
+    saved = second_connections.list_connections(owner)[0]
+    assert saved["status"] == "DISCONNECTED"
+    assert second_sessions.get(owner, connection_id=first["connection_id"]) is None
