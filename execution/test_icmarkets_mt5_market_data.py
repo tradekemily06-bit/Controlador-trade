@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -113,7 +114,8 @@ def test_fetch_returns_normalized_completed_candles(rates):
     assert candles[0].open == 100.0
     assert candles[0].close == 103.0
     assert candles[0].volume == 12.0
-    assert candles[0].timestamp.tzinfo is not None
+    assert candles[0].timestamp == datetime.fromtimestamp(1720000000, tz=timezone.utc)
+    assert candles[0].timestamp.utcoffset().total_seconds() == 0
     assert mt5.shutdown_called is True
     assert mt5.selected == [("BTCUSD", True)]
 
