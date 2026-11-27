@@ -170,3 +170,23 @@ def test_runtime_keeps_lock_when_worker_status_does_not_confirm_stopped() -> Non
 
     assert runtime.process_lock.released is True
     assert runtime.closed is True
+
+
+
+def test_failed_startup_reaper_waits_for_explicit_stopped_status() -> None:
+    class UnknownStatusWorker(FakeWorker):
+        def status(self) -> dict[str, bool]:
+            return {} if self.running else {self.running_key: False}
+
+    lock = FakeLock()
+    worker = UnknownStatusWorker("worker_running")
+
+    active = _cleanup_failed_startup(lock, ((worker, "worker_running"),))
+    assert active == ["UnknownStatusWorker"]
+    assert lock.released is False
+    assert not lock.released_event.wait(timeout=0.1)
+
+    worker.running = False
+    assert lock.released_event.wait(timeout=2.0)
+    assert lock.released is True
+    assert all(item[0] is not lock for item in _FAILED_STARTUP_LOCKS)
