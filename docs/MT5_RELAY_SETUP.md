@@ -49,13 +49,14 @@ Não reutilize o mesmo token, banco ou source ID entre contas. Proteja os segred
 Instale as dependências compatíveis com o terminal MetaTrader 5 e configure no ambiente do agente local:
 
 - `CONTROLADOR_MT5_RELAY_URL`: URL HTTPS base do aplicativo hospedado.
-- `CONTROLADOR_MT5_RELAY_TOKEN`: o mesmo segredo provisionado no servidor.
-- `CONTROLADOR_MT5_RELAY_SOURCE_ID`: exatamente o mesmo identificador fixo provisionado no servidor.
+- `CONTROLADOR_MT5_RELAY_TOKEN`: token de uso único provisionado para esta conexão.
+- `CONTROLADOR_MT5_RELAY_CONNECTION_ID`: ID de 32 caracteres hexadecimais retornado pelo provisionamento da conta. Quando definido, o agente usa `/api/bridge/mt5/connections/{connection_id}/candles`; sem ele, permanece no endpoint legado global.
+- `CONTROLADOR_MT5_RELAY_SOURCE_ID`: identificador de origem retornado pelo provisionamento do servidor, exatamente igual ao cadastrado para esta conexão. É obrigatório no modo multi-conta.
 - `CONTROLADOR_MT5_SYMBOLS`: lista separada por vírgulas dos símbolos disponíveis na conta.
 - `CONTROLADOR_MT5_TIMEFRAMES`: períodos suportados pelo adapter, separados por vírgulas.
 - Opcional: `CONTROLADOR_MT5_RELAY_INTERVAL` (padrão 5 segundos) e `CONTROLADOR_MT5_RELAY_CANDLE_LIMIT` (padrão 250, máximo 500).
 
-Inicie o agente com `python -m integration.mt5_local_bridge_agent`. Ele confirma DEMO antes de publicar cada lote. Mantenha o processo local e o terminal MT5 em execução para que novos dados cheguem ao servidor.
+Inicie o agente com `python -m integration.mt5_local_bridge_agent`. Com `CONNECTION_ID`, token e source ID próprios, ele envia para a rota tenant-scoped da conta; execute uma instância do agente por conta/terminal, cada uma com suas próprias variáveis. Sem `CONNECTION_ID`, ele usa apenas o endpoint legado de instância única. O agente confirma DEMO antes de publicar cada lote. Mantenha o processo local e o terminal MT5 em execução para que novos dados cheguem ao servidor.
 
 ## Verificação e falhas
 
