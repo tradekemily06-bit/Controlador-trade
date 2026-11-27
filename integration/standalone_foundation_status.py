@@ -35,8 +35,55 @@ _DATABASES = (
     ("tenant_state", "tenant-state.sqlite3", True, {
         "tenant_state": {"tenant_id", "subject_id", "key", "value_json", "updated_at"},
     }),
+    ("tenant_market_data", "tenant-connection-timeframe-monitor.sqlite3", True, {
+        "tenant_connection_timeframe_watch": {
+            "tenant_id", "subject_id", "connection_id", "symbol", "timeframe",
+            "enabled", "created_at", "last_processed_candle", "last_signal",
+            "last_status", "last_error",
+        },
+        "tenant_connection_timeframe_results": {
+            "tenant_id", "subject_id", "connection_id", "symbol", "timeframe",
+            "candle_at", "result_json", "recorded_at",
+        },
+        "tenant_connection_timeframe_processing_lease": {
+            "lease_key", "owner_token", "expires_at",
+        },
+        "tenant_connection_notification_outbox": {
+            "event_id", "tenant_id", "subject_id", "connection_id", "symbol",
+            "timeframe", "candle_at", "result_json", "created_at", "attempts",
+            "lease_until", "delivered_at",
+        },
+    }),
+    ("mt5_relay_tokens", "tenant-mt5-relay-tokens.sqlite3", True, {
+        "tenant_mt5_relay_tokens": {
+            "token_hash", "tenant_id", "subject_id", "connection_id",
+            "source_id", "created_at", "revoked",
+        },
+    }),
+    ("tradingview_webhook_secrets", "tenant-tradingview-webhook-secrets.sqlite3", True, {
+        "tenant_tradingview_webhook_secrets": {
+            "secret_hash", "tenant_id", "subject_id", "connection_id", "revoked",
+        },
+    }),
+    ("ctrader_oauth_state", "tenant-ctrader-oauth-state.sqlite3", False, {
+        "tenant_oauth_states": {
+            "state_hash", "tenant_id", "subject_id", "connection_id",
+            "provider_id", "expires_at", "consumed_at",
+        },
+    }),
+    ("ctrader_oauth_tokens", "tenant-ctrader-oauth-tokens.sqlite3", False, {
+        "tenant_oauth_tokens": {
+            "tenant_id", "subject_id", "connection_id", "provider_id",
+            "key_id", "ciphertext_b64", "expires_at", "scopes_json",
+            "updated_at", "revoked_at",
+        },
+    }),
     ("notification_outbox", "notification-outbox.sqlite3", True, {
-        "notification_outbox": {"idempotency_key", "payload_json", "status", "attempts", "available_at", "lease_until", "created_at", "delivered_at", "last_error"},
+        "notification_outbox": {
+            "idempotency_key", "payload_json", "status", "attempts",
+            "available_at", "lease_until", "lease_token", "created_at",
+            "delivered_at", "last_error",
+        },
     }),
     ("decision_memory", "decision-memory.sqlite3", True, {
         "decisions": {"decision_id", "created_at", "symbol", "timeframe", "signal", "score", "confirmed", "reason", "execution_allowed", "outcome", "outcome_source"},
