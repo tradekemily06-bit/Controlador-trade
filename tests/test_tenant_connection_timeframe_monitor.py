@@ -575,7 +575,7 @@ def test_notification_failure_does_not_discard_durable_analysis(tmp_path):
     results = monitor.run_once(now=now)
 
     assert len(results) == 1
-    saved = monitor.latest_results(owner, _id("2"))
+    saved = monitor.latest_results(owner, _id("2"), now=now)
     assert len(saved) == 1
     assert saved[0]["result"]["signal"] == "AGUARDAR"
     watch = monitor.subscriptions(owner)[0]
