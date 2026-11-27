@@ -165,6 +165,62 @@ def test_saved_ctrader_demo_account_rebinds_after_process_restart(tmp_path):
     ]
 
 
+def test_ctrader_recovery_refreshes_expired_access_token_before_handshake(tmp_path):
+    owner = TenantContext("tenant-a", "alice")
+    connections = TenantProviderConnectionRegistry(
+        SQLiteTenantStorage(tmp_path / "ctrader-refresh-recovery.sqlite3")
+    )
+    sessions = TenantMarketDataSessionRegistry(connections)
+    pending = connections.record_pending_connection(
+        owner, provider_id="ctrader_open_api", account_alias="cTrader DEMO",
+        account_reference="pending:opaque-ref", capabilities=["candles:read"],
+    )
+    initial = TenantCTraderAccountService(
+        connections, sessions, TokenVault(),
+        transport_factory=lambda _token: FakeTransport(),
+    )
+    initial.connect_demo(owner, connection_id=pending["connection_id"], account_id=111)
+
+    class ExpiredVault:
+        def __init__(self):
+            self.fresh = False
+        def resolve(self, context, connection_id):
+            if context != owner:
+                return None
+            return {"access_token": "fresh-access-token"} if self.fresh else None
+
+    class OAuth:
+        def __init__(self, vault):
+            self.vault = vault
+            self.calls = []
+        def refresh(self, context, *, connection_id):
+            self.calls.append((context, connection_id))
+            self.vault.fresh = True
+            return {"status": "TOKEN_REFRESHED_ENCRYPTED"}
+
+    vault = ExpiredVault()
+    oauth = OAuth(vault)
+    transports = []
+
+    def factory(token):
+        assert token == "fresh-access-token"
+        transport = FakeTransport()
+        transports.append(transport)
+        return transport
+
+    restarted = TenantCTraderAccountService(
+        connections, sessions, vault,
+        transport_factory=factory,
+        oauth_service=oauth,
+    )
+    result = restarted.reconnect_saved(
+        owner, connection_id=pending["connection_id"]
+    )
+    assert result["status"] == "RECONNECTED"
+    assert oauth.calls == [(owner, pending["connection_id"])]
+    assert transports[0].connected is True
+
+
 def test_ctrader_startup_recovery_isolates_failed_demo_account(tmp_path):
     owner = TenantContext("tenant-a", "alice")
     database = tmp_path / "ctrader-recovery-batch.sqlite3"
