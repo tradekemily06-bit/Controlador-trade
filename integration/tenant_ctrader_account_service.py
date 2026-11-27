@@ -111,7 +111,14 @@ class TenantCTraderAccountService:
             raise ValueError("account_id cTrader inválido")
         access_token = self._access_token(owner, connection_id)
         transport = self.transport_factory(access_token)
-        adapter = CTraderReadOnlyMarketDataAdapter(transport, account_id=account_id)
+        # The callback captures the authenticated owner + connection, not a
+        # client-supplied tenant or account identifier. On reconnect it reads
+        # the latest rotated token from this connection's encrypted vault row.
+        adapter = CTraderReadOnlyMarketDataAdapter(
+            transport,
+            account_id=account_id,
+            access_token_resolver=lambda: self._access_token(owner, connection_id),
+        )
         promoted = False
         try:
             adapter.connect()
