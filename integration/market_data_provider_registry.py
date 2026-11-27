@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Mapping
 
 from core.active_account_mode import resolve_active_account_mode
@@ -18,6 +19,9 @@ class RegisteredMarketDataProvider:
 class MarketDataProviderRegistry:
     """Allow multiple broker/provider adapters without coupling analysis to one broker."""
 
+    HEARTBEAT_MAX_AGE_SECONDS = 30
+    HEARTBEAT_FUTURE_TOLERANCE_SECONDS = 5
+
     def __init__(self) -> None:
         self._providers: dict[str, RegisteredMarketDataProvider] = {}
         self._selected: str | None = None
@@ -27,6 +31,23 @@ class MarketDataProviderRegistry:
         if not isinstance(value, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,47}", value):
             raise ValueError("provider_id inválido")
         return value
+
+    @classmethod
+    def _heartbeat_is_fresh(cls, value: Any) -> bool:
+        if not isinstance(value, str) or not value.strip():
+            return False
+        try:
+            timestamp = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+            if timestamp.tzinfo is None:
+                return False
+            age = (datetime.now(timezone.utc) - timestamp.astimezone(timezone.utc)).total_seconds()
+        except (TypeError, ValueError, OverflowError):
+            return False
+        return (
+            -cls.HEARTBEAT_FUTURE_TOLERANCE_SECONDS
+            <= age
+            <= cls.HEARTBEAT_MAX_AGE_SECONDS
+        )
 
     def register(self, provider_id: str, provider: Any, source: str) -> None:
         key = self._provider_id(provider_id)
@@ -57,7 +78,7 @@ class MarketDataProviderRegistry:
         return resolve_active_account_mode(selected.provider if selected else None)
 
     def status(self, *, probe_account_mode: bool = True) -> dict[str, Any]:
-        """Describe registered adapters; optionally perform an active account probe.
+        """Report registration separately from a verified, recent connection heartbeat.
 
         Frontend readiness polling must be side-effect-free and must not
         initialize/shutdown a broker terminal on every status request.
@@ -82,10 +103,14 @@ class MarketDataProviderRegistry:
                             for key in ("connected", "account_mode", "last_seen", "source_id", "stored_candles")
                             if key in reported
                         }
-                        if reported.get("connected") is True:
-                            provider_status = "CONNECTED"
-                        elif reported.get("connected") is False:
+                        if reported.get("connected") is False:
                             provider_status = "DISCONNECTED"
+                        elif reported.get("connected") is True:
+                            provider_status = (
+                                "CONNECTED"
+                                if self._heartbeat_is_fresh(reported.get("last_seen"))
+                                else "HEARTBEAT_STALE_OR_UNVERIFIED"
+                            )
                 except Exception:
                     provider_status = "STATUS_ERROR"
             providers.append({
