@@ -17,6 +17,7 @@ from integration.tenant_market_data_sessions import TenantMarketDataSessionRegis
 from integration.tenant_connection_timeframe_monitor import TenantConnectionTimeframeMonitor
 from integration.tenant_provider_connection_service import TenantProviderConnectionService
 from integration.tenant_mt5_relay_registry import TenantMT5RelayRegistry
+from integration.tenant_mt5_relay_onboarding import TenantMT5RelayTokenVault, TenantMT5RelayOnboardingService
 from security.tenant_scoped_ecosystem_state import TenantScopedEcosystemState
 from security.tenant_scoped_decision_memory import TenantScopedDecisionMemory
 from integration.tenant_notification_dispatcher import TenantNotificationDispatcher
@@ -172,14 +173,23 @@ class StandaloneRuntime:
             self.tenant_market_data_sessions = TenantMarketDataSessionRegistry(
                 self.tenant_provider_connections
             )
-            self.tenant_mt5_relay_token_resolver = tenant_mt5_relay_token_resolver
-            self.tenant_mt5_relay_registry = (
-                TenantMT5RelayRegistry(
-                    self.tenant_provider_connections,
-                    self.runtime_dir / "tenant-mt5-relays",
-                    tenant_mt5_relay_source_id_resolver,
-                )
-                if callable(tenant_mt5_relay_source_id_resolver) else None
+            self.tenant_mt5_relay_token_vault = TenantMT5RelayTokenVault(
+                self.runtime_dir / "tenant-mt5-relay-tokens.sqlite3",
+                self.tenant_provider_connections,
+            )
+            self.tenant_mt5_relay_token_resolver = (
+                tenant_mt5_relay_token_resolver or self.tenant_mt5_relay_token_vault
+            )
+            source_id_resolver = (
+                tenant_mt5_relay_source_id_resolver or self.tenant_mt5_relay_token_vault.source_id
+            )
+            self.tenant_mt5_relay_registry = TenantMT5RelayRegistry(
+                self.tenant_provider_connections,
+                self.runtime_dir / "tenant-mt5-relays",
+                source_id_resolver,
+            )
+            self.tenant_mt5_relay_onboarding = TenantMT5RelayOnboardingService(
+                self.tenant_provider_connections, self.tenant_mt5_relay_token_vault
             )
             self.tenant_provider_connection_service = TenantProviderConnectionService(
                 self.tenant_provider_connections,
