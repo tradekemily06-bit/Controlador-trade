@@ -49,7 +49,7 @@ class TimeframeIsolatedStatisticsTests(unittest.TestCase):
         groups = summarize_context_groups([
             record("eurusd-buy", timeframe="1m", signal="COMPRA", outcome="LOSS"),
             record("eurusd-sell", timeframe="1m", signal="VENDA", outcome="WIN"),
-            record("gbpusd-buy", timeframe="1m", signal="COMPRA", outcome="WIN"),
+            record("gbpusd-buy", timeframe="1m", signal="COMPRA", outcome="WIN", symbol="GBPUSD"),
         ])
         self.assertEqual(set(groups), {
             "EURUSD|1m|COMPRA",
