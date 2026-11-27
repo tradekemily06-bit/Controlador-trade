@@ -22,14 +22,19 @@ def test_worker_dispatches_queued_notification_and_stops(tmp_path):
     worker = NotificationOutboxWorker(
         outbox, sink, poll_interval_seconds=0.01, batch_size=5
     )
+    assert worker.status()["state"] == "STOPPED"
     worker.start()
     deadline = time.monotonic() + 2
     while time.monotonic() < deadline and not sink.messages:
         time.sleep(0.01)
+    assert worker.status()["state"] == "RUNNING"
     worker.stop()
 
     assert sink.messages == [("worker-event", {"title": "Market changed"})]
     assert worker.status()["running"] is False
+    assert worker.status()["state"] == "STOPPED"
+    assert worker.status()["stop_requested"] is True
+    assert worker.status()["last_cycle_at"] is not None
     assert outbox.status_counts()["DELIVERED"] == 1
 
 
@@ -76,8 +81,11 @@ def test_worker_dispatch_persists_redacted_provider_error(tmp_path):
             error = row[0]
             break
         time.sleep(0.01)
+    assert worker.status()["state"] == "DEGRADED"
+    assert worker.status()["last_cycle_at"] is not None
     worker.stop()
 
+    assert worker.status()["state"] == "STOPPED"
     assert error is not None
     assert outbox.status_counts().get("PENDING", 0) == 1
     assert "push.example.test" not in error
