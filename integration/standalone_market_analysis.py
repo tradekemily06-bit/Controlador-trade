@@ -38,6 +38,7 @@ class StandaloneMarketAnalysisService:
         decision_sink: Callable[..., bool | None] | None = None,
         signal_evidence_sink: Callable[..., dict[str, Any]] | None = None,
         market_data_provenance: str | None = None,
+        signal_source_id: str | None = None,
     ) -> None:
         if provider is None:
             raise ValueError("market data provider is required")
@@ -55,6 +56,9 @@ class StandaloneMarketAnalysisService:
             raise ValueError("unsupported market data provenance")
         self.signal_evidence_sink = signal_evidence_sink
         self.market_data_provenance = market_data_provenance
+        if signal_source_id is not None and (not isinstance(signal_source_id, str) or not signal_source_id.strip()):
+            raise ValueError("signal_source_id must be non-empty text")
+        self.signal_source_id = signal_source_id.strip() if signal_source_id else self.source
         self.feed = MarketDataFeed(provider, source=self.source)
         self.orchestrator = TradingOrchestrator(
             feed=self.feed,
@@ -309,7 +313,7 @@ class StandaloneMarketAnalysisService:
             observed_at = datetime.now(timezone.utc)
             valid_until = candle_at + get_timeframe_interval(timeframe) * 2
             evidence_identity = (
-                f"{self.source}|{symbol.strip().upper()}|{timeframe}|"
+                f"{self.signal_source_id}|{symbol.strip().upper()}|{timeframe}|"
                 f"{candle_at.isoformat()}"
             )
             signal_id = "signal-" + sha256(evidence_identity.encode("utf-8")).hexdigest()[:32]
@@ -327,6 +331,7 @@ class StandaloneMarketAnalysisService:
                     observed_at=observed_at.isoformat(),
                     valid_until=valid_until.isoformat(),
                     provenance=self.market_data_provenance,
+                    source_id=self.signal_source_id,
                 )
                 response["signal_evidence_audit"] = {
                     "status": "RECORDED",
