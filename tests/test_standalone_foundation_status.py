@@ -14,6 +14,7 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
         result = standalone_storage_status(SimpleNamespace(runtime_dir=None))
 
         self.assertEqual(result["required_stores"], "NOT_AVAILABLE")
+        self.assertEqual(result["backup_restore"], "NOT_AVAILABLE")
         self.assertEqual(result["deployment_topology"], "UNKNOWN_NO_RUNTIME_DIRECTORY")
         self.assertEqual(result["multi_replica_readiness"], "BLOCKED_RUNTIME_NOT_AVAILABLE")
         self.assertIn("RUNTIME_STORAGE_NOT_AVAILABLE", result["production_release_blockers"])
@@ -64,7 +65,7 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
             result = standalone_storage_status(SimpleNamespace(runtime_dir=root))
         self.assertEqual(result["required_stores"], "HEALTHY")
         self.assertEqual(result["multi_tenant_isolation"], "NOT_IMPLEMENTED")
-        self.assertEqual(result["backup_restore"], "NOT_CONFIGURED")
+        self.assertEqual(result["backup_restore"], "ON_DEMAND_LOCAL_ONLY")
         self.assertEqual(result["deployment_topology"], "SINGLE_HOST_ONLY")
         self.assertEqual(
             result["multi_replica_readiness"],
@@ -239,3 +240,20 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_reports_scheduled_backup_worker_state_without_claiming_off_host_copy(self):
+        scheduler = SimpleNamespace(status=lambda: {
+            "provider": "LOCAL_SQLITE_SCHEDULED",
+            "enabled": True,
+            "worker_running": True,
+            "last_status": "WAITING_FOR_FIRST_SCHEDULE",
+            "off_host_replication": "NOT_CONFIGURED",
+            "deployment_continuity": "PROCESS_LIFETIME_ONLY",
+        })
+        with tempfile.TemporaryDirectory() as directory:
+            result = standalone_storage_status(
+                SimpleNamespace(runtime_dir=Path(directory), backup_scheduler=scheduler)
+            )
+        self.assertEqual(result["backup_restore"], "SCHEDULED_LOCAL_ONLY")
+        self.assertTrue(result["backup_scheduler"]["worker_running"])
+        self.assertEqual(result["backup_scheduler"]["off_host_replication"], "NOT_CONFIGURED")
