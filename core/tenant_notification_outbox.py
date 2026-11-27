@@ -102,7 +102,12 @@ class TenantNotificationOutbox:
             inbox = [] if row is None else json.loads(row[0])
             if not isinstance(inbox, list) or any(not isinstance(item, dict) for item in inbox):
                 raise ValueError("stored tenant inbox has invalid shape")
-            if any(item.get("notification_id") == notification_id for item in inbox):
+            already_queued = db.execute(
+                """SELECT 1 FROM tenant_notification_outbox
+                WHERE tenant_id=? AND subject_id=? AND notification_id=?""",
+                (tenant_id, subject_id, notification_id),
+            ).fetchone()
+            if already_queued or any(item.get("notification_id") == notification_id for item in inbox):
                 db.rollback()
                 return False
             inbox.append(json.loads(encoded))
