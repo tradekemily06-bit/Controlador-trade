@@ -43,7 +43,10 @@ def _timestamp(value: Any, field: str) -> datetime:
 def _number(value: Any, field: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"{field} must be numeric")
-    result = float(value)
+    try:
+        result = float(value)
+    except (OverflowError, ValueError) as exc:
+        raise ValueError(f"{field} must be finite") from exc
     if result != result or result in (float("inf"), float("-inf")):
         raise ValueError(f"{field} must be finite")
     return result
