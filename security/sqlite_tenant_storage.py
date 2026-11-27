@@ -230,6 +230,82 @@ class SQLiteTenantStorage(TenantStorageBoundary):
             connection.commit()
         return True
 
+    def upsert_unique_list_item(
+        self, context: TenantContext, key: str, item: dict[str, Any],
+        *, unique_fields: tuple[str, ...], limit: int,
+    ) -> dict[str, Any]:
+        """Atomically insert or replace one list item identified by stable fields."""
+        tenant_id, subject_id, normalized_key = self._scope(context, key)
+        if not isinstance(item, dict) or not unique_fields:
+            raise ValueError("item and unique_fields are required")
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
+            raise ValueError("limit must be an integer between 1 and 200")
+        identity = tuple(item.get(field) for field in unique_fields)
+        if any(not isinstance(value, str) or not value for value in identity):
+            raise ValueError("unique fields must be non-empty strings")
+        encoded_item = json.dumps(item, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT value_json FROM tenant_state WHERE tenant_id=? AND subject_id=? AND key=?",
+                (tenant_id, subject_id, normalized_key),
+            ).fetchone()
+            current = [] if row is None else json.loads(row[0])
+            if not isinstance(current, list) or any(not isinstance(entry, dict) for entry in current):
+                raise ValueError("stored tenant list has an invalid shape")
+            match = next((entry for entry in current if all(entry.get(field) == value for field, value in zip(unique_fields, identity))), None)
+            if match is not None:
+                match.update(json.loads(encoded_item))
+                result = dict(match)
+            else:
+                if len(current) >= limit:
+                    raise ValueError("tenant list limit reached")
+                current.append(json.loads(encoded_item))
+                result = dict(current[-1])
+            encoded = json.dumps(current, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+            connection.execute(
+                """INSERT INTO tenant_state(tenant_id, subject_id, key, value_json)
+                VALUES (?, ?, ?, ?) ON CONFLICT(tenant_id, subject_id, key)
+                DO UPDATE SET value_json=excluded.value_json, updated_at=CURRENT_TIMESTAMP""",
+                (tenant_id, subject_id, normalized_key, encoded),
+            )
+            connection.commit()
+        return result
+
+    def update_list_item(
+        self, context: TenantContext, key: str, *, match_field: str,
+        match_value: str, updates: dict[str, Any],
+    ) -> bool:
+        """Atomically update one tenant-owned list item without lost writes."""
+        tenant_id, subject_id, normalized_key = self._scope(context, key)
+        if not isinstance(match_field, str) or not match_field or not isinstance(match_value, str):
+            raise ValueError("match field and value are required")
+        if not isinstance(updates, dict) or not updates:
+            raise ValueError("updates are required")
+        encoded_updates = json.dumps(updates, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT value_json FROM tenant_state WHERE tenant_id=? AND subject_id=? AND key=?",
+                (tenant_id, subject_id, normalized_key),
+            ).fetchone()
+            current = [] if row is None else json.loads(row[0])
+            if not isinstance(current, list) or any(not isinstance(entry, dict) for entry in current):
+                raise ValueError("stored tenant list has an invalid shape")
+            target = next((entry for entry in current if entry.get(match_field) == match_value), None)
+            if target is None:
+                connection.rollback()
+                return False
+            target.update(json.loads(encoded_updates))
+            encoded = json.dumps(current, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+            connection.execute(
+                """UPDATE tenant_state SET value_json=?, updated_at=CURRENT_TIMESTAMP
+                WHERE tenant_id=? AND subject_id=? AND key=?""",
+                (encoded, tenant_id, subject_id, normalized_key),
+            )
+            connection.commit()
+        return True
+
     def delete(self, context: TenantContext, key: str) -> None:
         tenant_id, subject_id, normalized_key = self._scope(context, key)
         with self._lock, self._connect() as connection:
