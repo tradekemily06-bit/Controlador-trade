@@ -178,6 +178,7 @@ class StandaloneRuntime:
         selected_market_data_provider: str | None = None,
         notification_sink=None,
         tenant_notification_sink=None,
+        tenant_push_subscription_registry=None,
         provider_secret_resolver=None,
         provider_adapter_factories: Mapping[str, Any] | None = None,
         ctrader_oauth_cipher=None,
@@ -205,6 +206,7 @@ class StandaloneRuntime:
         self.process_lock = RuntimeProcessLock(self.runtime_dir / "standalone-app.lock")
         self.process_lock.acquire()
         self.closed = False
+        self.tenant_push_subscription_registry = tenant_push_subscription_registry
 
         try:
             fiscal_database = self.runtime_dir / "fiscal-reserve.sqlite3"
