@@ -40,7 +40,7 @@ Remote clients must use `GET /api/notifications/status` for their own notificati
 A configured/registered provider is not proof of a live connection. The deployment marker is deliberately not a production deployment claim. All variants return `execution_authorized: false`.
 
 ### `GET /api/areas`
-Returns the seven visible application areas.
+Returns the six approved visible application areas. Decision memory, audit history and validated knowledge are internal capabilities exposed through Analysis/Study, not a separate navigation area.
 
 ### `GET /api/intelligence/architecture`
 Returns area descriptions, shared-intelligence architecture and handler status.
@@ -58,7 +58,7 @@ Body:
   }
 }
 ```
-The area and task are required strings; context must be an object. The selected area handler determines supported context fields. Market analysis remains manual-review only; no order is submitted.
+The area and task are required strings; context must be an object. The legacy area value `memory` is accepted as a compatibility alias for `analysis`; it does not create a seventh area. The selected area handler determines supported context fields. Market analysis remains manual-review only; no order is submitted.
 
 ## Market data and timeframe monitoring
 
