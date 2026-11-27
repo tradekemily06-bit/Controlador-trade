@@ -12,6 +12,6 @@
 
 ## Still not production/live
 
-This layer is callable by a future provider ingestion worker but is not yet invoked automatically by MT5/cTrader/TradingView ingestion. It does not authenticate the supplied `TenantContext`; trusted server-side identity middleware must provide that context. SQLite is still single-host development storage.
+The standalone runtime now invokes this resolver during a fresh closed-candle analysis for explicitly allowlisted MT5 relay, MT5 DEMO and cTrader market-data sessions. Each tenant connection is assigned its own source identity, so one account's candle cannot resolve another account's signal. Only an actionable COMPRA/VENDA from the immediately preceding candle is resolved; AGUARDAR is retained as evidence but excluded from directional hit/miss labels. TradingView webhook events are not treated as candle data. It does not authenticate the supplied `TenantContext`; trusted server-side identity middleware must provide that context. SQLite is still single-host development storage.
 
 Before using outcomes for estimated profit or profit probability, the system still needs a verified executable-price model (bid/ask), position sizing, spread, commissions, slippage, latency, exit/invalidation rules, and out-of-sample validation. Directional candle labels must not be passed to the profit-probability evaluator.
