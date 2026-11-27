@@ -53,3 +53,9 @@ def test_validates_subject_ttl_and_endpoint():
     bad = dict(_subscription(), endpoint="http://example.com/push")
     with pytest.raises(ValueError, match="HTTPS"):
         sender(bad, "{}", ttl_seconds=30, idempotency_key="id")
+
+
+
+def test_rejects_non_finite_timeout():
+    with pytest.raises(ValueError, match="finite"):
+        PyWebPushSender(lambda: "A" * 48, subject="mailto:ops@example.com", timeout_seconds=float("nan"))
