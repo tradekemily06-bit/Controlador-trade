@@ -805,6 +805,31 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(status, "503 Service Unavailable")
         self.assertFalse(body["execution_authorized"])
 
+    def test_remote_readiness_exposes_only_infrastructure_contract(self):
+        runtime = FakeRuntime()
+        runtime.assistant.readiness = lambda: {"private_global_counter": 987}
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/readiness",
+                remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["scope"], "INFRASTRUCTURE_ONLY")
+        self.assertEqual(body["tenant_readiness"], "AVAILABLE_ONLY_THROUGH_SCOPED_ENDPOINTS")
+        self.assertEqual(body["notifications"], "USE_TENANT_SCOPED_STATUS_ENDPOINT")
+        self.assertNotIn("private_global_counter", body)
+        self.assertNotIn("storage_foundation", body)
+        self.assertNotIn("decision_memory", body)
+        self.assertFalse(body["execution_authorized"])
+
     def test_notification_status_reports_no_external_sink_honestly(self):
         app = StandaloneWSGIApplication(FakeRuntime())
         status, body = call_wsgi(app, "/api/notifications/status")
