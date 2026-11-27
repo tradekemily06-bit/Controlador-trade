@@ -36,16 +36,28 @@ def test_forecast_must_be_recorded_before_outcome_and_is_tenant_scoped(tmp_path)
         provenance="REAL_MARKET_DATA",
     )
     assert resolved["resolved"] is True
-    rows = store.calibration_records(alice)
-    forecasts = store.calibration_forecasts(alice)
-    assert len(forecasts) == 1
-    assert forecasts[0].forecast_id == "forecast-1"
-    assert forecasts[0].out_of_sample is True
-    assert len(rows) == 1
-    assert rows[0]["timeframe"] == "1m"
-    assert rows[0]["probability"] == 0.72
-    assert rows[0]["outcome"] is True
-    assert rows[0]["out_of_sample"] is True
+    # Merely recording a forecast and a later outcome does not prove it was
+    # generated out-of-sample; never promote it into calibration evidence.
+    assert store.calibration_records(alice) == []
+    assert store.calibration_forecasts(alice) == []
+
+
+
+def test_forecast_store_does_not_assume_out_of_sample_status(tmp_path):
+    store = TenantForecastAuditStore(tmp_path / "forecast-oos-default.sqlite3")
+    owner = TenantContext("tenant-a", "alice")
+    store.record_forecast(
+        owner, forecast_id="not-proven-oos", symbol="EURUSD", timeframe="M1",
+        direction="COMPRA", model_version="model-v1", probability=0.7,
+        forecast_at="2026-11-27T10:00:00Z",
+    )
+    store.resolve_forecast(
+        owner, "not-proven-oos", outcome=True,
+        resolved_at="2026-11-27T10:01:00Z", provenance="REAL_MARKET_DATA",
+    )
+    assert store.calibration_records(owner) == []
+    assert store.calibration_forecasts(owner) == []
+
 
 
 def test_forecast_outcome_cannot_be_resolved_from_manual_or_simulated_labels(tmp_path):
