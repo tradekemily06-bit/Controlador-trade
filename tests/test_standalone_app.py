@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import io
 import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import urlsplit
 
@@ -1130,21 +1132,22 @@ class StandaloneWSGITests(unittest.TestCase):
 
         runtime = FakeRuntime()
         runtime.local_tenant_context = TenantContext("local-single-user", "local-user")
-        state = TenantScopedEcosystemState(SQLiteTenantStorage(self.temp_dir / "tenant-state.sqlite3"))
-        runtime.tenant_notification_dispatcher = TenantNotificationDispatcher(state)
-        runtime.tenant_notification_dispatcher.publish(
-            runtime.local_tenant_context,
-            EcosystemNotification(
-                notification_id="local-tenant-event", kind=NotificationKind.MARKET,
-                severity=NotificationSeverity.INFO, title="EURUSD", message="Novo sinal",
-            ),
-        )
-        app = StandaloneWSGIApplication(runtime)
-        status, body = call_wsgi(app, "/api/notifications/status")
-        self.assertEqual(status, "200 OK")
-        self.assertEqual(body["tenant_outbox"]["PENDING"], 1)
-        self.assertEqual(body["tenant_external_delivery"], "OUTBOX_ONLY_NO_PROVIDER")
-        self.assertFalse(body["tenant_delivery_worker"]["configured"])
+        with tempfile.TemporaryDirectory() as directory:
+            state = TenantScopedEcosystemState(SQLiteTenantStorage(Path(directory) / "tenant-state.sqlite3"))
+            runtime.tenant_notification_dispatcher = TenantNotificationDispatcher(state)
+            runtime.tenant_notification_dispatcher.publish(
+                runtime.local_tenant_context,
+                EcosystemNotification(
+                    notification_id="local-tenant-event", kind=NotificationKind.MARKET,
+                    severity=NotificationSeverity.INFO, title="EURUSD", message="Novo sinal",
+                ),
+            )
+            app = StandaloneWSGIApplication(runtime)
+            status, body = call_wsgi(app, "/api/notifications/status")
+            self.assertEqual(status, "200 OK")
+            self.assertEqual(body["tenant_outbox"]["PENDING"], 1)
+            self.assertEqual(body["tenant_external_delivery"], "OUTBOX_ONLY_NO_PROVIDER")
+            self.assertFalse(body["tenant_delivery_worker"]["configured"])
 
     def test_notification_status_distinguishes_configured_but_stopped_worker(self):
         runtime = FakeRuntime()
