@@ -172,6 +172,53 @@ def call_wsgi(app, path, method="GET", body=None, remote_addr="127.0.0.1", origi
 
 
 class StandaloneWSGITests(unittest.TestCase):
+    def test_market_data_provider_status_is_visible_to_local_operator(self):
+        class Registry:
+            def status(self, *, probe_account_mode=True):
+                return {
+                    "selected_provider": "mt5_relay",
+                    "providers": [
+                        {"provider_id": "mt5_relay", "status": "CONNECTED", "selected": True}
+                    ],
+                    "count": 1,
+                    "provider_registered": True,
+                }
+
+        runtime = FakeRuntime()
+        runtime.market_data_registry = Registry()
+        app = StandaloneWSGIApplication(runtime)
+        status, body = call_wsgi(app, "/api/market-data/providers")
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["providers"][0]["provider_id"], "mt5_relay")
+        self.assertEqual(body["scope"], "LOCAL_SINGLE_USER")
+        self.assertFalse(body["execution_authorized"])
+
+    def test_market_data_provider_status_does_not_leak_global_connections_to_remote_users(self):
+        class Registry:
+            def status(self, *, probe_account_mode=True):
+                raise AssertionError("global provider status must not be exposed")
+
+        runtime = FakeRuntime()
+        runtime.market_data_registry = Registry()
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/market-data/providers",
+                remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["status"], "USER_SCOPED_PROVIDER_CONNECTIONS_NOT_CONFIGURED")
+        self.assertEqual(body["providers"], [])
+        self.assertFalse(body["execution_authorized"])
+
+
     def test_assistant_status_reports_conversation_scope_and_remote_chat_guard(self):
         runtime = FakeRuntime()
         runtime.assistant = FakeRuntime.Assistant()
