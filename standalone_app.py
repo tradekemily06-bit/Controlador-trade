@@ -252,6 +252,33 @@ class StandaloneWSGIApplication:
                 request_id,
             )
 
+        if method == "GET" and path == "/api/market-data/providers":
+            if reason == "trusted_identity":
+                # Global operator adapters are not proof of a connection owned
+                # by this remote user. Never leak another user's broker metadata.
+                payload = {
+                    "status": "USER_SCOPED_PROVIDER_CONNECTIONS_NOT_CONFIGURED",
+                    "providers": [],
+                    "count": 0,
+                    "execution_authorized": False,
+                }
+            else:
+                registry = getattr(self.runtime, "market_data_registry", None)
+                payload = (
+                    registry.status(probe_account_mode=False)
+                    if registry is not None
+                    else {
+                        "selected_provider": None,
+                        "providers": [],
+                        "count": 0,
+                        "provider_registered": False,
+                        "execution_authorized": False,
+                    }
+                )
+                payload["scope"] = "LOCAL_SINGLE_USER"
+                payload["execution_authorized"] = False
+            return _json_response(start_response, HTTPStatus.OK, payload, request_id)
+
         if method == "GET" and path == "/api/bridge/mt5/status":
             relay = getattr(self.runtime, "mt5_relay_store", None)
             payload = (
