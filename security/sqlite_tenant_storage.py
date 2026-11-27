@@ -30,6 +30,7 @@ class SQLiteTenantStorage(TenantStorageBoundary):
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path, timeout=10)
+        connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA busy_timeout = 10000")
         return connection
 
