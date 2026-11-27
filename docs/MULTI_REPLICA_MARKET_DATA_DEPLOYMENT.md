@@ -37,9 +37,10 @@ A multi-replica release is blocked until automated integration tests prove:
 The allowlisted on-demand SQLite backup set includes
 `tenant-connection-timeframe-monitor.sqlite3`, which contains tenant-scoped
 candle watches, analysis results, processing leases and notification outbox
-records. This store must be backed up together with tenant metadata; omitting it
-would lose active monitoring state and pending tenant notifications during
-recovery.
+records, and `tenant-tradingview-alerts.sqlite3`, which contains accepted
+TradingView alert history. These stores must be backed up together with tenant
+metadata; omitting them would lose active monitoring state, pending tenant
+notifications or accepted alert history during recovery.
 
 Backups remain local/on-demand unless an operator separately configures a
 scheduled job and off-host replication. OAuth state, OAuth ciphertext, relay
