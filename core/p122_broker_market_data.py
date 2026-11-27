@@ -66,6 +66,9 @@ class BrokerMarketDataBoundary:
             timeframe=canonical_timeframe,
             limit=request.limit,
         )
+        supports_timeframe = getattr(self._provider, "supports_timeframe", None)
+        if callable(supports_timeframe) and supports_timeframe(canonical_timeframe) is not True:
+            raise ValueError("provider não confirma suporte ao timeframe solicitado")
         raw_result = self._provider.fetch_market_data(canonical_request)
         if raw_result is None:
             raise ValueError("provider retornou None")
