@@ -104,3 +104,11 @@ def test_rejects_inconsistent_or_non_finite_ohlc(values):
         resolve_next_candle_direction_safe(
             signal(), candle(**values), provenance="REAL_MARKET_DATA"
         )
+
+
+def test_resolver_rejects_unrepresentably_large_ohlc_values():
+    with pytest.raises(ValueError):
+        resolve_next_candle_direction_safe(
+            signal(), candle(open=10**1000), provenance="REAL_MARKET_DATA"
+        )
+
