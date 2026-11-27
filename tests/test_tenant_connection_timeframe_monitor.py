@@ -1819,3 +1819,84 @@ def test_monitor_public_clock_inputs_reject_timezone_without_utc_offset(tmp_path
         monitor.run_once(now=invalid_now)
     with pytest.raises(ValueError, match="fuso horário válido"):
         monitor.latest_results(owner, now=invalid_now)
+
+
+@pytest.mark.parametrize(
+    ("timeframe", "expected_at"),
+    [
+        ("D1", datetime(2026, 11, 26, 5, 0, tzinfo=timezone.utc)),
+        ("W1", datetime(2026, 11, 23, 5, 0, tzinfo=timezone.utc)),
+    ],
+)
+def test_daily_and_weekly_signals_wait_for_provider_session_calendar(
+    tmp_path, timeframe, expected_at
+):
+    owner = TenantContext("tenant-session-calendar", "alice")
+    connection = _id("s")
+    session = Session("broker_without_calendar", "broker:no-calendar")
+    class Registry:
+        def get(self, context, *, connection_id):
+            return session if context == owner else None
+
+    analyzer = Analyzer(expected_at.isoformat(), "COMPRA")
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / f"session-calendar-{timeframe}.sqlite3",
+        Registry(),
+        lambda _session, _context: analyzer,
+    )
+    monitor.subscribe(owner, connection, "EURUSD", timeframe)
+
+    results = monitor.run_once(
+        now=datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc)
+    )
+
+    assert results == []
+    assert analyzer.calls == 0
+    assert monitor.subscriptions(owner)[0]["last_status"] == "WAITING_FOR_SESSION_CALENDAR"
+    assert monitor.latest_results(owner, connection)[0:1] == []
+
+
+@pytest.mark.parametrize(
+    ("timeframe", "expected_at"),
+    [
+        ("D1", datetime(2026, 11, 26, 5, 0, tzinfo=timezone.utc)),
+        ("W1", datetime(2026, 11, 23, 5, 0, tzinfo=timezone.utc)),
+    ],
+)
+def test_daily_and_weekly_signals_use_provider_session_boundary_for_expiry(
+    tmp_path, timeframe, expected_at
+):
+    owner = TenantContext("tenant-session-calendar-valid", "alice")
+    connection = _id("t")
+
+    class SessionCalendarAdapter:
+        def expected_last_closed_candle(self, requested_timeframe, now, *, close_grace_seconds):
+            assert requested_timeframe == timeframe.lower()
+            assert now.tzinfo is timezone.utc
+            assert close_grace_seconds == 3.0
+            return expected_at
+
+    session = Session("broker_with_calendar", "broker:session-calendar", SessionCalendarAdapter())
+    class Registry:
+        def get(self, context, *, connection_id):
+            return session if context == owner else None
+
+    analyzer = Analyzer(expected_at.isoformat(), "COMPRA")
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / f"session-calendar-valid-{timeframe}.sqlite3",
+        Registry(),
+        lambda _session, _context: analyzer,
+    )
+    monitor.subscribe(owner, connection, "EURUSD", timeframe)
+
+    results = monitor.run_once(
+        now=datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc)
+    )
+    assert len(results) == 1
+    assert results[0]["candle_at"] == expected_at.isoformat()
+    current = monitor.latest_results(
+        owner, connection,
+        now=datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc),
+    )
+    assert current[0]["signal_valid"] is True
+    assert current[0]["result"]["signal"] == "COMPRA"
