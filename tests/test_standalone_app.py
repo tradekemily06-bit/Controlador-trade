@@ -898,6 +898,72 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertNotIn("decision_memory", body)
         self.assertFalse(body["execution_authorized"])
 
+
+    def test_remote_assistant_uses_only_tenant_fiscal_context(self):
+        runtime = FakeRuntime()
+        runtime.tenant_fiscal_store_factory = object()
+        calls = []
+
+        def ask_tenant(**kwargs):
+            calls.append(kwargs)
+            return {
+                "conversation_id": "tenant-conversation",
+                "answer": "Contexto fiscal individual",
+                "scope": "TENANT_AND_SUBJECT",
+                "context_scope": "TENANT_AND_SUBJECT",
+                "read_only": True,
+                "execution_allowed": False,
+                "may_execute_orders": False,
+                "may_enable_real": False,
+                "may_move_money": False,
+            }
+
+        runtime.assistant.ask_tenant = ask_tenant
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/assistant/ask", method="POST",
+                body={"message": "Resumo da minha Reserva Fiscal"},
+                remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["scope"], "TENANT_AND_SUBJECT")
+        self.assertTrue(body["read_only"])
+        self.assertFalse(body["execution_authorized"])
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["tenant_context"].tenant_id, "tenant-a")
+        self.assertEqual(calls[0]["tenant_context"].subject_id, "alice")
+        self.assertIs(calls[0]["fiscal_store_factory"], runtime.tenant_fiscal_store_factory)
+        self.assertNotIn("fiscal_owner_id", calls[0])
+
+    def test_remote_assistant_fails_closed_without_tenant_fiscal_factory(self):
+        runtime = FakeRuntime()
+        runtime.tenant_fiscal_store_factory = None
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/assistant/ask", method="POST",
+                body={"message": "Resumo"},
+                remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "503 Service Unavailable")
+        self.assertEqual(body["state"], "FISCAL_TENANT_ISOLATION_REQUIRED")
+        self.assertFalse(body["execution_authorized"])
+
     def test_notification_status_reports_no_external_sink_honestly(self):
         app = StandaloneWSGIApplication(FakeRuntime())
         status, body = call_wsgi(app, "/api/notifications/status")
