@@ -470,8 +470,12 @@ class TenantConnectionTimeframeMonitor:
             candle_at = getattr(candle, "timestamp", None)
             item["last_live_candle_at"] = candle_at.isoformat() if candle_at is not None else None
             now = datetime.now(timezone.utc)
-            expected = self.expected_last_closed_candle(item["timeframe"], now)
-            item["expected_last_closed_candle_at"] = expected.isoformat()
+            expected = self._expected_for_session(
+                session, item["symbol"], item["timeframe"], now
+            )
+            item["expected_last_closed_candle_at"] = (
+                expected.isoformat() if expected is not None else None
+            )
             if candle_at is not None and candle_at.tzinfo is not None:
                 age = (now - candle_at.astimezone(timezone.utc)).total_seconds()
                 item["live_candle_age_seconds"] = round(age, 3)
@@ -481,6 +485,11 @@ class TenantConnectionTimeframeMonitor:
             if not connected:
                 item["live_stream_status"] = "DISCONNECTED"
                 item["data_freshness_state"] = "DISCONNECTED"
+            elif expected is None:
+                # Never report a guessed UTC D1/W1 boundary as fresh for a
+                # broker whose session calendar has not been verified.
+                item["live_stream_status"] = "SESSION_CALENDAR_UNAVAILABLE"
+                item["data_freshness_state"] = "SESSION_CALENDAR_UNAVAILABLE"
             elif not stream_bound:
                 item["live_stream_status"] = "NOT_SUPPORTED_OR_UNAVAILABLE"
                 processed = item.get("last_processed_candle")
