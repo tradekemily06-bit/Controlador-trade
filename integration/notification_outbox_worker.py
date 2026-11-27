@@ -3,7 +3,7 @@ from __future__ import annotations
 import threading
 from typing import Any
 
-from core.notification_outbox import PersistentNotificationOutbox, NotificationSink
+from core.notification_outbox import PersistentNotificationOutbox, NotificationSink, redact_delivery_error
 
 
 class NotificationOutboxWorker:
@@ -64,7 +64,7 @@ class NotificationOutboxWorker:
                 }
                 self._last_error = None
             except Exception as exc:
-                self._last_error = str(exc)[:500]
+                self._last_error = redact_delivery_error(exc)
             self._stop.wait(self.poll_interval_seconds)
 
     def stop(self, timeout: float = 5.0) -> None:
