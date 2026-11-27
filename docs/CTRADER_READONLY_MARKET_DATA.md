@@ -62,9 +62,10 @@ a session boundary.
 
 The adapter also exposes
 `get_session_calendar_reconciliation_report(symbol, timeframe, lookback=120)`
-for D1/W1. It compares observed historical candle-open patterns (UTC and,
-when the runtime can resolve the broker timezone, provider-local) with the
-broker's raw session metadata. The report is explicitly
+for D1/W1. It returns the exact observed candle-open timestamps in UTC
+and, when the runtime can resolve the broker timezone, in provider-local time
+with UTC offsets, alongside aggregated open-time patterns and the broker's raw
+session metadata. The report is explicitly
 `OBSERVATIONS_ONLY_NOT_VALIDATED`; it never authorizes a signal, validates a
 calendar, or enables execution. It is evidence for a later broker-specific
 review, not an automatic approval.
