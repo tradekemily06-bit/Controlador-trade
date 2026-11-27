@@ -280,6 +280,8 @@ class StandaloneWSGIApplication:
                     registry.status(probe_account_mode=False)
                     if registry is not None else {"selected_provider": None, "providers": [], "count": 0}
                 )
+                payload["providers"] = payload["configured_data_sources"].get("providers", [])
+                payload["selected_provider"] = payload["configured_data_sources"].get("selected_provider")
             return _json_response(start_response, HTTPStatus.OK, payload, request_id)
 
         if method == "GET" and path == "/api/bridge/mt5/status":
