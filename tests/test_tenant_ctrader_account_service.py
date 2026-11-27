@@ -40,6 +40,12 @@ class FakeTransport:
     def account_auth(self, account_id):
         self.calls.append(("account_auth", account_id))
 
+    def subscribe_spots(self, account_id, symbol_id, callback):
+        self.calls.append(("subscribe_spots", account_id, symbol_id))
+
+    def subscribe_live_trendbars(self, account_id, symbol_id, period, callback):
+        self.calls.append(("subscribe_live_trendbars", account_id, symbol_id, period))
+
     def disconnect(self):
         self.connected = False
         self.calls.append("disconnect")
