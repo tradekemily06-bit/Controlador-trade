@@ -2,15 +2,14 @@
 
 ## Target architecture
 
-The product has seven user-facing areas, all routed through one shared intelligence coordinator:
+The product has six user-facing areas, all routed through one shared intelligence coordinator:
 
 1. Cabine de Comando
 2. Análise
 3. Estudo
-4. Memória
-5. Reserva Fiscal
-6. Assistente do Ecossistema
-7. Central
+4. Reserva Fiscal
+5. Assistente do Ecossistema
+6. Central
 
 The 45+ senior experience baseline, specialist domains, financial-market curriculum, reasoning, memory, research, risk, audit and security are internal capabilities. They are not additional navigation areas.
 
@@ -25,7 +24,7 @@ The 45+ senior experience baseline, specialist domains, financial-market curricu
 
 ## Implementation status of this first slice
 
-This change adds the shared intelligence contract, the seven-area registry, the read-only application facade and tests. It does not claim that all seven functional services, providers, authentication, fiscal data sources, live feeds, mobile push or deployment have been connected. Those require individual adapters, credentials/configuration where applicable, integration tests and production validation.
+This change adds the shared intelligence contract, the six-area registry, the read-only application facade and tests. It does not claim that all six functional areas, providers, authentication, fiscal data sources, live feeds, mobile push or deployment have been connected. Those require individual adapters, credentials/configuration where applicable, integration tests and production validation.
 
 The approved Lovable interface is outside this change and must remain visually unchanged.
 
