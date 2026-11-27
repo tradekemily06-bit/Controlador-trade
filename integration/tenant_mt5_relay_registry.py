@@ -17,6 +17,25 @@ from security.tenant_context import TenantContext
 from security.tenant_storage import require_tenant_context
 
 
+class _TenantMT5RelayMarketDataAdapter:
+    """Read-only adapter bound to exactly one tenant/account relay store."""
+
+    def __init__(self, store: MT5RelayStore) -> None:
+        self.store = store
+
+    def fetch(self, request: MarketDataRequest):
+        self.store.get_account_mode()
+        return self.store.fetch(request)
+
+    def status(self) -> dict[str, Any]:
+        return self.store.status()
+
+    def disconnect(self) -> None:
+        # The relay is an inbound/outbound agent relationship; no local socket
+        # is held by this adapter. Token revocation is handled by the vault.
+        return None
+
+
 class TenantMT5RelayRegistry:
     """Resolve one durable DEMO relay store per verified tenant connection."""
 
@@ -25,6 +44,7 @@ class TenantMT5RelayRegistry:
         connections: Any,
         runtime_dir: str | Path,
         source_id_resolver: Callable[[TenantContext, str], str],
+        *, sessions: Any | None = None,
     ) -> None:
         if connections is None or not callable(getattr(connections, "list_connections", None)):
             raise ValueError("tenant provider connection registry is required")
@@ -34,7 +54,9 @@ class TenantMT5RelayRegistry:
         self.runtime_dir = Path(runtime_dir)
         self.runtime_dir.mkdir(parents=True, exist_ok=True)
         self.source_id_resolver = source_id_resolver
+        self.sessions = sessions
         self._stores: dict[tuple[str, str, str], MT5RelayStore] = {}
+        self._adapters: dict[tuple[str, str, str], _TenantMT5RelayMarketDataAdapter] = {}
 
     @staticmethod
     def _connection_id(value: str) -> str:
@@ -80,9 +102,22 @@ class TenantMT5RelayRegistry:
         # A first valid, fresh DEMO batch is the relay handshake. Only then
         # may the connection be promoted from PENDING to CONNECTED.
         result = store.ingest(payload)
-        self.connections.mark_connected_after_relay_handshake(
+        promoted = self.connections.mark_connected_after_relay_handshake(
             context, connection_id=connection_id
         )
+        if not promoted:
+            raise PermissionError("conexão MT5 não pôde ser promovida após o handshake")
+        if self.sessions is not None:
+            owner = require_tenant_context(context)
+            key = (owner.tenant_id, owner.subject_id, connection_id)
+            adapter = self._adapters.get(key)
+            if adapter is None:
+                adapter = _TenantMT5RelayMarketDataAdapter(store)
+                self._adapters[key] = adapter
+            self.sessions.bind(
+                owner, connection_id=connection_id, adapter=adapter,
+                source=f"mt5_relay:{connection_id}", handshake_verified=True,
+            )
         return result
 
     def fetch(
