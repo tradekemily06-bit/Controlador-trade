@@ -116,7 +116,12 @@ class EncryptedTenantPushSubscriptionStore:
             if not isinstance(key, str) or not key.startswith(_NAMESPACE):
                 raise RuntimeError("tenant backend returned a key outside the push namespace")
             device_id = key[len(_NAMESPACE):]
-            record = self._decrypt(owner, device_id, self.backend.get(owner, key))
+            self._record_key(device_id)
+            envelope = self.backend.get(owner, key)
+            # A concurrent revoke may remove a key after list_keys returns it.
+            if envelope is None:
+                continue
+            record = self._decrypt(owner, device_id, envelope)
             record["device_id"] = device_id
             records.append(record)
         return records
