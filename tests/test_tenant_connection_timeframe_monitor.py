@@ -828,3 +828,70 @@ def test_worker_losing_lease_during_analysis_is_fenced_before_persistence(tmp_pa
     assert current is not None
     assert current["owner_token"] == replacement_lease[1]
     second._release_processing_lease(replacement_lease)
+
+def test_expired_notification_worker_cannot_ack_after_outbox_reclaim(tmp_path):
+    owner = TenantContext("tenant-a", "alice")
+    connection = _id("e")
+    sessions = Sessions()
+    sessions.add(owner, connection, "broker_a")
+    now = datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc)
+    expected = datetime(2026, 11, 27, 12, 0, tzinfo=timezone.utc)
+    entered = threading.Event()
+    release = threading.Event()
+    calls = []
+
+    def sink(event):
+        calls.append(event["event_id"])
+        if len(calls) == 1:
+            entered.set()
+            assert release.wait(3)
+            return
+        raise RuntimeError("second owner leaves event pending")
+
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "notification-lease-fence.sqlite3", sessions,
+        lambda _session, _context: Analyzer(expected.isoformat(), "AGUARDAR"),
+        on_result=sink,
+    )
+    monitor.subscribe(owner, connection, "EURUSD", "5m")
+    assert len(monitor.run_once(now=now)) == 1
+    with monitor._connect() as db:
+        row = db.execute(
+            "SELECT event_id FROM tenant_connection_notification_outbox"
+        ).fetchone()
+        assert row is not None
+        db.execute(
+            "UPDATE tenant_connection_notification_outbox SET lease_until=0 WHERE event_id=?",
+            (row["event_id"],),
+        )
+
+    first = threading.Thread(target=monitor.dispatch_pending_notifications)
+    first.start()
+    assert entered.wait(3)
+    with monitor._connect() as db:
+        db.execute(
+            "UPDATE tenant_connection_notification_outbox SET lease_until=0 WHERE event_id=?",
+            (row["event_id"],),
+        )
+
+    assert monitor.dispatch_pending_notifications() == 0
+    with monitor._connect() as db:
+        reclaimed = db.execute(
+            "SELECT lease_token, delivered_at FROM tenant_connection_notification_outbox WHERE event_id=?",
+            (row["event_id"],),
+        ).fetchone()
+        assert reclaimed["lease_token"]
+        assert reclaimed["delivered_at"] is None
+
+    release.set()
+    first.join(3)
+    assert not first.is_alive()
+    with monitor._connect() as db:
+        final = db.execute(
+            "SELECT lease_token, delivered_at FROM tenant_connection_notification_outbox WHERE event_id=?",
+            (row["event_id"],),
+        ).fetchone()
+    assert final["lease_token"] == reclaimed["lease_token"]
+    assert final["delivered_at"] is None
+    assert calls == [row["event_id"], row["event_id"]]
+
