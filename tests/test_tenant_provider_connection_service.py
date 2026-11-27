@@ -223,7 +223,11 @@ def test_saved_provider_reconnects_after_process_restart_with_fresh_handshake(tm
             second_adapters.append(Adapter(credentials)) or second_adapters[-1]
         )},
     )
-    assert second_sessions.status(owner) == []
+    restored_metadata = second_sessions.status(owner)
+    assert len(restored_metadata) == 1
+    assert restored_metadata[0]["adapter_status"] == "NOT_BOUND"
+    assert restored_metadata[0]["health_status"] == "NOT_BOUND"
+    assert second_sessions.get(owner, connection_id=first["connection_id"]) is None
     assert second_connections.list_connections(owner)[0]["status"] == "CONNECTED"
 
     recovered = second_service.reconnect_saved(
