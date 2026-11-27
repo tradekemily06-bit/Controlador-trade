@@ -568,7 +568,7 @@ class TenantConnectionTimeframeMonitor:
                 session = self.session_registry.get(
                     owner, connection_id=self._connection(item["connection_id"])
                 )
-                expected = self._expected_for_session(session, timeframe, current)
+                expected = self._expected_for_session(session, item["symbol"], timeframe, current)
                 if expected is None:
                     item["signal_valid"] = False
                     item["signal_validity"] = "SESSION_CALENDAR_UNAVAILABLE"
@@ -621,7 +621,9 @@ class TenantConnectionTimeframeMonitor:
             bucket = (epoch // interval) * interval
         return datetime.fromtimestamp(bucket, tz=timezone.utc)
 
-    def _expected_for_session(self, session: Any, timeframe: str, now: datetime) -> datetime | None:
+    def _expected_for_session(
+        self, session: Any, symbol: str, timeframe: str, now: datetime
+    ) -> datetime | None:
         """Resolve a closed-candle boundary without guessing broker D1/W1 sessions.
 
         Intraday periods retain UTC fixed buckets. Daily and weekly periods
@@ -637,6 +639,7 @@ class TenantConnectionTimeframeMonitor:
             try:
                 expected = resolver(
                     normalized,
+                    symbol,
                     now.astimezone(timezone.utc),
                     close_grace_seconds=self.close_grace_seconds,
                 )
@@ -788,7 +791,7 @@ class TenantConnectionTimeframeMonitor:
             session = self.session_registry.get(owner, connection_id=connection)
             if session is None:
                 raise RuntimeError("adapter da conta desconectado ou não vinculado")
-            expected = self._expected_for_session(session, timeframe, now)
+            expected = self._expected_for_session(session, symbol, timeframe, now)
             if expected is None:
                 with self._lock, self._connect() as db:
                     db.execute("""
