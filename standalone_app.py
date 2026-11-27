@@ -341,6 +341,17 @@ class StandaloneWSGIApplication:
                         if getattr(self.runtime, "tenant_market_monitor", None) is not None
                         else {"worker_running": False, "enabled": 0, "total": 0}
                     ),
+                    "connection_onboarding": {
+                        "connect_enabled": bool(
+                            getattr(self.runtime, "tenant_provider_connection_service", None)
+                            and self.runtime.tenant_provider_connection_service.secret_resolver is not None
+                            and self.runtime.tenant_provider_connection_service.adapter_factories
+                        ),
+                        "disconnect_enabled": getattr(
+                            self.runtime, "tenant_provider_connection_service", None
+                        ) is not None,
+                        "credential_values_accepted": False,
+                    },
                     "count": len(connections),
                     "scope": "TENANT_AND_SUBJECT" if reason == "trusted_identity" else "LOCAL_SINGLE_USER",
                     "execution_authorized": False,
