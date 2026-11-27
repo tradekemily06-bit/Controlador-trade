@@ -53,6 +53,7 @@ from core.sqlite_backup_scheduler import SQLiteBackupScheduler
 from core.ecosystem_notifications import EcosystemNotification, NotificationKind, NotificationSeverity
 from integration.market_timeframe_monitor import MarketTimeframeMonitor
 from integration.notification_outbox_worker import NotificationOutboxWorker
+from integration.tenant_notification_outbox_worker import TenantNotificationOutboxWorker
 from integration.rss_news_provider import RSSNewsProvider
 
 
@@ -160,6 +161,7 @@ class StandaloneRuntime:
         market_data_providers: Mapping[str, tuple[Any, str]] | None = None,
         selected_market_data_provider: str | None = None,
         notification_sink=None,
+        tenant_notification_sink=None,
         provider_secret_resolver=None,
         provider_adapter_factories: Mapping[str, Any] | None = None,
         ctrader_oauth_cipher=None,
@@ -365,6 +367,12 @@ class StandaloneRuntime:
             self.notification_outbox = PersistentNotificationOutbox(
                 self.runtime_dir / "notification-outbox.sqlite3"
             )
+            self.tenant_notification_worker = None
+            if tenant_notification_sink is not None:
+                self.tenant_notification_worker = TenantNotificationOutboxWorker(
+                    self.tenant_notification_dispatcher.outbox, tenant_notification_sink
+                )
+                self.tenant_notification_worker.start()
             self.notification_worker = None
             if notification_sink is not None:
                 self.notification_worker = NotificationOutboxWorker(
@@ -583,6 +591,7 @@ class StandaloneRuntime:
                 (getattr(self, "market_monitor", None), "worker_running"),
                 (getattr(self, "tenant_market_monitor", None), "worker_running"),
                 (getattr(self, "tenant_oauth_refresh_worker", None), "running"),
+                (getattr(self, "tenant_notification_worker", None), "running"),
                 (getattr(self, "notification_worker", None), "running"),
                 (getattr(self, "backup_scheduler", None), "worker_running"),
             )
@@ -606,6 +615,7 @@ class StandaloneRuntime:
             (self.market_monitor, "worker_running"),
             (getattr(self, "tenant_market_monitor", None), "worker_running"),
             (getattr(self, "tenant_oauth_refresh_worker", None), "running"),
+            (getattr(self, "tenant_notification_worker", None), "running"),
             (self.notification_worker, "running"),
             (self.backup_scheduler, "worker_running"),
         )
