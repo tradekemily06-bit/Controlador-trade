@@ -134,6 +134,7 @@ class TenantSignalOutcomeStore:
                  AND o.signal_id=e.signal_id
                 WHERE e.tenant_id=? AND e.subject_id=? AND e.source_id=?
                   AND e.symbol=? AND e.timeframe=? AND e.candle_close_at=?
+                  AND e.direction IN ('COMPRA', 'VENDA')
                   AND o.signal_id IS NULL
                 ORDER BY e.observed_at ASC""",
                 (
