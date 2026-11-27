@@ -100,6 +100,32 @@ def test_outcome_store_never_reports_profit_or_calibration(tmp_path):
     assert result["calibration_eligible"] is False
 
 
+def test_closed_candle_resolves_only_the_matching_provider_connection(tmp_path):
+    evidence, outcomes = _store(tmp_path)
+    owner = TenantContext("tenant-a", "alice")
+    _signal(evidence, owner, "account-a-signal")
+    evidence.record_signal(
+        owner, signal_id="account-b-signal", source_id="connection-b",
+        symbol="EURUSD", timeframe="M1", direction="COMPRA",
+        model_version="technical-v1", evidence_score=75,
+        score_semantics="EVIDENCE_STRENGTH_NOT_WIN_PROBABILITY",
+        candle_close_at="2026-11-27T10:01:00Z",
+        observed_at="2026-11-27T10:01:02Z",
+        valid_until="2026-11-27T10:02:00Z",
+        provenance="REAL_MARKET_DATA",
+    )
+    resolved = outcomes.resolve_pending_for_candle(
+        owner, source_id="UNSCOPED", candle=_candle(),
+        provenance="REAL_MARKET_DATA",
+    )
+    assert [item["signal_id"] for item in resolved] == ["account-a-signal"]
+    assert [item["signal_id"] for item in outcomes.list_outcomes(owner)] == ["account-a-signal"]
+    assert outcomes.resolve_pending_for_candle(
+        owner, source_id="connection-b", candle=_candle(),
+        provenance="REAL_MARKET_DATA",
+    )[0]["signal_id"] == "account-b-signal"
+
+
 def test_outcome_store_rejects_untrusted_context(tmp_path):
     _, outcomes = _store(tmp_path)
     with pytest.raises(PermissionError):
