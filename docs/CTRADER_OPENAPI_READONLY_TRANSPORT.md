@@ -55,9 +55,30 @@ e os demais módulos não devem depender da presença do SDK cTrader.
 Este commit entrega o transporte de protocolo e seus limites de segurança, mas
 não configura credenciais de aplicação, KMS de produção, worker de renovação,
 provisionamento de conta no ambiente hospedado nem conexão real com uma conta
-DEMO. O streaming de cotações spot (bid/ask) agora tem implementação e testes de
-contrato, mas ainda não foi validado com uma conta Spotware real. O streaming de
-trendbars por timeframe e a integração desse fluxo ao worker de análise ainda
-não estão concluídos. A geração de sinais continua dependendo do ciclo de
-candles fechados e não deve tratar uma cotação spot isolada como candle fechado. Não marcar conta como conectada nem mostrar dados
+DEMO. O streaming de cotações spot (bid/ask) e o streaming de trendbars por timeframe
+agora têm implementação e testes de contrato, mas ainda não foram validados com
+uma conta Spotware real. O transporte segue a ordem exigida pela Spotware:
+assinatura spot antes da assinatura de trendbar. Os eventos de trendbar são
+normalizados para o modelo Candle e marcados como fechados, conforme o contrato
+da API. A integração do callback de candles ao worker/monitor multi-tenant de
+análise ainda precisa ser concluída. Cotações spot isoladas nunca são tratadas
+como candles fechados. Não marcar conta como conectada nem mostrar dados
 como atuais sem handshake e heartbeat reais.
+
+
+## Streaming de candles por timeframe
+
+Após autenticar uma conta DEMO, o adaptador expõe
+`subscribe_live_candles(symbol, timeframe, callback)` para os períodos
+suportados. O transporte cria primeiro a assinatura spot exigida pela Spotware
+e, em seguida, a assinatura `ProtoOASubscribeLiveTrendbarReq`. Os eventos
+`ProtoOASpotEvent` carregam as trendbars correspondentes; cada barra é
+convertida do formato relativo (preço baixo + deltas, dividido por 100000) e
+entregue ao callback como um objeto `Candle`, com `closed: true`. O
+cancelamento usa `unsubscribe_live_candles`.
+
+A assinatura tem escopo de conta, símbolo e período. Callbacks são executados
+pela fila limitada fora do reactor. A fila e o número de streams ativos são
+expostos no status da conexão. Ainda é necessário ligar esse callback ao
+monitor multi-tenant, validar timestamps e fechamento em ambiente DEMO real e
+testar reconexão/reassinatura após queda de rede.
