@@ -1709,6 +1709,24 @@ class StandaloneWSGIApplication:
             else:
                 summary = self.runtime.ecosystem_service.notification_summary()
                 summary["scope"] = "LOCAL_SINGLE_USER"
+                local_context = getattr(self.runtime, "local_tenant_context", None)
+                local_dispatcher = getattr(self.runtime, "tenant_notification_dispatcher", None)
+                if local_context is not None and local_dispatcher is not None:
+                    local_tenant_worker = getattr(self.runtime, "tenant_notification_worker", None)
+                    local_tenant_status = (
+                        local_tenant_worker.status(local_context)
+                        if local_tenant_worker is not None else {
+                            "configured": False, "running": False,
+                            "state": "NO_TENANT_EXTERNAL_SINK_CONFIGURED",
+                        }
+                    )
+                    summary["tenant_outbox"] = local_dispatcher.outbox.status_counts(local_context)
+                    summary["tenant_delivery_worker"] = local_tenant_status
+                    summary["tenant_external_delivery"] = (
+                        "WORKER_DEGRADED" if local_tenant_status.get("state") == "DEGRADED"
+                        else "WORKER_RUNNING" if local_tenant_status.get("running") is True
+                        else "OUTBOX_ONLY_NO_PROVIDER"
+                    )
             summary["delivery_worker"] = delivery_worker
             summary["external_delivery"] = external_delivery
             return _json_response(
