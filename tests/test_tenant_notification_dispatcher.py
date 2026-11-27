@@ -3,6 +3,8 @@ from __future__ import annotations
 import tempfile
 import time
 import unittest
+
+import pytest
 from pathlib import Path
 
 from core.ecosystem_notifications import EcosystemNotification, NotificationKind, NotificationSeverity
@@ -171,3 +173,35 @@ def test_tenant_outbox_dead_letters_after_retry_budget(tmp_path):
     assert second.attempts == 2
     assert outbox.mark_failed(second, "permanent failure", now=105) == "DEAD"
     assert outbox.status_counts(owner)["DEAD"] == 1
+
+
+
+@pytest.mark.parametrize("bad", [True, float("nan"), float("inf"), float("-inf"), 10**1000, "60"])
+def test_tenant_outbox_rejects_non_finite_or_non_numeric_lease_values(tmp_path, bad):
+    storage = SQLiteTenantStorage(tmp_path / "tenant.sqlite3")
+    from core.tenant_notification_outbox import TenantNotificationOutbox
+
+    outbox = TenantNotificationOutbox(storage)
+    with pytest.raises(ValueError):
+        outbox.claim_due(lease_seconds=bad)
+
+
+@pytest.mark.parametrize("bad", [True, float("nan"), float("inf"), float("-inf"), 10**1000, "now"])
+def test_tenant_outbox_rejects_non_finite_or_non_numeric_clock_values(tmp_path, bad):
+    storage = SQLiteTenantStorage(tmp_path / "tenant.sqlite3")
+    from core.tenant_notification_outbox import TenantNotificationOutbox
+
+    outbox = TenantNotificationOutbox(storage)
+    with pytest.raises(ValueError):
+        outbox.claim_due(now=bad)
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf"), 10**1000, True])
+def test_tenant_outbox_rejects_unsafe_retry_backoff_configuration(tmp_path, bad):
+    from core.tenant_notification_outbox import TenantNotificationOutbox
+
+    with pytest.raises(ValueError):
+        TenantNotificationOutbox(
+            SQLiteTenantStorage(tmp_path / "tenant.sqlite3"),
+            base_backoff_seconds=bad,
+        )
