@@ -255,7 +255,10 @@ class SQLiteTenantStorage(TenantStorageBoundary):
                 raise ValueError("stored tenant list has an invalid shape")
             match = next((entry for entry in current if all(entry.get(field) == value for field, value in zip(unique_fields, identity))), None)
             if match is not None:
+                stable_connection_id = match.get("connection_id")
                 match.update(json.loads(encoded_item))
+                if stable_connection_id is not None:
+                    match["connection_id"] = stable_connection_id
                 result = dict(match)
             else:
                 if len(current) >= limit:
