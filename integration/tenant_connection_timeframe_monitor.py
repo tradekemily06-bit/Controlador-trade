@@ -20,6 +20,7 @@ from typing import Any, Callable
 
 from data.timeframes import get_timeframe_interval, normalize_timeframe
 from security.tenant_context import TenantContext
+from security.tenant_storage import require_tenant_context
 
 
 _SYMBOL = re.compile(r"^[A-Z0-9][A-Z0-9._-]{0,31}$")
@@ -45,19 +46,19 @@ class TenantConnectionTimeframeMonitor:
             raise ValueError("tenant market-data session registry is required")
         if not callable(analyzer_factory):
             raise ValueError("analyzer_factory must be callable")
-        if poll_interval_seconds <= 0 or close_grace_seconds < 0:
-            raise ValueError("invalid monitor timing")
+        poll_interval = self._finite_setting(poll_interval_seconds, "poll_interval_seconds", minimum=0, inclusive_minimum=False, maximum=300)
+        close_grace = self._finite_setting(close_grace_seconds, "close_grace_seconds", minimum=0, inclusive_minimum=True, maximum=60)
         if isinstance(max_workers, bool) or not isinstance(max_workers, int) or not 1 <= max_workers <= 32:
             raise ValueError("max_workers deve ser inteiro entre 1 e 32")
-        if isinstance(max_notification_attempts, bool) or not isinstance(max_notification_attempts, int) or max_notification_attempts < 1:
-            raise ValueError("max_notification_attempts deve ser inteiro positivo")
+        if isinstance(max_notification_attempts, bool) or not isinstance(max_notification_attempts, int) or not 1 <= max_notification_attempts <= 100:
+            raise ValueError("max_notification_attempts deve ser inteiro entre 1 e 100")
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.session_registry = session_registry
         self.analyzer_factory = analyzer_factory
         self.on_result = on_result
-        self.poll_interval_seconds = float(poll_interval_seconds)
-        self.close_grace_seconds = float(close_grace_seconds)
+        self.poll_interval_seconds = poll_interval
+        self.close_grace_seconds = close_grace
         self.max_workers = max_workers
         self.max_notification_attempts = max_notification_attempts
         self._lock = threading.RLock()
@@ -164,10 +165,23 @@ class TenantConnectionTimeframeMonitor:
                 )
 
     @staticmethod
+    def _finite_setting(value: Any, name: str, *, minimum: float, inclusive_minimum: bool, maximum: float) -> float:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"{name} must be a finite number")
+        try:
+            number = float(value)
+        except (OverflowError, ValueError) as exc:
+            raise ValueError(f"{name} must be a finite number") from exc
+        if not math.isfinite(number) or number > maximum or (number < minimum if inclusive_minimum else number <= minimum):
+            raise ValueError(f"{name} is outside the permitted range")
+        return number
+
+    @staticmethod
     def _owner(context: TenantContext | None) -> TenantContext:
-        if not isinstance(context, TenantContext):
-            raise PermissionError("trusted tenant context is required")
-        return context
+        try:
+            return require_tenant_context(context)
+        except (TypeError, ValueError, PermissionError) as exc:
+            raise PermissionError("canonical trusted tenant context is required") from exc
 
     @staticmethod
     def _connection(value: str) -> str:
@@ -283,7 +297,7 @@ class TenantConnectionTimeframeMonitor:
                 return
             candle = event.get("candle")
             timestamp = getattr(candle, "timestamp", None)
-            if timestamp is None or timestamp.tzinfo is None:
+            if not isinstance(timestamp, datetime) or timestamp.tzinfo is None:
                 return
             valid = getattr(candle, "is_valid", None)
             if not callable(valid) or not valid():
