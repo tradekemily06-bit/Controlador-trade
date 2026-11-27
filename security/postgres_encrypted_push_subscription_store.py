@@ -192,7 +192,7 @@ class PostgresEncryptedPushSubscriptionStore:
                 raise RuntimeError("push subscription record could not be authenticated") from exc
             if not isinstance(record, dict):
                 raise RuntimeError("stored push subscription payload is invalid")
-            records.append({"device_id": device_id, **record})
+            records.append({**record, "device_id": device_id})
         return records
 
     def _key_for_version(self, key_version: str) -> bytes:
