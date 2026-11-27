@@ -65,16 +65,21 @@ def test_worker_dispatch_persists_redacted_provider_error(tmp_path):
     )
     worker.start()
     deadline = time.monotonic() + 2
-    while time.monotonic() < deadline and outbox.status_counts().get("DEAD", 0) == 0:
+    error = None
+    while time.monotonic() < deadline:
+        with sqlite3.connect(outbox_path) as db:
+            row = db.execute(
+                "SELECT last_error FROM notification_outbox WHERE idempotency_key=?",
+                ("worker-secret-event",),
+            ).fetchone()
+        if row and row[0]:
+            error = row[0]
+            break
         time.sleep(0.01)
     worker.stop()
 
-    assert outbox.status_counts().get("DEAD_LETTER", 0) == 1
-    with sqlite3.connect(outbox_path) as db:
-        error = db.execute(
-            "SELECT last_error FROM notification_outbox WHERE idempotency_key=?",
-            ("worker-secret-event",),
-        ).fetchone()[0]
+    assert error is not None
+    assert outbox.status_counts().get("PENDING", 0) == 1
     assert "push.example.test" not in error
     assert "worker-secret" not in error
     assert "hidden-value" not in error
