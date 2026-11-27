@@ -43,3 +43,19 @@ def test_tenant_notification_worker_starts_delivers_and_stops(tmp_path):
     assert status_running["running"] is True
     assert status_stopped["running"] is False
     assert dispatcher.outbox.status_counts(owner)["DELIVERED"] == 1
+
+
+
+def test_worker_status_does_not_expose_other_tenants_queue_counts(tmp_path):
+    storage = SQLiteTenantStorage(tmp_path / "tenant.sqlite3")
+    dispatcher = TenantNotificationDispatcher(TenantScopedEcosystemState(storage))
+    alice = TenantContext("tenant-1", "alice")
+    bob = TenantContext("tenant-1", "bob")
+    event = EcosystemNotification(
+        notification_id="private-count", kind=NotificationKind.SECURITY,
+        severity=NotificationSeverity.INFO, title="Aviso", message="Privado",
+    )
+    dispatcher.publish(alice, event)
+    worker = TenantNotificationOutboxWorker(dispatcher.outbox, _Sink())
+    assert worker.status(alice)["outbox"]["PENDING"] == 1
+    assert worker.status(bob)["outbox"]["PENDING"] == 0
