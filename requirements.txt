@@ -2,3 +2,4 @@ pytest
 tzdata
 openai>=1.30,<2
 pywebpush>=2.0,<3.0
+cryptography>=44,<51
