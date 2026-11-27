@@ -141,6 +141,7 @@ class TenantConnectionTimeframeMonitor:
                 self._live_streams.discard(key)
                 previous_adapter = self._live_stream_adapters.pop(key, None)
                 self._live_candles.pop(key, None)
+                self._live_stream_retry_at.pop(key, None)
             if self._live_stream_retry_at.get(key, 0.0) > time.monotonic():
                 return False
         if previous_adapter is not None:
