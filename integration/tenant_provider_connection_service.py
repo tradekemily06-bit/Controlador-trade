@@ -226,3 +226,49 @@ class TenantProviderConnectionService:
             account_alias=account["account_alias"],
             credential_ref=credential_ref,
         )
+
+
+    def reconnect_available(
+        self, context: TenantContext | None,
+    ) -> list[dict[str, Any]]:
+        """Best-effort startup recovery for configured, previously saved providers.
+
+        Each account is isolated: one failed handshake cannot prevent other
+        accounts from recovering. Only status metadata and exception classes
+        are returned; vault pointers and credential material stay private.
+        """
+        owner = require_tenant_context(context)
+        outcomes: list[dict[str, Any]] = []
+        for account in self.connections.list_connections(owner):
+            provider_id = account["provider_id"]
+            if provider_id not in self.adapter_factories:
+                continue
+            connection_id = account["connection_id"]
+            if account["status"] not in {"CONNECTED", "DISCONNECTED"}:
+                continue
+            if self.secret_resolver is None:
+                outcomes.append({
+                    "connection_id": connection_id,
+                    "provider_id": provider_id,
+                    "status": "RECOVERY_NOT_CONFIGURED",
+                    "execution_authorized": False,
+                })
+                continue
+            try:
+                result = self.reconnect_saved(owner, connection_id=connection_id)
+                outcomes.append({
+                    "connection_id": connection_id,
+                    "provider_id": provider_id,
+                    "status": "RECONNECTED",
+                    "adapter_status": result["adapter_status"],
+                    "execution_authorized": False,
+                })
+            except Exception as exc:
+                outcomes.append({
+                    "connection_id": connection_id,
+                    "provider_id": provider_id,
+                    "status": "RECONNECT_FAILED",
+                    "error_class": type(exc).__name__,
+                    "execution_authorized": False,
+                })
+        return outcomes
