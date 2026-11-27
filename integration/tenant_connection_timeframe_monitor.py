@@ -428,8 +428,6 @@ class TenantConnectionTimeframeMonitor:
                 "candle_at": expected.isoformat(),
                 "previous_signal": row.get("last_signal"), "result": result,
             }
-            if self.on_result is not None:
-                self.on_result(enriched)
             serialized = json.dumps(result, ensure_ascii=False, separators=(",", ":"), default=str)
             with self._lock, self._connect() as db:
                 db.execute("""
@@ -442,6 +440,13 @@ class TenantConnectionTimeframeMonitor:
                     SET last_processed_candle=?, last_signal=?, last_status=?, last_error=NULL
                     WHERE tenant_id=? AND subject_id=? AND connection_id=? AND symbol=? AND timeframe=?
                 """, (expected.isoformat(), signal, str(result.get("status", "ANALYZED")), owner.tenant_id, owner.subject_id, connection, symbol, timeframe))
+            # Durable analysis history must not depend on notification delivery.
+            # A failing push/webhook sink is isolated from market-data processing.
+            if self.on_result is not None:
+                try:
+                    self.on_result(enriched)
+                except Exception:
+                    pass
             return enriched
         except Exception as exc:
             with self._lock, self._connect() as db:
