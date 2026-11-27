@@ -172,6 +172,20 @@ class TenantProviderConnectionRegistry:
         target = next((item for item in records if item["connection_id"] == connection_id), None)
         if target is None or target["status"] != "PENDING":
             raise PermissionError("somente uma conexão pendente e pertencente à identidade pode ser ativada")
+        updates = {
+            "provider_id": target["provider_id"],
+            "status": "CONNECTED",
+            "account_reference": account_reference.strip(),
+            "capabilities": clean,
+            "last_verified_at": self._timestamp(),
+        }
+        unique_update = getattr(self.storage, "update_list_item_unique", None)
+        if callable(unique_update):
+            return unique_update(
+                trusted, self.STORAGE_KEY, match_field="connection_id",
+                match_value=connection_id, updates=updates,
+                unique_fields=("provider_id", "account_reference"),
+            )
         if any(
             item["connection_id"] != connection_id
             and item["provider_id"] == target["provider_id"]
@@ -183,13 +197,7 @@ class TenantProviderConnectionRegistry:
             raise RuntimeError("tenant storage does not support atomic broker connection updates")
         return self.storage.update_list_item(
             trusted, self.STORAGE_KEY, match_field="connection_id",
-            match_value=connection_id,
-            updates={
-                "status": "CONNECTED",
-                "account_reference": account_reference.strip(),
-                "capabilities": clean,
-                "last_verified_at": self._timestamp(),
-            },
+            match_value=connection_id, updates=updates,
         )
 
     def mark_connected_after_relay_handshake(
