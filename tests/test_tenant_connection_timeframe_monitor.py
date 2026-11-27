@@ -392,3 +392,33 @@ def test_live_stream_candle_reaches_real_standalone_analysis_and_persisted_resul
     assert persisted[0]["result"]["market_data"]["ohlcv"][-1]["close"] == live.close
     assert emitted[0]["result"]["market_data"]["ohlcv"][-1]["close"] == live.close
     assert analyzed["execution_authorized"] is False
+
+
+def test_notification_failure_does_not_discard_durable_analysis(tmp_path):
+    owner = TenantContext("tenant-a", "alice")
+    sessions = Sessions()
+    sessions.add(owner, _id("2"), "broker_a")
+    now = datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc)
+    expected = datetime(2026, 11, 27, 12, 0, tzinfo=timezone.utc)
+
+    def broken_notification(_event):
+        raise RuntimeError("push provider temporarily unavailable")
+
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "notification-isolation.sqlite3",
+        sessions,
+        lambda _session, _context: Analyzer(expected.isoformat(), "AGUARDAR"),
+        on_result=broken_notification,
+    )
+    monitor.subscribe(owner, _id("2"), "EURUSD", "5m")
+
+    results = monitor.run_once(now=now)
+
+    assert len(results) == 1
+    saved = monitor.latest_results(owner, _id("2"))
+    assert len(saved) == 1
+    assert saved[0]["result"]["signal"] == "AGUARDAR"
+    watch = monitor.subscriptions(owner)[0]
+    assert watch["last_processed_candle"] == expected.isoformat()
+    assert watch["last_status"] == "ANALYZED"
+    assert watch["last_error"] is None
