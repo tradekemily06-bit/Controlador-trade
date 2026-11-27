@@ -158,3 +158,23 @@ def test_expired_outbox_owner_cannot_acknowledge_or_fail_reclaimed_event(tmp_pat
         new_owner.idempotency_key, new_owner.lease_token, now=19
     ) is True
     assert outbox.status_counts()["DELIVERED"] == 1
+
+
+
+def test_outbox_owner_cannot_acknowledge_after_lease_expiry_without_reclaim(tmp_path):
+    outbox = PersistentNotificationOutbox(tmp_path / "outbox.sqlite3")
+    outbox.enqueue("expired-only-event", {"title": "Alert"}, now=10)
+    owner = outbox.claim_due(now=11, lease_seconds=5)[0]
+
+    assert outbox.mark_delivered(
+        owner.idempotency_key, owner.lease_token, now=16
+    ) is False
+    with pytest.raises(ValueError):
+        outbox.mark_failed(
+            owner.idempotency_key, owner.lease_token,
+            "late provider failure", now=16,
+        )
+    assert outbox.status_counts()["IN_FLIGHT"] == 1
+    reclaimed = outbox.claim_due(now=17, lease_seconds=30)
+    assert len(reclaimed) == 1
+    assert reclaimed[0].lease_token != owner.lease_token
