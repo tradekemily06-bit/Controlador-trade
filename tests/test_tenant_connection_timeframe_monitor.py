@@ -1332,7 +1332,7 @@ def test_old_callback_cannot_reenter_after_unsubscribe_and_resubscribe_same_adap
         Registry(),
         lambda _session, _context: Analyzer(expected.isoformat(), "COMPRA"),
     )
-    connection = _id("g")
+    connection = _id("d")
     monitor.subscribe(owner, connection, "EURUSD", "M5")
     old_callback = adapter.callbacks[-1]
     assert monitor.unsubscribe(owner, connection, "EURUSD", "M5") is True
