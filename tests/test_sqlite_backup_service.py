@@ -172,3 +172,33 @@ class SQLiteBackupServiceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+def test_tenant_notification_outbox_is_included_in_tenant_state_backup(tmp_path):
+    from core.ecosystem_notifications import EcosystemNotification, NotificationKind, NotificationSeverity
+    from integration.tenant_notification_dispatcher import TenantNotificationDispatcher
+    from security.sqlite_tenant_storage import SQLiteTenantStorage
+    from security.tenant_context import TenantContext
+    from security.tenant_scoped_ecosystem_state import TenantScopedEcosystemState
+
+    runtime = tmp_path / "runtime"
+    backups = tmp_path / "backups"
+    runtime.mkdir()
+    storage = SQLiteTenantStorage(runtime / "tenant-state.sqlite3")
+    dispatcher = TenantNotificationDispatcher(TenantScopedEcosystemState(storage))
+    dispatcher.publish(
+        TenantContext("tenant-backup", "subject-backup"),
+        EcosystemNotification(
+            notification_id="backup-event", kind=NotificationKind.SYSTEM_UPDATE,
+            severity=NotificationSeverity.INFO, title="Backup", message="Preservar fila",
+        ),
+    )
+    result = SQLiteBackupService(runtime, backups).backup(["tenant_state"])
+    item = result["results"][0]
+    assert item["status"] == "BACKUP_CREATED"
+    with sqlite3.connect(backups / item["filename"]) as db:
+        row = db.execute(
+            "SELECT tenant_id, subject_id, notification_id, status FROM tenant_notification_outbox"
+        ).fetchone()
+    assert row == ("tenant-backup", "subject-backup", "backup-event", "PENDING")
