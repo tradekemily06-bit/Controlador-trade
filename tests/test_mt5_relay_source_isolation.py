@@ -27,7 +27,7 @@ def _payload(source_id: str, message_id: str, candle_at: datetime) -> dict:
 
 
 def test_relay_rejects_a_different_source_without_erasing_bound_source(tmp_path):
-    store = MT5RelayStore(tmp_path / "relay.sqlite3")
+    store = MT5RelayStore(tmp_path / "relay.sqlite3", expected_source_id="account-one")
     first_time = datetime.now(timezone.utc) - timedelta(minutes=10)
     second_time = datetime.now(timezone.utc) - timedelta(minutes=5)
 
@@ -58,3 +58,12 @@ def test_replayed_old_source_message_cannot_clear_current_source_candles(tmp_pat
     candles = store.fetch(SimpleNamespace(symbol="EURUSD", timeframe="M5", limit=20))
     assert len(candles) == 1
     assert candles[0].timestamp == second_time
+
+def test_relay_rejects_payload_source_not_matching_provisioned_source(tmp_path):
+    store = MT5RelayStore(tmp_path / "relay.sqlite3", expected_source_id="account-one")
+    payload = _payload("account-two", str(uuid4()), datetime.now(timezone.utc) - timedelta(minutes=5))
+
+    with pytest.raises(MT5RelayError, match="origem provisionada"):
+        store.ingest(payload)
+
+    assert store.status()["stored_candles"] == 0
