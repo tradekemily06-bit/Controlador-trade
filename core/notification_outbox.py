@@ -175,8 +175,9 @@ class PersistentNotificationOutbox:
                 UPDATE notification_outbox
                 SET status='DELIVERED', delivered_at=?, lease_until=NULL, lease_token=NULL, last_error=NULL
                 WHERE idempotency_key=? AND status='IN_FLIGHT' AND lease_token=?
+                  AND lease_until > ?
                 """,
-                (current, idempotency_key, lease_token),
+                (current, idempotency_key, lease_token, current),
             )
         return cursor.rowcount == 1
 
@@ -186,8 +187,9 @@ class PersistentNotificationOutbox:
         with self._lock, self._connect() as db:
             row = db.execute(
                 "SELECT attempts FROM notification_outbox "
-                "WHERE idempotency_key=? AND status='IN_FLIGHT' AND lease_token=?",
-                (idempotency_key, lease_token),
+                "WHERE idempotency_key=? AND status='IN_FLIGHT' AND lease_token=? "
+                "AND lease_until > ?",
+                (idempotency_key, lease_token, current),
             ).fetchone()
             if row is None:
                 raise ValueError("notification is not currently in flight")
@@ -207,8 +209,9 @@ class PersistentNotificationOutbox:
                 UPDATE notification_outbox
                 SET status=?, available_at=?, lease_until=NULL, lease_token=NULL, last_error=?
                 WHERE idempotency_key=? AND status='IN_FLIGHT' AND lease_token=?
+                  AND lease_until > ?
                 """,
-                (status, available_at, redact_delivery_error(error), idempotency_key, lease_token),
+                (status, available_at, redact_delivery_error(error), idempotency_key, lease_token, current),
             )
         return status
 
