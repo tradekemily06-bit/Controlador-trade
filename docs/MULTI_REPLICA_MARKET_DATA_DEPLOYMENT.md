@@ -8,6 +8,17 @@ The timeframe processing lease and notification outbox coordinate correctly only
 
 This is a single-host / single-runtime deployment boundary. Do not scale the application by starting multiple containers with separate local volumes and assume duplicate work or notification delivery is coordinated.
 
+The runtime now fails closed when `CONTROLADOR_EXPECTED_REPLICAS` is greater
+than `1`. The default is `1`; invalid or non-positive values also stop
+startup. This is an explicit operator declaration, not automatic replica
+discovery. The local readiness response exposes the enforced topology, while
+remote readiness reveals only the non-sensitive deployment boundary.
+
+This guard prevents a declared multi-replica deployment from silently running
+on local SQLite. It does not implement PostgreSQL or make the system
+multi-replica ready. Remove the guard only as part of a tested shared-storage
+migration that satisfies every release gate below.
+
 ## Required before multi-host / multi-replica production
 
 1. Move tenant metadata, watch subscriptions, results, processing leases and notification outbox to one shared transactional database (recommended: PostgreSQL).
