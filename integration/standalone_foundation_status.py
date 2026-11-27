@@ -59,6 +59,9 @@ def _integrity(path: Path, expected_schema: dict[str, set[str]]) -> tuple[str, d
         result = connection.execute("PRAGMA quick_check").fetchone()
         if not result or str(result[0]).lower() != "ok":
             return (str(result[0]) if result else "NO_RESULT"), {}
+        foreign_key_violations = connection.execute("PRAGMA foreign_key_check").fetchall()
+        if foreign_key_violations:
+            return f"FOREIGN_KEY_VIOLATIONS:{len(foreign_key_violations)}", {}
         missing: dict[str, list[str]] = {}
         for table, expected_columns in expected_schema.items():
             exists = connection.execute(
