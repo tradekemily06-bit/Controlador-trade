@@ -191,11 +191,6 @@ class StandaloneApplicationFactoryTests(unittest.TestCase):
             task="exportar relatório",
             context={"operation": "reports"},
         )
-        memory_report = app.handle(
-            area=ApplicationArea.ANALYSIS,
-            task="consultar relatório",
-            context={"operation": "memory"},
-        )
         self.assertEqual(report["result"]["reporting_status"], "DECISION_REPORT_READY")
         self.assertEqual(report["result"]["report"]["report_type"], "STANDALONE_DECISION_REPORT")
         memory_view = app.handle(
@@ -206,7 +201,7 @@ class StandaloneApplicationFactoryTests(unittest.TestCase):
         self.assertEqual(memory_view["result"]["records"], [])
         self.assertEqual(memory_view["result"]["statistics"]["total"], 0)
         self.assertFalse(report["execution_authorized"])
-        self.assertFalse(memory_report["execution_authorized"])
+        self.assertFalse(memory_view["execution_authorized"])
 
     def test_analysis_area_exposes_existing_statistics_and_news(self):
         app = build_standalone_application(ecosystem_service=FakeService())
