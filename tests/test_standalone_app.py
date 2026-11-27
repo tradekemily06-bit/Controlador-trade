@@ -191,7 +191,7 @@ class StandaloneWSGITests(unittest.TestCase):
             )
         self.assertEqual(status, "200 OK")
         self.assertEqual(body["conversation_scope"], "TENANT_AND_SUBJECT")
-        self.assertEqual(body["remote_chat"], "BLOCKED_FISCAL_TENANT_ISOLATION_REQUIRED")
+        self.assertEqual(body["remote_chat"], "TENANT_SCOPED_FISCAL_CONTEXT")
         self.assertTrue(body["tenant_context_available"])
         self.assertFalse(body["execution_authorized"])
 
