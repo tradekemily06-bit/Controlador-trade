@@ -105,6 +105,101 @@ def test_selected_demo_account_is_verified_and_bound_to_its_tenant_session(tmp_p
     assert transports[0].calls[:3] == ["connect", "application_auth", ("account_auth", 111)]
 
 
+def test_saved_ctrader_demo_account_rebinds_after_process_restart(tmp_path):
+    owner = TenantContext("tenant-a", "alice")
+    database = tmp_path / "ctrader-restart.sqlite3"
+    first_connections = TenantProviderConnectionRegistry(
+        SQLiteTenantStorage(database)
+    )
+    pending = first_connections.record_pending_connection(
+        owner, provider_id="ctrader_open_api", account_alias="cTrader DEMO",
+        account_reference="pending:opaque-ref", capabilities=["candles:read"],
+    )
+    first_sessions = TenantMarketDataSessionRegistry(first_connections)
+    first_transports = []
+
+    def first_factory(access_token):
+        transport = FakeTransport()
+        first_transports.append(transport)
+        return transport
+
+    first_service = TenantCTraderAccountService(
+        first_connections, first_sessions, TokenVault(),
+        transport_factory=first_factory,
+    )
+    connected = first_service.connect_demo(
+        owner, connection_id=pending["connection_id"], account_id=111
+    )
+    assert connected["status"] == "CONNECTED"
+
+    # A new registry/session/service represents a new process. The saved
+    # account ID and OAuth token remain, but the adapter object does not.
+    second_connections = TenantProviderConnectionRegistry(
+        SQLiteTenantStorage(database)
+    )
+    second_sessions = TenantMarketDataSessionRegistry(second_connections)
+    second_transports = []
+
+    def second_factory(access_token):
+        transport = FakeTransport()
+        second_transports.append(transport)
+        return transport
+
+    restarted = TenantCTraderAccountService(
+        second_connections, second_sessions, TokenVault(),
+        transport_factory=second_factory,
+    )
+    assert second_sessions.get(owner, connection_id=pending["connection_id"]) is None
+
+    recovered = restarted.reconnect_saved(
+        owner, connection_id=pending["connection_id"]
+    )
+
+    assert recovered["status"] == "RECONNECTED"
+    assert recovered["connection_id"] == connected["connection_id"]
+    assert recovered["account_mode"] == "DEMO"
+    assert recovered["execution_authorized"] is False
+    assert second_sessions.get(owner, connection_id=pending["connection_id"]) is not None
+    assert second_transports[0].calls[:3] == [
+        "connect", "application_auth", ("account_auth", 111)
+    ]
+
+
+def test_ctrader_startup_recovery_isolates_failed_demo_account(tmp_path):
+    owner = TenantContext("tenant-a", "alice")
+    database = tmp_path / "ctrader-recovery-batch.sqlite3"
+    connections = TenantProviderConnectionRegistry(SQLiteTenantStorage(database))
+    sessions = TenantMarketDataSessionRegistry(connections)
+    pending = connections.record_pending_connection(
+        owner, provider_id="ctrader_open_api", account_alias="cTrader DEMO",
+        account_reference="pending:opaque-ref", capabilities=["candles:read"],
+    )
+    first_service = TenantCTraderAccountService(
+        connections, sessions, TokenVault(),
+        transport_factory=lambda _token: FakeTransport(),
+    )
+    first_service.connect_demo(
+        owner, connection_id=pending["connection_id"], account_id=111
+    )
+
+    second_connections = TenantProviderConnectionRegistry(SQLiteTenantStorage(database))
+    second_sessions = TenantMarketDataSessionRegistry(second_connections)
+    restarted = TenantCTraderAccountService(
+        second_connections, second_sessions, TokenVault(),
+        transport_factory=lambda _token: FakeTransport(is_live=True),
+    )
+
+    outcomes = restarted.reconnect_available(owner)
+    assert outcomes == [{
+        "connection_id": pending["connection_id"],
+        "provider_id": "ctrader_open_api",
+        "status": "RECONNECT_FAILED",
+        "error_class": "PermissionError",
+        "execution_authorized": False,
+    }]
+    assert second_sessions.get(owner, connection_id=pending["connection_id"]) is None
+
+
 def test_real_account_selection_is_rejected_and_pending_connection_is_preserved(tmp_path):
     owner, connections, sessions, pending, transports, service = setup(
         tmp_path, selected_account=222, is_live=True
