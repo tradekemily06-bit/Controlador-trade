@@ -1689,11 +1689,17 @@ class StandaloneWSGIApplication:
                         "outbox": self.runtime.tenant_notification_dispatcher.outbox.status_counts(tenant_context),
                     }
                 )
-                tenant_outbox = self.runtime.tenant_notification_dispatcher.outbox
+                tenant_dispatcher = getattr(self.runtime, "tenant_notification_dispatcher", None)
+                tenant_outbox_status = (
+                    tenant_dispatcher.outbox.status_counts(tenant_context)
+                    if tenant_dispatcher is not None else {
+                        "PENDING": 0, "IN_FLIGHT": 0, "DELIVERED": 0, "DEAD": 0,
+                    }
+                )
                 summary = {
                     "total": len(tenant_items),
                     "scope": "TENANT_SCOPED",
-                    "tenant_outbox": tenant_outbox.status_counts(tenant_context),
+                    "tenant_outbox": tenant_outbox_status,
                     "tenant_delivery_worker": tenant_delivery_status,
                     "tenant_external_delivery": (
                         "WORKER_DEGRADED" if tenant_delivery_status.get("state") == "DEGRADED"
