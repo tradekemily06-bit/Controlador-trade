@@ -20,6 +20,25 @@ probability and must never be copied into the probability field.
   calibration error are diagnostics. They do not automatically approve a model
   or publish a win probability.
 
+## Separate signal-direction evidence pipeline
+
+A distinct pipeline now records actionable signal evidence and checks the
+immediately following closed candle. It is implemented by
+`analysis/tenant_signal_evidence_store.py`,
+`analysis/tenant_signal_outcome_store.py` and
+`analysis/signal_outcome_resolver.py`, and is wired into the standalone
+analyzer for explicitly allowlisted MT5 relay/DEMO and cTrader Open API
+sessions. Each record is isolated by tenant, subject, provider connection,
+symbol and canonical timeframe. Only COMPRA/VENDA signals receive directional
+outcomes; AGUARDAR is not a directional label. A doji remains unresolved.
+
+This measures only whether the next candle moved in the predicted direction.
+It does **not** establish net profitability, an executable entry/exit, or a
+probability of profit. The probability-forecast audit store below remains a
+separate facility: no genuine probability-producing model currently feeds it,
+so the public probability must remain `NOT_CALIBRATED`. Do not copy technical
+evidence scores or directional hit rates into the probability field.
+
 ## Important limitations
 
 This store currently uses local SQLite. It is a single-host development
