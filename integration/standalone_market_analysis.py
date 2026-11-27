@@ -116,7 +116,9 @@ class StandaloneMarketAnalysisService:
             live_candle=live_candle,
         )
         interval = int(get_timeframe_interval(timeframe).total_seconds())
-        max_age = max(300, interval * 2)
+        # Keep the tolerance proportional to the selected timeframe.
+        # A five-minute floor made 1m feeds appear current for several missed bars.
+        max_age = max(30, interval * 2)
         integrity = MarketDataRuntimeIntegrity(
             integrity=MarketDataIntegrity(max_age_seconds=max_age)
         ).assess(
