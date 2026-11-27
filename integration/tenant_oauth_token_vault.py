@@ -206,6 +206,49 @@ class TenantOAuthTokenVault:
             "expires_at": row[3],
         }
 
+    def list_refresh_owners(self, *, limit: int = 100) -> list[TenantContext]:
+        """Rehydrate trusted owners from persisted, non-revoked cTrader token rows.
+
+        Tenant identity values originate from rows written only by authenticated
+        token-vault operations; every owner is revalidated against the tenant
+        connection registry before being returned to internal runtime code.
+        """
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
+            raise ValueError("limit must be between 1 and 1000")
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT DISTINCT tenant_id,subject_id FROM tenant_oauth_tokens "
+                "WHERE provider_id='ctrader_open_api' AND revoked_at IS NULL "
+                "ORDER BY tenant_id,subject_id LIMIT ?",
+                (limit + 1,),
+            ).fetchall()
+        if len(rows) > limit:
+            raise RuntimeError("OAuth refresh owner capacity exceeded; refusing partial startup")
+        owners: list[TenantContext] = []
+        for tenant_id, subject_id in rows:
+            owner = TenantContext(tenant_id=tenant_id, subject_id=subject_id)
+            accounts = self.connections.list_connections(owner)
+            if any(
+                item.get("provider_id") == "ctrader_open_api"
+                and item.get("status") in {"PENDING", "CONNECTED"}
+                and any(
+                    row[0] == item.get("connection_id")
+                    for row in self._owned_token_connections(owner)
+                )
+                for item in accounts
+            ):
+                owners.append(owner)
+        return owners
+
+    def _owned_token_connections(self, owner: TenantContext) -> list[tuple[str]]:
+        with self._connect() as db:
+            return db.execute(
+                "SELECT connection_id FROM tenant_oauth_tokens "
+                "WHERE tenant_id=? AND subject_id=? AND provider_id='ctrader_open_api' "
+                "AND revoked_at IS NULL",
+                (owner.tenant_id, owner.subject_id),
+            ).fetchall()
+
     def refresh_candidates(
         self, context: TenantContext, *, within_seconds: int = 900, limit: int = 100
     ) -> list[dict[str, Any]]:
