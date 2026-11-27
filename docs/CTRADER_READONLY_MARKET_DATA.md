@@ -60,6 +60,15 @@ a Windows runtime without a timezone database may expose the raw metadata as
 `NOT_VALIDATED_BY_RUNTIME`, but that status is never sufficient to calculate
 a session boundary.
 
+The adapter also exposes
+`get_session_calendar_reconciliation_report(symbol, timeframe, lookback=120)`
+for D1/W1. It compares observed historical candle-open patterns (UTC and,
+when the runtime can resolve the broker timezone, provider-local) with the
+broker's raw session metadata. The report is explicitly
+`OBSERVATIONS_ONLY_NOT_VALIDATED`; it never authorizes a signal, validates a
+calendar, or enables execution. It is evidence for a later broker-specific
+review, not an automatic approval.
+
 This is a necessary input, not yet a verified D1/W1 candle calendar. The
 adapter deliberately does **not** implement
 `expected_last_closed_candle` from these fields alone. Before enabling it,
