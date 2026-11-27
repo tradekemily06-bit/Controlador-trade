@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import sqlite3
 from datetime import datetime, timezone
@@ -56,6 +57,19 @@ class MT5RelayStore:
                 )
             """)
 
+    @staticmethod
+    def _finite_number(value: Any) -> float:
+        """Accept JSON numeric values only; reject bools, strings and non-finite magnitudes."""
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("numeric candle field required")
+        try:
+            number = float(value)
+            if not math.isfinite(number):
+                raise ValueError("finite candle field required")
+        except (OverflowError, ValueError) as exc:
+            raise ValueError("finite candle field required") from exc
+        return number
+
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.database_path, timeout=10)
         db.row_factory = sqlite3.Row
@@ -108,11 +122,11 @@ class MT5RelayStore:
                     raise ValueError("timestamp sem fuso")
                 candle = Candle(
                     timestamp=timestamp.astimezone(timezone.utc),
-                    open=float(item["open"]),
-                    high=float(item["high"]),
-                    low=float(item["low"]),
-                    close=float(item["close"]),
-                    volume=float(item.get("volume", 0)),
+                    open=self._finite_number(item["open"]),
+                    high=self._finite_number(item["high"]),
+                    low=self._finite_number(item["low"]),
+                    close=self._finite_number(item["close"]),
+                    volume=self._finite_number(item.get("volume", 0)),
                 )
             except (KeyError, TypeError, ValueError, OverflowError) as exc:
                 raise MT5RelayError("formato de candle inválido") from exc
