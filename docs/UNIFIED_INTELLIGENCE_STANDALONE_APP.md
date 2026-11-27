@@ -125,6 +125,12 @@ API:
 - This is read-only news ingestion. It does not authorize trading, execute actions, or turn unverified news into a signal by itself.
 
 
+## Remote identity and network exposure
+
+`TenantContext` now rejects missing, non-text, control-character and overlong tenant/subject identifiers before they reach tenant-scoped storage. This validation is input hygiene, not authentication: remote identity must still be injected by trusted server-side middleware, and a shared bearer token remains only an access gate.
+
+The default server bind is loopback (`127.0.0.1`). A public bind such as `0.0.0.0` or a non-loopback address is now refused at startup unless all three settings are present: `CONTROLADOR_REMOTE_ACCESS_REQUIRED=true`, `CONTROLADOR_STANDALONE_ACCESS_TOKEN` and `CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE=true`. This guard prevents accidentally exposing the API without the configured remote authentication boundary. It does not itself install an identity provider or validate a production deployment; proxy configuration, TLS, middleware provenance and end-to-end authorization still require deployment testing.
+
 ## Scheduled local backups and isolated restore verification
 
 The runtime supports an opt-in periodic SQLite backup worker. It starts only when all of the following server-side settings are explicitly configured:
