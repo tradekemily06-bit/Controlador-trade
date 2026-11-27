@@ -13,6 +13,7 @@ from typing import Any
 
 from data.timeframes import normalize_timeframe
 from security.tenant_context import TenantContext
+from security.tenant_storage import require_tenant_context
 
 
 _ALLOWED_PROVENANCE = {"REAL_MARKET_DATA", "VERIFIED_REAL_EXECUTION"}
@@ -28,12 +29,8 @@ def _utc(value: str) -> datetime:
 
 
 def _owner(context: TenantContext) -> TenantContext:
-    if not isinstance(context, TenantContext):
-        raise PermissionError("trusted tenant context is required")
-    for value in (context.tenant_id, context.subject_id):
-        if not isinstance(value, str) or not value.strip():
-            raise PermissionError("trusted tenant context is invalid")
-    return context
+    return require_tenant_context(context)
+
 
 
 class TenantForecastAuditStore:
