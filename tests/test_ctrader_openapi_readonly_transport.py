@@ -347,3 +347,22 @@ def test_list_accounts_rejects_unconfirmed_account_mode():
     ])
     with pytest.raises(PermissionError, match="sem confirmação"):
         transport.list_accounts()
+
+
+def test_list_accounts_rejects_default_false_without_explicit_mode_presence():
+    from types import SimpleNamespace
+
+    class Request:
+        def __init__(self): self.accessToken = None
+    class UnsetMode:
+        ctidTraderAccountId = 123
+        isLive = False
+        def HasField(self, name):
+            return False
+
+    transport = object.__new__(CTraderOpenApiReadOnlyTransport)
+    transport._messages = {"account_list": Request}
+    transport._access_token = "server-side-token"
+    transport._send = lambda _request: SimpleNamespace(ctidTraderAccount=[UnsetMode()])
+    with pytest.raises(PermissionError, match="sem confirmação"):
+        transport.list_accounts()
