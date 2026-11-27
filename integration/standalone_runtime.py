@@ -57,6 +57,22 @@ from integration.tenant_notification_outbox_worker import TenantNotificationOutb
 from integration.rss_news_provider import RSSNewsProvider
 
 
+_REAL_MARKET_DATA_PROVIDER_IDS = frozenset({
+    "mt5_relay",
+    "mt5_demo",
+    "ctrader_open_api",
+})
+
+
+def _market_data_provenance_for_provider(provider_id: str | None) -> str | None:
+    """Only explicitly verified read-only market-data integrations enter audit."""
+    return (
+        "REAL_MARKET_DATA"
+        if isinstance(provider_id, str) and provider_id.strip() in _REAL_MARKET_DATA_PROVIDER_IDS
+        else None
+    )
+
+
 # Failed startup workers may be blocked in an external provider/sink. Retain
 # their references and the process lock until process exit rather than allowing
 # a second runtime to open the same SQLite files concurrently.
@@ -468,11 +484,7 @@ class StandaloneRuntime:
                     ),
                     signal_evidence_sink=self.signal_evidence_store.record_signal,
                     signal_outcome_sink=self.signal_outcome_store.resolve_pending_for_candle,
-                    market_data_provenance=(
-                        "REAL_MARKET_DATA"
-                        if selected.provider_id in {"mt5_relay", "mt5_demo", "ctrader"}
-                        else None
-                    ),
+                    market_data_provenance=_market_data_provenance_for_provider(selected.provider_id),
                     signal_source_id=f"{selected.provider_id}:{selected.source}",
                 )
 
@@ -522,11 +534,7 @@ class StandaloneRuntime:
                     ),
                     signal_evidence_sink=self.signal_evidence_store.record_signal,
                     signal_outcome_sink=self.signal_outcome_store.resolve_pending_for_candle,
-                    market_data_provenance=(
-                        "REAL_MARKET_DATA"
-                        if session.provider_id in {"mt5_relay", "mt5_demo", "ctrader"}
-                        else None
-                    ),
+                    market_data_provenance=_market_data_provenance_for_provider(session.provider_id),
                     signal_source_id=session.connection_id,
                 )
 
