@@ -55,6 +55,12 @@ class StandaloneMarketAnalysisService:
             senior_context_builder=self._build_senior_context,
         )
 
+    def _decision_record_id(self, symbol: str, timeframe: str, candle_at: str) -> str:
+        # Source/account identity belongs in the deduplication key: two
+        # different broker accounts can legitimately analyze the same candle.
+        identity = f"{self.source}|{symbol}|{timeframe}|{candle_at}"
+        return "market-" + sha256(identity.encode("utf-8")).hexdigest()[:32]
+
     def _build_senior_context(self, candles, operational_state):
         if len(candles) < 3:
             return None
@@ -256,9 +262,7 @@ class StandaloneMarketAnalysisService:
         response["decision_memory"] = {"status": "NOT_CONFIGURED"}
         if self.decision_sink is not None:
             candle_at = result.market_data.candles[-1].timestamp.isoformat()
-            stable_id = "market-" + sha256(
-                f"{symbol}|{timeframe}|{candle_at}".encode("utf-8")
-            ).hexdigest()[:32]
+            stable_id = self._decision_record_id(symbol, timeframe, candle_at)
             decision_record = DecisionRecord(
                 decision_id=stable_id,
                 created_at=candle_at,
