@@ -82,6 +82,8 @@ class CTraderReadOnlyMarketDataAdapter:
         capabilities = ["candles:read", "account-mode:demo"]
         if callable(getattr(self.transport, "subscribe_spots", None)):
             capabilities.append("quotes:stream")
+        if callable(getattr(self.transport, "subscribe_live_trendbars", None)):
+            capabilities.append("candles:stream")
         return {
             "provider_id": "ctrader_open_api",
             "account_reference": str(self.account_id),
@@ -160,6 +162,86 @@ class CTraderReadOnlyMarketDataAdapter:
             raise RuntimeError("transport cTrader não oferece cancelamento de streaming spot")
         unsubscribe(self.account_id, symbol_id)
 
+    def subscribe_live_candles(self, symbol: str, timeframe: str, callback) -> None:
+        """Subscribe to Spotware live trendbars, which carry the latest closed bar."""
+        if not self._authenticated:
+            raise RuntimeError("cTrader DEMO ainda não concluiu o handshake")
+        if not callable(callback):
+            raise ValueError("callback de candle deve ser executável")
+        clean_symbol = symbol.strip()
+        clean_timeframe = timeframe.strip().lower()
+        try:
+            period = _CTRADER_PERIODS[clean_timeframe]
+        except KeyError as exc:
+            raise ValueError(f"timeframe {timeframe} não suportado pelo cTrader") from exc
+        symbol_id, digits = self._resolve_symbol(clean_symbol)
+        subscribe = getattr(self.transport, "subscribe_live_trendbars", None)
+        if not callable(subscribe):
+            raise RuntimeError("transport cTrader não oferece streaming de candles")
+        def normalized(event):
+            if _field(event, "symbol_id") != symbol_id:
+                return
+            if str(_field(event, "period") or "").upper() != period:
+                return
+            bar = _field(event, "trendbar")
+            if bar is None:
+                return
+            low_raw = _field(bar, "low")
+            delta_open = _field(bar, "delta_open")
+            if delta_open is None:
+                delta_open = _field(bar, "deltaOpen")
+            delta_high = _field(bar, "delta_high")
+            if delta_high is None:
+                delta_high = _field(bar, "deltaHigh")
+            delta_close = _field(bar, "delta_close")
+            if delta_close is None:
+                delta_close = _field(bar, "deltaClose")
+            minute_stamp = _field(bar, "utc_timestamp_in_minutes")
+            if minute_stamp is None:
+                minute_stamp = _field(bar, "utcTimestampInMinutes")
+            volume = _field(bar, "volume")
+            try:
+                candle = Candle(
+                    timestamp=datetime.fromtimestamp(
+                        int(minute_stamp) * 60, tz=timezone.utc
+                    ),
+                    open=round((int(low_raw) + int(delta_open)) / 100000.0, digits),
+                    high=round((int(low_raw) + int(delta_high)) / 100000.0, digits),
+                    low=round(int(low_raw) / 100000.0, digits),
+                    close=round((int(low_raw) + int(delta_close)) / 100000.0, digits),
+                    volume=float(volume),
+                )
+            except (TypeError, ValueError, OverflowError, OSError):
+                return
+            if not candle.is_valid():
+                return
+            callback({
+                "provider_id": "ctrader_open_api",
+                "account_id": self.account_id,
+                "symbol": clean_symbol,
+                "timeframe": clean_timeframe,
+                "candle": candle,
+                "closed": True,
+                "received_at": datetime.now(timezone.utc).isoformat(),
+                "read_only": True,
+                "execution_authorized": False,
+            })
+        subscribe(self.account_id, symbol_id, period, normalized)
+
+    def unsubscribe_live_candles(self, symbol: str, timeframe: str) -> None:
+        if not self._authenticated:
+            raise RuntimeError("cTrader DEMO ainda não concluiu o handshake")
+        clean_timeframe = timeframe.strip().lower()
+        try:
+            period = _CTRADER_PERIODS[clean_timeframe]
+        except KeyError as exc:
+            raise ValueError(f"timeframe {timeframe} não suportado pelo cTrader") from exc
+        symbol_id, _digits = self._resolve_symbol(symbol.strip())
+        unsubscribe = getattr(self.transport, "unsubscribe_live_trendbars", None)
+        if not callable(unsubscribe):
+            raise RuntimeError("transport cTrader não oferece cancelamento de candles")
+        unsubscribe(self.account_id, symbol_id, period)
+
     def fetch(self, request: MarketDataRequest) -> tuple[Candle, ...]:
         if not self._authenticated:
             raise RuntimeError("cTrader DEMO ainda não concluiu o handshake")
@@ -232,6 +314,7 @@ class CTraderReadOnlyMarketDataAdapter:
             "account_mode": "DEMO" if self._authenticated else None,
             "last_seen": reported.get("last_seen"),
             "active_spot_symbols": reported.get("active_spot_symbols", 0),
+            "active_trendbar_streams": reported.get("active_trendbar_streams", 0),
             "spot_event_queue_depth": reported.get("spot_event_queue_depth", 0),
             "spot_event_overflow_count": reported.get("spot_event_overflow_count", 0),
             "source_id": f"ctrader:{self.account_id}",
