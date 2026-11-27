@@ -51,6 +51,15 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
         self.assertEqual(result["required_stores"], "HEALTHY")
         self.assertEqual(result["multi_tenant_isolation"], "NOT_IMPLEMENTED")
         self.assertEqual(result["backup_restore"], "NOT_CONFIGURED")
+        self.assertEqual(result["deployment_topology"], "SINGLE_HOST_ONLY")
+        self.assertEqual(
+            result["multi_replica_readiness"],
+            "BLOCKED_SHARED_TRANSACTIONAL_DATABASE_REQUIRED",
+        )
+        self.assertIn(
+            "DURABLE_SHARED_OAUTH_STORAGE_WITH_KMS",
+            result["production_release_blockers"],
+        )
         self.assertFalse(result["execution_authorized"])
 
     def test_missing_fiscal_pending_queue_degrades_fiscal_store(self):
