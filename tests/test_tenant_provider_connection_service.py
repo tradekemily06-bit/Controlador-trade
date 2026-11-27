@@ -100,7 +100,7 @@ def test_connection_service_does_not_resolve_credentials_for_other_tenant(tmp_pa
     vault = Vault()
     _, sessions, service = _service(tmp_path, vault, lambda credentials: Adapter(credentials))
     other = TenantContext("tenant-b", "bob")
-    with pytest.raises(PermissionError, match="not resolved"):
+    with pytest.raises(PermissionError, match="não resolvida"):
         service.connect(
             other, provider_id="broker_a", account_alias="Conta",
             credential_ref="vault://tenant-a/broker-a",
