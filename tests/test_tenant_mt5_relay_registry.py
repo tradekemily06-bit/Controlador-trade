@@ -117,3 +117,24 @@ def test_relay_connection_binds_first_terminal_reference_and_rejects_account_swi
     with pytest.raises(PermissionError, match="não corresponde à conta vinculada"):
         registry.ingest(owner, account["connection_id"], second)
     assert registry.status(owner, account["connection_id"])["stored_candles"] == 1
+
+
+def test_relay_status_separates_recent_heartbeat_from_stale_market_series(tmp_path):
+    from integration.mt5_relay_store import MT5RelayStore
+
+    store = MT5RelayStore(tmp_path / "freshness.sqlite3", "server-source")
+    payload = _payload("server-source")
+    # The relay delivery is recent, but its actual market candle is old.
+    payload["candles"][0]["timestamp"] = (
+        datetime.now(timezone.utc) - timedelta(hours=2)
+    ).isoformat()
+    store.ingest(payload)
+
+    status = store.status()
+    assert status["connected"] is True
+    assert status["account_mode"] == "DEMO"
+    assert len(status["series"]) == 1
+    assert status["series"][0]["symbol"] == "EURUSD"
+    assert status["series"][0]["timeframe"] == "M5"
+    assert status["series"][0]["data_fresh"] is False
+    assert status["series"][0]["candle_age_seconds"] >= 7200
