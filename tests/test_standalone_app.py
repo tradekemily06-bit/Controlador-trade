@@ -1537,6 +1537,71 @@ class StandaloneWSGITests(unittest.TestCase):
         )
         self.assertFalse(body["execution_authorized"])
 
+    def test_provider_reconnect_api_requires_trusted_owner_and_revalidates_saved_account(self):
+        class ConnectionService:
+            def __init__(self):
+                self.calls = []
+
+            def reconnect_saved(self, context, *, connection_id):
+                self.calls.append((context, connection_id))
+                return {
+                    "connection_id": connection_id,
+                    "provider_id": "broker_a",
+                    "status": "CONNECTED",
+                    "adapter_status": "ADAPTER_BOUND",
+                    "read_only": True,
+                    "execution_authorized": False,
+                }
+
+        runtime = FakeRuntime()
+        service = ConnectionService()
+        runtime.tenant_provider_connection_service = service
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, f"/api/market-data/connections/{'a' * 32}/reconnect",
+                method="POST",
+                remote_addr="203.0.113.22",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["status"], "CONNECTED")
+        self.assertEqual(body["adapter_status"], "ADAPTER_BOUND")
+        self.assertEqual(service.calls[0][0].tenant_id, "tenant-a")
+        self.assertEqual(service.calls[0][0].subject_id, "alice")
+        self.assertEqual(service.calls[0][1], "a" * 32)
+        self.assertFalse(body["execution_authorized"])
+
+    def test_provider_reconnect_api_rejects_invalid_connection_id(self):
+        class ConnectionService:
+            def reconnect_saved(self, *args, **kwargs):
+                raise AssertionError("invalid connection IDs must be rejected first")
+
+        runtime = FakeRuntime()
+        runtime.tenant_provider_connection_service = ConnectionService()
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/market-data/connections/not-an-id/reconnect",
+                method="POST",
+                remote_addr="203.0.113.23",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "400 Bad Request")
+        self.assertFalse(body["execution_authorized"])
+
     def test_provider_connect_api_rejects_raw_credentials_in_request_body(self):
         class ConnectionService:
             def connect(self, *args, **kwargs):
