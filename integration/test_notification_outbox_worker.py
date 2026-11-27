@@ -65,7 +65,7 @@ def test_worker_dispatch_persists_redacted_provider_error(tmp_path):
     )
     worker.start()
     deadline = time.monotonic() + 2
-    while time.monotonic() < deadline and outbox.status_counts().get("DEAD_LETTER", 0) == 0:
+    while time.monotonic() < deadline and outbox.status_counts().get("DEAD", 0) == 0:
         time.sleep(0.01)
     worker.stop()
 
