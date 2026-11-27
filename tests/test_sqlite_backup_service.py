@@ -134,5 +134,45 @@ class SQLiteBackupServiceTests(unittest.TestCase):
                 SQLiteBackupService(runtime, runtime / "backups")
 
 
+    def test_restore_verification_rejects_corrupt_backup_and_cleans_temporary_copy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "runtime"
+            backups = root / "backups"
+            runtime.mkdir()
+            backups.mkdir()
+            filename = "decision_memory-20261127T010203000000Z.sqlite3"
+            (backups / filename).write_bytes(b"not a sqlite database")
+            result = SQLiteBackupService(runtime, backups).verify_restore(
+                "decision_memory", filename
+            )
+            self.assertEqual(result["status"], "RESTORE_VALIDATION_FAILED")
+            self.assertEqual(result["error_class"], "DatabaseError")
+            self.assertFalse(result["live_database_modified"])
+            self.assertFalse(list(backups.glob(".decision_memory-restore-test-*")))
+
+    def test_restore_verification_rejects_symlink_backup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "runtime"
+            backups = root / "backups"
+            runtime.mkdir()
+            backups.mkdir()
+            outside = root / "outside.sqlite3"
+            with sqlite3.connect(outside) as db:
+                db.execute("CREATE TABLE sample (id INTEGER)")
+            filename = "decision_memory-20261127T010203000000Z.sqlite3"
+            link = backups / filename
+            try:
+                link.symlink_to(outside)
+            except (OSError, NotImplementedError):
+                self.skipTest("symlinks unavailable in this environment")
+            with self.assertRaisesRegex(ValueError, "existing regular file"):
+                SQLiteBackupService(runtime, backups).verify_restore(
+                    "decision_memory", filename
+                )
+
+
+
 if __name__ == "__main__":
     unittest.main()
