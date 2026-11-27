@@ -6,9 +6,10 @@ from security.tenant_context import TenantContext
 
 
 class Session:
-    def __init__(self, provider_id, source):
+    def __init__(self, provider_id, source, adapter=None):
         self.provider_id = provider_id
         self.source = source
+        self.adapter = adapter
 
 
 class Sessions:
@@ -161,3 +162,75 @@ def test_slow_account_does_not_serialize_other_account_cycles(tmp_path):
     monitor.subscribe(owner, _id("b"), "EURUSD", "M5")
     results = monitor.run_once(now=now)
     assert len(results) == 2
+
+
+def test_live_closed_candle_stream_gates_account_timeframe_analysis(tmp_path):
+    from types import SimpleNamespace
+
+    owner = TenantContext("tenant-a", "alice")
+    now = datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc)
+    expected = datetime(2026, 11, 27, 12, 0, tzinfo=timezone.utc)
+
+    class StreamAdapter:
+        account_id = 123
+        def __init__(self):
+            self.callback = None
+        def subscribe_live_candles(self, symbol, timeframe, callback):
+            self.callback = callback
+        def unsubscribe_live_candles(self, symbol, timeframe):
+            self.callback = None
+
+    adapter = StreamAdapter()
+    session = Session("ctrader_open_api", "ctrader:123", adapter)
+    class Registry:
+        def get(self, context, *, connection_id):
+            return session if context == owner else None
+
+    analyzer = Analyzer(expected.isoformat(), "AGUARDAR")
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "live-stream.sqlite3", Registry(),
+        lambda _session, _context: analyzer,
+    )
+    monitor.subscribe(owner, _id("c"), "EURUSD", "M5")
+    assert monitor.run_once(now=now) == []
+    assert analyzer.calls == 0
+    assert monitor.subscriptions(owner)[0]["last_status"] == "WAITING_FOR_LIVE_CLOSED_CANDLE"
+
+    candle = SimpleNamespace(
+        timestamp=expected,
+        is_valid=lambda: True,
+    )
+    adapter.callback({
+        "account_id": 123, "symbol": "EURUSD", "timeframe": "5m",
+        "candle": candle, "closed": True,
+    })
+    results = monitor.run_once(now=now)
+    assert len(results) == 1
+    assert analyzer.calls == 1
+    assert results[0]["candle_at"] == expected.isoformat()
+
+
+def test_live_stream_rejects_wrong_account_and_unclosed_candles(tmp_path):
+    from types import SimpleNamespace
+
+    owner = TenantContext("tenant-a", "alice")
+    now = datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc)
+    expected = datetime(2026, 11, 27, 12, 0, tzinfo=timezone.utc)
+    class StreamAdapter:
+        account_id = 456
+        def subscribe_live_candles(self, symbol, timeframe, callback): self.callback = callback
+    adapter = StreamAdapter()
+    session = Session("ctrader_open_api", "ctrader:456", adapter)
+    class Registry:
+        def get(self, context, *, connection_id): return session
+    analyzer = Analyzer(expected.isoformat(), "AGUARDAR")
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "live-stream-isolation.sqlite3", Registry(),
+        lambda _session, _context: analyzer,
+    )
+    monitor.subscribe(owner, _id("d"), "EURUSD", "M5")
+    candle = SimpleNamespace(timestamp=expected, is_valid=lambda: True)
+    adapter.callback({"account_id": 999, "symbol": "EURUSD", "timeframe": "5m", "candle": candle, "closed": True})
+    adapter.callback({"account_id": 456, "symbol": "EURUSD", "timeframe": "5m", "candle": candle, "closed": False})
+    assert monitor.run_once(now=now) == []
+    assert analyzer.calls == 0
