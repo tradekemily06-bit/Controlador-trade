@@ -62,6 +62,7 @@ class TenantConnectionTimeframeMonitor:
         # uses them as a closed-candle readiness gate before analysis.
         self._live_streams: set[tuple[str, str, str, str, str]] = set()
         self._live_candles: dict[tuple[str, str, str, str, str], Any] = {}
+        self._live_stream_retry_at: dict[tuple[str, str, str, str, str], float] = {}
         self._initialize()
 
     def _connect(self):
@@ -134,6 +135,8 @@ class TenantConnectionTimeframeMonitor:
         with self._lock:
             if key in self._live_streams:
                 return True
+            if self._live_stream_retry_at.get(key, 0.0) > time.monotonic():
+                return False
         def receive(event: Any) -> None:
             if not isinstance(event, dict) or event.get("closed") is not True:
                 return
@@ -160,8 +163,11 @@ class TenantConnectionTimeframeMonitor:
         try:
             subscribe(symbol, timeframe, receive)
         except Exception:
+            with self._lock:
+                self._live_stream_retry_at[key] = time.monotonic() + 10.0
             return False
         with self._lock:
+            self._live_stream_retry_at.pop(key, None)
             self._live_streams.add(key)
         return True
 
@@ -219,6 +225,7 @@ class TenantConnectionTimeframeMonitor:
             with self._lock:
                 self._live_streams.discard(key)
                 self._live_candles.pop(key, None)
+                self._live_stream_retry_at.pop(key, None)
             session = self.session_registry.get(owner, connection_id=connection)
             adapter = getattr(session, "adapter", None) if session else None
             unsubscribe = getattr(adapter, "unsubscribe_live_candles", None)
@@ -310,6 +317,9 @@ class TenantConnectionTimeframeMonitor:
             if session is None:
                 raise RuntimeError("adapter da conta desconectado ou não vinculado")
             stream_key = (owner.tenant_id, owner.subject_id, connection, symbol, timeframe)
+            # Rebind persisted watches after process restart or a transient adapter
+            # rebind; retry is throttled so a broken provider is not hammered.
+            self._ensure_live_stream(owner, session, connection, symbol, timeframe)
             with self._lock:
                 stream_bound = stream_key in self._live_streams
                 stream_candle = self._live_candles.get(stream_key)
