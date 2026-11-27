@@ -441,11 +441,11 @@ class TenantConnectionTimeframeMonitor:
         self, context: TenantContext, connection_id: str | None = None,
         limit: int = 50, *, now: datetime | None = None,
     ) -> list[dict[str, Any]]:
-        """Return history while fail-closing signals whose candle cycle has ended.
+        """Return history with explicit validity for each timeframe candle.
 
-        A result remains current only while its candle is the latest fully
-        closed candle for that exact timeframe. Historical records are retained,
-        but an expired direction is exposed as AGUARDAR to live consumers.
+        Expired records remain historical facts, not new market decisions:
+        their active signal is cleared and SIGNAL_EXPIRED is exposed. The next
+        closed candle is analyzed independently by the normal monitor cycle.
         """
         owner = self._owner(context)
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
@@ -484,17 +484,23 @@ class TenantConnectionTimeframeMonitor:
                 item["signal_valid"] = valid
                 item["signal_validity"] = "VALID" if valid else "EXPIRED"
                 item["signal_valid_until"] = (
-                    candle_at.astimezone(timezone.utc) + interval * 2
+                    candle_at.astimezone(timezone.utc)
+                    + interval * 2
+                    + timedelta(seconds=self.close_grace_seconds)
                 ).isoformat()
+                result["signal_valid"] = valid
+                result["signal_validity"] = "VALID" if valid else "EXPIRED"
                 if not valid:
-                    result["original_signal"] = result.get("signal", "AGUARDAR")
-                    result["signal"] = "AGUARDAR"
+                    result["original_signal"] = result.get("signal")
+                    result["signal"] = None
                     result["status"] = "SIGNAL_EXPIRED"
             except (TypeError, ValueError, OverflowError):
                 item["signal_valid"] = False
                 item["signal_validity"] = "INVALID_TIMESTAMP_OR_TIMEFRAME"
-                result["original_signal"] = result.get("signal", "AGUARDAR")
-                result["signal"] = "AGUARDAR"
+                result["original_signal"] = result.get("signal")
+                result["signal"] = None
+                result["signal_valid"] = False
+                result["signal_validity"] = "INVALID_TIMESTAMP_OR_TIMEFRAME"
                 result["status"] = "SIGNAL_INVALID"
             item["result"] = result
             output.append(item)
@@ -802,8 +808,8 @@ class TenantConnectionTimeframeMonitor:
             except (TypeError, ValueError, OverflowError):
                 event_valid = False
             if not event_valid:
-                result["original_signal"] = result.get("signal", "AGUARDAR")
-                result["signal"] = "AGUARDAR"
+                result["original_signal"] = result.get("signal")
+                result["signal"] = None
                 result["status"] = "SIGNAL_EXPIRED"
                 result["signal_valid"] = False
                 result["signal_validity"] = "EXPIRED"
