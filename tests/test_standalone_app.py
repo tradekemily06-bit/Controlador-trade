@@ -1387,6 +1387,108 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(status, "503 Service Unavailable")
         self.assertFalse(body["execution_authorized"])
 
+
+    def test_provider_connect_api_accepts_only_tenant_owned_credential_reference(self):
+        class ConnectionService:
+            def __init__(self):
+                self.calls = []
+
+            def connect(self, context, **kwargs):
+                self.calls.append((context, kwargs))
+                return {
+                    "connection_id": "a" * 32,
+                    "provider_id": kwargs["provider_id"],
+                    "status": "CONNECTED",
+                    "execution_authorized": False,
+                }
+
+        runtime = FakeRuntime()
+        service = ConnectionService()
+        runtime.tenant_provider_connection_service = service
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        headers = {
+            "remote_addr": "203.0.113.21",
+            "authorization": "Bearer shared-gateway-secret",
+            "identity_verified": True,
+            "remote_user": "alice",
+            "tenant_id": "tenant-a",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/market-data/connections", method="POST",
+                body={
+                    "provider_id": "broker_a",
+                    "account_alias": "Conta A",
+                    "credential_ref": "vault://tenant-a/broker-a",
+                },
+                **headers,
+            )
+        self.assertEqual(status, "201 Created")
+        self.assertEqual(service.calls[0][0].tenant_id, "tenant-a")
+        self.assertEqual(
+            service.calls[0][1]["credential_ref"], "vault://tenant-a/broker-a"
+        )
+        self.assertFalse(body["execution_authorized"])
+
+    def test_provider_connect_api_rejects_raw_credentials_in_request_body(self):
+        class ConnectionService:
+            def connect(self, *args, **kwargs):
+                raise AssertionError("raw credentials must be rejected before service call")
+
+        runtime = FakeRuntime()
+        runtime.tenant_provider_connection_service = ConnectionService()
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/market-data/connections", method="POST",
+                body={
+                    "provider_id": "broker_a", "account_alias": "Conta A",
+                    "credential_ref": "vault://tenant-a/broker-a",
+                    "api_key": "must-not-enter-the-application",
+                },
+                remote_addr="203.0.113.22",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "400 Bad Request")
+        self.assertFalse(body["execution_authorized"])
+
+    def test_provider_disconnect_api_revokes_only_authenticated_account_binding(self):
+        class ConnectionService:
+            def disconnect(self, context, *, connection_id):
+                assert context.tenant_id == "tenant-a"
+                assert connection_id == "a" * 32
+                return {"disconnected": True, "status": "DISCONNECTED", "execution_authorized": False}
+
+        runtime = FakeRuntime()
+        runtime.tenant_provider_connection_service = ConnectionService()
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, f"/api/market-data/connections/{'a' * 32}", method="DELETE",
+                remote_addr="203.0.113.23",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertTrue(body["disconnected"])
+        self.assertFalse(body["execution_authorized"])
+
 if __name__ == "__main__":
     unittest.main()
 
