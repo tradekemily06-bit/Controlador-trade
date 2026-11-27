@@ -220,6 +220,23 @@ class StandaloneMarketAnalysisTests(unittest.TestCase):
             service.analyze(symbol="EURUSD", timeframe="5m", limit=100000)
 
 
+    def test_signal_cycle_expires_at_next_timeframe_close(self):
+        interval = get_timeframe_interval("5m")
+        candles = candle_series(timeframe="5m", age_intervals=2)
+        # The latest closed candle's next-cycle close is already due.
+        provider = FakeMarketDataProvider(candles)
+        service = StandaloneMarketAnalysisService(
+            provider=provider,
+            source="EXPIRED_CYCLE_TEST_FEED",
+            intelligence=UnifiedIntelligence(),
+        )
+
+        result = service.analyze(symbol="EURUSD", timeframe="5m", limit=8)
+
+        self.assertEqual(result["signal"], "AGUARDAR")
+        self.assertEqual(result["signal_cycle"]["status"], "EXPIRED_OR_DATA_UNSAFE")
+        self.assertFalse(result["execution_allowed"])
+
     def test_delayed_one_minute_feed_forces_wait(self):
         provider = FakeMarketDataProvider(
             candle_series(timeframe="1m", age_intervals=5)
