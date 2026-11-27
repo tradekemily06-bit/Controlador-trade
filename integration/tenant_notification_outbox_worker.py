@@ -91,10 +91,24 @@ class TenantNotificationOutboxWorker:
             last_result = dict(self._last_result) if self._last_result is not None else None
             last_cycle_at = self._last_cycle_at
             stop_requested = self._stop.is_set()
-        state = "STOPPING" if stop_requested and running else "DEGRADED" if running and last_error else "RUNNING" if running else "STOPPED"
+        now = time.time()
+        last_cycle_age = None if last_cycle_at is None else max(0.0, now - last_cycle_at)
+        stale_after = max(30.0, self.poll_interval_seconds * 5.0)
+        if stop_requested and running:
+            state = "STOPPING"
+        elif not running:
+            state = "STOPPED"
+        elif last_error is not None or last_cycle_at is None:
+            state = "DEGRADED" if last_error is not None else "STARTING"
+        elif last_cycle_age > stale_after:
+            state = "DEGRADED"
+        else:
+            state = "RUNNING"
         return {
             "configured": True, "running": running, "state": state,
             "stop_requested": stop_requested, "last_error": last_error,
             "last_result": last_result, "last_cycle_at": last_cycle_at,
+            "last_cycle_age_seconds": last_cycle_age,
+            "stale_after_seconds": stale_after,
             "outbox": self.outbox.status_counts(context),
         }
