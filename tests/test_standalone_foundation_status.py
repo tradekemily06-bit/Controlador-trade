@@ -256,5 +256,25 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
         self.assertEqual(result["backup_scheduler"]["off_host_replication"], "NOT_CONFIGURED")
 
 
+    def test_symlinked_required_store_is_rejected_without_following_target(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            outside = root.parent / f"{root.name}-outside.sqlite3"
+            try:
+                with sqlite3.connect(outside) as connection:
+                    connection.execute("CREATE TABLE fiscal_reserve_entries (id INTEGER)")
+                (root / "fiscal-reserve.sqlite3").symlink_to(outside)
+                result = standalone_storage_status(SimpleNamespace(runtime_dir=root))
+            except (OSError, NotImplementedError):
+                self.skipTest("symlink creation is not supported in this environment")
+            finally:
+                outside.unlink(missing_ok=True)
+
+        fiscal = next(item for item in result["stores"] if item["id"] == "fiscal")
+        self.assertEqual(fiscal["state"], "UNSAFE_PATH")
+        self.assertEqual(fiscal["integrity"], "SYMLINK_NOT_ALLOWED")
+        self.assertEqual(result["required_stores"], "DEGRADED")
+
+
 if __name__ == "__main__":
     unittest.main()
