@@ -51,7 +51,7 @@ _DATABASES = (
         "tenant_connection_notification_outbox": {
             "event_id", "tenant_id", "subject_id", "connection_id", "symbol",
             "timeframe", "candle_at", "result_json", "created_at", "attempts",
-            "lease_until", "lease_token", "delivered_at",
+            "lease_until", "lease_token", "delivered_at", "dead_at", "last_error",
         },
     }),
     ("mt5_relay_tokens", "tenant-mt5-relay-tokens.sqlite3", True, {
