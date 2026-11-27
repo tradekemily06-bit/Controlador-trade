@@ -275,6 +275,11 @@ class StandaloneWSGIApplication:
                         session_registry.status(context)
                         if session_registry is not None else []
                     ),
+                    "timeframe_monitor": (
+                        self.runtime.tenant_market_monitor.status(context)
+                        if getattr(self.runtime, "tenant_market_monitor", None) is not None
+                        else {"worker_running": False, "enabled": 0, "total": 0}
+                    ),
                     "count": len(connections),
                     "scope": "TENANT_AND_SUBJECT" if reason == "trusted_identity" else "LOCAL_SINGLE_USER",
                     "execution_authorized": False,
