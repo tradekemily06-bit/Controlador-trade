@@ -191,6 +191,7 @@ Returns relay inbox status. A configured relay is not proof that the user's PC i
 - `core/tenant_fiscal_backup.py` creates an explicit, on-demand backup for exactly one supplied tenant + subject. It uses SQLite's backup API, validates the complete fiscal table/owner scope and foreign keys, and publishes without overwriting an existing backup.
 - The same service can validate a backup by restoring it into a temporary isolated SQLite file, checking integrity, required fiscal tables, owner scope and foreign keys. This test never replaces or modifies the live database.
 - These are isolated storage/backup primitives only. They are not yet connected to remote fiscal routes or assistant context collection; they do not enumerate tenants, schedule backups, or replicate off-host. This is not a production disaster-recovery workflow.
+- The standalone runtime now registers `TenantFiscalStoreFactory` and exposes `tenant_fiscal_storage` in `GET /api/readiness`. Its status explicitly reports `remote_request_wiring: NOT_ENABLED`, `production_durable: false` and `backup_restore: NOT_VERIFIED` until the complete remote identity, persistence and recovery path is validated.
 - The legacy single-user runtime remains the active fiscal path until integration and migration are validated. Remote assistant chat and cross-area routes remain blocked where shared state exists.
 
 
