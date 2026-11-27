@@ -784,6 +784,32 @@ class TenantConnectionTimeframeMonitor:
             if claimed != 1:
                 continue
             payload = json.loads(row["result_json"])
+            result = payload["result"]
+            # Notifications can sit in the outbox during an outage. Re-check
+            # candle validity at delivery time so a delayed opportunity is
+            # never delivered as an active COMPRA/VENDA alert.
+            try:
+                event_candle = datetime.fromisoformat(
+                    str(row["candle_at"]).replace("Z", "+00:00")
+                )
+                if event_candle.tzinfo is None:
+                    raise ValueError("timezone required")
+                event_timeframe = normalize_timeframe(row["timeframe"])
+                event_expected = self.expected_last_closed_candle(
+                    event_timeframe, datetime.now(timezone.utc)
+                )
+                event_valid = event_candle.astimezone(timezone.utc) == event_expected
+            except (TypeError, ValueError, OverflowError):
+                event_valid = False
+            if not event_valid:
+                result["original_signal"] = result.get("signal", "AGUARDAR")
+                result["signal"] = "AGUARDAR"
+                result["status"] = "SIGNAL_EXPIRED"
+                result["signal_valid"] = False
+                result["signal_validity"] = "EXPIRED"
+            else:
+                result["signal_valid"] = True
+                result["signal_validity"] = "VALID"
             event = {
                 "event_id": row["event_id"],
                 "tenant_context": TenantContext(row["tenant_id"], row["subject_id"]),
@@ -794,7 +820,7 @@ class TenantConnectionTimeframeMonitor:
                 "timeframe": row["timeframe"],
                 "candle_at": row["candle_at"],
                 "previous_signal": payload.get("previous_signal"),
-                "result": payload["result"],
+                "result": result,
             }
             try:
                 self.on_result(event)
