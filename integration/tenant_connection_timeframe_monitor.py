@@ -309,23 +309,66 @@ class TenantConnectionTimeframeMonitor:
             item = dict(row)
             session = self.session_registry.get(owner, connection_id=item["connection_id"])
             item["provider_id"] = session.provider_id if session else None
-            item["adapter_status"] = "BOUND" if session else "NOT_BOUND"
+            adapter = getattr(session, "adapter", None) if session else None
+            adapter_health = getattr(adapter, "status", None)
+            try:
+                health = adapter_health() if callable(adapter_health) else {}
+            except Exception:
+                health = {"connected": False}
+            connected = bool(session) and not (isinstance(health, dict) and health.get("connected") is False)
+            item["adapter_status"] = "CONNECTED" if connected else "DISCONNECTED"
             key = (owner.tenant_id, owner.subject_id, item["connection_id"], item["symbol"], item["timeframe"])
             with self._lock:
                 stream_bound = key in self._live_streams
                 candle = self._live_candles.get(key)
             candle_at = getattr(candle, "timestamp", None)
             item["last_live_candle_at"] = candle_at.isoformat() if candle_at is not None else None
-            if not stream_bound:
+            now = datetime.now(timezone.utc)
+            expected = self.expected_last_closed_candle(item["timeframe"], now)
+            item["expected_last_closed_candle_at"] = expected.isoformat()
+            if candle_at is not None and candle_at.tzinfo is not None:
+                age = (now - candle_at.astimezone(timezone.utc)).total_seconds()
+                item["live_candle_age_seconds"] = round(age, 3)
+            else:
+                age = None
+                item["live_candle_age_seconds"] = None
+            if not connected:
+                item["live_stream_status"] = "DISCONNECTED"
+                item["data_freshness_state"] = "DISCONNECTED"
+            elif not stream_bound:
                 item["live_stream_status"] = "NOT_SUPPORTED_OR_UNAVAILABLE"
+                processed = item.get("last_processed_candle")
+                if not processed:
+                    item["data_freshness_state"] = "WAITING_FOR_CANDLE"
+                else:
+                    try:
+                        processed_at = datetime.fromisoformat(processed.replace("Z", "+00:00"))
+                        if processed_at.tzinfo is None or processed_at.astimezone(timezone.utc) < expected:
+                            item["data_freshness_state"] = "STALE"
+                        elif processed_at.astimezone(timezone.utc) > expected:
+                            item["data_freshness_state"] = "INVALID"
+                        else:
+                            item["data_freshness_state"] = "FRESH"
+                    except (TypeError, ValueError):
+                        item["data_freshness_state"] = "INVALID"
             elif candle_at is None:
                 item["live_stream_status"] = "BOUND_WAITING_FOR_CANDLE"
+                item["data_freshness_state"] = "WAITING_FOR_CANDLE"
             elif candle_at.tzinfo is None:
                 item["live_stream_status"] = "INVALID_TIMESTAMP"
+                item["data_freshness_state"] = "INVALID"
             else:
-                age = (datetime.now(timezone.utc) - candle_at.astimezone(timezone.utc)).total_seconds()
                 freshness_limit = get_timeframe_interval(item["timeframe"]).total_seconds() + self.close_grace_seconds + self.poll_interval_seconds
-                item["live_stream_status"] = "FRESH" if -5 <= age <= freshness_limit else "STALE"
+                if age < -5:
+                    state = "INVALID"
+                elif candle_at.astimezone(timezone.utc) == expected:
+                    state = "FRESH"
+                elif age > freshness_limit or candle_at.astimezone(timezone.utc) < expected:
+                    state = "STALE"
+                else:
+                    state = "WAITING_FOR_CLOSE"
+                item["live_stream_status"] = state
+                item["data_freshness_state"] = state
             item["enabled"] = bool(item["enabled"])
             output.append(item)
         return output
