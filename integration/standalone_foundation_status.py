@@ -180,5 +180,13 @@ def standalone_storage_status(runtime: Any) -> dict[str, Any]:
         "multi_tenant_isolation": "NOT_IMPLEMENTED",
         "backup_restore": "NOT_CONFIGURED",
         "production_storage": "NOT_PROVEN_BY_LOCAL_SQLITE_HEALTH",
+        "deployment_topology": "SINGLE_HOST_ONLY",
+        "multi_replica_readiness": "BLOCKED_SHARED_TRANSACTIONAL_DATABASE_REQUIRED",
+        "production_release_blockers": [
+            "POSTGRESQL_OR_EQUIVALENT_SHARED_TRANSACTIONAL_DATABASE",
+            "DISTRIBUTED_PROCESSING_AND_OUTBOX_LEASES",
+            "DURABLE_SHARED_OAUTH_STORAGE_WITH_KMS",
+            "BACKUP_RESTORE_AND_RECOVERY_VALIDATION",
+        ],
         "execution_authorized": False,
     }
