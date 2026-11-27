@@ -103,10 +103,56 @@ def test_latest_results_expires_signal_at_next_timeframe_close(tmp_path):
     assert expired[0]["signal_valid"] is False
     assert expired[0]["signal_validity"] == "EXPIRED"
     assert expired[0]["result"]["original_signal"] == "COMPRA"
-    assert expired[0]["result"]["signal"] == "AGUARDAR"
+    assert expired[0]["result"]["signal"] is None
     assert expired[0]["result"]["status"] == "SIGNAL_EXPIRED"
 
 
+
+
+def test_next_closed_m1_candle_gets_a_new_market_decision(tmp_path):
+    owner = TenantContext("tenant-continuous-m1", "alice")
+    connection = _id("c")
+    sessions = Sessions()
+    sessions.add(owner, connection, "broker_a")
+    first_candle = datetime(2026, 11, 27, 12, 0, tzinfo=timezone.utc)
+    second_candle = datetime(2026, 11, 27, 12, 1, tzinfo=timezone.utc)
+
+    class ChangingMarket:
+        calls = 0
+        def analyze(self, **kwargs):
+            self.calls += 1
+            candle = first_candle if self.calls == 1 else second_candle
+            signal = "COMPRA" if self.calls == 1 else "VENDA"
+            return {
+                "signal": signal,
+                "status": "ANALYZED",
+                "market_data": {"last_candle_at": candle.isoformat()},
+            }
+
+    analyzer = ChangingMarket()
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "continuous-m1.sqlite3",
+        sessions,
+        lambda _session, _context: analyzer,
+    )
+    monitor.subscribe(owner, connection, "EURUSD", "M1")
+
+    first_cycle = datetime(2026, 11, 27, 12, 1, 6, tzinfo=timezone.utc)
+    second_cycle = datetime(2026, 11, 27, 12, 2, 6, tzinfo=timezone.utc)
+    assert len(monitor.run_once(now=first_cycle)) == 1
+    assert len(monitor.run_once(now=second_cycle)) == 1
+    assert analyzer.calls == 2
+
+    history = monitor.latest_results(owner, connection, now=second_cycle)
+    assert len(history) == 2
+    current = next(item for item in history if item["candle_at"] == second_candle.isoformat())
+    expired = next(item for item in history if item["candle_at"] == first_candle.isoformat())
+    assert current["signal_valid"] is True
+    assert current["result"]["signal"] == "VENDA"
+    assert expired["signal_valid"] is False
+    assert expired["result"]["signal"] is None
+    assert expired["result"]["original_signal"] == "COMPRA"
+    assert expired["result"]["status"] == "SIGNAL_EXPIRED"
 
 
 @pytest.mark.parametrize(
@@ -140,7 +186,7 @@ def test_signal_expiry_tracks_selected_timeframe(
         owner, connection, now=datetime.fromisoformat(expired_now)
     )
     assert expired[0]["signal_valid"] is False
-    assert expired[0]["result"]["signal"] == "AGUARDAR"
+    assert expired[0]["result"]["signal"] is None
     assert expired[0]["result"]["original_signal"] == "VENDA"
 
 
@@ -170,7 +216,7 @@ def test_delayed_notification_is_downgraded_after_its_candle_expires(tmp_path):
     delivered = []
     monitor.on_result = delivered.append
     assert monitor.dispatch_pending_notifications() == 1
-    assert delivered[0]["result"]["signal"] == "AGUARDAR"
+    assert delivered[0]["result"]["signal"] is None
     assert delivered[0]["result"]["original_signal"] == "COMPRA"
     assert delivered[0]["result"]["status"] == "SIGNAL_EXPIRED"
 
