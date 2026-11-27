@@ -53,6 +53,7 @@ The current automated CI run is evidence of code/test/build behavior only. It do
 - Configure at least one real read-only provider and validate its actual symbol catalogue, timestamps, candle continuity, freshness and supported intervals.
 - For MT5, install and configure the outbound-only local Windows bridge, provision its dedicated secret, and validate HTTPS, replay protection, freshness and DEMO-only account mode.
 - Test M1, M5, M10 and every additional interval claimed in the UI against actual provider responses. Parser support or adapter-declared support alone is not live validation.
+- D1/W1 are fail-closed in the standalone analysis service until a verified provider session calendar and its next valid session boundary are explicitly passed into that service; do not use fixed 24-hour/7-day validity for broker sessions.
 - Verify candle-close timing, delayed/missing candle behavior, duplicate prevention, restart recovery and signal-change notification.
 - Document provider-specific unsupported intervals rather than implying every interval works on every broker.
 
