@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
 from analysis.decision_record import DecisionRecord
+from data.timeframes import normalize_timeframe
 
 
 @dataclass(frozen=True)
@@ -92,6 +93,11 @@ def summarize_breakdowns(records: Iterable[DecisionRecord]) -> dict[str, dict[st
         for record in items:
             value = getattr(record, key)
             label = str(value or "UNKNOWN")
+            if key == "timeframe" and value:
+                try:
+                    label = normalize_timeframe(str(value))
+                except ValueError:
+                    label = f"INVALID:{label}"
             groups.setdefault(label, []).append(record)
         return {label: asdict(summarize(group)) for label, group in sorted(groups.items())}
 
@@ -133,10 +139,18 @@ def summarize_context_groups(
     items = list(records)
     groups: dict[tuple[str, str, str], list[DecisionRecord]] = {}
     for record in items:
+        raw_timeframe = str(record.timeframe or "UNKNOWN")
+        if record.timeframe:
+            try:
+                timeframe = normalize_timeframe(raw_timeframe)
+            except ValueError:
+                timeframe = f"INVALID:{raw_timeframe}"
+        else:
+            timeframe = "UNKNOWN"
         key = (
-            str(record.symbol or "UNKNOWN"),
-            str(record.timeframe or "UNKNOWN"),
-            str(record.signal or "UNKNOWN"),
+            str(record.symbol or "UNKNOWN").strip().upper(),
+            timeframe,
+            str(record.signal or "UNKNOWN").strip().upper(),
         )
         groups.setdefault(key, []).append(record)
 
