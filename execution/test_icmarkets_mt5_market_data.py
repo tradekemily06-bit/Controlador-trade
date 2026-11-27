@@ -40,7 +40,7 @@ class FakeMT5:
         self.shutdown_called = False
         self.selected = []
         self.initialize_path = None
-        self.active_path = None
+        self.active_path = os.path.join(os.getcwd(), "terminal64.exe")
         self.account_login = 123456
         self.account_server = "ICMarketsSC-Demo"
 
