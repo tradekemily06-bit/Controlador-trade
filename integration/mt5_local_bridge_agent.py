@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -40,6 +41,18 @@ def _post_json(url: str, token: str, payload: dict[str, Any], timeout: float = 1
     except urllib.error.HTTPError as exc:
         # Never print request headers or tokens in error messages.
         raise RuntimeError(f"relay rejeitou lote: HTTP {exc.code}") from exc
+
+
+def build_relay_endpoint(base_url: str, connection_id: str | None = None) -> str:
+    base = base_url.rstrip("/")
+    if not base.lower().startswith("https://"):
+        raise ValueError("relay URL deve usar HTTPS")
+    if connection_id is None or not connection_id.strip():
+        return base + "/api/bridge/mt5/candles"
+    connection = connection_id.strip()
+    if not re.fullmatch(r"[a-f0-9]{32}", connection):
+        raise ValueError("CONTROLADOR_MT5_RELAY_CONNECTION_ID inválido")
+    return base + f"/api/bridge/mt5/connections/{connection}/candles"
 
 
 def publish_once(
@@ -95,9 +108,14 @@ def main() -> None:
         raise RuntimeError("configure ao menos um símbolo e um timeframe")
     interval = max(2.0, float(os.getenv("CONTROLADOR_MT5_RELAY_INTERVAL", "5")))
     limit = min(500, max(20, int(os.getenv("CONTROLADOR_MT5_RELAY_CANDLE_LIMIT", "250"))))
-    source_id = os.getenv("CONTROLADOR_MT5_RELAY_SOURCE_ID", "mt5-local").strip() or "mt5-local"
+    connection_id = os.getenv("CONTROLADOR_MT5_RELAY_CONNECTION_ID", "").strip() or None
+    source_id = os.getenv("CONTROLADOR_MT5_RELAY_SOURCE_ID", "").strip()
+    if connection_id is not None and not source_id:
+        raise RuntimeError("CONTROLADOR_MT5_RELAY_SOURCE_ID é obrigatório no modo multi-conta")
+    if not source_id:
+        source_id = "mt5-local"
     adapter = ICMarketsMT5DemoMarketDataAdapter()
-    relay_url = base_url + "/api/bridge/mt5/candles"
+    relay_url = build_relay_endpoint(base_url, connection_id)
     while True:
         started = time.monotonic()
         try:
