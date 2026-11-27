@@ -329,6 +329,32 @@ class StandaloneWSGIApplication:
                 request_id,
             )
 
+        if method == "POST" and path == "/api/market-data/mt5-relay-connections":
+            context = _tenant_context_for_request(environ, reason)
+            onboarding = getattr(self.runtime, "tenant_mt5_relay_onboarding", None)
+            if context is None or onboarding is None:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "identidade ou provisionador seguro de relay indisponível", "execution_authorized": False},
+                    request_id,
+                )
+            try:
+                payload = _read_json(environ)
+                if set(payload) != {"account_alias"}:
+                    raise ValueError("envie somente account_alias; tokens são gerados pelo servidor")
+                result = onboarding.provision(context, account_alias=payload["account_alias"])
+            except PermissionError as exc:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "execution_authorized": False}, request_id)
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
+            except Exception:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "não foi possível provisionar o relay MT5", "execution_authorized": False},
+                    request_id,
+                )
+            return _json_response(start_response, HTTPStatus.CREATED, result, request_id)
+
         if method == "POST" and path == "/api/market-data/connections":
             try:
                 context = _tenant_context_for_request(environ, reason)
@@ -380,6 +406,9 @@ class StandaloneWSGIApplication:
                     )
                 try:
                     result = service.disconnect(context, connection_id=connection_id)
+                    token_vault = getattr(self.runtime, "tenant_mt5_relay_token_vault", None)
+                    if token_vault is not None:
+                        token_vault.revoke(context, connection_id)
                 except (ValueError, TypeError) as exc:
                     return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
                 except Exception:
