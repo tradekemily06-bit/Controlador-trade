@@ -244,7 +244,11 @@ class TenantConnectionTimeframeMonitor:
                 return
             if str(event.get("symbol", "")).strip().upper() != symbol:
                 return
-            if str(event.get("timeframe", "")).strip().lower() != timeframe:
+            try:
+                event_timeframe = normalize_timeframe(str(event.get("timeframe", "")))
+            except ValueError:
+                return
+            if event_timeframe != timeframe:
                 return
             event_account = event.get("account_id")
             adapter_account = getattr(adapter, "account_id", None)
