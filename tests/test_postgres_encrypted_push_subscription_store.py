@@ -144,3 +144,18 @@ def test_store_authenticates_ciphertext_and_rejects_wrong_owner_context(tmp_path
 
     with pytest.raises(PermissionError):
         store.list_for_owner(None)
+
+
+
+def test_store_does_not_allow_payload_to_override_database_device_identity(tmp_path):
+    store = _store(tmp_path)
+    owner = TenantContext("tenant-a", "subject-1")
+    store.put_for_owner(
+        owner,
+        "device-real",
+        {"device_id": "device-forged", "status": "ACTIVE"},
+    )
+
+    records = store.list_for_owner(owner)
+
+    assert records == [{"device_id": "device-real", "status": "ACTIVE"}]
