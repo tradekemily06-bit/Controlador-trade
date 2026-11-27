@@ -64,6 +64,7 @@ class TenantConnectionTimeframeMonitor:
         self._live_stream_adapters: dict[tuple[str, str, str, str, str], Any] = {}
         self._live_candles: dict[tuple[str, str, str, str, str], Any] = {}
         self._live_stream_retry_at: dict[tuple[str, str, str, str, str], float] = {}
+        self._processing: set[tuple[str, str, str, str, str]] = set()
         self._initialize()
 
     def _connect(self):
@@ -418,6 +419,21 @@ class TenantConnectionTimeframeMonitor:
         return bool(result and result["enabled"])
 
     def _process(self, row: dict[str, Any], now: datetime) -> dict[str, Any] | None:
+        owner_key = (
+            row["tenant_id"], row["subject_id"], row["connection_id"],
+            row["symbol"], row["timeframe"],
+        )
+        with self._lock:
+            if owner_key in self._processing:
+                return None
+            self._processing.add(owner_key)
+        try:
+            return self._process_claimed(row, now)
+        finally:
+            with self._lock:
+                self._processing.discard(owner_key)
+
+    def _process_claimed(self, row: dict[str, Any], now: datetime) -> dict[str, Any] | None:
         owner = TenantContext(row["tenant_id"], row["subject_id"])
         connection = row["connection_id"]
         symbol, timeframe = row["symbol"], row["timeframe"]
@@ -486,16 +502,19 @@ class TenantConnectionTimeframeMonitor:
             }
             serialized = json.dumps(result, ensure_ascii=False, separators=(",", ":"), default=str)
             with self._lock, self._connect() as db:
-                db.execute("""
+                inserted = db.execute("""
                     INSERT OR IGNORE INTO tenant_connection_timeframe_results
                     (tenant_id, subject_id, connection_id, symbol, timeframe, candle_at, result_json, recorded_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (owner.tenant_id, owner.subject_id, connection, symbol, timeframe, expected.isoformat(), serialized, time.time()))
+                """, (owner.tenant_id, owner.subject_id, connection, symbol, timeframe, expected.isoformat(), serialized, time.time())).rowcount
                 db.execute("""
                     UPDATE tenant_connection_timeframe_watch
                     SET last_processed_candle=?, last_signal=?, last_status=?, last_error=NULL
                     WHERE tenant_id=? AND subject_id=? AND connection_id=? AND symbol=? AND timeframe=?
                 """, (expected.isoformat(), signal, str(result.get("status", "ANALYZED")), owner.tenant_id, owner.subject_id, connection, symbol, timeframe))
+            # A duplicate candle must not fan out duplicate notifications.
+            if inserted != 1:
+                return None
             # Durable analysis history must not depend on notification delivery.
             # A failing push/webhook sink is isolated from market-data processing.
             if self.on_result is not None:
