@@ -1228,7 +1228,7 @@ class StandaloneWSGITests(unittest.TestCase):
                 app, "/api/user/preferences", method="PUT",
                 body={"preferences": {"language": "pt-BR"}},
             )
-        self.assertEqual(status, "403 Forbidden")
+        self.assertEqual(status, "503 Service Unavailable")
         self.assertFalse(body["execution_authorized"])
 
     def test_user_preferences_reject_non_object_payload(self):
