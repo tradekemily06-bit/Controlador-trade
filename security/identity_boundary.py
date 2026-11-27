@@ -28,8 +28,14 @@ class IdentityPolicy:
                 if remote_identity_middleware_configured else "NOT_CONFIGURED"
             ),
             "tenant_claim": "REQUIRED_FOR_REMOTE_ACCESS",
-            "tenant_isolation": "SINGLE_USER_RUNTIME_ONLY",
-            "multi_tenant_isolation": "NOT_IMPLEMENTED",
+            "tenant_isolation": (
+                "TRUSTED_TENANT_CONTEXT_REQUIRED_NOT_RUNTIME_VERIFIED"
+                if remote_identity_middleware_configured else "SINGLE_USER_RUNTIME_ONLY"
+            ),
+            "multi_tenant_isolation": (
+                "REQUEST_SCOPE_GUARD_PRESENT_IDENTITY_NOT_RUNTIME_VERIFIED"
+                if remote_identity_middleware_configured else "SINGLE_USER_RUNTIME_ONLY"
+            ),
             "shared_bearer_token_is_user_identity": False,
             "real_execution": "DISABLED" if not self.real_execution_enabled else "ENABLED",
         }
