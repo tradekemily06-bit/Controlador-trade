@@ -15,7 +15,7 @@ PostgresEncryptedPushSubscriptionStore is the durable-storage adapter for the te
 
 ## Runtime composition
 
-Create one store instance with the trusted PostgreSQL factory and versioned KMS callback. Pass that same store to TenantPushSubscriptionRegistry and build_tenant_web_push_sink(...). Inject the resulting registry as tenant_push_subscription_registry and sink as tenant_notification_sink into StandaloneRuntime. The existing WSGI app mounts the authenticated GET/POST/DELETE routes when the registry is present, and the existing tenant outbox worker starts only when the sink is injected.
+Create one store instance with the trusted PostgreSQL factory and versioned KMS callback. Call build_tenant_web_push_components(store, vapid_private_key_provider, subject=...) to receive the registry and sink sharing that exact store. Inject the resulting registry as tenant_push_subscription_registry and sink as tenant_notification_sink into StandaloneRuntime. The existing WSGI app mounts the authenticated GET/POST/DELETE routes when the registry is present, and the existing tenant outbox worker starts only when the sink is injected.
 
 The frontend still needs the browser assets deployed on its own HTTPS origin. The existing Lovable notification settings can call the behavior-only helper; no new UI is required.
 
