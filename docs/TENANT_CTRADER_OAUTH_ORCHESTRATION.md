@@ -29,3 +29,16 @@ The OAuth scope is hard-restricted to `accounts`, which Spotware defines as view
 ## Callback log hygiene
 
 The authorization code is short-lived and arrives in the callback query string. Production reverse proxies, WSGI access logs, APM traces and analytics must redact query strings on `/api/oauth/ctrader/callback`; request/response bodies and OAuth token endpoint URLs must never be logged. This is a deployment requirement, not something the WSGI handler can guarantee by itself.
+
+
+## Pending connection provisioning and DEMO account selection
+
+The standalone API now provides a complete server-side onboarding sequence up to the verified read-only DEMO session:
+
+1. `POST /api/market-data/ctrader-oauth-connections` accepts only `account_alias`. The server creates a tenant-owned PENDING connection with a unique temporary account reference and returns the one-time OAuth consent URL.
+2. Spotware redirects to the HTTPS callback. The server consumes the state once and stores the token set only in the encrypted tenant token vault. The connection remains PENDING.
+3. `GET /api/market-data/connections/{connection_id}/ctrader-accounts` uses a host-injected `ctrader_transport_factory(access_token)` to authenticate to the DEMO endpoint and list accounts. Only accounts explicitly reported with `isLive=false` are returned to the client; REAL account identifiers are not exposed.
+4. `POST /api/market-data/connections/{connection_id}/ctrader-account` accepts only `account_id`. The server constructs the read-only adapter, verifies the selected account with Spotware, refuses REAL or unconfirmed modes, updates the owned connection reference/capabilities, and binds the adapter into the tenant market-data session registry.
+5. The account-specific timeframe monitor then subscribes to live closed candles, performs freshness checks and routes signal changes to that tenant's notification dispatcher.
+
+The runtime's optional `ctrader_transport_factory` must be injected by the host. It receives the decrypted access token and must construct `CTraderOpenApiReadOnlyTransport` using the server-held Spotware client ID/secret; never accept client secrets or access tokens from HTTP request bodies. A production KMS/envelope cipher, secret provisioning, real OAuth app configuration, and real cTrader DEMO account validation remain deployment prerequisites. No order or trading scope is enabled.
