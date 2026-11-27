@@ -145,6 +145,14 @@ class TenantCTraderAccountService:
             }
         except Exception:
             try:
+                self.sessions.unbind(owner, connection_id=connection_id)
+            except Exception:
+                pass
+            try:
+                self.connections.mark_disconnected(owner, connection_id=connection_id)
+            except Exception:
+                pass
+            try:
                 adapter.disconnect()
             except Exception:
                 pass
