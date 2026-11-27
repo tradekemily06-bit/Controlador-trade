@@ -191,3 +191,55 @@ def test_refresh_can_rotate_after_access_token_expiry_without_exposing_it_to_ada
     resolved = tokens.resolve(owner, account["connection_id"])
     assert resolved["access_token"] == "renewed-access"
     assert resolved["refresh_token"] == "renewed-refresh"
+
+
+def test_refresh_uses_injected_shared_lease_provider(tmp_path):
+    from contextlib import contextmanager
+
+    owner, connections, account, tokens, service = _setup(
+        tmp_path,
+        refresh=lambda old: {
+            "accessToken": "shared-lock-access",
+            "refreshToken": "shared-lock-refresh",
+            "expiresIn": 3600,
+        },
+    )
+    started = service.begin(owner, connection_id=account["connection_id"])
+    state = parse_qs(urlparse(started["authorization_url"]).query)["state"][0]
+    service.complete_callback(state=state, code="code")
+
+    class SharedLeaseProvider:
+        def __init__(self):
+            self.keys = []
+        @contextmanager
+        def acquire(self, key, *, lease_seconds, wait_seconds):
+            self.keys.append((key, lease_seconds, wait_seconds))
+            yield
+
+    provider = SharedLeaseProvider()
+    service.refresh_lease_provider = provider
+    result = service.refresh(owner, connection_id=account["connection_id"])
+
+    assert result["status"] == "TOKEN_REFRESHED_ENCRYPTED"
+    assert provider.keys == [(
+        f"oauth-refresh:{owner.tenant_id}:{owner.subject_id}:{account['connection_id']}",
+        90, 15,
+    )]
+
+
+def test_refresh_fails_closed_when_shared_lease_is_unavailable(tmp_path):
+    owner, connections, account, tokens, service = _setup(
+        tmp_path,
+        refresh=lambda old: pytest.fail("refresh must not run without lease"),
+    )
+    started = service.begin(owner, connection_id=account["connection_id"])
+    state = parse_qs(urlparse(started["authorization_url"]).query)["state"][0]
+    service.complete_callback(state=state, code="code")
+
+    class BusyLeaseProvider:
+        def acquire(self, key, *, lease_seconds, wait_seconds):
+            return None
+
+    service.refresh_lease_provider = BusyLeaseProvider()
+    with pytest.raises(TimeoutError):
+        service.refresh(owner, connection_id=account["connection_id"])
