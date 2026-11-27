@@ -76,6 +76,16 @@ class CTraderReadOnlyMarketDataAdapter:
         self._request_lock = threading.Lock()
         self._last_historical_request = 0.0
 
+    @classmethod
+    def supports_timeframe(cls, timeframe: str) -> bool:
+        from data.timeframes import normalize_timeframe
+
+        try:
+            normalized = normalize_timeframe(timeframe)
+        except (TypeError, ValueError):
+            return False
+        return normalized in _CTRADER_PERIODS
+
     def connect(self) -> None:
         connect = getattr(self.transport, "connect", None)
         if not callable(connect):
