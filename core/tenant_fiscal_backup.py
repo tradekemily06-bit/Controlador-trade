@@ -129,6 +129,107 @@ class TenantFiscalBackupService:
             if temporary is not None:
                 temporary.unlink(missing_ok=True)
 
+    def backup_all_managed_shards(self) -> dict[str, Any]:
+        """Back up every managed opaque fiscal shard for the local maintenance worker.
+
+        This privileged method accepts no tenant IDs and is not a request API.
+        It enumerates only strict digest paths under the managed root, verifies
+        each copied database's owner_id against its digest, and fails closed
+        on unexpected files or symlinks.
+        """
+        root = self.store_factory.tenant_root
+        if not root.exists():
+            return {
+                "status": "NO_TENANT_SHARDS",
+                "results": [],
+                "execution_authorized": False,
+            }
+        if root.is_symlink() or not root.is_dir():
+            return {
+                "status": "SOURCE_UNSAFE",
+                "results": [],
+                "execution_authorized": False,
+            }
+        shards: list[tuple[str, Path]] = []
+        try:
+            for shard_dir in sorted(root.iterdir()):
+                if (
+                    shard_dir.is_symlink()
+                    or not shard_dir.is_dir()
+                    or len(shard_dir.name) != 2
+                    or any(c not in "0123456789abcdef" for c in shard_dir.name)
+                ):
+                    raise ValueError("unexpected tenant fiscal shard directory")
+                for entry in sorted(shard_dir.iterdir()):
+                    digest = entry.stem
+                    if (
+                        entry.suffix != ".sqlite3"
+                        or len(digest) != 64
+                        or any(c not in "0123456789abcdef" for c in digest)
+                        or shard_dir.name != digest[:2]
+                        or entry.is_symlink()
+                        or not entry.is_file()
+                        or entry.resolve().parent != shard_dir.resolve()
+                    ):
+                        raise ValueError("unexpected tenant fiscal shard file")
+                    shards.append((digest, entry.resolve()))
+        except (OSError, ValueError) as exc:
+            return {
+                "status": "SOURCE_UNSAFE",
+                "error_class": type(exc).__name__,
+                "results": [],
+                "execution_authorized": False,
+            }
+
+        self.backup_dir.mkdir(parents=True, exist_ok=True)
+        results: list[dict[str, Any]] = []
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        for digest, source in shards:
+            expected_owner = f"tenant:{digest}"
+            destination = self.backup_dir / (
+                f"tenant-fiscal-{digest[:16]}-{stamp}.sqlite3"
+            )
+            temporary: Path | None = None
+            try:
+                with tempfile.NamedTemporaryFile(
+                    prefix=".tenant-fiscal-scheduled-", suffix=".tmp",
+                    dir=self.backup_dir, delete=False,
+                ) as handle:
+                    temporary = Path(handle.name)
+                source_uri = f"{source.as_uri()}?mode=ro"
+                with sqlite3.connect(source_uri, uri=True, timeout=10) as src:
+                    with sqlite3.connect(temporary, timeout=10) as dst:
+                        src.backup(dst)
+                self._validate_restored_copy(temporary, expected_owner)
+                SQLiteBackupService._publish_exclusive(temporary, destination)
+                temporary = None
+                results.append({
+                    "owner_digest": digest,
+                    "status": "BACKUP_CREATED",
+                    "filename": destination.name,
+                    "size_bytes": destination.stat().st_size,
+                })
+            except (OSError, sqlite3.Error, ValueError) as exc:
+                results.append({
+                    "owner_digest": digest,
+                    "status": "BACKUP_FAILED",
+                    "error_class": type(exc).__name__,
+                })
+            finally:
+                if temporary is not None:
+                    temporary.unlink(missing_ok=True)
+        overall = (
+            "NO_TENANT_SHARDS" if not shards
+            else "SUCCESS" if all(x["status"] == "BACKUP_CREATED" for x in results)
+            else "PARTIAL_OR_FAILED"
+        )
+        return {
+            "status": overall,
+            "provider": "TENANT_FISCAL_SHARD_BACKUP",
+            "results": results,
+            "execution_authorized": False,
+        }
+
     def verify_restore(self, context: TenantContext, filename: str) -> dict[str, Any]:
         """Restore a matching backup to a temporary isolated DB and validate it.
 
