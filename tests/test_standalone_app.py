@@ -471,7 +471,7 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(body["areas"], 6)
         self.assertFalse(body["execution_authorized"])
 
-    def test_readiness_endpoint_reports_unconfigured_services_without_claiming_live(self):
+    def test_readiness_endpoint_reports_unconfigured_services_and_six_areas(self):
         app = StandaloneWSGIApplication(FakeRuntime())
         status, body = call_wsgi(app, "/api/readiness")
         self.assertEqual(status, "200 OK")
