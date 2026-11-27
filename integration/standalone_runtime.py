@@ -196,6 +196,7 @@ class StandaloneRuntime:
             ))
             self.tenant_ctrader_oauth_service = None
             self.tenant_ctrader_account_service = None
+            self.tenant_ctrader_token_vault = None
             ctrader_token_vault = None
             if ctrader_oauth_configured:
                 if any(value is None for value in (
@@ -215,6 +216,7 @@ class StandaloneRuntime:
                     self.tenant_provider_connections,
                     ctrader_oauth_cipher,
                 )
+                self.tenant_ctrader_token_vault = ctrader_token_vault
                 self.tenant_ctrader_oauth_service = TenantCTraderOAuthService(
                     self.tenant_provider_connections,
                     ctrader_state_vault,
