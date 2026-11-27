@@ -580,6 +580,9 @@ class StandaloneWSGIApplication:
                     tv_vault = getattr(self.runtime, "tenant_tradingview_webhook_vault", None)
                     if tv_vault is not None:
                         tv_vault.revoke(context, connection_id)
+                    ctrader_vault = getattr(self.runtime, "tenant_ctrader_token_vault", None)
+                    if ctrader_vault is not None:
+                        ctrader_vault.revoke(context, connection_id)
                     result = service.disconnect(context, connection_id=connection_id)
                 except (ValueError, TypeError) as exc:
                     return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
