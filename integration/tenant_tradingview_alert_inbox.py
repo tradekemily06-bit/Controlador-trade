@@ -93,17 +93,22 @@ class TenantTradingViewAlertInbox:
         )
         if account is None or account.get("provider_id") != "tradingview_webhook":
             raise PermissionError("webhook não pertence a uma conexão TradingView desta identidade")
-        if account.get("status") != "CONNECTED":
+        if account.get("status") not in {"PENDING", "CONNECTED"}:
             raise PermissionError("conexão TradingView não está ativa")
 
-        expected_secret = self.secret_resolver(owner, connection_id)
         supplied_secret = payload.get("secret")
-        if not isinstance(expected_secret, str) or len(expected_secret) < 32:
-            raise PermissionError("segredo do webhook não está provisionado")
-        if not isinstance(supplied_secret, str) or not hmac.compare_digest(
-            supplied_secret, expected_secret
-        ):
-            raise PermissionError("segredo do webhook inválido")
+        verifier = getattr(self.secret_resolver, "verify", None)
+        if callable(verifier):
+            if not verifier(owner, connection_id, supplied_secret):
+                raise PermissionError("segredo do webhook inválido")
+        else:
+            expected_secret = self.secret_resolver(owner, connection_id)
+            if not isinstance(expected_secret, str) or len(expected_secret) < 32:
+                raise PermissionError("segredo do webhook não está provisionado")
+            if not isinstance(supplied_secret, str) or not hmac.compare_digest(
+                supplied_secret, expected_secret
+            ):
+                raise PermissionError("segredo do webhook inválido")
 
         event_id = payload.get("event_id")
         ticker = payload.get("ticker")
@@ -160,6 +165,9 @@ class TenantTradingViewAlertInbox:
                 ))
             except sqlite3.IntegrityError as exc:
                 raise TradingViewAlertError("evento repetido") from exc
+        self.connections.mark_connected_after_relay_handshake(
+            owner, connection_id=connection_id
+        )
         return {
             "accepted": True,
             "event_id": event_id,
