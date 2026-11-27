@@ -63,11 +63,11 @@ This roadmap defines the evidence required to call the independent application c
 - Configure production HTTPS, identity, access token/session policy, secret rotation, CORS/CSRF policy where applicable, rate limits and audit logging.
 - Verify tenant/owner isolation, least privilege, backup encryption/retention and incident response.
 - Deploy backend and frontend integration to the intended environment; verify DNS/TLS, persistent volumes, environment variables and migrations.
-- Run end-to-end scenarios across all seven areas, including unavailable provider, lost bridge, stale feed, server restart, notification failure, unauthorized access and recovery.
+- Run end-to-end scenarios across all six areas, including unavailable provider, lost bridge, stale feed, server restart, notification failure, unauthorized access and recovery.
 - Run automated tests, security scans, dependency checks and manual acceptance against the approved interface.
 - Publish known limitations and a rollback plan.
 
-**Exit evidence:** production deployment is reachable over HTTPS; all seven areas pass their acceptance scenarios; live data and notification tests are evidenced; security and restore checks pass; no unresolved critical/high findings; owner accepts the release.
+**Exit evidence:** production deployment is reachable over HTTPS; all six areas pass their acceptance scenarios; live data and notification tests are evidenced; security and restore checks pass; no unresolved critical/high findings; owner accepts the release.
 
 ## Explicit current limitations to close
 
@@ -80,7 +80,7 @@ This roadmap defines the evidence required to call the independent application c
 
 ## Release definition
 
-The application is complete only when Phases A–E have their exit evidence, the existing Lovable UI is connected without visual changes, all seven areas pass end-to-end acceptance, live data and claimed notification channels are demonstrated, and the release is deployed with security, monitoring, backup and rollback in place.
+The application is complete only when Phases A–E have their exit evidence, the existing Lovable UI is connected without visual changes, all six areas pass end-to-end acceptance, live data and claimed notification channels are demonstrated, and the release is deployed with security, monitoring, backup and rollback in place.
 
 
 ## Navigation boundary correction
