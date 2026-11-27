@@ -28,9 +28,11 @@ class Analyzer:
         self.candle_at = candle_at
         self.signal = signal
         self.calls = 0
+        self.last_kwargs = None
 
     def analyze(self, **kwargs):
         self.calls += 1
+        self.last_kwargs = kwargs
         return {
             "signal": self.signal,
             "status": "ANALYZED",
@@ -207,6 +209,7 @@ def test_live_closed_candle_stream_gates_account_timeframe_analysis(tmp_path):
     results = monitor.run_once(now=now)
     assert len(results) == 1
     assert analyzer.calls == 1
+    assert analyzer.last_kwargs["live_candle"] is candle
     assert results[0]["candle_at"] == expected.isoformat()
 
 
