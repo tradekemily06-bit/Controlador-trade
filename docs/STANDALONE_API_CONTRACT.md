@@ -173,7 +173,7 @@ Returns assistant readiness. A ready internal assistant does not imply that a mo
 ## MT5 relay (local agent only)
 
 ### `POST /api/bridge/mt5/candles`
-Accepts validated closed-candle batches from the local Windows agent. Requires the dedicated relay bearer token and HTTPS (or an explicitly trusted TLS-terminating proxy). The local agent is outbound-only; no EA or inbound PC port is required.
+Accepts validated closed-candle batches from the local Windows agent. Requires the dedicated relay bearer token and HTTPS (or an explicitly trusted TLS-terminating proxy). The local agent is outbound-only; no EA or inbound PC port is required. The current relay store supports one active source ID per runtime. If a different source ID is authenticated and starts sending, the previous relay candle cache is cleared before accepting the new source so historical candles from one account cannot be mixed with another. This is a safety boundary, not multi-account relay support; simultaneous accounts require separate tenant/account-scoped relay stores and credentials.
 
 ### `GET /api/bridge/mt5/status`
 Returns relay inbox status. A configured relay is not proof that the user's PC is currently connected; verify received timestamps and a real test batch.
