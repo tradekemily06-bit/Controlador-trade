@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from analysis.decision_store import DecisionStore
+from analysis.tenant_signal_evidence_store import TenantSignalEvidenceStore
+from analysis.tenant_signal_outcome_store import TenantSignalOutcomeStore
 from assistant.chat_service import EcosystemAssistant
 from assistant.conversation_store import AssistantConversationStore
 from security.sqlite_tenant_storage import SQLiteTenantStorage
@@ -330,6 +332,12 @@ class StandaloneRuntime:
                 tenant_id="local-single-user",
                 subject_id=configured_identity,
             )
+            self.signal_evidence_store = TenantSignalEvidenceStore(
+                self.runtime_dir / "tenant-signal-evidence.sqlite3"
+            )
+            self.signal_outcome_store = TenantSignalOutcomeStore(
+                self.signal_evidence_store
+            )
             # Rebuild configured generic provider sessions only after a fresh
             # tenant-scoped vault resolution and provider handshake.
             self.provider_recovery_status = self.tenant_provider_connection_service.reconnect_available(
@@ -450,6 +458,12 @@ class StandaloneRuntime:
                     decision_sink=lambda record, context=None: self.tenant_decision_memory.save(
                         context or self.local_tenant_context, record
                     ),
+                    signal_evidence_sink=self.signal_evidence_store.record_signal,
+                    market_data_provenance=(
+                        "REAL_MARKET_DATA"
+                        if selected.provider_id in {"mt5_relay", "mt5_demo", "ctrader"}
+                        else None
+                    ),
                 )
 
                 def publish_market_change(event: dict[str, Any]) -> None:
@@ -495,6 +509,12 @@ class StandaloneRuntime:
                     intelligence=self.intelligence,
                     decision_sink=lambda record, owner=None: self.tenant_decision_memory.save(
                         owner or context, record
+                    ),
+                    signal_evidence_sink=self.signal_evidence_store.record_signal,
+                    market_data_provenance=(
+                        "REAL_MARKET_DATA"
+                        if session.provider_id in {"mt5_relay", "mt5_demo", "ctrader"}
+                        else None
                     ),
                 )
 
