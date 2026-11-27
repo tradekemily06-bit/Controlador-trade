@@ -38,6 +38,24 @@ from integration.notification_outbox_worker import NotificationOutboxWorker
 from integration.rss_news_provider import RSSNewsProvider
 
 
+# Failed startup workers may be blocked in an external provider/sink. Retain
+# their references and the process lock until process exit rather than allowing
+# a second runtime to open the same SQLite files concurrently.
+_FAILED_STARTUP_LOCKS: list[tuple[Any, tuple[Any, ...]]] = []
+
+
+def _stop_workers_and_report_active(workers: tuple[tuple[Any, str], ...]) -> list[str]:
+    still_running: list[str] = []
+    for worker, running_key in workers:
+        if worker is None:
+            continue
+        worker.stop()
+        status = worker.status()
+        if status.get(running_key) is True:
+            still_running.append(type(worker).__name__)
+    return still_running
+
+
 class StandaloneRuntime:
     """Owns one durable single-user runtime and its process-exclusive lock.
 
@@ -244,17 +262,29 @@ class StandaloneRuntime:
                 market_data_registry=self.market_data_registry,
             )
         except Exception:
-            monitor = getattr(self, "market_monitor", None)
-            if monitor is not None:
-                monitor.stop()
-            worker = getattr(self, "notification_worker", None)
-            if worker is not None:
-                worker.stop()
-            backup_scheduler = getattr(self, "backup_scheduler", None)
-            if backup_scheduler is not None:
-                backup_scheduler.stop()
-            self.process_lock.release()
-            self.closed = True
+            workers = (
+                (getattr(self, "market_monitor", None), "worker_running"),
+                (getattr(self, "notification_worker", None), "running"),
+                (getattr(self, "backup_scheduler", None), "worker_running"),
+            )
+            try:
+                still_running = _stop_workers_and_report_active(workers)
+            except Exception:
+                # A failed stop/status check is not proof that the worker exited.
+                still_running = [
+                    type(worker).__name__
+                    for worker, _ in workers
+                    if worker is not None
+                ]
+            if still_running:
+                # Keep strong references: closing the lock file would release
+                # the OS lock while a background worker may still use SQLite.
+                _FAILED_STARTUP_LOCKS.append(
+                    (self.process_lock, tuple(worker for worker, _ in workers if worker is not None))
+                )
+            else:
+                self.process_lock.release()
+                self.closed = True
             raise
 
     @classmethod
@@ -273,14 +303,7 @@ class StandaloneRuntime:
             (self.notification_worker, "running"),
             (self.backup_scheduler, "worker_running"),
         )
-        still_running: list[str] = []
-        for worker, running_key in workers:
-            if worker is None:
-                continue
-            worker.stop()
-            status = worker.status()
-            if status.get(running_key) is True:
-                still_running.append(type(worker).__name__)
+        still_running = _stop_workers_and_report_active(workers)
 
         if still_running:
             names = ", ".join(sorted(still_running))
