@@ -168,17 +168,36 @@ class CTraderReadOnlyMarketDataAdapter:
             return None
         schedule = metadata.get("schedule")
         holidays = metadata.get("holidays")
-        if not isinstance(schedule, (tuple, list)) or not schedule:
+        timezone_name = metadata.get("schedule_time_zone")
+        if (
+            not isinstance(timezone_name, str)
+            or not timezone_name.strip()
+            or not isinstance(schedule, (tuple, list))
+            or not schedule
+            or not isinstance(holidays, (tuple, list))
+        ):
             return None
-        if not isinstance(holidays, (tuple, list)):
+        normalized_schedule = []
+        for item in schedule:
+            if not isinstance(item, Mapping):
+                return None
+            start, end = item.get("start_second"), item.get("end_second")
+            if (
+                isinstance(start, bool) or not isinstance(start, int)
+                or isinstance(end, bool) or not isinstance(end, int)
+                or not 0 <= start < end <= 604800
+            ):
+                return None
+            normalized_schedule.append({"start_second": start, "end_second": end})
+        if any(not isinstance(item, Mapping) for item in holidays):
             return None
         return {
             "provider_id": "ctrader_open_api",
             "account_id": self.account_id,
             "symbol": clean_symbol,
-            "schedule_time_zone": metadata.get("schedule_time_zone"),
-            "schedule": tuple(dict(item) for item in schedule if isinstance(item, Mapping)),
-            "holidays": tuple(dict(item) for item in holidays if isinstance(item, Mapping)),
+            "schedule_time_zone": timezone_name.strip(),
+            "schedule": tuple(normalized_schedule),
+            "holidays": tuple(dict(item) for item in holidays),
             "status": "METADATA_AVAILABLE_NOT_CALENDAR_VALIDATED",
         }
 
