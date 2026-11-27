@@ -344,6 +344,14 @@ class CTraderOpenApiReadOnlyTransport:
         except Exception:
             with self._lock:
                 self._trendbar_callbacks.pop(key, None)
+                cleanup_spot = symbol_id in self._trendbar_spot_only and not any(
+                    registered_symbol == symbol_id
+                    for registered_symbol, _period in self._trendbar_callbacks
+                )
+                if cleanup_spot:
+                    self._trendbar_spot_only.discard(symbol_id)
+            if cleanup_spot:
+                self.unsubscribe_spots(account_id, symbol_id)
             raise
 
     def unsubscribe_live_trendbars(
