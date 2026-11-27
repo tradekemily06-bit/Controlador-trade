@@ -13,7 +13,7 @@ class Vault:
 
     def resolve(self, context, reference):
         self.calls.append((context, reference))
-        if reference != "vault://tenant-a/broker-a":
+        if context.tenant_id != "tenant-a" or reference != "vault://tenant-a/broker-a":
             return None
         return {"api_key": "ephemeral-secret"}
 
