@@ -782,6 +782,55 @@ class StandaloneWSGIApplication:
                 request_id,
             )
 
+        if path.startswith("/api/market-data/connections/") and path.endswith("/subscriptions"):
+            context = _tenant_context_for_request(environ, reason)
+            monitor = getattr(self.runtime, "tenant_market_monitor", None)
+            if context is None or monitor is None:
+                return _json_response(
+                    start_response, HTTPStatus.FORBIDDEN,
+                    {"error": "monitor de ciclos por conta ou identidade confiável indisponível", "execution_authorized": False},
+                    request_id,
+                )
+            connection_id = path[len("/api/market-data/connections/"):-len("/subscriptions")].strip("/")
+            if len(connection_id) != 32 or any(char not in "0123456789abcdef" for char in connection_id):
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": "connection_id inválido", "execution_authorized": False}, request_id)
+            try:
+                if method == "POST":
+                    payload = _read_json(environ)
+                    item = monitor.subscribe(context, connection_id, payload.get("symbol"), payload.get("timeframe"))
+                    return _json_response(start_response, HTTPStatus.CREATED, item, request_id)
+                if method == "GET":
+                    return _json_response(
+                        start_response, HTTPStatus.OK,
+                        {"subscriptions": monitor.subscriptions(context, connection_id), "execution_authorized": False},
+                        request_id,
+                    )
+                if method == "DELETE":
+                    payload = _read_json(environ)
+                    removed = monitor.unsubscribe(context, connection_id, payload.get("symbol"), payload.get("timeframe"))
+                    return _json_response(start_response, HTTPStatus.OK, {"unsubscribed": removed, "execution_authorized": False}, request_id)
+            except PermissionError as exc:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "execution_authorized": False}, request_id)
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
+
+        if method == "GET" and path == "/api/market-data/timeframe-results":
+            context = _tenant_context_for_request(environ, reason)
+            monitor = getattr(self.runtime, "tenant_market_monitor", None)
+            if context is None or monitor is None:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": "identidade ou monitor indisponível", "execution_authorized": False}, request_id)
+            from urllib.parse import parse_qs
+            query = parse_qs(str(environ.get("QUERY_STRING", "")), keep_blank_values=True)
+            connection_values = query.get("connection_id", [])
+            limit_values = query.get("limit", ["50"])
+            try:
+                connection_id = connection_values[0] if connection_values else None
+                limit = int(limit_values[0])
+                results = monitor.latest_results(context, connection_id, limit)
+            except (ValueError, TypeError) as exc:
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
+            return _json_response(start_response, HTTPStatus.OK, {"results": results, "execution_authorized": False}, request_id)
+
         if method == "POST" and path.startswith("/api/market-data/connections/") and path.endswith("/analysis"):
             tenant_context = _tenant_context_for_request(environ, reason)
             if tenant_context is None:
