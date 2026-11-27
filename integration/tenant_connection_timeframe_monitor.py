@@ -802,7 +802,7 @@ class TenantConnectionTimeframeMonitor:
                 db.execute("""
                     UPDATE tenant_connection_timeframe_watch SET last_status='DATA_UNAVAILABLE', last_error=?
                     WHERE tenant_id=? AND subject_id=? AND connection_id=? AND symbol=? AND timeframe=?
-                """, (str(exc)[:500], owner.tenant_id, owner.subject_id, connection, symbol, timeframe))
+                """, (type(exc).__name__, owner.tenant_id, owner.subject_id, connection, symbol, timeframe))
             return None
 
     def dispatch_pending_notifications(self, *, limit: int = 100, lease_seconds: float = 30.0) -> int:
