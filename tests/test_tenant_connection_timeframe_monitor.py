@@ -1746,3 +1746,47 @@ def test_expected_closed_candle_normalizes_non_utc_clock_to_utc(tmp_path):
     assert monitor.expected_last_closed_candle(
         "M5", local_now
     ) == datetime(2026, 11, 27, 12, 0, tzinfo=timezone.utc)
+
+
+def test_future_live_candle_cannot_poison_stream_cache(tmp_path):
+    from types import SimpleNamespace
+
+    owner = TenantContext("tenant-future-live", "alice")
+    now = datetime.now(timezone.utc)
+    adapter_expected = datetime(2099, 1, 1, tzinfo=timezone.utc)
+
+    class StreamAdapter:
+        account_id = 654
+        def subscribe_live_candles(self, symbol, timeframe, callback):
+            self.callback = callback
+        def unsubscribe_live_candles(self, symbol, timeframe):
+            self.callback = None
+
+    adapter = StreamAdapter()
+    session = Session("ctrader_open_api", "ctrader:654", adapter)
+
+    class Registry:
+        def get(self, context, *, connection_id):
+            return session if context == owner else None
+
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "future-live-cache.sqlite3",
+        Registry(),
+        lambda _session, _context: Analyzer(None, "AGUARDAR"),
+    )
+    monitor.subscribe(owner, _id("f"), "EURUSD", "M5")
+
+    def candle(at):
+        return SimpleNamespace(timestamp=at, is_valid=lambda: True)
+
+    event = {
+        "account_id": 654, "symbol": "EURUSD", "timeframe": "M5",
+        "closed": True,
+    }
+    adapter.callback({**event, "candle": candle(adapter_expected)})
+    key = ("tenant-future-live", "alice", _id("f"), "EURUSD", "5m")
+    assert key not in monitor._live_candles
+
+    valid_at = monitor.expected_last_closed_candle("M5", now)
+    adapter.callback({**event, "candle": candle(valid_at)})
+    assert monitor._live_candles[key].timestamp == valid_at
