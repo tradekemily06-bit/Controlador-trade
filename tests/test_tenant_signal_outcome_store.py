@@ -150,3 +150,12 @@ def test_outcome_store_rejects_untrusted_context(tmp_path):
     _, outcomes = _store(tmp_path)
     with pytest.raises(PermissionError):
         outcomes.list_outcomes({"tenant_id": "tenant-a", "subject_id": "alice"})
+
+
+def test_outcome_store_rejects_tampered_noncanonical_tenant_context(tmp_path):
+    evidence, outcomes = _store(tmp_path)
+    owner = TenantContext("tenant-a", "alice")
+    object.__setattr__(owner, "tenant_id", "tenant-a" + chr(127))
+    with pytest.raises(PermissionError):
+        outcomes.list_outcomes(owner)
+
