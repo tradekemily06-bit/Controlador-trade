@@ -14,7 +14,10 @@ def _build_one(provider_id: str) -> tuple[Any, str]:
         from integration.mt5_relay_store import MT5RelayStore
 
         runtime_dir = Path(os.getenv("CONTROLADOR_RUNTIME_DIR", ".runtime-standalone")).resolve()
-        relay = MT5RelayStore(runtime_dir / "mt5-relay.sqlite3")
+        expected_source_id = os.getenv("CONTROLADOR_MT5_RELAY_SOURCE_ID", "").strip()
+        if not expected_source_id:
+            raise RuntimeError("CONTROLADOR_MT5_RELAY_SOURCE_ID precisa ser provisionado para o relay MT5")
+        relay = MT5RelayStore(runtime_dir / "mt5-relay.sqlite3", expected_source_id=expected_source_id)
         return relay, "MT5 local relay DEMO read-only"
     if provider_id in {"mt5_demo", "icmarkets_mt5_demo"}:
         from execution.icmarkets_mt5_market_data import ICMarketsMT5DemoMarketDataAdapter
