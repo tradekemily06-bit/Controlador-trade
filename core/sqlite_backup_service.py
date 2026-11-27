@@ -23,6 +23,7 @@ BACKUP_DATABASES = {
     "decision_memory": "decision-memory.sqlite3",
     "assistant_conversations": "assistant-conversations.sqlite3",
     "market_timeframe_monitor": "market-timeframe-monitor.sqlite3",
+    "tenant_signal_evidence": "tenant-signal-evidence.sqlite3",
 }
 
 
