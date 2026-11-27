@@ -105,6 +105,58 @@ class CTraderReadOnlyMarketDataAdapter:
             self._symbols[symbol] = (symbol_id, digits)
         return self._symbols[symbol]
 
+    def subscribe_live_quotes(self, symbol: str, callback) -> None:
+        """Subscribe to provider-pushed bid/ask updates without polling the API."""
+        if not self._authenticated:
+            raise RuntimeError("cTrader DEMO ainda não concluiu o handshake")
+        if not callable(callback):
+            raise ValueError("callback de cotação deve ser executável")
+        symbol_id, digits = self._resolve_symbol(symbol.strip())
+        subscribe = getattr(self.transport, "subscribe_spots", None)
+        if not callable(subscribe):
+            raise RuntimeError("transport cTrader não oferece streaming spot")
+        def normalized(event):
+            returned_symbol = _field(event, "symbol_id")
+            if returned_symbol != symbol_id:
+                return
+            bid_raw = _field(event, "bid")
+            ask_raw = _field(event, "ask")
+            timestamp_raw = _field(event, "timestamp")
+            try:
+                bid = round(int(bid_raw) / 100000.0, digits) if bid_raw is not None else None
+                ask = round(int(ask_raw) / 100000.0, digits) if ask_raw is not None else None
+                if bid is None and ask is None:
+                    return
+                timestamp = None
+                if timestamp_raw is not None:
+                    stamp = float(timestamp_raw)
+                    if stamp > 10_000_000_000:
+                        stamp /= 1000.0
+                    timestamp = datetime.fromtimestamp(stamp, tz=timezone.utc).isoformat()
+            except (TypeError, ValueError, OverflowError, OSError):
+                return
+            callback({
+                "provider_id": "ctrader_open_api",
+                "account_id": self.account_id,
+                "symbol": symbol.strip(),
+                "bid": bid,
+                "ask": ask,
+                "timestamp": timestamp,
+                "received_at": datetime.now(timezone.utc).isoformat(),
+                "read_only": True,
+                "execution_authorized": False,
+            })
+        subscribe(self.account_id, symbol_id, normalized)
+
+    def unsubscribe_live_quotes(self, symbol: str) -> None:
+        if not self._authenticated:
+            raise RuntimeError("cTrader DEMO ainda não concluiu o handshake")
+        symbol_id, _digits = self._resolve_symbol(symbol.strip())
+        unsubscribe = getattr(self.transport, "unsubscribe_spots", None)
+        if not callable(unsubscribe):
+            raise RuntimeError("transport cTrader não oferece cancelamento de streaming spot")
+        unsubscribe(self.account_id, symbol_id)
+
     def fetch(self, request: MarketDataRequest) -> tuple[Candle, ...]:
         if not self._authenticated:
             raise RuntimeError("cTrader DEMO ainda não concluiu o handshake")
