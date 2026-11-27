@@ -7,6 +7,7 @@ between account sessions. The worker performs analysis only.
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import re
 import sqlite3
 import threading
@@ -35,6 +36,7 @@ class TenantConnectionTimeframeMonitor:
         on_result: Callable[[dict[str, Any]], None] | None = None,
         poll_interval_seconds: float = 2.0,
         close_grace_seconds: float = 3.0,
+        max_workers: int = 8,
     ) -> None:
         if session_registry is None or not callable(getattr(session_registry, "get", None)):
             raise ValueError("tenant market-data session registry is required")
@@ -42,6 +44,8 @@ class TenantConnectionTimeframeMonitor:
             raise ValueError("analyzer_factory must be callable")
         if poll_interval_seconds <= 0 or close_grace_seconds < 0:
             raise ValueError("invalid monitor timing")
+        if isinstance(max_workers, bool) or not isinstance(max_workers, int) or not 1 <= max_workers <= 32:
+            raise ValueError("max_workers deve ser inteiro entre 1 e 32")
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.session_registry = session_registry
@@ -49,6 +53,7 @@ class TenantConnectionTimeframeMonitor:
         self.on_result = on_result
         self.poll_interval_seconds = float(poll_interval_seconds)
         self.close_grace_seconds = float(close_grace_seconds)
+        self.max_workers = max_workers
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -302,10 +307,22 @@ class TenantConnectionTimeframeMonitor:
                 ORDER BY tenant_id, subject_id, connection_id, symbol, timeframe
             """).fetchall()]
         output = []
-        for row in rows:
-            item = self._process(row, current.astimezone(timezone.utc))
-            if item is not None:
-                output.append(item)
+        if not rows:
+            return output
+        # One slow/disconnected provider must not stall every other account.
+        # A bounded pool prevents unbounded fan-out when many watches are active.
+        with ThreadPoolExecutor(
+            max_workers=min(self.max_workers, len(rows)),
+            thread_name_prefix="account-market-cycle",
+        ) as executor:
+            futures = [
+                executor.submit(self._process, row, current.astimezone(timezone.utc))
+                for row in rows
+            ]
+            for future in as_completed(futures):
+                item = future.result()
+                if item is not None:
+                    output.append(item)
         return output
 
     def start(self) -> None:
@@ -347,6 +364,7 @@ class TenantConnectionTimeframeMonitor:
             "worker_running": bool(self._thread is not None and self._thread.is_alive()),
             "poll_interval_seconds": self.poll_interval_seconds,
             "close_grace_seconds": self.close_grace_seconds,
+            "max_workers": self.max_workers,
             "worker_error_class": self._worker_error,
             "scope": "TENANT_SUBJECT_CONNECTION",
             "execution_authorized": False,
