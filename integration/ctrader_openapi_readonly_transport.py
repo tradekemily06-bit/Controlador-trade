@@ -114,6 +114,7 @@ class CTraderOpenApiReadOnlyTransport:
                 ProtoOAGetAccountListByAccessTokenReq,
                 ProtoOAAccountAuthReq,
                 ProtoOASymbolsListReq,
+                ProtoOASymbolByIdReq,
                 ProtoOAGetTrendbarsReq,
                 ProtoOASubscribeSpotsReq,
                 ProtoOAUnsubscribeSpotsReq,
@@ -135,6 +136,7 @@ class CTraderOpenApiReadOnlyTransport:
             "account_list": ProtoOAGetAccountListByAccessTokenReq,
             "account_auth": ProtoOAAccountAuthReq,
             "symbols": ProtoOASymbolsListReq,
+            "symbol_by_id": ProtoOASymbolByIdReq,
             "trendbars": ProtoOAGetTrendbarsReq,
             "subscribe_spots": ProtoOASubscribeSpotsReq,
             "unsubscribe_spots": ProtoOAUnsubscribeSpotsReq,
@@ -527,10 +529,59 @@ class CTraderOpenApiReadOnlyTransport:
         for item in self._field(response, "symbol") or ():
             name = self._field(item, "symbolName")
             if isinstance(name, str) and name.casefold() == clean.casefold():
+                symbol_id = int(self._field(item, "symbolId"))
                 result = {
-                    "symbol_id": int(self._field(item, "symbolId")),
+                    "symbol_id": symbol_id,
                     "digits": int(self._field(item, "digits")),
+                    "calendar_metadata_status": "UNAVAILABLE",
                 }
+                # SymbolsList returns only lightweight entities. Fetch the full
+                # symbol separately so the adapter can inspect broker-supplied
+                # trading sessions, timezone and holidays. This metadata alone
+                # does not certify D1/W1 candle boundaries.
+                try:
+                    detail_request = self._messages["symbol_by_id"]()
+                    detail_request.ctidTraderAccountId = account_id
+                    detail_request.symbolId.append(symbol_id)
+                    detail_response = self._send(detail_request)
+                    detail = next(
+                        (
+                            candidate for candidate in (self._field(detail_response, "symbol") or ())
+                            if self._field(candidate, "symbolId") == symbol_id
+                        ),
+                        None,
+                    )
+                    if detail is not None:
+                        schedule = tuple({
+                            "start_second": self._field(interval, "startSecond"),
+                            "end_second": self._field(interval, "endSecond"),
+                        } for interval in (self._field(detail, "schedule") or ()))
+                        holidays = tuple({
+                            "name": self._field(holiday, "name"),
+                            "description": self._field(holiday, "description"),
+                            "schedule_time_zone": self._field(holiday, "scheduleTimeZone"),
+                            "holiday_date": self._field(holiday, "holidayDate"),
+                            "is_recurring": self._field(holiday, "isRecurring"),
+                            "start_second": self._field(holiday, "startSecond"),
+                            "end_second": self._field(holiday, "endSecond"),
+                        } for holiday in (self._field(detail, "holiday") or ()))
+                        schedule_time_zone = self._field(detail, "scheduleTimeZone")
+                        result.update({
+                            "schedule_time_zone": schedule_time_zone,
+                            "schedule": schedule,
+                            "holidays": holidays,
+                            "calendar_metadata_status": (
+                                "AVAILABLE"
+                                if isinstance(schedule_time_zone, str)
+                                and bool(schedule_time_zone.strip())
+                                and bool(schedule)
+                                else "INCOMPLETE"
+                            ),
+                        })
+                except (KeyError, AttributeError, TypeError, ValueError, RuntimeError, TimeoutError, OSError) as exc:
+                    # Keep intraday symbol resolution usable, but never convert
+                    # missing schedule data into a valid D1/W1 calendar.
+                    result["calendar_metadata_status"] = type(exc).__name__
                 self._symbols_cache[clean] = result
                 return result
         raise ValueError("símbolo não disponível na conta cTrader")
