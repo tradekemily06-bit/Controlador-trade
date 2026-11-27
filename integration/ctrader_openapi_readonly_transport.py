@@ -156,6 +156,9 @@ class CTraderOpenApiReadOnlyTransport:
         self._symbols_cache: dict[str, dict[str, Any]] = {}
         self._spot_callbacks: dict[int, Any] = {}
         self._trendbar_callbacks: dict[tuple[int, str], Any] = {}
+        # Spot subscriptions created only to carry trendbar events are tracked
+        # separately from explicit quote subscriptions for safe cleanup.
+        self._trendbar_spot_only: set[int] = set()
         self._spot_queue: queue.Queue = queue.Queue(maxsize=2048)
         self._spot_worker: threading.Thread | None = None
         self._spot_worker_stop = threading.Event()
@@ -328,6 +331,8 @@ class CTraderOpenApiReadOnlyTransport:
         # Spot events are the required carrier for live trendbars in Spotware Open API.
         if symbol_id not in self._spot_callbacks:
             self.subscribe_spots(account_id, symbol_id, lambda _event: None)
+            with self._lock:
+                self._trendbar_spot_only.add(symbol_id)
         request = self._messages["subscribe_trendbars"]()
         request.ctidTraderAccountId = account_id
         request.symbolId = symbol_id
@@ -353,6 +358,15 @@ class CTraderOpenApiReadOnlyTransport:
         self._send(request)
         with self._lock:
             self._trendbar_callbacks.pop(key, None)
+            no_more_trendbars = not any(
+                registered_symbol == symbol_id
+                for registered_symbol, _period in self._trendbar_callbacks
+            )
+            cleanup_spot = no_more_trendbars and symbol_id in self._trendbar_spot_only
+            if cleanup_spot:
+                self._trendbar_spot_only.discard(symbol_id)
+        if cleanup_spot:
+            self.unsubscribe_spots(account_id, symbol_id)
 
     def application_auth(self) -> None:
         request = self._messages["application_auth"]()
@@ -445,6 +459,7 @@ class CTraderOpenApiReadOnlyTransport:
         with self._lock:
             self._spot_callbacks.clear()
             self._trendbar_callbacks.clear()
+            self._trendbar_spot_only.clear()
         self._spot_worker_stop.set()
         worker = self._spot_worker
         if worker is not None and worker.is_alive():
