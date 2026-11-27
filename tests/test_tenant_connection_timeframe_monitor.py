@@ -326,3 +326,69 @@ def test_stream_capable_disconnected_provider_fails_closed_without_reconnect(tmp
     assert monitor.run_once(now=now) == []
     assert analyzer.calls == 0
     assert monitor.subscriptions(owner)[0]["last_status"] == "LIVE_STREAM_UNAVAILABLE"
+
+
+def test_live_stream_candle_reaches_real_standalone_analysis_and_persisted_result(tmp_path):
+    from datetime import timedelta
+    from core.unified_intelligence import UnifiedIntelligence
+    from data.models import Candle
+    from integration.standalone_market_analysis import StandaloneMarketAnalysisService
+
+    owner = TenantContext("tenant-a", "alice")
+    now = datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc)
+    expected = datetime(2026, 11, 27, 12, 0, tzinfo=timezone.utc)
+    history_start = expected - timedelta(minutes=35)
+    history = []
+    for index in range(8):
+        stamp = history_start + timedelta(minutes=5 * index)
+        base = 1.1000 + index * 0.0001
+        history.append(Candle(stamp, base, base + 0.0003, base - 0.0002, base + 0.0001, 100 + index))
+
+    class StreamingProvider:
+        account_id = 321
+        def __init__(self):
+            self.callback = None
+        def fetch(self, request):
+            return tuple(history[-request.limit:])
+        def subscribe_live_candles(self, symbol, timeframe, callback):
+            self.callback = callback
+        def unsubscribe_live_candles(self, symbol, timeframe):
+            self.callback = None
+
+    adapter = StreamingProvider()
+    session = Session("ctrader_open_api", "ctrader:321", adapter)
+
+    class Registry:
+        def get(self, context, *, connection_id):
+            return session if context == owner else None
+
+    emitted = []
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "live-to-analysis.sqlite3",
+        Registry(),
+        lambda current_session, _context: StandaloneMarketAnalysisService(
+            provider=current_session.adapter,
+            source="ctrader:321",
+            intelligence=UnifiedIntelligence(),
+        ),
+        on_result=emitted.append,
+    )
+    monitor.subscribe(owner, _id("9"), "EURUSD", "5m")
+    live = Candle(expected, 1.1009, 1.1014, 1.1007, 1.1012, 250)
+    adapter.callback({
+        "account_id": 321, "symbol": "EURUSD", "timeframe": "5m",
+        "candle": live, "closed": True,
+    })
+
+    results = monitor.run_once(now=now)
+    assert len(results) == 1
+    analyzed = results[0]["result"]
+    assert analyzed["market_data"]["last_candle_at"] == expected.isoformat()
+    assert analyzed["market_data"]["ohlcv"][-1]["timestamp"] == expected.isoformat()
+    assert analyzed["market_data"]["ohlcv"][-1]["close"] == live.close
+    assert analyzed["market_data"]["ohlcv"][-1]["volume"] == live.volume
+    persisted = monitor.latest_results(owner, _id("9"))
+    assert len(persisted) == 1
+    assert persisted[0]["result"]["market_data"]["ohlcv"][-1]["close"] == live.close
+    assert emitted[0]["result"]["market_data"]["ohlcv"][-1]["close"] == live.close
+    assert analyzed["execution_authorized"] is False
