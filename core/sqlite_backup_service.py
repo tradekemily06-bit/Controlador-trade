@@ -43,11 +43,15 @@ class SQLiteBackupService:
 
     @staticmethod
     def _check(path: Path) -> None:
+        """Check physical integrity and declared relational constraints."""
         uri = f"{path.resolve().as_uri()}?mode=ro"
         with sqlite3.connect(uri, uri=True, timeout=5) as db:
-            row = db.execute("PRAGMA quick_check").fetchone()
-        if not row or str(row[0]).lower() != "ok":
-            raise sqlite3.DatabaseError("backup integrity check failed")
+            integrity_rows = db.execute("PRAGMA quick_check").fetchall()
+            if not integrity_rows or any(str(row[0]).lower() != "ok" for row in integrity_rows):
+                raise sqlite3.DatabaseError("backup integrity check failed")
+            foreign_key_errors = db.execute("PRAGMA foreign_key_check").fetchmany(1)
+            if foreign_key_errors:
+                raise sqlite3.IntegrityError("backup foreign-key check failed")
 
     def backup(self, database_ids: tuple[str, ...] | list[str] | None = None) -> dict[str, Any]:
         selected = tuple(BACKUP_DATABASES) if database_ids is None else tuple(database_ids)
