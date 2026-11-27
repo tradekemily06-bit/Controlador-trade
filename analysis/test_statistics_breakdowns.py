@@ -1,5 +1,5 @@
 from analysis.decision_record import DecisionRecord
-from analysis.statistics import summarize_breakdowns
+from analysis.statistics import summarize_breakdowns, summarize_context_groups
 
 
 def make(decision_id: str, symbol: str | None, timeframe: str | None, outcome: str) -> DecisionRecord:
@@ -37,3 +37,23 @@ def test_breakdowns_keep_missing_dimensions_explicit():
 
     assert stats["symbols"]["UNKNOWN"]["open"] == 1
     assert stats["timeframes"]["UNKNOWN"]["open"] == 1
+
+
+def test_timeframe_aliases_are_canonicalized_without_pooling_m1_and_m5():
+    stats = summarize_breakdowns([
+        make("1", "EURUSD", "1m", "WIN"),
+        make("2", "EURUSD", "M1", "LOSS"),
+        make("3", "EURUSD", "M5", "WIN"),
+    ])
+    assert stats["timeframes"]["1m"]["total"] == 2
+    assert stats["timeframes"]["5m"]["total"] == 1
+
+    grouped = summarize_context_groups([
+        make("4", "EURUSD", "1m", "WIN"),
+        make("5", "EURUSD", "M1", "LOSS"),
+        make("6", "EURUSD", "M5", "WIN"),
+    ])
+    assert grouped["EURUSD|1m|COMPRA"]["descriptive_outcomes"]["total"] == 2
+    assert grouped["EURUSD|5m|COMPRA"]["descriptive_outcomes"]["total"] == 1
+    assert grouped["EURUSD|1m|COMPRA"]["calibration_status"] == "NOT_CALIBRATED"
+    assert grouped["EURUSD|1m|COMPRA"]["probability_of_profit"] is None
