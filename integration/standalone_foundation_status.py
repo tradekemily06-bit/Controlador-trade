@@ -65,6 +65,12 @@ _DATABASES = (
             "secret_hash", "tenant_id", "subject_id", "connection_id", "revoked",
         },
     }),
+    ("tenant_tradingview_alerts", "tenant-tradingview-alerts.sqlite3", True, {
+        "tenant_tradingview_alert_events": {
+            "tenant_id", "subject_id", "connection_id", "event_id", "ticker",
+            "interval", "action", "price", "fired_at", "received_at", "payload_json",
+        },
+    }),
     ("ctrader_oauth_state", "tenant-ctrader-oauth-state.sqlite3", False, {
         "tenant_oauth_states": {
             "state_hash", "tenant_id", "subject_id", "connection_id",
