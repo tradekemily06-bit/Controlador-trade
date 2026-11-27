@@ -112,17 +112,21 @@ def test_delayed_notification_is_downgraded_after_its_candle_expires(tmp_path):
     sessions = Sessions()
     sessions.add(owner, connection, "broker_a")
     now = datetime.now(timezone.utc)
+    def unavailable_sink(_event):
+        raise RuntimeError("temporary delivery outage")
+
     monitor = TenantConnectionTimeframeMonitor(
         tmp_path / "delayed-notification.sqlite3", sessions,
         lambda _session, _context: Analyzer(
             monitor.expected_last_closed_candle("M5", now).isoformat(), "COMPRA"
         ),
+        on_result=unavailable_sink,
     )
     monitor.subscribe(owner, connection, "EURUSD", "M5")
     assert len(monitor.run_once(now=now)) == 1
     with monitor._connect() as db:
         db.execute(
-            "UPDATE tenant_connection_notification_outbox SET candle_at=?",
+            "UPDATE tenant_connection_notification_outbox SET candle_at=?, lease_until=NULL",
             ((monitor.expected_last_closed_candle("M5", now) - timedelta(minutes=5)).isoformat(),),
         )
     delivered = []
