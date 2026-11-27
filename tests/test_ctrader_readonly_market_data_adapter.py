@@ -46,6 +46,13 @@ class FakeTransport:
     def unsubscribe_spots(self, account_id, symbol_id):
         self.calls.append(("unsubscribe_spots", account_id, symbol_id))
 
+    def subscribe_live_trendbars(self, account_id, symbol_id, period, callback):
+        self.calls.append(("subscribe_live_trendbars", account_id, symbol_id, period))
+        self.trendbar_callback = callback
+
+    def unsubscribe_live_trendbars(self, account_id, symbol_id, period):
+        self.calls.append(("unsubscribe_live_trendbars", account_id, symbol_id, period))
+
     def status(self):
         return {"connected": True, "last_seen": datetime.now(timezone.utc).isoformat()}
 
@@ -129,4 +136,56 @@ def test_ctrader_adapter_ignores_malformed_live_quote_without_crashing():
     received = []
     adapter.subscribe_live_quotes("EURUSD", received.append)
     transport.spot_callback({"symbol_id": 44, "bid": "invalid", "ask": None})
+    assert received == []
+
+
+
+def test_ctrader_adapter_streams_only_normalized_closed_trendbars():
+    transport = FakeTransport()
+    adapter = CTraderReadOnlyMarketDataAdapter(transport, account_id=123)
+    adapter.connect()
+    handshake = adapter.handshake()
+    received = []
+
+    adapter.subscribe_live_candles("EURUSD", "5m", received.append)
+    assert ("subscribe_live_trendbars", 123, 44, "M5") in transport.calls
+    transport.trendbar_callback({
+        "symbol_id": 44,
+        "period": "M5",
+        "trendbar": {
+            "low": 110000,
+            "deltaOpen": 1000,
+            "deltaHigh": 3000,
+            "deltaClose": 2000,
+            "utcTimestampInMinutes": 30000000,
+            "volume": 125,
+        },
+    })
+
+    assert "candles:stream" in handshake["capabilities"]
+    assert len(received) == 1
+    event = received[0]
+    assert event["closed"] is True
+    assert event["execution_authorized"] is False
+    assert event["candle"].low == 1.1
+    assert event["candle"].open == 1.11
+    assert event["candle"].high == 1.13
+    assert event["candle"].close == 1.12
+
+    adapter.unsubscribe_live_candles("EURUSD", "5m")
+    assert transport.calls[-1] == ("unsubscribe_live_trendbars", 123, 44, "M5")
+
+
+def test_ctrader_adapter_drops_invalid_live_trendbar():
+    transport = FakeTransport()
+    adapter = CTraderReadOnlyMarketDataAdapter(transport, account_id=123)
+    adapter.connect()
+    adapter.handshake()
+    received = []
+    adapter.subscribe_live_candles("EURUSD", "1m", received.append)
+    transport.trendbar_callback({
+        "symbol_id": 44,
+        "period": "M1",
+        "trendbar": {"low": "bad"},
+    })
     assert received == []
