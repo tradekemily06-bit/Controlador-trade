@@ -146,3 +146,52 @@ def test_tenant_fiscal_backup_rejects_broken_foreign_key_relations(tmp_path):
     assert result["status"] == "BACKUP_FAILED"
     assert result["scope"] == "ONE_TENANT_AND_SUBJECT"
     assert not list(backups.glob("tenant-fiscal-*.sqlite3"))
+
+
+def test_scheduled_backup_covers_all_managed_fiscal_shards_without_crossing_owners(tmp_path):
+    runtime = tmp_path / "runtime"
+    backups = tmp_path / "backups"
+    factory = TenantFiscalStoreFactory(runtime)
+    alice_context = TenantContext("tenant-a", "alice")
+    bob_context = TenantContext("tenant-a", "bob")
+    alice = factory.get(alice_context)
+    bob = factory.get(bob_context)
+    alice.foreign_pending.add(alice.owner_id, _pending("ALICE-SCHEDULED"))
+    bob.foreign_pending.add(bob.owner_id, _pending("BOB-SCHEDULED"))
+
+    service = TenantFiscalBackupService(factory, backups)
+    result = service.backup_all_managed_shards()
+
+    assert result["status"] == "SUCCESS"
+    assert len(result["results"]) == 2
+    assert {item["status"] for item in result["results"]} == {"BACKUP_CREATED"}
+    for item in result["results"]:
+        assert item["owner_digest"] not in {"alice", "bob"}
+        with sqlite3.connect(backups / item["filename"]) as db:
+            owners = {
+                row[0] for row in db.execute(
+                    "SELECT DISTINCT owner_id FROM fiscal_reserve_pending_foreign"
+                ).fetchall()
+            }
+            refs = {
+                row[0] for row in db.execute(
+                    "SELECT reference FROM fiscal_reserve_pending_foreign"
+                ).fetchall()
+            }
+        assert len(owners) == 1
+        assert refs in ({"ALICE-SCHEDULED"}, {"BOB-SCHEDULED"})
+
+
+def test_scheduled_tenant_backup_fails_closed_on_unexpected_shard_file(tmp_path):
+    runtime = tmp_path / "runtime"
+    backups = tmp_path / "backups"
+    factory = TenantFiscalStoreFactory(runtime)
+    context = TenantContext("tenant-a", "alice")
+    factory.get(context)
+    (factory.tenant_root / "unexpected").mkdir()
+    service = TenantFiscalBackupService(factory, backups)
+
+    result = service.backup_all_managed_shards()
+
+    assert result["status"] == "SOURCE_UNSAFE"
+    assert result["results"] == []
