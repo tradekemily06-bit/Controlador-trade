@@ -219,6 +219,45 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertFalse(body["execution_authorized"])
 
 
+    def test_remote_market_data_provider_status_uses_only_verified_tenant_connections(self):
+        class Connections:
+            def list_connections(self, context):
+                assert context.tenant_id == "tenant-a"
+                assert context.subject_id == "alice"
+                return [{
+                    "connection_id": "a" * 32,
+                    "provider_id": "broker_x",
+                    "account_alias": "Conta Alice",
+                    "account_reference": "account-a",
+                    "status": "CONNECTED",
+                    "last_verified_at": "2026-11-26T12:00:00+00:00",
+                    "capabilities": ["candles:read"],
+                    "read_only": True,
+                    "execution_authorized": False,
+                }]
+
+        runtime = FakeRuntime()
+        runtime.tenant_provider_connections = Connections()
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/market-data/providers",
+                remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["scope"], "TENANT_AND_SUBJECT")
+        self.assertEqual(body["count"], 1)
+        self.assertEqual(body["connections"][0]["provider_id"], "broker_x")
+        self.assertNotIn("configured_data_sources", body)
+        self.assertFalse(body["execution_authorized"])
+
     def test_assistant_status_reports_conversation_scope_and_remote_chat_guard(self):
         runtime = FakeRuntime()
         runtime.assistant = FakeRuntime.Assistant()
