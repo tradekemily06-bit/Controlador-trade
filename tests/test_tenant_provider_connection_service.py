@@ -126,3 +126,17 @@ def test_disconnect_closes_adapter_and_revokes_runtime_binding(tmp_path):
     assert adapters[0].disconnected is True
     assert sessions.get(owner, connection_id=connected["connection_id"]) is None
     assert connections.list_connections(owner)[0]["status"] == "DISCONNECTED"
+
+
+def test_disconnect_revokes_stale_connected_metadata_after_process_restart(tmp_path):
+    vault = Vault()
+    connections, sessions, service = _service(tmp_path, vault, lambda credentials: Adapter(credentials))
+    owner = TenantContext("tenant-a", "alice")
+    connected = service.connect(
+        owner, provider_id="broker_a", account_alias="Conta",
+        credential_ref="vault://tenant-a/broker-a",
+    )
+    sessions.unbind(owner, connection_id=connected["connection_id"])
+    result = service.disconnect(owner, connection_id=connected["connection_id"])
+    assert result["status"] == "DISCONNECTED_SESSION_NOT_BOUND"
+    assert connections.list_connections(owner)[0]["status"] == "DISCONNECTED"
