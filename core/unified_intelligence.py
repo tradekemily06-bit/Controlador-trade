@@ -1,4 +1,4 @@
-"""One shared intelligence core for the seven application areas.
+"""One shared intelligence core for the six approved application areas.
 
 This is an integration/orchestration layer over verified ecosystem capabilities.
 It is not a claim of AGI/ASI and it does not provide execution authority.
@@ -21,7 +21,6 @@ class ApplicationArea(str, Enum):
     COMMAND_CABIN = "command_cabin"
     ANALYSIS = "analysis"
     STUDY = "study"
-    MEMORY = "memory"
     TAX_RESERVE = "tax_reserve"
     ECOSYSTEM_ASSISTANT = "ecosystem_assistant"
     CONTROL_CENTER = "control_center"
@@ -82,13 +81,6 @@ _AREA_CONTRACTS: Mapping[ApplicationArea, AreaContract] = {
         ("shared_intelligence", "curriculum", "learning", "research", "validation", "simulation"),
         ("read", "study", "simulate", "submit_learning_evidence"),
     ),
-    ApplicationArea.MEMORY: AreaContract(
-        ApplicationArea.MEMORY,
-        "Memória",
-        ("histórico", "registros", "resultados", "contexto aprendido", "proveniência"),
-        ("shared_intelligence", "memory", "audit", "validated_knowledge"),
-        ("read", "record", "review", "export"),
-    ),
     ApplicationArea.TAX_RESERVE: AreaContract(
         ApplicationArea.TAX_RESERVE,
         "Reserva Fiscal",
@@ -142,7 +134,11 @@ class UnifiedIntelligence:
     def route(self, *, area: ApplicationArea | str, task: str) -> IntelligenceRoute:
         if isinstance(area, str):
             try:
-                area = ApplicationArea(area.strip().lower())
+                normalized_area = area.strip().lower()
+                # Backward compatibility: Memory is an internal Analysis capability.
+                if normalized_area == "memory":
+                    normalized_area = ApplicationArea.ANALYSIS.value
+                area = ApplicationArea(normalized_area)
             except ValueError as exc:
                 raise ValueError("área do aplicativo desconhecida") from exc
         if not isinstance(area, ApplicationArea):
