@@ -7,13 +7,23 @@ import os
 def validate_single_replica_sqlite_topology(
     environ: dict[str, str] | None = None,
 ) -> dict[str, object]:
-    """Reject declared multi-replica deployments until shared transactional storage exists.
+    """Reject unsupported storage/topology declarations instead of silently ignoring them.
 
+    The runtime is wired to local SQLite stores. Declaring PostgreSQL or another
+    backend in configuration must not be mistaken for an active migration.
     SQLite leases and process locks coordinate only one shared host/runtime.
-    This guard does not detect replicas automatically; operators must declare
-    the intended replica count through CONTROLADOR_EXPECTED_REPLICAS.
+    Replica count is an operator declaration, not automatic replica discovery.
     """
     values = os.environ if environ is None else environ
+
+    backend = str(values.get("CONTROLADOR_STORAGE_BACKEND", "sqlite")).strip().lower()
+    if backend not in {"sqlite", "local_sqlite"}:
+        raise RuntimeError(
+            "unsupported CONTROLADOR_STORAGE_BACKEND: this runtime is still wired "
+            "to local SQLite; a shared database backend cannot be declared ready "
+            "until every runtime store, lease and outbox is migrated and tested"
+        )
+
     raw = values.get("CONTROLADOR_EXPECTED_REPLICAS", "1")
     try:
         replicas = int(raw)
@@ -29,6 +39,7 @@ def validate_single_replica_sqlite_topology(
         )
     return {
         "deployment_topology": "SINGLE_HOST_SINGLE_RUNTIME",
+        "storage_backend": "LOCAL_SQLITE",
         "expected_replicas": replicas,
         "multi_replica_ready": False,
         "execution_authorized": False,
