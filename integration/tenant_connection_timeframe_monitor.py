@@ -565,7 +565,24 @@ class TenantConnectionTimeframeMonitor:
                     raise ValueError("candle timestamp must be timezone-aware")
                 timeframe = normalize_timeframe(item["timeframe"])
                 interval = get_timeframe_interval(timeframe)
-                expected = self.expected_last_closed_candle(timeframe, current)
+                session = self.session_registry.get(
+                    owner, connection_id=self._connection(item["connection_id"])
+                )
+                expected = (
+                    self._expected_for_session(session, timeframe, current)
+                    if session is not None else None
+                )
+                if expected is None:
+                    item["signal_valid"] = False
+                    item["signal_validity"] = "SESSION_CALENDAR_UNAVAILABLE"
+                    result["original_signal"] = result.get("signal")
+                    result["signal"] = None
+                    result["status"] = "SESSION_CALENDAR_UNAVAILABLE"
+                    result["signal_valid"] = False
+                    result["signal_validity"] = "SESSION_CALENDAR_UNAVAILABLE"
+                    item["result"] = result
+                    output.append(item)
+                    continue
                 valid = candle_at.astimezone(timezone.utc) == expected
                 item["signal_valid"] = valid
                 item["signal_validity"] = "VALID" if valid else "EXPIRED"
@@ -601,6 +618,36 @@ class TenantConnectionTimeframeMonitor:
         else:
             bucket = (epoch // interval) * interval
         return datetime.fromtimestamp(bucket, tz=timezone.utc)
+
+    def _expected_for_session(self, session: Any, timeframe: str, now: datetime) -> datetime | None:
+        """Resolve a closed-candle boundary without guessing broker D1/W1 sessions.
+
+        Intraday periods retain UTC fixed buckets. Daily and weekly periods
+        require the provider adapter to explicitly calculate its verified
+        session boundary; absent that capability, signals fail closed.
+        """
+        normalized = normalize_timeframe(timeframe)
+        if normalized.endswith(("d", "w")):
+            adapter = getattr(session, "adapter", None)
+            resolver = getattr(adapter, "expected_last_closed_candle", None)
+            if not callable(resolver):
+                return None
+            try:
+                expected = resolver(
+                    normalized,
+                    now.astimezone(timezone.utc),
+                    close_grace_seconds=self.close_grace_seconds,
+                )
+                if (
+                    not isinstance(expected, datetime)
+                    or expected.tzinfo is None
+                    or expected.utcoffset() is None
+                ):
+                    return None
+                return expected.astimezone(timezone.utc)
+            except (TypeError, ValueError, OverflowError):
+                return None
+        return self.expected_last_closed_candle(normalized, now)
 
     def expected_last_closed_candle(self, timeframe: str, now: datetime) -> datetime:
         if not isinstance(now, datetime) or now.tzinfo is None or now.utcoffset() is None:
@@ -733,13 +780,23 @@ class TenantConnectionTimeframeMonitor:
         owner = TenantContext(row["tenant_id"], row["subject_id"])
         connection = row["connection_id"]
         symbol, timeframe = row["symbol"], row["timeframe"]
-        expected = self.expected_last_closed_candle(timeframe, now)
-        if row["last_processed_candle"] == expected.isoformat() or not self._enabled(row):
+        if row["last_processed_candle"] and not self._enabled(row):
             return None
         try:
             session = self.session_registry.get(owner, connection_id=connection)
             if session is None:
                 raise RuntimeError("adapter da conta desconectado ou não vinculado")
+            expected = self._expected_for_session(session, timeframe, now)
+            if expected is None:
+                with self._lock, self._connect() as db:
+                    db.execute("""
+                        UPDATE tenant_connection_timeframe_watch
+                        SET last_status='WAITING_FOR_SESSION_CALENDAR', last_error=NULL
+                        WHERE tenant_id=? AND subject_id=? AND connection_id=? AND symbol=? AND timeframe=?
+                    """, (owner.tenant_id, owner.subject_id, connection, symbol, timeframe))
+                return None
+            if row["last_processed_candle"] == expected.isoformat():
+                return None
             stream_key = (owner.tenant_id, owner.subject_id, connection, symbol, timeframe)
             # Rebind persisted watches after process restart or a transient adapter
             # rebind; retry is throttled so a broken provider is not hammered.
