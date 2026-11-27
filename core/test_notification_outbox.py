@@ -197,3 +197,39 @@ def test_crashed_worker_reclaims_consume_retry_budget_and_dead_letter(tmp_path):
     assert outbox.claim_due(now=23, lease_seconds=5) == ()
     assert outbox.status_counts()["DEAD"] == 1
     assert outbox.status_counts()["IN_FLIGHT"] == 0
+
+
+def test_lost_lease_does_not_abort_remaining_batch_items(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "outbox.sqlite3"
+    outbox = PersistentNotificationOutbox(path)
+    outbox.enqueue("lease-lost", {"title": "First"}, now=10)
+    outbox.enqueue("still-valid", {"title": "Second"}, now=10)
+
+    class LeaseExpiringSink:
+        def __init__(self):
+            self.delivered = []
+
+        def deliver(self, idempotency_key, payload):
+            if idempotency_key == "lease-lost":
+                with sqlite3.connect(path) as db:
+                    db.execute(
+                        "UPDATE notification_outbox SET lease_until=0 "
+                        "WHERE idempotency_key=?",
+                        (idempotency_key,),
+                    )
+                raise RuntimeError("provider failed after lease expiry")
+            self.delivered.append((idempotency_key, dict(payload)))
+
+    sink = LeaseExpiringSink()
+    result = outbox.dispatch_due(sink, now=100, lease_seconds=60)
+
+    assert result.claimed == 2
+    assert result.delivered == 1
+    assert result.retried == 0
+    assert result.dead_lettered == 0
+    assert sink.delivered == [("still-valid", {"title": "Second"})]
+    counts = outbox.status_counts()
+    assert counts["DELIVERED"] == 1
+    assert counts["IN_FLIGHT"] == 1
