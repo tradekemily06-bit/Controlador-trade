@@ -72,3 +72,22 @@ def test_oauth_provider_error_is_redacted():
             client.exchange_code("code", "https://app.example.com/callback")
     assert "sensitive-reflected-value" not in str(error.value)
     assert "private-secret" not in str(error.value)
+
+
+def test_oauth_client_builds_server_side_readonly_transport(monkeypatch):
+    import integration.ctrader_openapi_readonly_transport as transport_module
+
+    captured = {}
+    class FakeTransport:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+    monkeypatch.setattr(transport_module, "CTraderOpenApiReadOnlyTransport", FakeTransport)
+
+    client = CTraderOAuthHttpClient(client_id="server-client", client_secret="server-secret")
+    transport = client.create_readonly_transport("opaque-access-token")
+    assert isinstance(transport, FakeTransport)
+    assert captured == {
+        "client_id": "server-client",
+        "client_secret": "server-secret",
+        "access_token": "opaque-access-token",
+    }
