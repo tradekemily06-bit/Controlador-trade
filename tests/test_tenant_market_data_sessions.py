@@ -141,6 +141,7 @@ def test_quote_stream_backpressure_is_not_reported_as_healthy(tmp_path):
                 "active_spot_symbols": 2,
                 "spot_event_queue_depth": 2048,
                 "spot_event_overflow_count": 3,
+                "last_spot_overflow_at": datetime.now(timezone.utc).isoformat(),
             }
 
     sessions.bind(
@@ -150,3 +151,26 @@ def test_quote_stream_backpressure_is_not_reported_as_healthy(tmp_path):
     status = sessions.status(owner)[0]
     assert status["health_status"] == "STREAM_BACKPRESSURE"
     assert status["health"]["spot_event_overflow_count"] == 3
+
+
+
+def test_old_quote_queue_overflow_does_not_keep_connection_degraded(tmp_path):
+    connections, sessions = _setup(tmp_path)
+    owner = TenantContext("tenant-a", "alice")
+    account = _verified(connections, owner, "Conta A", "account-a")
+
+    class RecoveredAdapter(FakeAdapter):
+        def status(self):
+            return {
+                "connected": True,
+                "last_seen": datetime.now(timezone.utc).isoformat(),
+                "spot_event_overflow_count": 3,
+                "last_spot_overflow_at": "2020-01-01T00:00:00+00:00",
+            }
+
+    sessions.bind(
+        owner, connection_id=account["connection_id"], adapter=RecoveredAdapter(),
+        source="ctrader_open_api:account-a", handshake_verified=True,
+    )
+    status = sessions.status(owner)[0]
+    assert status["health_status"] == "CONNECTED"
