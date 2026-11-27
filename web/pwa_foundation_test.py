@@ -35,6 +35,11 @@ def test_registration_requires_secure_context_and_does_not_request_permission():
     registration = (WEB / "pwa-registration.js").read_text(encoding="utf-8")
     assert 'window.isSecureContext === true' in registration
     assert 'navigator.serviceWorker.register("/service-worker.js"' in registration
+    assert '"PushManager" in window' in registration
+    assert 'window.matchMedia("(display-mode: standalone)")' in registration
+    assert 'window.addEventListener("online"' in registration
+    assert 'window.addEventListener("offline"' in registration
+    assert 'window.addEventListener("beforeinstallprompt"' in registration
     assert "Notification.requestPermission" not in registration
     assert "pushManager.subscribe" not in registration
 
