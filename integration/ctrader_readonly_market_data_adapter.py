@@ -244,6 +244,84 @@ class CTraderReadOnlyMarketDataAdapter:
             "status": "METADATA_AVAILABLE_NOT_CALENDAR_VALIDATED",
         }
 
+    def get_session_calendar_reconciliation_report(
+        self, symbol: str, timeframe: str, *, lookback: int = 120
+    ) -> dict[str, Any]:
+        """Collect observed D1/W1 opens beside broker hours; never validate them.
+
+        This is an operator diagnostic only. Trading hours and observed bar
+        timestamps do not prove the provider's aggregation boundary without
+        broker-specific review across DST, holidays and weekend reopen.
+        """
+        clean_symbol = str(symbol).strip()
+        if not clean_symbol:
+            raise ValueError("símbolo cTrader é obrigatório")
+        try:
+            normalized_timeframe = normalize_timeframe(timeframe)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("timeframe cTrader inválido") from exc
+        if normalized_timeframe not in {"1d", "1w"}:
+            raise ValueError("reconciliação de calendário é exclusiva para D1/W1")
+        if isinstance(lookback, bool) or not isinstance(lookback, int) or not 3 <= lookback <= 1000:
+            raise ValueError("lookback deve ser inteiro entre 3 e 1000")
+
+        metadata = self.get_symbol_session_calendar_metadata(clean_symbol)
+        candles = self.fetch(MarketDataRequest(
+            symbol=clean_symbol, timeframe=normalized_timeframe, limit=lookback
+        ))
+        utc_patterns = sorted({
+            (candle.timestamp.weekday(), candle.timestamp.strftime("%H:%M"))
+            for candle in candles
+        })
+        local_patterns = []
+        utc_offsets = []
+        timezone_name = metadata.get("schedule_time_zone") if metadata else None
+        timezone_status = (
+            metadata.get("timezone_validation_status") if metadata else None
+        )
+        if timezone_status == "VALIDATED_BY_RUNTIME" and timezone_name:
+            try:
+                zone = ZoneInfo(timezone_name)
+                local_patterns = sorted({
+                    (
+                        candle.timestamp.astimezone(zone).weekday(),
+                        candle.timestamp.astimezone(zone).strftime("%H:%M"),
+                    )
+                    for candle in candles
+                })
+                utc_offsets = sorted({
+                    int(candle.timestamp.astimezone(zone).utcoffset().total_seconds())
+                    for candle in candles
+                    if candle.timestamp.astimezone(zone).utcoffset() is not None
+                })
+            except (KeyError, ValueError, TypeError, OverflowError):
+                local_patterns = []
+                utc_offsets = []
+
+        return {
+            "provider_id": "ctrader_open_api",
+            "account_id": self.account_id,
+            "symbol": clean_symbol,
+            "timeframe": normalized_timeframe,
+            "sample_count": len(candles),
+            "first_observed_open_at": candles[0].timestamp.isoformat() if candles else None,
+            "last_observed_open_at": candles[-1].timestamp.isoformat() if candles else None,
+            "observed_utc_open_patterns": [
+                {"weekday_monday_zero": day, "time": clock}
+                for day, clock in utc_patterns
+            ],
+            "observed_provider_local_open_patterns": [
+                {"weekday_monday_zero": day, "time": clock}
+                for day, clock in local_patterns
+            ],
+            "observed_provider_utc_offsets_seconds": utc_offsets,
+            "session_metadata": metadata,
+            "status": "OBSERVATIONS_ONLY_NOT_VALIDATED",
+            "calendar_validation_passed": False,
+            "signal_authorized": False,
+            "execution_authorized": False,
+        }
+
     def subscribe_live_quotes(self, symbol: str, callback) -> None:
         """Subscribe to provider-pushed bid/ask updates without polling the API."""
         if not self._authenticated:
