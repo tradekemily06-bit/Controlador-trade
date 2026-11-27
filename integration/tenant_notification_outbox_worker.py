@@ -5,6 +5,7 @@ import time
 from typing import Any
 
 from core.tenant_notification_outbox import TenantNotificationOutbox, TenantNotificationSink
+from security.tenant_context import TenantContext
 
 
 class TenantNotificationOutboxWorker:
@@ -65,7 +66,7 @@ class TenantNotificationOutboxWorker:
                 if self._thread is thread and not thread.is_alive():
                     self._thread = None
 
-    def status(self) -> dict[str, Any]:
+    def status(self, context: TenantContext | None = None) -> dict[str, Any]:
         with self._lock:
             thread = self._thread
             running = bool(thread is not None and thread.is_alive())
@@ -78,5 +79,5 @@ class TenantNotificationOutboxWorker:
             "configured": True, "running": running, "state": state,
             "stop_requested": stop_requested, "last_error": last_error,
             "last_result": last_result, "last_cycle_at": last_cycle_at,
-            "outbox": self.outbox.status_counts(),
+            "outbox": self.outbox.status_counts(context),
         }
