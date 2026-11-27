@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import threading
 from pathlib import Path
 from typing import Any, Callable
 
@@ -57,6 +58,7 @@ class TenantMT5RelayRegistry:
         self.sessions = sessions
         self._stores: dict[tuple[str, str, str], MT5RelayStore] = {}
         self._adapters: dict[tuple[str, str, str], _TenantMT5RelayMarketDataAdapter] = {}
+        self._lock = threading.RLock()
 
     @staticmethod
     def _connection_id(value: str) -> str:
@@ -83,16 +85,17 @@ class TenantMT5RelayRegistry:
         if not isinstance(source_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,48}", source_id):
             raise PermissionError("origem MT5 não provisionada pelo servidor")
         key = (owner.tenant_id, owner.subject_id, connection)
-        store = self._stores.get(key)
-        if store is None:
-            # Hash the full owner/account tuple; never use caller-provided path
-            # segments and never share a database between accounts.
-            identity = "\\0".join(key).encode("utf-8")
-            filename = hashlib.sha256(identity).hexdigest() + ".sqlite3"
-            store = MT5RelayStore(self.runtime_dir / filename, expected_source_id=source_id)
-            self._stores[key] = store
-        elif store.expected_source_id != source_id:
-            raise PermissionError("source id provisionado mudou; exige reprovisionamento controlado")
+        with self._lock:
+            store = self._stores.get(key)
+            if store is None:
+                # Hash the full owner/account tuple; never use caller-provided path
+                # segments and never share a database between accounts.
+                identity = "\\0".join(key).encode("utf-8")
+                filename = hashlib.sha256(identity).hexdigest() + ".sqlite3"
+                store = MT5RelayStore(self.runtime_dir / filename, expected_source_id=source_id)
+                self._stores[key] = store
+            elif store.expected_source_id != source_id:
+                raise PermissionError("source id provisionado mudou; exige reprovisionamento controlado")
         return key, store
 
     def ingest(
@@ -110,10 +113,11 @@ class TenantMT5RelayRegistry:
         if self.sessions is not None:
             owner = require_tenant_context(context)
             key = (owner.tenant_id, owner.subject_id, connection_id)
-            adapter = self._adapters.get(key)
-            if adapter is None:
-                adapter = _TenantMT5RelayMarketDataAdapter(store)
-                self._adapters[key] = adapter
+            with self._lock:
+                adapter = self._adapters.get(key)
+                if adapter is None:
+                    adapter = _TenantMT5RelayMarketDataAdapter(store)
+                    self._adapters[key] = adapter
             self.sessions.bind(
                 owner, connection_id=connection_id, adapter=adapter,
                 source=f"mt5_relay:{connection_id}", handshake_verified=True,
