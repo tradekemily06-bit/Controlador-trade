@@ -176,6 +176,24 @@ class CTraderOpenApiReadOnlyTransport:
                 return value
         return None
 
+    @staticmethod
+    def _field_present(obj: Any, name: str) -> bool:
+        if isinstance(obj, dict):
+            return name in obj and obj[name] is not None
+        has_field = getattr(obj, "HasField", None)
+        if callable(has_field):
+            try:
+                return bool(has_field(name))
+            except (ValueError, TypeError):
+                pass
+        list_fields = getattr(obj, "ListFields", None)
+        if callable(list_fields):
+            try:
+                return any(getattr(descriptor, "name", None) == name for descriptor, _value in list_fields())
+            except Exception:
+                pass
+        return getattr(obj, name, None) is not None
+
     def connect(self) -> None:
         with self._lock:
             if self._client is not None and self._connected.is_set():
@@ -446,7 +464,7 @@ class CTraderOpenApiReadOnlyTransport:
         for account in accounts:
             raw_id = self._field(account, "ctidTraderAccountId")
             is_live = self._field(account, "isLive")
-            if raw_id is None or isinstance(is_live, bool) is False:
+            if raw_id is None or not self._field_present(account, "isLive") or not isinstance(is_live, bool):
                 raise PermissionError("Spotware retornou uma conta sem confirmação de ID/modo")
             try:
                 account_id = int(raw_id)
@@ -468,7 +486,7 @@ class CTraderOpenApiReadOnlyTransport:
             returned_id = self._field(account, "ctidTraderAccountId")
             if returned_id is not None and int(returned_id) == account_id:
                 is_live = self._field(account, "isLive")
-                if not isinstance(is_live, bool):
+                if not self._field_present(account, "isLive") or not isinstance(is_live, bool):
                     raise PermissionError("Spotware não confirmou o tipo DEMO/REAL da conta")
                 self._account_id = account_id
                 return {"account_id": account_id, "is_live": is_live}
