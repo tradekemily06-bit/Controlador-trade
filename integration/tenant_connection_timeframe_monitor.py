@@ -583,11 +583,16 @@ class TenantConnectionTimeframeMonitor:
                 valid = candle_at.astimezone(timezone.utc) == expected
                 item["signal_valid"] = valid
                 item["signal_validity"] = "VALID" if valid else "EXPIRED"
-                item["signal_valid_until"] = (
-                    candle_at.astimezone(timezone.utc)
-                    + interval * 2
-                    + timedelta(seconds=self.close_grace_seconds)
-                ).isoformat()
+                # A fixed-duration estimate is not a trustworthy expiry for
+                # broker-session D1/W1 candles (holidays, DST and weekly closes).
+                # Until the adapter exposes the next verified session boundary,
+                # omit signal_valid_until rather than publishing a guessed time.
+                if not timeframe.endswith(("d", "w")):
+                    item["signal_valid_until"] = (
+                        candle_at.astimezone(timezone.utc)
+                        + interval * 2
+                        + timedelta(seconds=self.close_grace_seconds)
+                    ).isoformat()
                 result["signal_valid"] = valid
                 result["signal_validity"] = "VALID" if valid else "EXPIRED"
                 if not valid:
