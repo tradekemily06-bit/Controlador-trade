@@ -155,3 +155,19 @@ def test_tenant_outbox_remains_idempotent_after_inbox_retention_evicts_old_event
     assert dispatcher.outbox.publish(owner, {"notification_id": "event-3"}, inbox_limit=2) is True
     assert dispatcher.outbox.publish(owner, first, inbox_limit=2) is False
     assert dispatcher.outbox.status_counts(owner)["PENDING"] == 3
+
+
+
+def test_tenant_outbox_dead_letters_after_retry_budget(tmp_path):
+    from core.tenant_notification_outbox import TenantNotificationOutbox
+
+    storage = SQLiteTenantStorage(tmp_path / "tenant.sqlite3")
+    outbox = TenantNotificationOutbox(storage, max_attempts=2, base_backoff_seconds=5)
+    owner = TenantContext("tenant-a", "alice")
+    assert outbox.publish(owner, {"notification_id": "dead-event"}, now=100) is True
+    first = outbox.claim_due(now=100, lease_seconds=20)[0]
+    assert outbox.mark_failed(first, "temporary failure", now=100) == "PENDING"
+    second = outbox.claim_due(now=105, lease_seconds=20)[0]
+    assert second.attempts == 2
+    assert outbox.mark_failed(second, "permanent failure", now=105) == "DEAD"
+    assert outbox.status_counts(owner)["DEAD"] == 1
