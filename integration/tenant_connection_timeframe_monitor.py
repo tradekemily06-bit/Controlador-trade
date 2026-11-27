@@ -71,7 +71,7 @@ class TenantConnectionTimeframeMonitor:
         # previous subscribe/unsubscribe cycle from becoming valid again when
         # the same adapter instance is rebound to the same watch.
         self._live_stream_tokens: dict[tuple[str, str, str, str, str], str] = {}
-        self._live_candles: dict[tuple[str, str, str, str, str], Any] = {};
+        self._live_candles: dict[tuple[str, str, str, str, str], Any] = {}
         self._live_stream_retry_at: dict[tuple[str, str, str, str, str], float] = {}
         self._processing: set[tuple[str, str, str, str, str]] = set()
         self._adapter_reconnect_locks: dict[int, threading.Lock] = {}
@@ -312,7 +312,10 @@ class TenantConnectionTimeframeMonitor:
             subscribe(symbol, timeframe, receive)
         except Exception:
             with self._lock:
-                if self._live_stream_adapters.get(key) is adapter:
+                if (
+                    self._live_stream_adapters.get(key) is adapter
+                    and self._live_stream_tokens.get(key) == binding_token
+                ):
                     self._live_streams.discard(key)
                     self._live_stream_adapters.pop(key, None)
                     self._live_stream_tokens.pop(key, None)
