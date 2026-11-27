@@ -162,6 +162,19 @@ class TenantConnectionTimeframeMonitor:
                     previous_unsubscribe(symbol, timeframe)
                 except Exception:
                     pass
+        health = getattr(adapter, "status", None)
+        if callable(health):
+            try:
+                reported = health()
+                if isinstance(reported, dict) and reported.get("connected") is False:
+                    reconnect = getattr(adapter, "reconnect", None)
+                    if not callable(reconnect):
+                        raise RuntimeError("provider disconnected and does not support safe reconnect")
+                    reconnect()
+            except Exception:
+                with self._lock:
+                    self._live_stream_retry_at[key] = time.monotonic() + 10.0
+                return False
         def receive(event: Any) -> None:
             if not isinstance(event, dict) or event.get("closed") is not True:
                 return
