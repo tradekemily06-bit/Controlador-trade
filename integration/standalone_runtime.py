@@ -23,6 +23,7 @@ from integration.tenant_tradingview_alert_inbox import TenantTradingViewAlertInb
 from integration.tenant_oauth_state_vault import TenantOAuthStateVault
 from integration.tenant_oauth_token_vault import TenantOAuthTokenVault
 from integration.tenant_ctrader_oauth_service import TenantCTraderOAuthService
+from integration.tenant_ctrader_account_service import TenantCTraderAccountService
 from security.tenant_scoped_ecosystem_state import TenantScopedEcosystemState
 from security.tenant_scoped_decision_memory import TenantScopedDecisionMemory
 from integration.tenant_notification_dispatcher import TenantNotificationDispatcher
@@ -148,6 +149,7 @@ class StandaloneRuntime:
         ctrader_oauth_refresh_tokens=None,
         ctrader_oauth_client_id: str | None = None,
         ctrader_oauth_redirect_uri: str | None = None,
+        ctrader_transport_factory=None,
     ) -> None:
         configured_identity = os.getenv("CONTROLADOR_SINGLE_USER_IDENTITY", "").strip()
         if not configured_identity:
@@ -193,6 +195,8 @@ class StandaloneRuntime:
                 ctrader_oauth_redirect_uri is not None,
             ))
             self.tenant_ctrader_oauth_service = None
+            self.tenant_ctrader_account_service = None
+            ctrader_token_vault = None
             if ctrader_oauth_configured:
                 if any(value is None for value in (
                     ctrader_oauth_cipher, ctrader_oauth_exchange_code,
@@ -223,6 +227,15 @@ class StandaloneRuntime:
             self.tenant_market_data_sessions = TenantMarketDataSessionRegistry(
                 self.tenant_provider_connections
             )
+            if ctrader_transport_factory is not None:
+                if not callable(ctrader_transport_factory) or ctrader_token_vault is None:
+                    raise RuntimeError("cTrader account selection requires OAuth token vault and trusted transport factory")
+                self.tenant_ctrader_account_service = TenantCTraderAccountService(
+                    self.tenant_provider_connections,
+                    self.tenant_market_data_sessions,
+                    ctrader_token_vault,
+                    transport_factory=ctrader_transport_factory,
+                )
             self.tenant_mt5_relay_token_vault = TenantMT5RelayTokenVault(
                 self.runtime_dir / "tenant-mt5-relay-tokens.sqlite3",
                 self.tenant_provider_connections,
