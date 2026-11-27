@@ -1582,3 +1582,54 @@ class PublicBindSecurityTests(unittest.TestCase):
         ])
         self.assertFalse(body["execution_authorized"])
 
+
+
+    def test_ctrader_oauth_provision_creates_pending_connection_from_alias_only(self):
+        class OAuth:
+            def __init__(self):
+                self.calls = []
+            def provision(self, context, *, account_alias):
+                self.calls.append((context.tenant_id, context.subject_id, account_alias))
+                return {
+                    "connection_id": "c" * 32,
+                    "provider_id": "ctrader_open_api",
+                    "status": "PENDING_OAUTH",
+                    "authorization_url": "https://id.ctrader.com/consent?state=one-time",
+                    "account_connected": False,
+                    "execution_authorized": False,
+                }
+
+        runtime = FakeRuntime()
+        runtime.tenant_ctrader_oauth_service = OAuth()
+        app = StandaloneWSGIApplication(runtime)
+        with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
+            status, body = call_wsgi(
+                app,
+                "/api/market-data/ctrader-oauth-connections",
+                method="POST",
+                body={"account_alias": "Demo principal"},
+            )
+        self.assertEqual(status, "201 Created")
+        self.assertEqual(runtime.tenant_ctrader_oauth_service.calls, [
+            ("local-single-user", "local-owner", "Demo principal")
+        ])
+        self.assertEqual(body["status"], "PENDING_OAUTH")
+        self.assertFalse(body["account_connected"])
+        self.assertFalse(body["execution_authorized"])
+
+    def test_ctrader_oauth_provision_rejects_extra_credentials_in_request(self):
+        class OAuth:
+            def provision(self, context, *, account_alias):
+                raise AssertionError("provision must not be called")
+        runtime = FakeRuntime()
+        runtime.tenant_ctrader_oauth_service = OAuth()
+        app = StandaloneWSGIApplication(runtime)
+        with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
+            status, body = call_wsgi(
+                app,
+                "/api/market-data/ctrader-oauth-connections",
+                method="POST",
+                body={"account_alias": "Demo", "access_token": "should-not-be-accepted"},
+            )
+        self.assertEqual(status, "400 Bad Request")
+        self.assertIn("somente account_alias", body["error"])
