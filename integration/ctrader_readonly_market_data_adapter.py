@@ -36,7 +36,10 @@ class CTraderReadOnlyMarketDataAdapter:
       get_trendbars(account_id, symbol_id, period, count), status(), disconnect().
     """
 
-    def __init__(self, transport: Any, *, account_id: int, source: str = "ctrader_open_api") -> None:
+    def __init__(
+        self, transport: Any, *, account_id: int, source: str = "ctrader_open_api",
+        access_token_resolver=None,
+    ) -> None:
         if transport is None:
             raise ValueError("cTrader transport é obrigatório")
         if isinstance(account_id, bool) or not isinstance(account_id, int) or account_id <= 0:
@@ -44,6 +47,9 @@ class CTraderReadOnlyMarketDataAdapter:
         self.transport = transport
         self.account_id = account_id
         self.source = source
+        if access_token_resolver is not None and not callable(access_token_resolver):
+            raise ValueError("access_token_resolver deve ser executável")
+        self.access_token_resolver = access_token_resolver
         self._connected = False
         self._authenticated = False
         self._symbols: dict[str, Any] = {}
@@ -328,6 +334,18 @@ class CTraderReadOnlyMarketDataAdapter:
         if not callable(reconnect):
             raise RuntimeError("transport cTrader não oferece reconexão segura")
         try:
+            # OAuth refresh worker may have rotated the encrypted token since
+            # this adapter was created. Resolve it again for the same trusted
+            # tenant/account before reconnecting; never reuse an expired token
+            # merely because the old transport object is still in memory.
+            if self.access_token_resolver is not None:
+                access_token = self.access_token_resolver()
+                update_token = getattr(self.transport, "update_access_token", None)
+                if not isinstance(access_token, str) or not access_token.strip():
+                    raise PermissionError("token OAuth cTrader renovado indisponível")
+                if not callable(update_token):
+                    raise RuntimeError("transport cTrader não aceita rotação segura de token")
+                update_token(access_token)
             details = reconnect()
         except Exception:
             self._connected = False
