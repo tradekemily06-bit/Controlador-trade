@@ -240,3 +240,22 @@ The `web/` directory now includes:
 - `pwa_foundation_test.py` to protect the manifest, registration and cache-safety contract.
 
 These are prepared integration assets, not proof of a deployed installable app. The registration module is intentionally not injected into the Lovable frontend; that connection must happen only when the approved frontend is explicitly integrated. The current API repository does not yet serve these assets as the public production origin. Push event handling is prepared in the service worker, but server-side push subscriptions, encrypted subscription storage, VAPID signing/sending, and device delivery validation remain unimplemented.
+
+
+## Multiple market-data connections
+
+The standalone runtime accepts an explicit comma-separated provider allowlist through `CONTROLADOR_MARKET_DATA_PROVIDERS`, for example `mt5_relay,biquote`. The legacy singular `CONTROLADOR_MARKET_DATA_PROVIDER` remains supported. `CONTROLADOR_SELECTED_MARKET_DATA_PROVIDER` selects the feed used by the current single-source analysis pipeline; if omitted, the first configured provider is selected.
+
+Multiple adapters can therefore be registered and their connection states inspected at the same time. This is not yet multi-source signal fusion: one provider is selected for the existing analysis service, and simultaneous registration does not mean that every provider contributes to one signal. Provider-specific credentials and account ownership must be provisioned server-side, never in Lovable/browser code.
+
+### `GET /api/market-data/providers`
+
+Local single-user runtime returns the registered provider list, each adapter's state, source label, selected flag and bounded health metadata. A provider is only shown as `CONNECTED` when its adapter reports a fresh heartbeat; registration alone is `REGISTERED_NOT_TESTED`. This endpoint does not probe or initialize broker terminals on every poll.
+
+Verified remote identities currently receive `USER_SCOPED_PROVIDER_CONNECTIONS_NOT_CONFIGURED` with an empty provider list. The local runtime's broker connections are global operator configuration, not evidence that a remote tenant owns or authorized those accounts. Per-user connection records, credential vault, OAuth/consent lifecycle and tenant-specific adapters are still required before remote users can see their own broker connections.
+
+### TradingView connection boundary
+
+TradingView is not currently a built-in market-data adapter. Its supported integration path is an inbound alert webhook: TradingView sends an HTTP POST when a configured alert fires. This delivers alert events, not a continuous authenticated candle feed or proof that the user's chart/account is connected. A production receiver must use public HTTPS on port 443, acknowledge quickly (TradingView documents a three-second timeout), validate the sender/certificate and per-user webhook secret, deduplicate events, rate-limit and store alerts safely. Do not put credentials in alert bodies. The webhook receiver is not yet implemented; do not display TradingView as connected until a real test alert has been received and validated.
+
+Official TradingView guidance: [Webhook alerts](https://www.tradingview.com/support/solutions/43000529348-how-to-configure-webhook-alerts/) and [Webhook authentication](https://www.tradingview.com/support/solutions/43000680459-webhook-authentication/).
