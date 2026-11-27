@@ -114,7 +114,7 @@ def test_forecast_store_rejects_tampered_noncanonical_tenant_context(tmp_path):
         store.calibration_records(owner)
 
     owner = TenantContext("tenant-a", "alice")
-    object.__setattr__(owner, "subject_id", "alice\\n")
+    object.__setattr__(owner, "subject_id", "alice" + chr(10))
     with pytest.raises(PermissionError):
         store.calibration_records(owner)
 
