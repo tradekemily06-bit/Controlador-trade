@@ -25,6 +25,7 @@ BACKUP_DATABASES = {
     "market_timeframe_monitor": "market-timeframe-monitor.sqlite3",
     # Tenant-scoped cycles, analysis results, processing leases and notification outbox.
     "tenant_market_data": "tenant-connection-timeframe-monitor.sqlite3",
+    "tenant_tradingview_alerts": "tenant-tradingview-alerts.sqlite3",
 }
 
 
