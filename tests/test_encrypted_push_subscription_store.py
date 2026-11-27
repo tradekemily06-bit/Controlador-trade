@@ -89,3 +89,26 @@ def test_delete_is_owner_scoped_and_validates_device_id():
     assert store.delete_for_owner(alice, "phone-1") is True
     with pytest.raises(ValueError):
         store.put_for_owner(alice, "../other-tenant", _record())
+
+
+
+def test_list_skips_record_revoked_after_index_snapshot():
+    class RacyBackend(DurableBackend):
+        def list_keys(self, context, prefix):
+            return [prefix + "phone-1"]
+
+        def get(self, context, key):
+            return None
+
+    store = EncryptedTenantPushSubscriptionStore(RacyBackend(), lambda: b"k" * 32)
+    assert store.list_for_owner(TenantContext("tenant-a", "alice")) == []
+
+
+def test_rejects_invalid_device_key_returned_by_backend():
+    class MaliciousBackend(DurableBackend):
+        def list_keys(self, context, prefix):
+            return [prefix + "../other-owner"]
+
+    store = EncryptedTenantPushSubscriptionStore(MaliciousBackend(), lambda: b"k" * 32)
+    with pytest.raises(ValueError, match="device_id"):
+        store.list_for_owner(TenantContext("tenant-a", "alice"))
