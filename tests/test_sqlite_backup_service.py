@@ -195,8 +195,45 @@ class SQLiteBackupServiceTests(unittest.TestCase):
                     "(lease_key TEXT, owner_token TEXT, expires_at REAL)"
                 )
                 db.execute(
-                    "CREATE TABLE tenant_connection_notification_outbox "
-                    "(event_id TEXT, tenant_id TEXT, subject_id TEXT, lease_token TEXT)"
+                    """
+                    CREATE TABLE tenant_connection_notification_outbox (
+                        event_id TEXT PRIMARY KEY,
+                        tenant_id TEXT NOT NULL,
+                        subject_id TEXT NOT NULL,
+                        connection_id TEXT NOT NULL,
+                        symbol TEXT NOT NULL,
+                        timeframe TEXT NOT NULL,
+                        candle_at TEXT NOT NULL,
+                        result_json TEXT NOT NULL,
+                        created_at REAL NOT NULL,
+                        attempts INTEGER NOT NULL DEFAULT 0,
+                        lease_until REAL,
+                        lease_token TEXT,
+                        delivered_at REAL,
+                        dead_at REAL,
+                        last_error TEXT
+                    )
+                    """
+                )
+                db.execute(
+                    "INSERT INTO tenant_connection_timeframe_processing_lease "
+                    "VALUES (?, ?, ?)",
+                    ("lease-a", "worker-a", 9999999999.0),
+                )
+                db.execute(
+                    """
+                    INSERT INTO tenant_connection_notification_outbox (
+                        event_id, tenant_id, subject_id, connection_id, symbol,
+                        timeframe, candle_at, result_json, created_at, attempts,
+                        lease_until, lease_token, delivered_at, dead_at, last_error
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        "event-a", "tenant-a", "user-a", "connection-1",
+                        "EURUSD", "5m", "2026-11-27T12:00:00+00:00",
+                        '{"signal":"AGUARDAR"}', 1795780800.0, 0,
+                        None, None, None, None, None,
+                    ),
                 )
             result = SQLiteBackupService(runtime, backups).backup(["tenant_market_data"])
             item = result["results"][0]
