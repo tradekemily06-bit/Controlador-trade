@@ -83,6 +83,18 @@ def test_rejects_wrong_symbol_timeframe_bar_or_expired_cycle(signal_changes, can
         )
 
 
+def test_rejects_next_candle_that_closed_before_signal_observation():
+    with pytest.raises(ValueError, match="closed before signal was observed"):
+        resolve_next_candle_direction_safe(
+            signal(
+                observed_at="2026-11-27T10:02:01Z",
+                valid_until="2026-11-27T10:03:00Z",
+            ),
+            candle(),
+            provenance="REAL_MARKET_DATA",
+        )
+
+
 def test_rejects_simulated_or_manual_provenance():
     with pytest.raises(ValueError):
         resolve_next_candle_direction_safe(
