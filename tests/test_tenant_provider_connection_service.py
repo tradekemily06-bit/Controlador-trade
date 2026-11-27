@@ -484,9 +484,15 @@ def test_ctrader_startup_recovery_is_delegated_to_oauth_aware_account_service(tm
         owner, provider_id="ctrader", account_alias="cTrader DEMO",
         credential_ref="vault://tenant-a/broker-a",
     )
+    # Recreate registries to model a real process restart: persisted account
+    # metadata survives, but in-memory adapter bindings do not.
+    restarted_connections = TenantProviderConnectionRegistry(
+        SQLiteTenantStorage(database)
+    )
+    restarted_sessions = TenantMarketDataSessionRegistry(restarted_connections)
     calls = []
     restarted = TenantProviderConnectionService(
-        connections, sessions, secret_resolver=Vault(),
+        restarted_connections, restarted_sessions, secret_resolver=Vault(),
         adapter_factories={"ctrader": lambda credentials: (
             calls.append(credentials) or Adapter(credentials, provider_id="ctrader")
         )},
@@ -502,4 +508,4 @@ def test_ctrader_startup_recovery_is_delegated_to_oauth_aware_account_service(tm
         "execution_authorized": False,
     }]
     assert calls == []
-    assert sessions.get(owner, connection_id=account["connection_id"]) is None
+    assert restarted_sessions.get(owner, connection_id=account["connection_id"]) is None
