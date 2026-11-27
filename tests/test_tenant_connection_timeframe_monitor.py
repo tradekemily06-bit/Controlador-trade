@@ -1562,3 +1562,68 @@ def test_notification_expiry_is_scoped_to_its_own_timeframe(tmp_path):
     assert by_timeframe["M5"]["signal"] == "COMPRA"
     assert by_timeframe["M5"]["status"] == "ANALYZED"
 
+
+
+
+@pytest.mark.parametrize("bad", [True, float("nan"), float("inf"), float("-inf"), 10**1000, "2"])
+def test_monitor_rejects_invalid_poll_intervals(tmp_path, bad):
+    with pytest.raises(ValueError):
+        TenantConnectionTimeframeMonitor(
+            tmp_path / "bad-poll.sqlite3", Sessions(),
+            lambda _session, _context: Analyzer("2026-11-27T12:00:00+00:00", "AGUARDAR"),
+            poll_interval_seconds=bad,
+        )
+
+
+@pytest.mark.parametrize("bad", [True, float("nan"), float("inf"), float("-inf"), 10**1000, "0"])
+def test_monitor_rejects_invalid_close_grace_values(tmp_path, bad):
+    with pytest.raises(ValueError):
+        TenantConnectionTimeframeMonitor(
+            tmp_path / "bad-grace.sqlite3", Sessions(),
+            lambda _session, _context: Analyzer("2026-11-27T12:00:00+00:00", "AGUARDAR"),
+            close_grace_seconds=bad,
+        )
+
+
+def test_monitor_rejects_tampered_noncanonical_tenant_context(tmp_path):
+    owner = TenantContext("tenant-a", "alice")
+    sessions = Sessions()
+    sessions.add(owner, _id("a"), "broker_a")
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "bad-context.sqlite3", sessions,
+        lambda _session, _context: Analyzer("2026-11-27T12:00:00+00:00", "AGUARDAR"),
+    )
+    object.__setattr__(owner, "subject_id", "alice" + chr(10))
+    with pytest.raises(PermissionError, match="canonical trusted tenant context"):
+        monitor.subscriptions(owner)
+
+
+def test_live_stream_ignores_non_datetime_provider_timestamps(tmp_path):
+    from types import SimpleNamespace
+
+    owner = TenantContext("tenant-a", "alice")
+    now = datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc)
+
+    class Adapter:
+        account_id = "account-1"
+        def subscribe_live_candles(self, symbol, timeframe, callback):
+            self.callback = callback
+
+    adapter = Adapter()
+    session = Session("provider", "provider:account-1", adapter)
+    class Registry:
+        def get(self, context, *, connection_id):
+            return session
+
+    analyzer = Analyzer("2026-11-27T12:00:00+00:00", "AGUARDAR")
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "bad-stream-time.sqlite3", Registry(),
+        lambda _session, _context: analyzer,
+    )
+    monitor.subscribe(owner, _id("a"), "EURUSD", "M5")
+    adapter.callback({
+        "account_id": "account-1", "symbol": "EURUSD", "timeframe": "M5",
+        "closed": True, "candle": SimpleNamespace(timestamp="not-a-datetime", is_valid=lambda: True),
+    })
+    assert monitor.run_once(now=now) == []
+    assert analyzer.calls == 0
