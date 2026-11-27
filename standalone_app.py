@@ -314,6 +314,11 @@ class StandaloneWSGIApplication:
                     if callable(getattr(getattr(self.runtime, "tenant_decision_memory", None), "readiness", None))
                     else {"status": "NOT_CONFIGURED", "production_ready": False}
                 ),
+                "tenant_fiscal_storage": (
+                    self.runtime.tenant_fiscal_store_factory.readiness()
+                    if callable(getattr(getattr(self.runtime, "tenant_fiscal_store_factory", None), "readiness", None))
+                    else {"status": "NOT_CONFIGURED", "production_ready": False}
+                ),
                 "deployment": "PROCESS_RUNNING_DEPLOYMENT_NOT_VERIFIED",
                 "execution_authorized": False,
             }
