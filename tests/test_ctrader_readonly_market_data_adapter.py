@@ -189,3 +189,32 @@ def test_ctrader_adapter_drops_invalid_live_trendbar():
         "trendbar": {"low": "bad"},
     })
     assert received == []
+
+
+def test_ctrader_adapter_reconnect_requires_demo_confirmation():
+    transport = FakeTransport()
+    adapter = CTraderReadOnlyMarketDataAdapter(transport, account_id=123)
+    adapter.connect()
+    adapter.handshake()
+    adapter._connected = False
+    adapter._authenticated = False
+    transport.reconnect = lambda: {"account_id": 123, "is_live": False}
+
+    result = adapter.reconnect()
+    assert result["account_mode"] == "DEMO"
+    assert adapter.status()["connected"] is True
+    assert adapter.status()["execution_authorized"] is False
+
+
+def test_ctrader_adapter_failed_reconnect_does_not_report_demo_connected():
+    transport = FakeTransport()
+    adapter = CTraderReadOnlyMarketDataAdapter(transport, account_id=123)
+    adapter.connect()
+    adapter.handshake()
+    adapter._connected = False
+    transport.reconnect = lambda: (_ for _ in ()).throw(OSError("offline"))
+
+    with pytest.raises(OSError, match="offline"):
+        adapter.reconnect()
+    assert adapter.status()["connected"] is False
+    assert adapter.status()["account_mode"] is None
