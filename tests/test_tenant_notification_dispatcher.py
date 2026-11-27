@@ -121,3 +121,24 @@ def test_tenant_outbox_retries_and_dead_letters_without_cross_owner_visibility(t
             ("tenant-a", "alice"),
         ).fetchone()
     assert "secret-token" not in row[0]
+
+
+
+def test_tenant_outbox_does_not_acknowledge_delivery_after_lease_expiry(tmp_path):
+    storage = SQLiteTenantStorage(tmp_path / "tenant.sqlite3")
+    dispatcher = TenantNotificationDispatcher(TenantScopedEcosystemState(storage))
+    owner = TenantContext("tenant-a", "alice")
+    event = EcosystemNotification(
+        notification_id="slow-delivery", kind=NotificationKind.MARKET,
+        severity=NotificationSeverity.INFO, title="EURUSD", message="Ciclo",
+    )
+    dispatcher.publish(owner, event)
+
+    class _SlowSink:
+        def deliver(self, idempotency_key, recipient, payload):
+            time.sleep(0.03)
+
+    result = dispatcher.outbox.dispatch_due(_SlowSink(), lease_seconds=0.01)
+    assert result.claimed == 1
+    assert result.delivered == 0
+    assert dispatcher.outbox.status_counts(owner)["IN_FLIGHT"] == 1
