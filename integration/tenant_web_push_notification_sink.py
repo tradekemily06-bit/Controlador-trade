@@ -117,12 +117,13 @@ class TenantWebPushNotificationSink:
         if not isinstance(records, list):
             raise WebPushDeliveryError("push subscription store returned an invalid result")
 
-        active = [record for record in records if isinstance(record, dict) and record.get("status", "ACTIVE") == "ACTIVE"]
+        active = [record for record in records if isinstance(record, dict) and record.get("status") == "ACTIVE"]
         if not active:
             raise NoActivePushSubscriptions("no active push subscriptions for addressed owner")
 
         failures: list[BaseException] = []
         attempted = 0
+        delivered = 0
         for record in active:
             device_id = record.get("device_id")
             endpoint = record.get("endpoint")
@@ -151,8 +152,10 @@ class TenantWebPushNotificationSink:
                     self.store.delete_for_owner(context, device_id)
                 else:
                     failures.append(exc)
+            else:
+                delivered += 1
 
-        if attempted == 0:
-            raise NoActivePushSubscriptions("no valid active push subscriptions for addressed owner")
+        if attempted == 0 or delivered == 0:
+            raise NoActivePushSubscriptions("no active push subscription accepted the event")
         if failures:
             raise WebPushDeliveryError(f"Web Push delivery failed for {len(failures)} device(s)")
