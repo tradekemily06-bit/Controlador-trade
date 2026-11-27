@@ -1490,6 +1490,49 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertFalse(body["execution_authorized"])
 
 
+    def test_provider_connection_inventory_is_tenant_scoped_and_reports_runtime_binding(self):
+        class SessionRegistry:
+            def __init__(self):
+                self.contexts = []
+
+            def status(self, context):
+                self.contexts.append(context)
+                return [{
+                    "connection_id": "a" * 32,
+                    "provider_id": "broker_a",
+                    "account_alias": "Conta A",
+                    "status": "CONNECTED",
+                    "adapter_status": "NOT_BOUND",
+                    "health_status": "NOT_BOUND",
+                    "health": {},
+                    "read_only": True,
+                    "execution_authorized": False,
+                }]
+
+        runtime = FakeRuntime()
+        registry = SessionRegistry()
+        runtime.tenant_market_data_sessions = registry
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/market-data/connections", method="GET",
+                remote_addr="203.0.113.24",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["count"], 1)
+        self.assertEqual(body["connections"][0]["adapter_status"], "NOT_BOUND")
+        self.assertEqual(body["connections"][0]["health_status"], "NOT_BOUND")
+        self.assertEqual(registry.contexts[0].tenant_id, "tenant-a")
+        self.assertEqual(registry.contexts[0].subject_id, "alice")
+        self.assertFalse(body["execution_authorized"])
+
     def test_provider_connect_api_accepts_only_tenant_owned_credential_reference(self):
         class ConnectionService:
             def __init__(self):
