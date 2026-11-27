@@ -15,6 +15,14 @@ O runtime também oferece a rota por conta:
 
 O endpoint antigo `/api/bridge/mt5/candles` com token global permanece legado para operação local/instância única. Não o use como mecanismo de autenticação multi-conta ou para apresentar contas independentes.
 
+## Provisionamento de uma conta MT5 pelo aplicativo
+
+O backend oferece `POST /api/market-data/mt5-relay-connections` para a identidade autenticada. O corpo aceita somente `account_alias`; o servidor gera `connection_id`, `source_id` e um bearer token aleatório de alta entropia. O token é revelado uma única vez e somente seu SHA-256 é persistido no cofre SQLite local do runtime.
+
+A conexão nasce em `PENDING`. O primeiro lote recebido em `POST /api/bridge/mt5/connections/{connection_id}/candles` precisa passar pelas validações de origem, UUID, timestamp, candles e `account_mode=DEMO`. Só após esse primeiro lote válido o backend promove a conta para `CONNECTED`. Qualquer conta em outro modo permanece pendente e sem análise.
+
+A rota `DELETE /api/market-data/connections/{connection_id}` revoga também o token do relay. O token não deve ser copiado para o frontend Lovable nem enviado em logs ou tickets. Se o token de uso único for perdido, revogue a conexão e faça novo provisionamento.
+
 ## Limites atuais
 
 - O agente local usa o adapter `ICMarketsMT5DemoMarketDataAdapter`: atualmente, esta implementação concreta é IC Markets MT5 DEMO.
