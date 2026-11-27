@@ -54,3 +54,37 @@ def test_weekly_timeframe_uses_its_own_interval_and_alias():
         )
         assert report.health is MarketDataHealth.HEALTHY
         assert report.safe_for_analysis is True
+
+
+def test_ten_minute_timeframe_is_not_treated_as_unknown():
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    candles = tuple(
+        Candle(base + timedelta(minutes=10 * i), 100, 101, 99, 100, 1)
+        for i in range(2)
+    )
+    report = MarketDataRuntimeIntegrity().assess(
+        BrokerMarketDataSnapshot("EURUSD", "M10", candles, "TEST_PROVIDER", base + timedelta(minutes=20)),
+        now=base + timedelta(minutes=20),
+    )
+    assert report.health is MarketDataHealth.HEALTHY
+
+
+def test_m1_and_m5_keep_independent_candle_intervals():
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    integrity = MarketDataRuntimeIntegrity()
+    for timeframe, minutes, now in (
+        ("M1", (0, 1, 2), 3),
+        ("M5", (0, 5, 10), 15),
+    ):
+        candles = tuple(
+            Candle(base + timedelta(minutes=value), 100, 101, 99, 100, 1)
+            for value in minutes
+        )
+        report = integrity.assess(
+            BrokerMarketDataSnapshot(
+                "EURUSD", timeframe, candles, "TEST_PROVIDER",
+                base + timedelta(minutes=minutes[-1]),
+            ),
+            now=base + timedelta(minutes=now),
+        )
+        assert report.health is MarketDataHealth.HEALTHY
