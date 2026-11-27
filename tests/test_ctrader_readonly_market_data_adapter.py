@@ -346,3 +346,19 @@ def test_ctrader_drops_crossed_live_bid_ask_quote():
     })
 
     assert received == []
+
+
+@pytest.mark.parametrize("returned_id", [True, "123", 123.0, None])
+def test_ctrader_handshake_rejects_coerced_account_identity(returned_id):
+    transport = FakeTransport()
+    transport.account_details = lambda account_id: {
+        "account_id": returned_id,
+        "is_live": False,
+    }
+    adapter = CTraderReadOnlyMarketDataAdapter(transport, account_id=123)
+    adapter.connect()
+
+    with pytest.raises(PermissionError, match="identificador de conta inválido"):
+        adapter.handshake()
+
+    assert adapter.status()["authenticated"] is False
