@@ -115,6 +115,19 @@ class TenantProviderConnectionService:
             clean_capabilities = list(handshake.capabilities)
             if any(not isinstance(item, str) for item in clean_capabilities):
                 raise ValueError("capabilities do handshake inválidas")
+            # A provider connection is a market-data integration, never an
+            # execution channel. Reject write/trading scopes even if a provider
+            # reports a technically valid handshake.
+            unsupported_capabilities = [
+                item for item in clean_capabilities
+                if item != "account-mode:demo"
+                and not item.endswith(":read")
+                and not item.endswith(":stream")
+            ]
+            if unsupported_capabilities:
+                raise PermissionError(
+                    "provider anunciou capabilities fora do escopo somente leitura"
+                )
 
             connection = self.connections.record_verified_connection(
                 owner,
