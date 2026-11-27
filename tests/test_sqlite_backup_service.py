@@ -4,6 +4,7 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from core.sqlite_backup_service import SQLiteBackupService
 
@@ -46,6 +47,45 @@ class SQLiteBackupServiceTests(unittest.TestCase):
             self.assertFalse(result["live_database_modified"])
             with sqlite3.connect(source) as db:
                 self.assertEqual(db.execute("SELECT decision_id FROM decisions").fetchone()[0], "restore-record")
+            self.assertFalse(list(backups.glob(".decision_memory-restore-test-*")))
+
+    def test_restore_verification_checks_rows_in_the_isolated_restored_copy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "runtime"
+            backups = root / "backups"
+            runtime.mkdir()
+            source = runtime / "decision-memory.sqlite3"
+            with sqlite3.connect(source) as db:
+                db.execute("CREATE TABLE decisions (decision_id TEXT)")
+                db.execute("INSERT INTO decisions VALUES (?)", ("durable-decision",))
+
+            service = SQLiteBackupService(runtime, backups)
+            created = service.backup(["decision_memory"])["results"][0]
+            original_check = SQLiteBackupService._check
+            inspected_rows = []
+
+            def inspect_restored_copy(path):
+                original_check(path)
+                with sqlite3.connect(path) as restored:
+                    inspected_rows.append(
+                        restored.execute(
+                            "SELECT decision_id FROM decisions"
+                        ).fetchone()[0]
+                    )
+
+            with patch.object(
+                SQLiteBackupService, "_check", side_effect=inspect_restored_copy
+            ):
+                result = service.verify_restore("decision_memory", created["filename"])
+
+            self.assertEqual(result["status"], "RESTORE_VALIDATED_IN_ISOLATION")
+            self.assertEqual(inspected_rows, ["durable-decision"])
+            with sqlite3.connect(source) as db:
+                self.assertEqual(
+                    db.execute("SELECT decision_id FROM decisions").fetchone()[0],
+                    "durable-decision",
+                )
             self.assertFalse(list(backups.glob(".decision_memory-restore-test-*")))
 
     def test_restore_verification_rejects_traversal_and_wrong_database(self):
