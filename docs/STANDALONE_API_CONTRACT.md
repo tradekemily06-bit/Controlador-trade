@@ -200,3 +200,10 @@ Returns relay inbox status. A configured relay is not proof that the user's PC i
 - `IN_MEMORY_NOT_CONFIGURED` means decision history is not durable across process restarts.
 - `PERSISTENCE_ERROR` means SQLite initialization or I/O failed; the application may continue fail-soft, but the memory must not be described as persisted.
 - `PERSISTENT_READY` confirms that the local SQLite store initialized successfully. It does not prove backup/restore, multi-tenant isolation, or production database operations.
+
+
+## Contexto fiscal isolado do Assistente (preparação)
+
+O módulo `assistant.tenant_read_only_context.collect_tenant_fiscal_context` monta um contexto fiscal sanitizado exclusivamente a partir do pacote de repositórios retornado por `TenantFiscalStoreFactory.get(TenantContext)`. Ele exclui status, risco, estatísticas, observabilidade e memória do `EcosystemService` compartilhado. A separação é coberta por `tests/test_tenant_assistant_context.py`.
+
+Este módulo ainda não está ligado à rota remota `/api/assistant/ask` nem ao runtime de produção. O atendimento remoto permanece bloqueado até que identidade confiável, resolução dos repositórios por requisição, contexto completo por usuário e persistência sejam integrados e validados. Não representa liberação de chat remoto ou isolamento de produção.
