@@ -1870,8 +1870,9 @@ def test_daily_and_weekly_signals_use_provider_session_boundary_for_expiry(
     connection = _id("c")
 
     class SessionCalendarAdapter:
-        def expected_last_closed_candle(self, requested_timeframe, now, *, close_grace_seconds):
+        def expected_last_closed_candle(self, requested_timeframe, symbol, now, *, close_grace_seconds):
             assert requested_timeframe == {"D1": "1d", "W1": "1w"}[timeframe]
+            assert symbol == "EURUSD"
             assert now.tzinfo is timezone.utc
             assert close_grace_seconds == 3.0
             return expected_at
