@@ -142,3 +142,31 @@ def test_failed_startup_reaper_releases_lock_after_worker_exits() -> None:
     assert lock.released_event.wait(timeout=2.0)
     assert lock.released is True
     assert all(item[0] is not lock for item in _FAILED_STARTUP_LOCKS)
+
+
+
+def test_runtime_keeps_lock_when_worker_status_does_not_confirm_stopped() -> None:
+    class UnknownStatusWorker(FakeWorker):
+        def status(self) -> dict[str, bool]:
+            return {} if self.running else {self.running_key: False}
+
+    runtime = StandaloneRuntime.__new__(StandaloneRuntime)
+    runtime.closed = False
+    runtime.process_lock = FakeLock()
+    runtime.market_monitor = None
+    runtime.notification_worker = None
+    runtime.backup_scheduler = None
+    worker = UnknownStatusWorker("worker_running")
+    runtime.market_monitor = worker
+
+    with pytest.raises(RuntimeError, match="workers ativos"):
+        runtime.close()
+
+    assert runtime.process_lock.released is False
+    assert runtime.closed is False
+
+    worker.running = False
+    runtime.close()
+
+    assert runtime.process_lock.released is True
+    assert runtime.closed is True
