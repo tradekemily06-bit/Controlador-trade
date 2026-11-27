@@ -806,8 +806,6 @@ class TenantConnectionTimeframeMonitor:
             return None
 
     def dispatch_pending_notifications(self, *, limit: int = 100, lease_seconds: float = 30.0) -> int:
-        if self.on_result is None:
-            return 0
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
             raise ValueError("limit deve ser inteiro entre 1 e 1000")
         if isinstance(lease_seconds, bool) or not isinstance(lease_seconds, (int, float)):
@@ -818,6 +816,8 @@ class TenantConnectionTimeframeMonitor:
             lease_is_finite = False
         if not lease_is_finite or lease_seconds <= 0:
             raise ValueError("lease_seconds deve ser um número finito positivo")
+        if self.on_result is None:
+            return 0
         delivered = 0
         for _ in range(limit):
             now = time.time()
