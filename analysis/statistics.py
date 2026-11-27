@@ -118,3 +118,45 @@ def summarize_breakdowns(records: Iterable[DecisionRecord]) -> dict[str, dict[st
             for label, group in sorted(score_groups.items())
         },
     }
+
+
+def summarize_context_groups(
+    records: Iterable[DecisionRecord],
+) -> dict[str, dict[str, object]]:
+    """Summarize outcomes only inside an exact symbol/timeframe/direction group.
+
+    These are descriptive outcome counts, not calibrated probabilities. In
+    particular, no timeframe or symbol is allowed to borrow another group's
+    observations. Calibration must be implemented separately from verified,
+    out-of-sample forecasts and outcomes.
+    """
+    items = list(records)
+    groups: dict[tuple[str, str, str], list[DecisionRecord]] = {}
+    for record in items:
+        key = (
+            str(record.symbol or "UNKNOWN"),
+            str(record.timeframe or "UNKNOWN"),
+            str(record.signal or "UNKNOWN"),
+        )
+        groups.setdefault(key, []).append(record)
+
+    result: dict[str, dict[str, object]] = {}
+    for (symbol, timeframe, signal), group in sorted(groups.items()):
+        summary = asdict(summarize(group))
+        # The legacy DecisionRecord outcome is manually studied; it does not
+        # contain a pre-event probability forecast or independently verified
+        # market outcome provenance.
+        result[f"{symbol}|{timeframe}|{signal}"] = {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "signal": signal,
+            "descriptive_outcomes": summary,
+            "calibration_status": "NOT_CALIBRATED",
+            "probability_of_profit": None,
+            "reason": (
+                "Estatística descritiva isolada deste ativo, período e direção; "
+                "não é probabilidade calibrada e não pode ser emprestada a outro grupo."
+            ),
+        }
+    return result
+
