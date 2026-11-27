@@ -118,3 +118,68 @@ def test_tenant_mt5_relay_route_fails_closed_without_server_provisioning():
 
     assert status == "503 Service Unavailable"
     assert "não provisionado" in body["error"]
+
+
+def test_onboarding_http_route_reveals_server_generated_token_once(monkeypatch, tmp_path):
+    from integration.tenant_mt5_relay_onboarding import (
+        TenantMT5RelayOnboardingService, TenantMT5RelayTokenVault,
+    )
+    from security.sqlite_tenant_storage import SQLiteTenantStorage
+    from security.tenant_provider_connections import TenantProviderConnectionRegistry
+
+    owner = TenantContext("local-single-user", "local-owner")
+    connections = TenantProviderConnectionRegistry(SQLiteTenantStorage(tmp_path / "tenant.sqlite3"))
+    vault = TenantMT5RelayTokenVault(tmp_path / "tokens.sqlite3", connections)
+    runtime = Runtime()
+    runtime.tenant_mt5_relay_onboarding = TenantMT5RelayOnboardingService(connections, vault)
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "local-owner")
+    payload = json.dumps({"account_alias": "MT5 principal"}).encode()
+    environ = {
+        "REQUEST_METHOD": "POST",
+        "PATH_INFO": "/api/market-data/mt5-relay-connections",
+        "QUERY_STRING": "",
+        "REMOTE_ADDR": "127.0.0.1",
+        "CONTENT_LENGTH": str(len(payload)),
+        "wsgi.input": io.BytesIO(payload),
+    }
+    captured = {}
+
+    def start_response(status, headers, exc_info=None):
+        captured["status"] = status
+
+    body = json.loads(b"".join(StandaloneWSGIApplication(runtime)(environ, start_response)).decode())
+    assert captured["status"] == "201 Created"
+    assert body["status"] == "PENDING"
+    assert body["token_reveal"] == "ONE_TIME"
+    assert vault.resolve(body["relay_token"]) == (owner, body["connection_id"])
+
+
+def test_onboarding_http_rejects_client_supplied_token(monkeypatch, tmp_path):
+    from integration.tenant_mt5_relay_onboarding import (
+        TenantMT5RelayOnboardingService, TenantMT5RelayTokenVault,
+    )
+    from security.sqlite_tenant_storage import SQLiteTenantStorage
+    from security.tenant_provider_connections import TenantProviderConnectionRegistry
+
+    connections = TenantProviderConnectionRegistry(SQLiteTenantStorage(tmp_path / "tenant.sqlite3"))
+    vault = TenantMT5RelayTokenVault(tmp_path / "tokens.sqlite3", connections)
+    runtime = Runtime()
+    runtime.tenant_mt5_relay_onboarding = TenantMT5RelayOnboardingService(connections, vault)
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "local-owner")
+    payload = json.dumps({"account_alias": "MT5 principal", "relay_token": "attacker-token"}).encode()
+    environ = {
+        "REQUEST_METHOD": "POST",
+        "PATH_INFO": "/api/market-data/mt5-relay-connections",
+        "QUERY_STRING": "",
+        "REMOTE_ADDR": "127.0.0.1",
+        "CONTENT_LENGTH": str(len(payload)),
+        "wsgi.input": io.BytesIO(payload),
+    }
+    captured = {}
+
+    def start_response(status, headers, exc_info=None):
+        captured["status"] = status
+
+    body = json.loads(b"".join(StandaloneWSGIApplication(runtime)(environ, start_response)).decode())
+    assert captured["status"] == "400 Bad Request"
+    assert "somente account_alias" in body["error"]
