@@ -46,6 +46,7 @@ def test_first_valid_demo_batch_completes_relay_handshake_and_disconnect_revokes
     now = datetime.now(timezone.utc)
     payload = {
         "source_id": provisioned["source_id"],
+        "account_reference": "mt5_" + "a" * 32,
         "message_id": str(uuid4()),
         "sent_at": now.isoformat(),
         "account_mode": "DEMO",
@@ -62,6 +63,7 @@ def test_first_valid_demo_batch_completes_relay_handshake_and_disconnect_revokes
     account = next(item for item in connections.list_connections(owner)
                    if item["connection_id"] == provisioned["connection_id"])
     assert account["status"] == "CONNECTED"
+    assert account["account_reference"] == "mt5_" + "a" * 32
     assert registry.status(owner, provisioned["connection_id"])["connected"] is True
     session = sessions.get(owner, connection_id=provisioned["connection_id"])
     assert session is not None
@@ -81,7 +83,8 @@ def test_pending_relay_rejects_non_demo_first_heartbeat(tmp_path):
     registry = TenantMT5RelayRegistry(connections, tmp_path / "relays", vault.source_id)
     now = datetime.now(timezone.utc)
     payload = {
-        "source_id": provisioned["source_id"], "message_id": str(uuid4()),
+        "source_id": provisioned["source_id"], "account_reference": "mt5_" + "b" * 32,
+        "message_id": str(uuid4()),
         "sent_at": now.isoformat(), "account_mode": "REAL",
         "symbol": "EURUSD", "timeframe": "M5",
         "candles": [{
