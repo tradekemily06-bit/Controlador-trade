@@ -27,6 +27,26 @@ def _field(value: Any, key: str):
     return getattr(value, key, None)
 
 
+def _strict_integer(value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("cTrader integer field required")
+    return value
+
+
+def _finite_float(value: Any) -> float:
+    import math
+
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("cTrader numeric field required")
+    try:
+        number = float(value)
+    except (OverflowError, ValueError) as exc:
+        raise ValueError("cTrader finite numeric field required") from exc
+    if not math.isfinite(number):
+        raise ValueError("cTrader finite numeric field required")
+    return number
+
+
 class CTraderReadOnlyMarketDataAdapter:
     """Broker-neutral adapter over a host-owned cTrader Open API transport.
 
@@ -134,13 +154,15 @@ class CTraderReadOnlyMarketDataAdapter:
             ask_raw = _field(event, "ask")
             timestamp_raw = _field(event, "timestamp")
             try:
-                bid = round(int(bid_raw) / 100000.0, digits) if bid_raw is not None else None
-                ask = round(int(ask_raw) / 100000.0, digits) if ask_raw is not None else None
+                bid = round(_strict_integer(bid_raw) / 100000.0, digits) if bid_raw is not None else None
+                ask = round(_strict_integer(ask_raw) / 100000.0, digits) if ask_raw is not None else None
                 if bid is None and ask is None:
                     return
                 timestamp = None
                 if timestamp_raw is not None:
-                    stamp = float(timestamp_raw)
+                    stamp = _finite_float(timestamp_raw)
+                    if stamp <= 0:
+                        return
                     if stamp > 10_000_000_000:
                         stamp /= 1000.0
                     timestamp = datetime.fromtimestamp(stamp, tz=timezone.utc).isoformat()
@@ -209,13 +231,13 @@ class CTraderReadOnlyMarketDataAdapter:
             try:
                 candle = Candle(
                     timestamp=datetime.fromtimestamp(
-                        int(minute_stamp) * 60, tz=timezone.utc
+                        _strict_integer(minute_stamp) * 60, tz=timezone.utc
                     ),
-                    open=round((int(low_raw) + int(delta_open)) / 100000.0, digits),
-                    high=round((int(low_raw) + int(delta_high)) / 100000.0, digits),
-                    low=round(int(low_raw) / 100000.0, digits),
-                    close=round((int(low_raw) + int(delta_close)) / 100000.0, digits),
-                    volume=float(volume),
+                    open=round((_strict_integer(low_raw) + _strict_integer(delta_open)) / 100000.0, digits),
+                    high=round((_strict_integer(low_raw) + _strict_integer(delta_high)) / 100000.0, digits),
+                    low=round(_strict_integer(low_raw) / 100000.0, digits),
+                    close=round((_strict_integer(low_raw) + _strict_integer(delta_close)) / 100000.0, digits),
+                    volume=_finite_float(volume),
                 )
             except (TypeError, ValueError, OverflowError, OSError):
                 return
@@ -290,15 +312,17 @@ class CTraderReadOnlyMarketDataAdapter:
                 minute_stamp = _field(bar, "utcTimestampInMinutes")
             volume = _field(bar, "volume")
             try:
-                low = int(low_raw) / 100000.0
-                timestamp = datetime.fromtimestamp(int(minute_stamp) * 60, tz=timezone.utc)
+                low_value = _strict_integer(low_raw)
+                timestamp = datetime.fromtimestamp(
+                    _strict_integer(minute_stamp) * 60, tz=timezone.utc
+                )
                 candle = Candle(
                     timestamp=timestamp,
-                    open=round((int(low_raw) + int(delta_open)) / 100000.0, digits),
-                    high=round((int(low_raw) + int(delta_high)) / 100000.0, digits),
-                    low=round(low, digits),
-                    close=round((int(low_raw) + int(delta_close)) / 100000.0, digits),
-                    volume=float(volume),
+                    open=round((low_value + _strict_integer(delta_open)) / 100000.0, digits),
+                    high=round((low_value + _strict_integer(delta_high)) / 100000.0, digits),
+                    low=round(low_value / 100000.0, digits),
+                    close=round((low_value + _strict_integer(delta_close)) / 100000.0, digits),
+                    volume=_finite_float(volume),
                 )
             except (TypeError, ValueError, OverflowError) as exc:
                 raise ValueError("trendbar cTrader inválida ou incompleta") from exc
