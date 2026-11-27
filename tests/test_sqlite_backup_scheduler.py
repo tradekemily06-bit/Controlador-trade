@@ -59,3 +59,22 @@ def test_scheduler_runs_on_interval_and_stops():
     scheduler.stop()
     assert service.calls >= 1
     assert scheduler.status()["worker_running"] is False
+
+
+def test_scheduler_runs_additional_tenant_backup_service():
+    primary = FakeBackupService()
+    tenant = FakeBackupService({
+        "status": "SUCCESS",
+        "results": [{"status": "BACKUP_CREATED"}, {"status": "BACKUP_CREATED"}],
+    })
+    scheduler = SQLiteBackupScheduler(
+        primary, additional_backup_services=(tenant,), interval_seconds=3600
+    )
+
+    status = scheduler.run_once()
+
+    assert primary.calls == 1
+    assert tenant.calls == 1
+    assert status["last_status"] == "SUCCESS"
+    assert status["last_result"]["provider"] == "COMPOSITE_LOCAL_SQLITE_BACKUP"
+    assert len(status["last_result"]["components"]["additional_1"]["results"]) == 2
