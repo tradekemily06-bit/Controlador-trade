@@ -228,26 +228,23 @@ class TenantOAuthTokenVault:
         for tenant_id, subject_id in rows:
             owner = TenantContext(tenant_id=tenant_id, subject_id=subject_id)
             accounts = self.connections.list_connections(owner)
+            with self._connect() as db:
+                token_ids = {
+                    row[0] for row in db.execute(
+                        "SELECT connection_id FROM tenant_oauth_tokens "
+                        "WHERE tenant_id=? AND subject_id=? AND provider_id='ctrader_open_api' "
+                        "AND revoked_at IS NULL",
+                        (owner.tenant_id, owner.subject_id),
+                    ).fetchall()
+                }
             if any(
-                item.get("provider_id") == "ctrader_open_api"
+                item.get("connection_id") in token_ids
+                and item.get("provider_id") == "ctrader_open_api"
                 and item.get("status") in {"PENDING", "CONNECTED"}
-                and any(
-                    row[0] == item.get("connection_id")
-                    for row in self._owned_token_connections(owner)
-                )
                 for item in accounts
             ):
                 owners.append(owner)
         return owners
-
-    def _owned_token_connections(self, owner: TenantContext) -> list[tuple[str]]:
-        with self._connect() as db:
-            return db.execute(
-                "SELECT connection_id FROM tenant_oauth_tokens "
-                "WHERE tenant_id=? AND subject_id=? AND provider_id='ctrader_open_api' "
-                "AND revoked_at IS NULL",
-                (owner.tenant_id, owner.subject_id),
-            ).fetchall()
 
     def refresh_candidates(
         self, context: TenantContext, *, within_seconds: int = 900, limit: int = 100
