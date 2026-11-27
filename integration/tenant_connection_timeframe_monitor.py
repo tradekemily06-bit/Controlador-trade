@@ -810,12 +810,13 @@ class TenantConnectionTimeframeMonitor:
             return 0
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
             raise ValueError("limit deve ser inteiro entre 1 e 1000")
-        if (
-            isinstance(lease_seconds, bool)
-            or not isinstance(lease_seconds, (int, float))
-            or not math.isfinite(lease_seconds)
-            or lease_seconds <= 0
-        ):
+        if isinstance(lease_seconds, bool) or not isinstance(lease_seconds, (int, float)):
+            raise ValueError("lease_seconds deve ser um número finito positivo")
+        try:
+            lease_is_finite = math.isfinite(lease_seconds)
+        except OverflowError:
+            lease_is_finite = False
+        if not lease_is_finite or lease_seconds <= 0:
             raise ValueError("lease_seconds deve ser um número finito positivo")
         delivered = 0
         for _ in range(limit):
