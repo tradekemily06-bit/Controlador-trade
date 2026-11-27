@@ -134,3 +134,26 @@ def test_service_rejects_trading_scope_for_read_only_application(tmp_path):
             scope="trading",
         )
 
+
+
+def test_provision_creates_unique_pending_accounts_and_starts_oauth(tmp_path):
+    owner, connections, _account, _tokens, service = _setup(tmp_path)
+    first = service.provision(owner, account_alias="Demo Principal")
+    second = service.provision(owner, account_alias="Demo Secundaria")
+
+    assert first["status"] == "PENDING_OAUTH"
+    assert first["account_connected"] is False
+    assert first["authorization_url"].startswith("https://")
+    assert second["connection_id"] != first["connection_id"]
+    accounts = connections.list_connections(owner)
+    provisioned = [item for item in accounts if item["account_alias"].startswith("Demo ")]
+    assert len(provisioned) == 2
+    assert all(item["status"] == "PENDING" for item in provisioned)
+    assert all(item["account_reference"].startswith("pending:") for item in provisioned)
+    assert all("candles:stream" in item["capabilities"] for item in provisioned)
+
+
+def test_provision_rejects_untrusted_tenant_context(tmp_path):
+    _owner, _connections, _account, _tokens, service = _setup(tmp_path)
+    with pytest.raises(PermissionError):
+        service.provision(None, account_alias="Demo")
