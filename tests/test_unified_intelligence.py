@@ -7,7 +7,7 @@ from integration.unified_ecosystem_application import UnifiedEcosystemApplicatio
 
 
 class UnifiedIntelligenceTests(unittest.TestCase):
-    def test_all_seven_areas_share_one_intelligence(self):
+    def test_all_six_areas_share_one_intelligence(self):
         intelligence = UnifiedIntelligence()
         self.assertEqual(len(intelligence.areas), 6)
         self.assertEqual(
