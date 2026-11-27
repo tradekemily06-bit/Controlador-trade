@@ -297,10 +297,21 @@ class TenantConnectionTimeframeMonitor:
                 return
             candle = event.get("candle")
             timestamp = getattr(candle, "timestamp", None)
-            if not isinstance(timestamp, datetime) or timestamp.tzinfo is None:
+            if (
+                not isinstance(timestamp, datetime)
+                or timestamp.tzinfo is None
+                or timestamp.utcoffset() is None
+            ):
                 return
             valid = getattr(candle, "is_valid", None)
-            if not callable(valid) or not valid():
+            if not callable(valid):
+                return
+            try:
+                if valid() is not True:
+                    return
+            except Exception:
+                # A malformed provider event must not escape the callback
+                # thread or become the latest candle for this watch.
                 return
             with self._lock:
                 # A callback retained by an old adapter may fire after account
