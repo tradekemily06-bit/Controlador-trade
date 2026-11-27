@@ -124,6 +124,8 @@ class MT5RelayStore:
             raise MT5RelayError("candles duplicados no mesmo lote")
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as db:
+            # Serialize read/compare/write so concurrent batches cannot race.
+            db.execute("BEGIN IMMEDIATE")
             # One relay database is permanently bound to its first source.
             # Never let a bearer-token holder switch accounts by changing an
             # untrusted payload field; separate accounts need separate stores.
@@ -139,15 +141,29 @@ class MT5RelayStore:
                 (message_id, now),
             )
             for candle in parsed:
+                candle_timestamp = candle.timestamp.isoformat()
+                existing = db.execute(
+                    """SELECT open,high,low,close,volume FROM mt5_relay_candles
+                    WHERE symbol=? AND timeframe=? AND timestamp=?""",
+                    (symbol, timeframe, candle_timestamp),
+                ).fetchone()
+                incoming_values = (
+                    candle.open, candle.high, candle.low, candle.close, candle.volume
+                )
+                if existing is not None:
+                    stored_values = tuple(
+                        float(existing[key]) for key in ("open", "high", "low", "close", "volume")
+                    )
+                    if stored_values != incoming_values:
+                        raise MT5RelayError(
+                            "candle já armazenado recebeu valores diferentes; histórico imutável"
+                        )
+                    continue
                 db.execute(
                     """INSERT INTO mt5_relay_candles
                     (symbol,timeframe,timestamp,open,high,low,close,volume)
-                    VALUES (?,?,?,?,?,?,?,?)
-                    ON CONFLICT(symbol,timeframe,timestamp) DO UPDATE SET
-                    open=excluded.open, high=excluded.high, low=excluded.low,
-                    close=excluded.close, volume=excluded.volume""",
-                    (symbol, timeframe, candle.timestamp.isoformat(), candle.open,
-                     candle.high, candle.low, candle.close, candle.volume),
+                    VALUES (?,?,?,?,?,?,?,?)""",
+                    (symbol, timeframe, candle_timestamp, *incoming_values),
                 )
             db.execute(
                 """INSERT INTO mt5_relay_state(singleton,account_mode,last_seen,source_id)
