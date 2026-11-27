@@ -199,21 +199,49 @@ class MT5RelayStore:
             raise MT5RelayError("ponte MT5 sem heartbeat DEMO recente")
         return "DEMO"
 
+    @staticmethod
+    def _timeframe_seconds(timeframe: str) -> int:
+        match = re.fullmatch(r"(M|H|D|W)([1-9][0-9]?)", timeframe.upper())
+        if match is None:
+            return 60
+        unit, amount = match.groups()
+        multiplier = {"M": 60, "H": 3600, "D": 86400, "W": 604800}[unit]
+        return multiplier * int(amount)
+
     def status(self) -> dict[str, Any]:
         try:
             mode = self.get_account_mode()
             connected = True
         except MT5RelayError:
             mode, connected = None, False
+        now = datetime.now(timezone.utc)
         with self._connect() as db:
             count = db.execute("SELECT COUNT(*) FROM mt5_relay_candles").fetchone()[0]
             state = db.execute("SELECT last_seen,source_id FROM mt5_relay_state WHERE singleton=1").fetchone()
+            latest_rows = db.execute(
+                """SELECT symbol,timeframe,MAX(timestamp) AS last_candle_at
+                FROM mt5_relay_candles GROUP BY symbol,timeframe
+                ORDER BY symbol,timeframe"""
+            ).fetchall()
+        series = []
+        for row in latest_rows:
+            candle_at = datetime.fromisoformat(row["last_candle_at"])
+            age = max(0.0, (now - candle_at.astimezone(timezone.utc)).total_seconds())
+            interval = self._timeframe_seconds(row["timeframe"])
+            series.append({
+                "symbol": row["symbol"],
+                "timeframe": row["timeframe"],
+                "last_candle_at": row["last_candle_at"],
+                "candle_age_seconds": round(age, 3),
+                "data_fresh": connected and age <= interval * 2 + 10,
+            })
         return {
             "connected": connected,
             "account_mode": mode,
             "last_seen": state["last_seen"] if state else None,
             "source_id": state["source_id"] if state else None,
             "stored_candles": int(count),
+            "series": series,
             "read_only": True,
             "execution_authorized": False,
         }
