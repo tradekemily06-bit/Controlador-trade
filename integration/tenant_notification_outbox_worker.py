@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import threading
 import time
 from typing import Any
@@ -15,11 +16,19 @@ class TenantNotificationOutboxWorker:
                  *, poll_interval_seconds: float = 2.0, batch_size: int = 50) -> None:
         if outbox is None or not callable(getattr(sink, "deliver", None)):
             raise ValueError("tenant outbox and tenant-aware sink are required")
-        if poll_interval_seconds <= 0 or isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size < 1:
-            raise ValueError("invalid worker polling configuration")
+        if isinstance(poll_interval_seconds, bool) or not isinstance(poll_interval_seconds, (int, float)):
+            raise ValueError("poll_interval_seconds must be finite and positive")
+        try:
+            poll_interval = float(poll_interval_seconds)
+        except (OverflowError, ValueError) as exc:
+            raise ValueError("poll_interval_seconds must be finite and positive") from exc
+        if not math.isfinite(poll_interval) or not 0 < poll_interval <= 3600:
+            raise ValueError("poll_interval_seconds must be finite and between 0 and 3600")
+        if isinstance(batch_size, bool) or not isinstance(batch_size, int) or not 1 <= batch_size <= 500:
+            raise ValueError("batch_size must be an integer between 1 and 500")
         self.outbox = outbox
         self.sink = sink
-        self.poll_interval_seconds = float(poll_interval_seconds)
+        self.poll_interval_seconds = poll_interval
         self.batch_size = batch_size
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -57,11 +66,19 @@ class TenantNotificationOutboxWorker:
             self._stop.wait(self.poll_interval_seconds)
 
     def stop(self, timeout: float = 5.0) -> None:
+        if isinstance(timeout, bool) or not isinstance(timeout, (int, float)):
+            raise ValueError("timeout must be finite and non-negative")
+        try:
+            timeout_value = float(timeout)
+        except (OverflowError, ValueError) as exc:
+            raise ValueError("timeout must be finite and non-negative") from exc
+        if not math.isfinite(timeout_value) or timeout_value < 0 or timeout_value > 3600:
+            raise ValueError("timeout must be finite and between 0 and 3600")
         self._stop.set()
         with self._lock:
             thread = self._thread
         if thread is not None:
-            thread.join(timeout=max(0.0, timeout))
+            thread.join(timeout=timeout_value)
             with self._lock:
                 if self._thread is thread and not thread.is_alive():
                     self._thread = None
