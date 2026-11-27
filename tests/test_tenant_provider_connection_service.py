@@ -272,3 +272,59 @@ def test_failed_saved_provider_reconnect_remains_disconnected(tmp_path):
     saved = second_connections.list_connections(owner)[0]
     assert saved["status"] == "DISCONNECTED"
     assert second_sessions.get(owner, connection_id=first["connection_id"]) is None
+
+
+def test_startup_recovery_isolates_provider_failures_and_recovers_healthy_accounts(tmp_path):
+    database = tmp_path / "tenant-provider-recovery-batch.sqlite3"
+    owner = TenantContext("tenant-a", "alice")
+
+    class MultiVault:
+        def resolve(self, context, reference):
+            if context.tenant_id != "tenant-a" or reference not in {
+                "vault://tenant-a/broker-a", "vault://tenant-a/broker-b"
+            }:
+                return None
+            return {"api_key": reference}
+
+    vault = MultiVault()
+    storage_one = SQLiteTenantStorage(database)
+    connections_one = TenantProviderConnectionRegistry(storage_one)
+    sessions_one = TenantMarketDataSessionRegistry(connections_one)
+    initial = TenantProviderConnectionService(
+        connections_one, sessions_one, secret_resolver=vault,
+        adapter_factories={
+            "broker_a": lambda credentials: Adapter(credentials, provider_id="broker_a"),
+            "broker_b": lambda credentials: Adapter(credentials, provider_id="broker_b"),
+        },
+    )
+    first = initial.connect(
+        owner, provider_id="broker_a", account_alias="Conta A",
+        credential_ref="vault://tenant-a/broker-a",
+    )
+    second = initial.connect(
+        owner, provider_id="broker_b", account_alias="Conta B",
+        credential_ref="vault://tenant-a/broker-b",
+    )
+
+    storage_two = SQLiteTenantStorage(database)
+    connections_two = TenantProviderConnectionRegistry(storage_two)
+    sessions_two = TenantMarketDataSessionRegistry(connections_two)
+    recovered = TenantProviderConnectionService(
+        connections_two, sessions_two, secret_resolver=vault,
+        adapter_factories={
+            "broker_a": lambda credentials: Adapter(credentials, provider_id="broker_a"),
+            "broker_b": lambda credentials: Adapter(credentials, verified=False, provider_id="broker_b"),
+        },
+    )
+
+    outcomes = recovered.reconnect_available(owner)
+    by_id = {item["connection_id"]: item for item in outcomes}
+
+    assert by_id[first["connection_id"]]["status"] == "RECONNECTED"
+    assert by_id[second["connection_id"]]["status"] == "RECONNECT_FAILED"
+    assert sessions_two.get(owner, connection_id=first["connection_id"]) is not None
+    assert sessions_two.get(owner, connection_id=second["connection_id"]) is None
+    saved = {item["connection_id"]: item for item in connections_two.list_connections(owner)}
+    assert saved[first["connection_id"]]["status"] == "CONNECTED"
+    assert saved[second["connection_id"]]["status"] == "DISCONNECTED"
+    assert all(item["execution_authorized"] is False for item in outcomes)
