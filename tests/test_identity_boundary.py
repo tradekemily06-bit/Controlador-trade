@@ -14,6 +14,21 @@ class IdentityPolicyTests(unittest.TestCase):
         self.assertFalse(status["shared_bearer_token_is_user_identity"])
         self.assertEqual(status["real_execution"], "DISABLED")
 
+    def test_configured_remote_middleware_is_not_misreported_as_no_tenant_guard(self):
+        status = IdentityPolicy().status(remote_identity_middleware_configured=True)
+        self.assertEqual(
+            status["tenant_isolation"],
+            "TRUSTED_TENANT_CONTEXT_REQUIRED_NOT_RUNTIME_VERIFIED",
+        )
+        self.assertEqual(
+            status["multi_tenant_isolation"],
+            "REQUEST_SCOPE_GUARD_PRESENT_IDENTITY_NOT_RUNTIME_VERIFIED",
+        )
+        self.assertEqual(
+            status["trusted_identity_provider"],
+            "MIDDLEWARE_EXPECTED_NOT_VERIFIED",
+        )
+
     def test_remote_identity_requires_verified_authentication_and_nonempty_tenant(self):
         policy = IdentityPolicy()
         self.assertFalse(policy.authorize_production_request(authenticated=False, tenant_id="tenant-a"))
