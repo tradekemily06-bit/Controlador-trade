@@ -521,8 +521,12 @@ class TenantConnectionTimeframeMonitor:
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
             raise ValueError("limit deve ser inteiro de 1 a 200")
         current = now or datetime.now(timezone.utc)
-        if current.tzinfo is None:
-            raise ValueError("now deve conter fuso horário")
+        if (
+            not isinstance(current, datetime)
+            or current.tzinfo is None
+            or current.utcoffset() is None
+        ):
+            raise ValueError("now deve conter fuso horário válido")
         args: list[Any] = [owner.tenant_id, owner.subject_id]
         sql = """
             SELECT connection_id, symbol, timeframe, candle_at, result_json, recorded_at
@@ -968,8 +972,12 @@ class TenantConnectionTimeframeMonitor:
 
     def run_once(self, *, now: datetime | None = None) -> list[dict[str, Any]]:
         current = now or datetime.now(timezone.utc)
-        if current.tzinfo is None:
-            raise ValueError("now deve conter fuso horário")
+        if (
+            not isinstance(current, datetime)
+            or current.tzinfo is None
+            or current.utcoffset() is None
+        ):
+            raise ValueError("now deve conter fuso horário válido")
         with self._lock, self._connect() as db:
             rows = [dict(row) for row in db.execute("""
                 SELECT tenant_id, subject_id, connection_id, symbol, timeframe,
