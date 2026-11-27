@@ -28,6 +28,7 @@ def test_unknown_provider_configuration_fails_closed():
 
 def test_multiple_market_data_providers_can_be_registered_together(tmp_path, monkeypatch):
     monkeypatch.setenv("CONTROLADOR_RUNTIME_DIR", str(tmp_path))
+    monkeypatch.setenv("CONTROLADOR_MT5_RELAY_SOURCE_ID", "local-demo")
     providers = build_configured_market_data_providers("biquote,mt5_relay")
 
     assert set(providers) == {"biquote", "mt5_relay"}
