@@ -108,6 +108,15 @@ class ProbabilityCalibrationTests(unittest.TestCase):
         )
         self.assertEqual(evaluate_probability_calibration([late, invalid]), {})
 
+    def test_non_finite_and_unrepresentably_large_probabilities_are_rejected(self):
+        records = [
+            forecast("nan", probability=float("nan")),
+            forecast("positive-infinity", probability=float("inf")),
+            forecast("negative-infinity", probability=float("-inf")),
+            forecast("huge-integer", probability=10**1000),
+        ]
+        self.assertEqual(evaluate_probability_calibration(records), {})
+
     def test_malformed_provenance_and_timestamps_are_rejected_safely(self):
         base = forecast("bad-provenance")
         malformed_provenance = ProbabilityForecast(
