@@ -1706,7 +1706,7 @@ def test_live_stream_discards_malformed_candle_without_breaking_worker(
         Registry(),
         lambda _session, _context: analyzer,
     )
-    monitor.subscribe(owner, _id("m"), "EURUSD", "M5")
+    monitor.subscribe(owner, _id("d"), "EURUSD", "M5")
 
     if malformation == "invalid_timezone":
         candle = SimpleNamespace(
