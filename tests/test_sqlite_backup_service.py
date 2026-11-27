@@ -70,6 +70,38 @@ class SQLiteBackupServiceTests(unittest.TestCase):
             self.assertEqual(destination.read_bytes(), b"keep existing")
             self.assertTrue(temporary.exists())
 
+    def test_tenant_state_database_is_included_in_allowlisted_backups(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "runtime"
+            backups = root / "backups"
+            runtime.mkdir()
+            source = runtime / "tenant-state.sqlite3"
+            with sqlite3.connect(source) as db:
+                db.execute("CREATE TABLE tenant_state (tenant_id TEXT, subject_id TEXT, key TEXT)")
+                db.execute("INSERT INTO tenant_state VALUES (?, ?, ?)", ("tenant-a", "user-a", "prefs"))
+            result = SQLiteBackupService(runtime, backups).backup(["tenant_state"])
+            item = result["results"][0]
+            self.assertEqual(item["status"], "BACKUP_CREATED")
+            with sqlite3.connect(backups / item["filename"]) as db:
+                self.assertEqual(db.execute("SELECT tenant_id, subject_id, key FROM tenant_state").fetchone(), ("tenant-a", "user-a", "prefs"))
+
+    def test_backup_rejects_symlink_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "runtime"
+            backups = root / "backups"
+            runtime.mkdir()
+            real = runtime / "real.sqlite3"
+            with sqlite3.connect(real) as db:
+                db.execute("CREATE TABLE sample (id INTEGER)")
+            source = runtime / "tenant-state.sqlite3"
+            try:
+                source.symlink_to(real)
+            except (OSError, NotImplementedError):
+                self.skipTest("symlinks unavailable in this environment")
+            result = SQLiteBackupService(runtime, backups).backup(["tenant_state"])
+            self.assertEqual(result["results"][0]["status"], "SOURCE_UNSAFE")
     def test_rejects_unknown_database_identifier(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
