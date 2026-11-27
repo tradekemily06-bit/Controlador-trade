@@ -140,6 +140,15 @@ def standalone_storage_status(runtime: Any) -> dict[str, Any]:
             "multi_tenant_isolation": "NOT_IMPLEMENTED",
             "backup_restore": "NOT_CONFIGURED",
             "production_storage": "NOT_PROVEN_BY_LOCAL_SQLITE_HEALTH",
+            "deployment_topology": "UNKNOWN_NO_RUNTIME_DIRECTORY",
+            "multi_replica_readiness": "BLOCKED_RUNTIME_NOT_AVAILABLE",
+            "production_release_blockers": [
+                "RUNTIME_STORAGE_NOT_AVAILABLE",
+                "POSTGRESQL_OR_EQUIVALENT_SHARED_TRANSACTIONAL_DATABASE",
+                "DISTRIBUTED_PROCESSING_AND_OUTBOX_LEASES",
+                "DURABLE_SHARED_OAUTH_STORAGE_WITH_KMS",
+                "BACKUP_RESTORE_AND_RECOVERY_VALIDATION",
+            ],
             "execution_authorized": False,
         }
     root = Path(runtime_dir)
