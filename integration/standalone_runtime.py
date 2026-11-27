@@ -309,7 +309,8 @@ class StandaloneRuntime:
                 subject_id=configured_identity,
             )
             if self.tenant_oauth_refresh_worker is not None:
-                self.tenant_oauth_refresh_worker.register_owner(self.local_tenant_context)
+                for refresh_owner in self.tenant_ctrader_token_vault.list_refresh_owners(limit=100):
+                    self.tenant_oauth_refresh_worker.register_owner(refresh_owner)
             # Prepared owner-sharded fiscal repositories are available as an
             # internal primitive; remote HTTP requests remain fail-closed until
             # trusted identity, durable storage and recovery are production-ready.
