@@ -253,30 +253,33 @@ class StandaloneWSGIApplication:
             )
 
         if method == "GET" and path == "/api/market-data/providers":
-            if reason == "trusted_identity":
-                # Global operator adapters are not proof of a connection owned
-                # by this remote user. Never leak another user's broker metadata.
+            # User-owned connections are always resolved from trusted tenant
+            # scope. Host-global adapters are reported separately to local
+            # operators and are never presented as a remote user's accounts.
+            context = _tenant_context_for_request(environ, reason)
+            connection_registry = getattr(self.runtime, "tenant_provider_connections", None)
+            if context is None or connection_registry is None:
                 payload = {
                     "status": "USER_SCOPED_PROVIDER_CONNECTIONS_NOT_CONFIGURED",
-                    "providers": [],
+                    "connections": [],
                     "count": 0,
                     "execution_authorized": False,
                 }
             else:
+                connections = connection_registry.list_connections(context)
+                payload = {
+                    "status": "AVAILABLE" if connections else "NO_VERIFIED_CONNECTIONS",
+                    "connections": connections,
+                    "count": len(connections),
+                    "scope": "TENANT_AND_SUBJECT" if reason == "trusted_identity" else "LOCAL_SINGLE_USER",
+                    "execution_authorized": False,
+                }
+            if reason == "local":
                 registry = getattr(self.runtime, "market_data_registry", None)
-                payload = (
+                payload["configured_data_sources"] = (
                     registry.status(probe_account_mode=False)
-                    if registry is not None
-                    else {
-                        "selected_provider": None,
-                        "providers": [],
-                        "count": 0,
-                        "provider_registered": False,
-                        "execution_authorized": False,
-                    }
+                    if registry is not None else {"selected_provider": None, "providers": [], "count": 0}
                 )
-                payload["scope"] = "LOCAL_SINGLE_USER"
-                payload["execution_authorized"] = False
             return _json_response(start_response, HTTPStatus.OK, payload, request_id)
 
         if method == "GET" and path == "/api/bridge/mt5/status":
