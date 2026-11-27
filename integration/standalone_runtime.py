@@ -460,7 +460,6 @@ class StandaloneRuntime:
                     ),
                     signal_evidence_sink=self.signal_evidence_store.record_signal,
                     signal_outcome_sink=self.signal_outcome_store.resolve_pending_for_candle,
-                    signal_outcome_sink=self.signal_outcome_store.resolve_pending_for_candle,
                     market_data_provenance=(
                         "REAL_MARKET_DATA"
                         if selected.provider_id in {"mt5_relay", "mt5_demo", "ctrader"}
@@ -514,6 +513,7 @@ class StandaloneRuntime:
                         owner or context, record
                     ),
                     signal_evidence_sink=self.signal_evidence_store.record_signal,
+                    signal_outcome_sink=self.signal_outcome_store.resolve_pending_for_candle,
                     market_data_provenance=(
                         "REAL_MARKET_DATA"
                         if session.provider_id in {"mt5_relay", "mt5_demo", "ctrader"}
