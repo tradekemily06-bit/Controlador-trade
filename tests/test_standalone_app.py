@@ -17,7 +17,7 @@ class FakeRuntime:
         def architecture(self):
             return {
                 "architecture": "ONE_SHARED_INTELLIGENCE",
-                "application_areas": [{"name": str(i)} for i in range(7)],
+                "application_areas": [{"name": str(i)} for i in range(6)],
                 "area_handler_status": {},
             }
 
@@ -468,7 +468,7 @@ class StandaloneWSGITests(unittest.TestCase):
         status, body = call_wsgi(app, "/api/health")
         self.assertEqual(status, "200 OK")
         self.assertEqual(body["architecture"], "ONE_SHARED_INTELLIGENCE")
-        self.assertEqual(body["areas"], 7)
+        self.assertEqual(body["areas"], 6)
         self.assertFalse(body["execution_authorized"])
 
     def test_readiness_endpoint_reports_unconfigured_services_without_claiming_live(self):
@@ -546,7 +546,7 @@ class StandaloneWSGITests(unittest.TestCase):
         app = StandaloneWSGIApplication(FakeRuntime())
         status, body = call_wsgi(app, "/api/intelligence/architecture")
         self.assertEqual(status, "200 OK")
-        self.assertEqual(len(body["application_areas"]), 7)
+        self.assertEqual(len(body["application_areas"]), 6)
 
     def test_unknown_order_endpoint_does_not_exist(self):
         app = StandaloneWSGIApplication(FakeRuntime())
