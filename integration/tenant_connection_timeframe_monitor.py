@@ -539,7 +539,7 @@ class TenantConnectionTimeframeMonitor:
         )
         heartbeat.start()
         try:
-            result = self._process_claimed(row, now, lease_lost=lease_lost)
+            result = self._process_claimed(row, now, lease_lost=lease_lost, processing_lease=lease)
             return result
         finally:
             heartbeat_stop.set()
@@ -549,7 +549,9 @@ class TenantConnectionTimeframeMonitor:
                 self._processing.discard(owner_key)
 
     def _process_claimed(
-        self, row: dict[str, Any], now: datetime, *, lease_lost: threading.Event | None = None,
+        self, row: dict[str, Any], now: datetime, *,
+        lease_lost: threading.Event | None = None,
+        processing_lease: tuple[str, str] | None = None,
     ) -> dict[str, Any] | None:
         owner = TenantContext(row["tenant_id"], row["subject_id"])
         connection = row["connection_id"]
@@ -621,6 +623,18 @@ class TenantConnectionTimeframeMonitor:
             }
             serialized = json.dumps(result, ensure_ascii=False, separators=(",", ":"), default=str)
             with self._lock, self._connect() as db:
+                # Fence the durable write against a lease that expired or was
+                # acquired by another worker after the analysis completed.
+                db.execute("BEGIN IMMEDIATE")
+                if processing_lease is not None:
+                    lease_key, lease_token = processing_lease
+                    held = db.execute("""
+                        SELECT 1 FROM tenant_connection_timeframe_processing_lease
+                        WHERE lease_key=? AND owner_token=? AND expires_at>?
+                    """, (lease_key, lease_token, time.time())).fetchone()
+                    if held is None or (lease_lost is not None and lease_lost.is_set()):
+                        db.rollback()
+                        return None
                 inserted = db.execute("""
                     INSERT OR IGNORE INTO tenant_connection_timeframe_results
                     (tenant_id, subject_id, connection_id, symbol, timeframe, candle_at, result_json, recorded_at)
