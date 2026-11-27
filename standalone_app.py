@@ -820,6 +820,7 @@ class StandaloneWSGIApplication:
                         "market_monitor": "USE_TENANT_SCOPED_STATUS_ENDPOINT",
                         "storage_details": "NOT_EXPOSED_IN_SHARED_READINESS",
                         "deployment": "PROCESS_RUNNING_DEPLOYMENT_NOT_VERIFIED",
+                        "deployment_topology": "SINGLE_HOST_SQLITE_MULTI_REPLICA_BLOCKED",
                         "scope": "INFRASTRUCTURE_ONLY",
                         "execution_authorized": False,
                     },
@@ -950,6 +951,10 @@ class StandaloneWSGIApplication:
                     else {"status": "NOT_CONFIGURED", "production_ready": False}
                 ),
                 "deployment": "PROCESS_RUNNING_DEPLOYMENT_NOT_VERIFIED",
+                "deployment_topology": getattr(
+                    self.runtime, "deployment_topology",
+                    {"deployment_topology": "UNKNOWN", "multi_replica_ready": False},
+                ),
                 "execution_authorized": False,
             }
             return _json_response(start_response, HTTPStatus.OK, readiness, request_id)
