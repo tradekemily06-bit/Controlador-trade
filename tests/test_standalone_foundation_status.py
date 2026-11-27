@@ -17,6 +17,8 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
         self.assertEqual(result["deployment_topology"], "UNKNOWN_NO_RUNTIME_DIRECTORY")
         self.assertEqual(result["multi_replica_readiness"], "BLOCKED_RUNTIME_NOT_AVAILABLE")
         self.assertIn("RUNTIME_STORAGE_NOT_AVAILABLE", result["production_release_blockers"])
+        self.assertIn("EXTERNAL_NOTIFICATION_DELIVERY_PROVIDER", result["production_release_blockers"])
+        self.assertIn("TRUSTED_IDENTITY_PROVIDER_RUNTIME_VERIFICATION", result["production_release_blockers"])
         self.assertFalse(result["execution_authorized"])
 
     def test_reports_required_sqlite_stores_as_healthy(self):
