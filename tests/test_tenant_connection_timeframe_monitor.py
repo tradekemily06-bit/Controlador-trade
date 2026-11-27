@@ -1627,3 +1627,46 @@ def test_live_stream_ignores_non_datetime_provider_timestamps(tmp_path):
     })
     assert monitor.run_once(now=now) == []
     assert analyzer.calls == 0
+
+
+@pytest.mark.parametrize(
+    ("timeframe", "close_at", "before", "after", "expected_before", "expected_after"),
+    [
+        ("M1", "2026-11-27T12:01:00+00:00", "2026-11-27T12:01:02+00:00", "2026-11-27T12:01:03+00:00", "2026-11-27T12:00:00+00:00", "2026-11-27T12:01:00+00:00"),
+        ("M5", "2026-11-27T12:05:00+00:00", "2026-11-27T12:05:02+00:00", "2026-11-27T12:05:03+00:00", "2026-11-27T11:55:00+00:00", "2026-11-27T12:00:00+00:00"),
+    ],
+)
+def test_timeframe_close_grace_never_accepts_candle_early(
+    tmp_path, timeframe, close_at, before, after, expected_before, expected_after
+):
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / f"close-grace-{timeframe}.sqlite3",
+        Sessions(),
+        lambda _session, _context: Analyzer(None, "AGUARDAR"),
+        close_grace_seconds=3,
+    )
+    assert monitor.expected_last_closed_candle(
+        timeframe, datetime.fromisoformat(before)
+    ).isoformat() == expected_before
+    assert monitor.expected_last_closed_candle(
+        timeframe, datetime.fromisoformat(after)
+    ).isoformat() == expected_after
+
+
+@pytest.mark.parametrize("invalid_now", ["2026-11-27T12:00:00+00:00", None])
+def test_expected_last_closed_candle_rejects_non_datetime_now(tmp_path, invalid_now):
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "invalid-now.sqlite3", Sessions(),
+        lambda _session, _context: Analyzer(None, "AGUARDAR"),
+    )
+    with pytest.raises(ValueError, match="datetime com fuso"):
+        monitor.expected_last_closed_candle("M1", invalid_now)
+
+
+def test_expected_last_closed_candle_rejects_naive_datetime(tmp_path):
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "naive-now.sqlite3", Sessions(),
+        lambda _session, _context: Analyzer(None, "AGUARDAR"),
+    )
+    with pytest.raises(ValueError, match="datetime com fuso"):
+        monitor.expected_last_closed_candle("M1", datetime(2026, 11, 27, 12, 1))
