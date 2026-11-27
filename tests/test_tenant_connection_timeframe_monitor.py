@@ -1396,3 +1396,18 @@ def test_live_stream_rejects_boolean_account_id_that_equals_integer_one(tmp_path
 
     assert monitor.run_once(now=now) == []
     assert analyzer.calls == 0
+
+
+@pytest.mark.parametrize(
+    "lease_seconds",
+    [True, 0, -1, float("nan"), float("inf"), float("-inf"), "30", None],
+)
+def test_notification_dispatch_rejects_invalid_lease_duration(tmp_path, lease_seconds):
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "invalid-notification-lease.sqlite3",
+        Sessions(),
+        lambda _session, _context: None,
+        on_result=lambda _event: None,
+    )
+    with pytest.raises(ValueError, match="lease_seconds"):
+        monitor.dispatch_pending_notifications(lease_seconds=lease_seconds)
