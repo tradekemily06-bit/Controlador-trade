@@ -86,14 +86,29 @@ def _release_failed_startup_lock_when_safe(
 
 
 def _stop_workers_and_report_active(workers: tuple[tuple[Any, str], ...]) -> list[str]:
+    """Best-effort stop every worker; uncertainty always keeps the process lock held.
+
+    A failure in one provider or notification worker must not prevent the
+    remaining workers from receiving their shutdown request. A stop/status
+    exception is treated as potentially active, never as proof of termination.
+    """
     still_running: list[str] = []
     for worker, running_key in workers:
         if worker is None:
             continue
-        worker.stop()
-        status = worker.status()
-        if status.get(running_key) is not False:
-            still_running.append(type(worker).__name__)
+        name = type(worker).__name__
+        try:
+            worker.stop()
+        except Exception:
+            still_running.append(name)
+            continue
+        try:
+            status = worker.status()
+        except Exception:
+            still_running.append(name)
+            continue
+        if not isinstance(status, dict) or status.get(running_key) is not False:
+            still_running.append(name)
     return still_running
 
 
