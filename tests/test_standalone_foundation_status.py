@@ -238,9 +238,6 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
         self.assertEqual(missing, {})
 
 
-if __name__ == "__main__":
-    unittest.main()
-
     def test_reports_scheduled_backup_worker_state_without_claiming_off_host_copy(self):
         scheduler = SimpleNamespace(status=lambda: {
             "provider": "LOCAL_SQLITE_SCHEDULED",
@@ -257,3 +254,7 @@ if __name__ == "__main__":
         self.assertEqual(result["backup_restore"], "SCHEDULED_LOCAL_ONLY")
         self.assertTrue(result["backup_scheduler"]["worker_running"])
         self.assertEqual(result["backup_scheduler"]["off_host_replication"], "NOT_CONFIGURED")
+
+
+if __name__ == "__main__":
+    unittest.main()
