@@ -96,6 +96,38 @@ def test_connection_service_rejects_unverified_provider_handshake(tmp_path):
     assert connections.list_connections(owner) == []
 
 
+def test_connection_service_rejects_provider_handshake_with_order_capability(tmp_path):
+    vault = Vault()
+    adapters = []
+
+    class TradingCapableAdapter(Adapter):
+        def handshake(self):
+            return {
+                "provider_id": self.provider_id,
+                "account_reference": "account-123",
+                "capabilities": ["candles:read", "orders:write"],
+                "verified": True,
+            }
+
+    def factory(credentials):
+        adapter = TradingCapableAdapter(credentials)
+        adapters.append(adapter)
+        return adapter
+
+    connections, sessions, service = _service(tmp_path, vault, factory)
+    owner = TenantContext("tenant-a", "alice")
+
+    with pytest.raises(PermissionError, match="somente leitura"):
+        service.connect(
+            owner, provider_id="broker_a", account_alias="Conta",
+            credential_ref="vault://tenant-a/broker-a",
+        )
+
+    assert adapters[0].disconnected is True
+    assert sessions.status(owner) == []
+    assert connections.list_connections(owner) == []
+
+
 def test_connection_service_does_not_resolve_credentials_for_other_tenant(tmp_path):
     vault = Vault()
     _, sessions, service = _service(tmp_path, vault, lambda credentials: Adapter(credentials))
