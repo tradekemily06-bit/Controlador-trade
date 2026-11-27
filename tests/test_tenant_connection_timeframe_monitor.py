@@ -1059,3 +1059,63 @@ def test_persisted_watch_rebinds_live_stream_after_monitor_restart(tmp_path):
     assert analyzer_calls == []
     assert restarted.subscriptions(owner)[0]["last_status"] == "WAITING_FOR_LIVE_CLOSED_CANDLE"
     restarted.stop()
+
+
+def test_pending_notification_is_delivered_after_monitor_restart(tmp_path):
+    owner = TenantContext("tenant-restart", "alice")
+    connection = _id("c")
+    sessions = Sessions()
+    sessions.add(owner, connection, "broker_a")
+    now = datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc)
+    expected = datetime(2026, 11, 27, 12, 0, tzinfo=timezone.utc)
+    database = tmp_path / "notification-restart.sqlite3"
+    failed_events = []
+
+    def unavailable_sink(event):
+        failed_events.append(event["event_id"])
+        raise RuntimeError("temporary delivery outage")
+
+    first = TenantConnectionTimeframeMonitor(
+        database, sessions,
+        lambda _session, _context: Analyzer(expected.isoformat(), "COMPRA"),
+        on_result=unavailable_sink,
+    )
+    first.subscribe(owner, connection, "EURUSD", "5m")
+    assert len(first.run_once(now=now)) == 1
+    assert len(failed_events) == 1
+
+    with first._connect() as db:
+        pending = db.execute(
+            "SELECT event_id, delivered_at FROM tenant_connection_notification_outbox"
+        ).fetchone()
+        assert pending is not None
+        assert pending["delivered_at"] is None
+        # Simulate restart after the failed worker's retry lease expires.
+        db.execute(
+            "UPDATE tenant_connection_notification_outbox "
+            "SET lease_until=0 WHERE event_id=?",
+            (pending["event_id"],),
+        )
+    first.stop()
+
+    delivered = []
+    restarted = TenantConnectionTimeframeMonitor(
+        database, sessions,
+        lambda _session, _context: Analyzer(expected.isoformat(), "COMPRA"),
+        on_result=delivered.append,
+    )
+    assert restarted.dispatch_pending_notifications() == 1
+    assert len(delivered) == 1
+    assert delivered[0]["event_id"] == pending["event_id"]
+    assert delivered[0]["tenant_context"] == owner
+
+    with restarted._connect() as db:
+        final = db.execute(
+            "SELECT delivered_at, lease_token FROM tenant_connection_notification_outbox "
+            "WHERE event_id=?",
+            (pending["event_id"],),
+        ).fetchone()
+    assert final["delivered_at"] is not None
+    assert final["lease_token"] is None
+    first.stop()
+    restarted.stop()
