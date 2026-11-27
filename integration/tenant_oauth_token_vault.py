@@ -206,6 +206,33 @@ class TenantOAuthTokenVault:
             "expires_at": row[3],
         }
 
+    def refresh_candidates(
+        self, context: TenantContext, *, within_seconds: int = 900, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        """List owned OAuth credentials approaching expiry without decrypting them."""
+        owner = require_tenant_context(context)
+        if isinstance(within_seconds, bool) or not isinstance(within_seconds, int) or not 1 <= within_seconds <= 86400:
+            raise ValueError("within_seconds must be between 1 and 86400")
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
+            raise ValueError("limit must be between 1 and 1000")
+        now = datetime.now(timezone.utc)
+        cutoff = (now + timedelta(seconds=within_seconds)).isoformat()
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT connection_id,provider_id,expires_at FROM tenant_oauth_tokens "
+                "WHERE tenant_id=? AND subject_id=? AND revoked_at IS NULL "
+                "AND expires_at IS NOT NULL AND expires_at<=? ORDER BY expires_at LIMIT ?",
+                (owner.tenant_id, owner.subject_id, cutoff, limit),
+            ).fetchall()
+        owned = {item["connection_id"]: item for item in self.connections.list_connections(owner)}
+        result = []
+        for connection_id, provider_id, expires_at in rows:
+            account = owned.get(connection_id)
+            if account is None or account.get("provider_id") != provider_id or account.get("status") not in {"PENDING", "CONNECTED"}:
+                continue
+            result.append({"connection_id": connection_id, "provider_id": provider_id, "expires_at": expires_at})
+        return result
+
     def revoke(self, context: TenantContext, connection_id: str) -> bool:
         owner = require_tenant_context(context)
         self._owned_connection(owner, connection_id, allow_disconnected=True)
