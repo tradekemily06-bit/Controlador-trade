@@ -651,3 +651,49 @@ def test_reconnect_is_serialized_for_timeframes_sharing_one_account_adapter(tmp_
     assert outcomes == [True] * 4
     assert adapter.reconnect_calls == 1
     assert len(adapter.subscriptions) == 4
+
+
+def test_processing_lease_prevents_duplicate_work_across_monitor_instances(tmp_path):
+    owner = TenantContext("tenant-a", "alice")
+    connection = _id("f")
+    sessions = Sessions()
+    sessions.add(owner, connection, "broker_a")
+    now = datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc)
+    expected = datetime(2026, 11, 27, 12, 0, tzinfo=timezone.utc)
+    entered = threading.Event()
+    release = threading.Event()
+
+    class SlowAnalyzer:
+        calls = 0
+        def analyze(self, **kwargs):
+            self.calls += 1
+            entered.set()
+            assert release.wait(3)
+            return {
+                "signal": "AGUARDAR", "status": "ANALYZED",
+                "market_data": {"last_candle_at": expected.isoformat()},
+            }
+
+    analyzer = SlowAnalyzer()
+    db_path = tmp_path / "cross-process-lease.sqlite3"
+    first = TenantConnectionTimeframeMonitor(
+        db_path, sessions, lambda _session, _context: analyzer,
+    )
+    second = TenantConnectionTimeframeMonitor(
+        db_path, sessions, lambda _session, _context: analyzer,
+    )
+    first.subscribe(owner, connection, "EURUSD", "5m")
+    first_result = []
+    worker = threading.Thread(target=lambda: first_result.extend(first.run_once(now=now)))
+    worker.start()
+    assert entered.wait(2)
+
+    # A second monitor object represents another worker sharing the database.
+    assert second.run_once(now=now) == []
+    release.set()
+    worker.join(3)
+
+    assert not worker.is_alive()
+    assert len(first_result) == 1
+    assert analyzer.calls == 1
+    assert len(first.latest_results(owner, connection)) == 1
