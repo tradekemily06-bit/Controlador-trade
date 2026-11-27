@@ -86,6 +86,10 @@ def test_registering_same_device_rotates_subscription():
         "https://localhost/send/abc",
         "https://attacker.example.test/send/abc",
         "https://fcm.googleapis.com.evil.test/send/abc",
+        "https://evil.fcm.googleapis.com/send/abc",
+        "https://evil.push.services.mozilla.com/wpush/v2/token",
+        "https://evil.notify.windows.com/w/?token",
+        "https://evil.push.apple.com/Q1token",
         "https://fcm.googleapis.com:8443/send/abc",
     ],
 )
