@@ -54,6 +54,10 @@ class TenantMT5RelayTokenVault:
         digest = self._hash(token)
         with self._connect() as db:
             db.execute("""
+                UPDATE tenant_mt5_relay_tokens SET revoked=1
+                WHERE tenant_id=? AND subject_id=? AND connection_id=? AND revoked=0
+            """, (owner.tenant_id, owner.subject_id, connection_id))
+            db.execute("""
                 INSERT INTO tenant_mt5_relay_tokens
                 (token_hash,tenant_id,subject_id,connection_id,source_id)
                 VALUES(?,?,?,?,?)
@@ -106,7 +110,11 @@ class TenantMT5RelayOnboardingService:
             account_reference="relay:" + secrets.token_hex(12),
             capabilities=["candles:read", "account-mode:demo"],
         )
-        credentials = self.token_vault.issue(owner, record["connection_id"])
+        try:
+            credentials = self.token_vault.issue(owner, record["connection_id"])
+        except Exception:
+            self.connections.mark_disconnected(owner, connection_id=record["connection_id"])
+            raise
         return {
             **record, **credentials,
             "endpoint_path": f"/api/bridge/mt5/connections/{record['connection_id']}/candles",
