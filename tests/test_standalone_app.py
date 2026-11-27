@@ -483,6 +483,10 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertFalse(body["decision_memory"]["durability_confirmed"])
         self.assertEqual(body["notification_delivery"]["state"], "NO_EXTERNAL_SINK_CONFIGURED")
         self.assertEqual(body["deployment"], "PROCESS_RUNNING_DEPLOYMENT_NOT_VERIFIED")
+        self.assertEqual(
+            body["deployment_topology"],
+            {"deployment_topology": "UNKNOWN", "multi_replica_ready": False},
+        )
         self.assertEqual(body["identity"]["trusted_identity_provider"], "NOT_CONFIGURED")
         self.assertEqual(body["tenant_state"]["status"], "LOCAL_TENANT_SCOPED_STORAGE")
         self.assertFalse(body["tenant_state"]["production_ready"])
@@ -1036,6 +1040,9 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(body["scope"], "INFRASTRUCTURE_ONLY")
         self.assertEqual(body["tenant_readiness"], "AVAILABLE_ONLY_THROUGH_SCOPED_ENDPOINTS")
         self.assertEqual(body["notifications"], "USE_TENANT_SCOPED_STATUS_ENDPOINT")
+        self.assertEqual(
+            body["deployment_topology"], "SINGLE_HOST_SQLITE_MULTI_REPLICA_BLOCKED"
+        )
         self.assertNotIn("private_global_counter", body)
         self.assertNotIn("storage_foundation", body)
         self.assertNotIn("decision_memory", body)
