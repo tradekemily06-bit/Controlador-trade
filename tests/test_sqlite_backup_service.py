@@ -58,6 +58,7 @@ class SQLiteBackupServiceTests(unittest.TestCase):
                 service.verify_restore("decision_memory", "fiscal-20261127T010203000000Z.sqlite3")
             with self.assertRaisesRegex(ValueError, "unsupported"):
                 service.verify_restore("arbitrary_path", "arbitrary_path-20261127T010203000000Z.sqlite3")
+
     def test_publish_never_overwrites_existing_backup(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -102,6 +103,23 @@ class SQLiteBackupServiceTests(unittest.TestCase):
                 self.skipTest("symlinks unavailable in this environment")
             result = SQLiteBackupService(runtime, backups).backup(["tenant_state"])
             self.assertEqual(result["results"][0]["status"], "SOURCE_UNSAFE")
+
+    def test_backup_rejects_broken_foreign_key_relationships(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "runtime"
+            backups = root / "backups"
+            runtime.mkdir()
+            source = runtime / "decision-memory.sqlite3"
+            with sqlite3.connect(source) as db:
+                db.execute("CREATE TABLE parents (id INTEGER PRIMARY KEY)")
+                db.execute("CREATE TABLE children (parent_id INTEGER REFERENCES parents(id))")
+                db.execute("PRAGMA foreign_keys = OFF")
+                db.execute("INSERT INTO children(parent_id) VALUES (404)")
+            result = SQLiteBackupService(runtime, backups).backup(["decision_memory"])
+            self.assertEqual(result["results"][0]["status"], "BACKUP_FAILED")
+            self.assertEqual(list(backups.glob("decision_memory-*.sqlite3")), [])
+
     def test_rejects_unknown_database_identifier(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
