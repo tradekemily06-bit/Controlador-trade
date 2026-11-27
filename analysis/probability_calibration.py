@@ -171,6 +171,15 @@ def evaluate_probability_calibration(
                 "observed_success_rate": observed / len(bucket),
                 "observed_rate_95ci": [low, high],
             })
+        expected_calibration_error = sum(
+            bucket["sample_count"]
+            / n
+            * abs(
+                bucket["mean_predicted_probability"]
+                - bucket["observed_success_rate"]
+            )
+            for bucket in bins
+        )
         results[key] = {
             "symbol": symbol,
             "timeframe": timeframe,
@@ -181,6 +190,7 @@ def evaluate_probability_calibration(
             "probability_of_profit": None,
             "brier_score": brier,
             "log_loss": log_loss,
+            "expected_calibration_error": expected_calibration_error,
             "reliability_bins": bins,
             "rejected_records": rejected,
             "rejected_records_total": rejected,
