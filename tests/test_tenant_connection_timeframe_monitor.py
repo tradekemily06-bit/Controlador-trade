@@ -1902,3 +1902,53 @@ def test_daily_and_weekly_signals_use_provider_session_boundary_for_expiry(
     assert current[0]["signal_valid"] is True
     assert "signal_valid_until" not in current[0]
     assert current[0]["result"]["signal"] == "COMPRA"
+
+
+@pytest.mark.parametrize("timeframe", ["D1", "W1"])
+def test_delayed_daily_weekly_notification_fails_closed_without_session_calendar(
+    tmp_path, timeframe
+):
+    owner = TenantContext("tenant-delayed-session", "alice")
+    connection = _id("e")
+    session = Session("broker_without_calendar", "broker:no-calendar")
+
+    class Registry:
+        def get(self, context, *, connection_id):
+            return session if context == owner and connection_id == connection else None
+
+    delivered = []
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / f"delayed-session-{timeframe}.sqlite3",
+        Registry(),
+        lambda _session, _context: Analyzer(None, "AGUARDAR"),
+        on_result=delivered.append,
+    )
+    event_id = str(uuid.uuid4())
+    candle_at = datetime(2026, 11, 26, 5, 0, tzinfo=timezone.utc)
+    payload = {
+        "provider_id": "broker_without_calendar",
+        "source": "broker:no-calendar",
+        "result": {"signal": "COMPRA", "score": 82},
+    }
+    with monitor._connect() as db:
+        db.execute(
+            """
+            INSERT INTO tenant_connection_notification_outbox (
+                event_id, tenant_id, subject_id, connection_id, symbol,
+                timeframe, candle_at, result_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                event_id, owner.tenant_id, owner.subject_id, connection,
+                "EURUSD", timeframe, candle_at.isoformat(),
+                json.dumps(payload), time.time(),
+            ),
+        )
+
+    assert monitor.dispatch_pending_notifications() == 1
+    assert len(delivered) == 1
+    result = delivered[0]["result"]
+    assert result["signal"] is None
+    assert result["original_signal"] == "COMPRA"
+    assert result["status"] == "SESSION_CALENDAR_UNAVAILABLE"
+    assert result["signal_validity"] == "SESSION_CALENDAR_UNAVAILABLE"
