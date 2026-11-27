@@ -618,6 +618,7 @@ def test_subscription_diagnostics_distinguish_disconnected_waiting_and_fresh(tmp
     connection = _id("7")
     now = datetime.now(timezone.utc)
     class Adapter:
+        account_id = 700
         def __init__(self, connected=True):
             self.connected = connected
         def status(self):
@@ -1292,7 +1293,7 @@ def test_live_stream_rejects_missing_account_identity(tmp_path):
         Registry(),
         lambda _session, _context: analyzer,
     )
-    monitor.subscribe(owner, _id("g"), "EURUSD", "M5")
+    monitor.subscribe(owner, _id("a"), "EURUSD", "M5")
     candle = SimpleNamespace(timestamp=expected, is_valid=lambda: True)
 
     # Even a well-formed closed candle cannot enter analysis without an
