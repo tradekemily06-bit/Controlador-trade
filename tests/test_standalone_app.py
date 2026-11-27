@@ -812,6 +812,41 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(body["external_delivery"], "OUTBOX_ONLY_NO_PROVIDER")
         self.assertFalse(body["delivery_worker"]["configured"])
 
+    def test_remote_notification_status_counts_only_verified_subject_notifications(self):
+        runtime = FakeRuntime()
+        runtime.tenant_state.save_notifications(
+            type("Context", (), {"key": "tenant:tenant-a:subject:alice"})(),
+            [{"notification_id": "alice-only"}],
+        )
+        runtime.tenant_state.save_notifications(
+            type("Context", (), {"key": "tenant:tenant-a:subject:bob"})(),
+            [{"notification_id": "bob-only"}, {"notification_id": "bob-second"}],
+        )
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, alice = call_wsgi(
+                app, "/api/notifications/status", remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+            self.assertEqual(status, "200 OK")
+            status, bob = call_wsgi(
+                app, "/api/notifications/status", remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="bob", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(alice["scope"], "TENANT_SCOPED")
+        self.assertEqual(alice["total"], 1)
+        self.assertEqual(bob["scope"], "TENANT_SCOPED")
+        self.assertEqual(bob["total"], 2)
+        self.assertFalse(alice["execution_authorized"])
+
     def test_notifications_endpoint_rejects_invalid_limit(self):
         app = StandaloneWSGIApplication(FakeRuntime())
         status, body = call_wsgi(app, "/api/notifications?limit=999")
