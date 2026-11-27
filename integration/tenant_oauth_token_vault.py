@@ -50,7 +50,10 @@ class TenantOAuthTokenVault:
     def _connect(self):
         return sqlite3.connect(self.path, timeout=10, isolation_level=None)
 
-    def _owned_connection(self, owner: TenantContext, connection_id: str, provider_id: str | None = None):
+    def _owned_connection(
+        self, owner: TenantContext, connection_id: str,
+        provider_id: str | None = None, *, allow_disconnected: bool = False,
+    ):
         if not isinstance(connection_id, str) or not _CONNECTION_ID.fullmatch(connection_id):
             raise ValueError("connection_id inválido")
         account = next((item for item in self.connections.list_connections(owner)
@@ -59,7 +62,10 @@ class TenantOAuthTokenVault:
             raise PermissionError("conexão não pertence a esta identidade")
         if provider_id is not None and account["provider_id"] != provider_id:
             raise PermissionError("provedor não corresponde à conexão")
-        if account["status"] not in {"PENDING", "CONNECTED"}:
+        allowed_statuses = {"PENDING", "CONNECTED"}
+        if allow_disconnected:
+            allowed_statuses.add("DISCONNECTED")
+        if account["status"] not in allowed_statuses:
             raise PermissionError("conexão não está habilitada para credenciais OAuth")
         return account
 
@@ -190,7 +196,7 @@ class TenantOAuthTokenVault:
 
     def revoke(self, context: TenantContext, connection_id: str) -> bool:
         owner = require_tenant_context(context)
-        self._owned_connection(owner, connection_id)
+        self._owned_connection(owner, connection_id, allow_disconnected=True)
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as db:
             cursor = db.execute("""
