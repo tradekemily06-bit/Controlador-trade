@@ -9,7 +9,7 @@ from integration.unified_ecosystem_application import UnifiedEcosystemApplicatio
 class UnifiedIntelligenceTests(unittest.TestCase):
     def test_all_seven_areas_share_one_intelligence(self):
         intelligence = UnifiedIntelligence()
-        self.assertEqual(len(intelligence.areas), 7)
+        self.assertEqual(len(intelligence.areas), 6)
         self.assertEqual(
             {area.area.value for area in intelligence.areas},
             {area.value for area in ApplicationArea},
@@ -22,6 +22,7 @@ class UnifiedIntelligenceTests(unittest.TestCase):
         self.assertEqual(status["internal_knowledge"]["senior_experience_baseline_years"], 45)
         self.assertTrue(status["internal_knowledge"]["experience_open_ended"])
         self.assertNotIn("senior_experience", {area.area.value for area in intelligence.areas})
+        self.assertNotIn("memory", {area.area.value for area in intelligence.areas})
 
     def test_all_routes_are_non_executing(self):
         intelligence = UnifiedIntelligence()
@@ -45,6 +46,11 @@ class UnifiedIntelligenceTests(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             app.handle(area=ApplicationArea.ECOSYSTEM_ASSISTANT, task="executar")
+
+    def test_legacy_memory_route_maps_to_analysis_internal_capability(self):
+        route = UnifiedIntelligence().route(area="memory", task="consultar histórico")
+        self.assertEqual(route.area, ApplicationArea.ANALYSIS)
+        self.assertFalse(route.execution_authorized)
 
     def test_unknown_area_is_rejected(self):
         with self.assertRaises(ValueError):
