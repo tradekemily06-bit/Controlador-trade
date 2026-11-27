@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import re
 from typing import Any, Callable, Protocol
 
@@ -75,7 +76,7 @@ class EncryptedTenantPushSubscriptionStore:
         ).encode("utf-8")
 
     def _encrypt(self, context: TenantContext, device_id: str, record: dict[str, Any]) -> dict[str, str]:
-        nonce = __import__("os").urandom(_NONCE_BYTES)
+        nonce = os.urandom(_NONCE_BYTES)
         plaintext = json.dumps(
             record, ensure_ascii=False, separators=(",", ":"), allow_nan=False
         ).encode("utf-8")
