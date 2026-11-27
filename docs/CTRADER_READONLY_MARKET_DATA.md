@@ -31,11 +31,33 @@ The adapter receives a host-owned transport implementing:
 
 The provider onboarding factory must create a distinct transport and adapter for each account using tenant-owned OAuth credentials. The adapter serializes historical trendbar requests to respect Spotware's five-requests-per-second historical-data limit per connection.
 
-## Current limitation
+## Runtime integration and current limitation
 
-This commit implements and tests the adapter contract, DEMO validation, timeframe mapping and price normalization. It does **not** yet include the production Twisted/Spotware transport lifecycle, OAuth authorization callback, refresh-token vault integration or a real cTrader account handshake. Therefore cTrader is not yet a live connected provider in the application. Do not mark it CONNECTED until the host transport is implemented and verified against a real DEMO account.
+The official Spotware DEMO transport is now implemented in
+`integration/ctrader_openapi_readonly_transport.py`; tenant-scoped OAuth state,
+encrypted token-vault contracts, account selection, refresh coordination and
+restart recovery are implemented in the corresponding
+`integration/tenant_ctrader_*` services. The transport is created server-side
+with credentials resolved from the tenant-bound vault; the browser never receives
+the application secret or OAuth tokens.
 
-The adapter exposes only read-only candle retrieval. It does not expose order placement or money movement.
+For accounts that complete the fresh OAuth/account handshake, the tenant session
+registry binds one adapter to one tenant/subject/connection. The timeframe monitor
+calls `subscribe_live_candles(symbol, timeframe, callback)`, accepts only closed,
+valid candles for that exact account/symbol/timeframe, rejects callbacks from a
+replaced adapter, and requires the candle timestamp expected for the selected
+cycle before analysis. Persisted watches are rebound after a process restart only
+after a new account handshake. The stream callback is therefore wired to the
+multi-tenant monitor; it is not merely an unconnected adapter interface.
+
+**Still not proven:** no real Spotware credentials or DEMO account handshake,
+live quote/candle stream, OAuth rotation, reconnect or end-to-end signal cycle
+has been evidenced in the hosted environment. The optional SDK, app credentials,
+redirect URI, OAuth secret exchange, KMS-backed production token cipher and
+shared refresh lease must be provisioned there. Until that evidence exists, the
+repository implementation must not be described as a live connected cTrader
+account. The account mode is hard-restricted to DEMO and the adapter remains
+read-only; it has no order placement or money-movement methods.
 
 ## Official references
 
