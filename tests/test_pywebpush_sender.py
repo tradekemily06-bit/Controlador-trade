@@ -121,3 +121,20 @@ def test_components_factory_returns_registry_and_sink_using_same_store():
     assert isinstance(sink, TenantWebPushNotificationSink)
     assert registry.store is store
     assert sink.store is store
+
+
+
+def test_rejects_unapproved_https_push_destination():
+    sender = PyWebPushSender(
+        lambda: "A" * 48,
+        subject="mailto:ops@example.com",
+        webpush_function=lambda **kwargs: None,
+    )
+    for endpoint in (
+        "https://attacker.example.test/push",
+        "https://127.0.0.1/push",
+        "https://fcm.googleapis.com:8443/fcm/send/token",
+    ):
+        bad = dict(_subscription(), endpoint=endpoint)
+        with pytest.raises(ValueError, match="approved HTTPS"):
+            sender(bad, "{}", ttl_seconds=30, idempotency_key="id")
