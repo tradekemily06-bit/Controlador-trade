@@ -7,6 +7,7 @@ the OAuth service's configured refresh guard.
 from __future__ import annotations
 
 import threading
+from datetime import datetime, timezone
 from typing import Any
 
 from security.tenant_context import TenantContext
@@ -69,9 +70,7 @@ class TenantOAuthRefreshWorker:
                 failed += 1
         result = {"candidates": len(candidates), "refreshed": refreshed, "failed": failed}
         self._last_result = result
-        self._last_scan_at = __import__("datetime").datetime.now(
-            __import__("datetime").timezone.utc
-        ).isoformat()
+        self._last_scan_at = datetime.now(timezone.utc).isoformat()
         self._last_error = "one_or_more_refreshes_failed" if failed else None
         return dict(result)
 
