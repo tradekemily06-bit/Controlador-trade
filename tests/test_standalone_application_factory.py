@@ -73,7 +73,6 @@ class StandaloneApplicationFactoryTests(unittest.TestCase):
         self.assertEqual(architecture["area_handler_status"]["command_cabin"], "CONNECTED")
         self.assertEqual(architecture["area_handler_status"]["analysis"], "CONNECTED")
         self.assertEqual(architecture["area_handler_status"]["study"], "CONNECTED")
-        self.assertEqual(architecture["area_handler_status"]["memory"], "CONNECTED")
         self.assertEqual(architecture["area_handler_status"]["control_center"], "CONNECTED")
         self.assertEqual(architecture["area_handler_status"]["tax_reserve"], "CONNECTED")
         self.assertEqual(architecture["area_handler_status"]["ecosystem_assistant"], "CONNECTED")
@@ -193,9 +192,9 @@ class StandaloneApplicationFactoryTests(unittest.TestCase):
             context={"operation": "reports"},
         )
         memory_report = app.handle(
-            area=ApplicationArea.MEMORY,
+            area=ApplicationArea.ANALYSIS,
             task="consultar relatório",
-            context={"operation": "report"},
+            context={"operation": "memory"},
         )
         self.assertEqual(report["result"]["reporting_status"], "DECISION_REPORT_READY")
         self.assertEqual(report["result"]["report"]["report_type"], "STANDALONE_DECISION_REPORT")
