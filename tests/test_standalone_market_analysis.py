@@ -220,5 +220,23 @@ class StandaloneMarketAnalysisTests(unittest.TestCase):
             service.analyze(symbol="EURUSD", timeframe="5m", limit=100000)
 
 
+    def test_delayed_one_minute_feed_forces_wait(self):
+        provider = FakeMarketDataProvider(
+            candle_series(timeframe="1m", age_intervals=5)
+        )
+        service = StandaloneMarketAnalysisService(
+            provider=provider,
+            source="DELAYED_ONE_MINUTE_TEST_FEED",
+            intelligence=UnifiedIntelligence(),
+        )
+
+        result = service.analyze(symbol="EURUSD", timeframe="1m", limit=8)
+
+        self.assertTrue(result["data_integrity"]["stale"])
+        self.assertEqual(result["signal"], "AGUARDAR")
+        self.assertEqual(result["status"], "REASSESS_REQUIRED")
+        self.assertFalse(result["execution_allowed"])
+
+
 if __name__ == "__main__":
     unittest.main()
