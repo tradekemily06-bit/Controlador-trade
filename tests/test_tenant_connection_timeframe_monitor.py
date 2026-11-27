@@ -553,3 +553,53 @@ def test_concurrent_cycle_ticks_do_not_duplicate_analysis_or_notifications(tmp_p
     assert analyzer.calls == 1
     assert len(emitted) == 1
     assert len(monitor.latest_results(owner, connection)) == 1
+
+
+def test_notification_outbox_retries_with_stable_event_id_after_sink_failure(tmp_path):
+    owner = TenantContext("tenant-a", "alice")
+    connection = _id("d")
+    sessions = Sessions()
+    sessions.add(owner, connection, "broker_a")
+    now = datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc)
+    expected = datetime(2026, 11, 27, 12, 0, tzinfo=timezone.utc)
+    calls = []
+
+    def flaky_sink(event):
+        calls.append(event)
+        if len(calls) == 1:
+            raise RuntimeError("push temporarily unavailable")
+
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "notification-outbox.sqlite3", sessions,
+        lambda _session, _context: Analyzer(expected.isoformat(), "AGUARDAR"),
+        on_result=flaky_sink,
+    )
+    monitor.subscribe(owner, connection, "EURUSD", "5m")
+    assert len(monitor.run_once(now=now)) == 1
+    assert len(calls) == 1
+
+    with monitor._connect() as db:
+        pending = db.execute("""
+            SELECT event_id, attempts, delivered_at
+            FROM tenant_connection_notification_outbox
+        """).fetchone()
+        assert pending is not None
+        assert pending["attempts"] == 1
+        assert pending["delivered_at"] is None
+        db.execute("""
+            UPDATE tenant_connection_notification_outbox
+            SET lease_until=0 WHERE event_id=?
+        """, (pending["event_id"],))
+
+    assert monitor.dispatch_pending_notifications() == 1
+    assert len(calls) == 2
+    assert calls[0]["event_id"] == calls[1]["event_id"]
+    assert calls[1]["provider_id"] == "broker_a"
+    with monitor._connect() as db:
+        delivered = db.execute("""
+            SELECT delivered_at, attempts
+            FROM tenant_connection_notification_outbox
+            WHERE event_id=?
+        """, (pending["event_id"],)).fetchone()
+    assert delivered["delivered_at"] is not None
+    assert delivered["attempts"] == 2
