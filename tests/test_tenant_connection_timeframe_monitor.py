@@ -603,3 +603,51 @@ def test_notification_outbox_retries_with_stable_event_id_after_sink_failure(tmp
         """, (pending["event_id"],)).fetchone()
     assert delivered["delivered_at"] is not None
     assert delivered["attempts"] == 2
+
+
+def test_reconnect_is_serialized_for_timeframes_sharing_one_account_adapter(tmp_path):
+    import time
+
+    owner = TenantContext("tenant-a", "alice")
+    connection = _id("e")
+
+    class ReconnectingAdapter:
+        def __init__(self):
+            self.connected = False
+            self.reconnect_calls = 0
+            self.subscriptions = []
+        def status(self):
+            return {"connected": self.connected}
+        def reconnect(self):
+            self.reconnect_calls += 1
+            time.sleep(0.05)
+            self.connected = True
+        def subscribe_live_candles(self, symbol, timeframe, callback):
+            self.subscriptions.append((symbol, timeframe, callback))
+
+    adapter = ReconnectingAdapter()
+    session = Session("ctrader_open_api", "ctrader:700", adapter)
+    class Registry:
+        def get(self, context, *, connection_id):
+            return session if context == owner and connection_id == connection else None
+
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "serialized-reconnect.sqlite3", Registry(),
+        lambda _session, _owner: None,
+    )
+    outcomes = []
+    threads = [
+        threading.Thread(target=lambda tf=tf: outcomes.append(
+            monitor._ensure_live_stream(owner, session, connection, "EURUSD", tf)
+        ))
+        for tf in ("1m", "5m", "15m", "1h")
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(2)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert outcomes == [True] * 4
+    assert adapter.reconnect_calls == 1
+    assert len(adapter.subscriptions) == 4
