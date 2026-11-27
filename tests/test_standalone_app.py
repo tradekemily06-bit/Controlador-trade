@@ -1471,8 +1471,15 @@ class StandaloneWSGITests(unittest.TestCase):
                 assert connection_id == "a" * 32
                 return {"disconnected": True, "status": "DISCONNECTED", "execution_authorized": False}
 
+        class CTraderTokenVault:
+            def __init__(self): self.revoked = []
+            def revoke(self, context, connection_id):
+                self.revoked.append((context.tenant_id, context.subject_id, connection_id))
+                return True
+
         runtime = FakeRuntime()
         runtime.tenant_provider_connection_service = ConnectionService()
+        runtime.tenant_ctrader_token_vault = CTraderTokenVault()
         app = StandaloneWSGIApplication(runtime)
         settings = {
             "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
@@ -1489,6 +1496,9 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(status, "200 OK")
         self.assertTrue(body["disconnected"])
         self.assertFalse(body["execution_authorized"])
+        self.assertEqual(runtime.tenant_ctrader_token_vault.revoked, [
+            ("tenant-a", "alice", "a" * 32)
+        ])
 
 if __name__ == "__main__":
     unittest.main()
