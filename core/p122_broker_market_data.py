@@ -99,8 +99,16 @@ class BrokerMarketDataBoundary:
         if len(normalized) > request.limit:
             normalized = normalized[-request.limit:]
 
+        snapshot_received_at = received_at or datetime.now(timezone.utc)
+        if (
+            not isinstance(snapshot_received_at, datetime)
+            or snapshot_received_at.tzinfo is None
+            or snapshot_received_at.utcoffset() is None
+        ):
+            raise ValueError("received_at deve conter fuso horário")
+
         return BrokerMarketDataSnapshot(
-            symbol=request.symbol.strip(),
+            symbol=canonical_request.symbol,
             timeframe=canonical_timeframe,
             candles=normalized,
             source=self._source,
