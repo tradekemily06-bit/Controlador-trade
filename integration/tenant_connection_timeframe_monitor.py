@@ -65,6 +65,7 @@ class TenantConnectionTimeframeMonitor:
         self._live_candles: dict[tuple[str, str, str, str, str], Any] = {}
         self._live_stream_retry_at: dict[tuple[str, str, str, str, str], float] = {}
         self._processing: set[tuple[str, str, str, str, str]] = set()
+        self._adapter_reconnect_locks: dict[int, threading.Lock] = {}
         self._initialize()
 
     def _connect(self):
@@ -183,12 +184,21 @@ class TenantConnectionTimeframeMonitor:
         health = getattr(adapter, "status", None)
         if callable(health):
             try:
-                reported = health()
-                if isinstance(reported, dict) and reported.get("connected") is False:
-                    reconnect = getattr(adapter, "reconnect", None)
-                    if not callable(reconnect):
-                        raise RuntimeError("provider disconnected and does not support safe reconnect")
-                    reconnect()
+                # All timeframe watches sharing one account adapter coordinate
+                # reconnect. Recheck health after acquiring the lock so a burst
+                # of workers does not open multiple provider sessions.
+                with self._lock:
+                    reconnect_lock = self._adapter_reconnect_locks.setdefault(id(adapter), threading.Lock())
+                with reconnect_lock:
+                    reported = health()
+                    if isinstance(reported, dict) and reported.get("connected") is False:
+                        reconnect = getattr(adapter, "reconnect", None)
+                        if not callable(reconnect):
+                            raise RuntimeError("provider disconnected and does not support safe reconnect")
+                        reconnect()
+                    reported = health()
+                    if isinstance(reported, dict) and reported.get("connected") is False:
+                        raise RuntimeError("provider remained disconnected after reconnect")
             except Exception:
                 with self._lock:
                     self._live_stream_retry_at[key] = time.monotonic() + 10.0
