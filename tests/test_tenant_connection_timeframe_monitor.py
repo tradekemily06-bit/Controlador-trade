@@ -932,3 +932,55 @@ def test_expired_notification_lease_is_not_counted_as_delivered(tmp_path):
         ).fetchone()
     assert row["delivered_at"] is None
 
+
+
+def test_tenant_notification_outbox_dead_letters_after_bounded_attempts(tmp_path):
+    owner = TenantContext("tenant-a", "alice")
+    connection = _id("g")
+    sessions = Sessions()
+    sessions.add(owner, connection, "broker_a")
+    now = datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc)
+    expected = datetime(2026, 11, 27, 12, 0, tzinfo=timezone.utc)
+    calls = []
+
+    def failing_sink(event):
+        calls.append(event["event_id"])
+        raise RuntimeError("sensitive provider detail must not be persisted")
+
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "notification-dead-letter.sqlite3",
+        sessions,
+        lambda _session, _context: Analyzer(expected.isoformat(), "AGUARDAR"),
+        on_result=failing_sink,
+        max_notification_attempts=2,
+    )
+    monitor.subscribe(owner, connection, "EURUSD", "5m")
+    assert len(monitor.run_once(now=now)) == 1
+
+    with monitor._connect() as db:
+        row = db.execute(
+            "SELECT event_id, attempts, dead_at, last_error "
+            "FROM tenant_connection_notification_outbox"
+        ).fetchone()
+        assert row["attempts"] == 1
+        assert row["dead_at"] is None
+        assert row["last_error"] is None
+        db.execute(
+            "UPDATE tenant_connection_notification_outbox SET lease_until=0 WHERE event_id=?",
+            (row["event_id"],),
+        )
+
+    assert monitor.dispatch_pending_notifications() == 0
+    with monitor._connect() as db:
+        dead = db.execute(
+            "SELECT attempts, dead_at, lease_token, last_error "
+            "FROM tenant_connection_notification_outbox WHERE event_id=?",
+            (row["event_id"],),
+        ).fetchone()
+    assert dead["attempts"] == 2
+    assert dead["dead_at"] is not None
+    assert dead["lease_token"] is None
+    assert dead["last_error"] == "RuntimeError"
+    assert "sensitive provider detail" not in dead["last_error"]
+    assert monitor.dispatch_pending_notifications() == 0
+    assert calls == [row["event_id"], row["event_id"]]
