@@ -1686,7 +1686,6 @@ class StandaloneWSGIApplication:
                     if tenant_delivery_worker is not None else {
                         "configured": False, "running": False,
                         "state": "NO_TENANT_EXTERNAL_SINK_CONFIGURED",
-                        "outbox": self.runtime.tenant_notification_dispatcher.outbox.status_counts(tenant_context),
                     }
                 )
                 tenant_dispatcher = getattr(self.runtime, "tenant_notification_dispatcher", None)
