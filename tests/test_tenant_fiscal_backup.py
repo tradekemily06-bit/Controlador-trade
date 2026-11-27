@@ -195,3 +195,22 @@ def test_scheduled_tenant_backup_fails_closed_on_unexpected_shard_file(tmp_path)
 
     assert result["status"] == "SOURCE_UNSAFE"
     assert result["results"] == []
+
+
+def test_scheduled_tenant_backup_rejects_owner_digest_mismatch(tmp_path):
+    runtime = tmp_path / "runtime"
+    backups = tmp_path / "backups"
+    factory = TenantFiscalStoreFactory(runtime)
+    context = TenantContext("tenant-a", "alice")
+    repositories = factory.get(context)
+    with sqlite3.connect(repositories.database_path) as db:
+        db.execute(
+            "UPDATE fiscal_reserve_settings SET owner_id = ?",
+            ("tenant:" + "0" * 64,),
+        )
+
+    result = TenantFiscalBackupService(factory, backups).backup_all_managed_shards()
+
+    assert result["status"] == "PARTIAL_OR_FAILED"
+    assert result["results"][0]["status"] == "BACKUP_FAILED"
+    assert not list(backups.glob("tenant-fiscal-*.sqlite3"))
