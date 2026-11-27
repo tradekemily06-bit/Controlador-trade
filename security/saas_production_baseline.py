@@ -20,6 +20,15 @@ class SaaSProductionSecurityState:
     centralized_rate_limiting: bool = False
     real_execution_enabled: bool = False
 
+    def __post_init__(self) -> None:
+        for name in (
+            "trusted_identity", "tenant_isolated_durable_storage",
+            "secure_transport", "secret_management", "durable_audit",
+            "centralized_rate_limiting", "real_execution_enabled",
+        ):
+            if type(getattr(self, name)) is not bool:
+                raise ValueError(f"{name} must be a boolean")
+
     @property
     def ready(self) -> bool:
         return all(
