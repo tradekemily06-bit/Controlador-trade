@@ -907,17 +907,36 @@ class StandaloneWSGIApplication:
             )
 
         if method == "GET" and path == "/api/notifications/status":
-            summary = self.runtime.ecosystem_service.notification_summary()
             worker = getattr(self.runtime, "notification_worker", None)
-            summary["delivery_worker"] = worker.status() if worker is not None else {
+            delivery_worker = worker.status() if worker is not None else {
                 "configured": False,
                 "running": False,
                 "state": "NO_EXTERNAL_SINK_CONFIGURED",
             }
-            summary["external_delivery"] = (
+            external_delivery = (
                 "WORKER_CONFIGURED" if worker is not None
                 else "OUTBOX_ONLY_NO_PROVIDER"
             )
+            if reason == "trusted_identity":
+                tenant_context = _tenant_context_for_request(environ, reason)
+                tenant_state = getattr(self.runtime, "tenant_state", None)
+                if tenant_context is None or tenant_state is None:
+                    return _json_response(
+                        start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                        {"error": "status individual de notificações não configurado", "execution_authorized": False},
+                        request_id,
+                    )
+                # Never expose the legacy global inbox count to a remote tenant.
+                tenant_items = tenant_state.load_notifications(tenant_context)
+                summary = {
+                    "total": len(tenant_items),
+                    "scope": "TENANT_SCOPED",
+                }
+            else:
+                summary = self.runtime.ecosystem_service.notification_summary()
+                summary["scope"] = "LOCAL_SINGLE_USER"
+            summary["delivery_worker"] = delivery_worker
+            summary["external_delivery"] = external_delivery
             return _json_response(
                 start_response, HTTPStatus.OK,
                 {**summary, "execution_authorized": False},
