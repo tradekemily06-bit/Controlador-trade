@@ -73,7 +73,10 @@ def test_relay_payload_cannot_switch_account_source(tmp_path):
 
     with pytest.raises(ValueError, match="origem provisionada"):
         registry.ingest(owner, account["connection_id"], _payload("attacker-selected-source"))
-    assert registry.status(owner, account["connection_id"])["stored_candles"] == 0
+    saved = next(item for item in connections.list_connections(owner) if item["connection_id"] == account["connection_id"])
+    assert saved["status"] == "PENDING"
+    _, store = registry._resolve(owner, account["connection_id"], allow_pending=True)
+    assert store.status()["stored_candles"] == 0
 
 
 def test_relay_connection_is_not_accessible_to_another_tenant(tmp_path):
