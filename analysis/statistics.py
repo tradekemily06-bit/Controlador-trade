@@ -128,7 +128,7 @@ def summarize_context_groups(
     These are descriptive outcome counts, not calibrated probabilities. In
     particular, no timeframe or symbol is allowed to borrow another group's
     observations. Calibration must be implemented separately from verified,
-    out-of-sample forecasts and outcomes.
+    out-of-sample forecasts and outcomes. The exact grouping key is symbol,\n    timeframe, and direction: M1 and M5 are never pooled.
     """
     items = list(records)
     groups: dict[tuple[str, str, str], list[DecisionRecord]] = {}
