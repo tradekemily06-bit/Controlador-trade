@@ -46,3 +46,32 @@ def test_publish_once_refuses_unconfirmed_account(monkeypatch):
         assert "DEMO" in str(exc)
     else:
         raise AssertionError("expected DEMO account guard")
+
+
+def test_build_relay_endpoint_supports_tenant_scoped_multi_account_path():
+    connection_id = "a" * 32
+    assert agent.build_relay_endpoint(
+        "https://app.example.com/", connection_id
+    ) == f"https://app.example.com/api/bridge/mt5/connections/{connection_id}/candles"
+
+
+def test_build_relay_endpoint_keeps_legacy_route_only_without_connection_id():
+    assert agent.build_relay_endpoint("https://app.example.com") == (
+        "https://app.example.com/api/bridge/mt5/candles"
+    )
+
+
+def test_build_relay_endpoint_rejects_invalid_connection_id_and_http():
+    for value in ("not-an-id", "../" + "a" * 32):
+        try:
+            agent.build_relay_endpoint("https://app.example.com", value)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("invalid connection ID must be rejected")
+    try:
+        agent.build_relay_endpoint("http://app.example.com", "a" * 32)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("HTTP relay endpoint must be rejected")
