@@ -54,9 +54,21 @@ class TenantForecastAuditStore:
                     resolved_at TEXT,
                     outcome INTEGER,
                     provenance TEXT,
+                    out_of_sample INTEGER NOT NULL DEFAULT 0 CHECK(out_of_sample IN (0,1)),
                     PRIMARY KEY (tenant_id, subject_id, forecast_id)
                 )
             """)
+            columns = {
+                row["name"] for row in db.execute(
+                    "PRAGMA table_info(tenant_probability_forecasts)"
+                ).fetchall()
+            }
+            if "out_of_sample" not in columns:
+                db.execute(
+                    "ALTER TABLE tenant_probability_forecasts "
+                    "ADD COLUMN out_of_sample INTEGER NOT NULL DEFAULT 0 "
+                    "CHECK(out_of_sample IN (0,1))"
+                )
             db.execute("""
                 CREATE INDEX IF NOT EXISTS idx_tenant_probability_context
                 ON tenant_probability_forecasts
@@ -173,9 +185,10 @@ class TenantForecastAuditStore:
         with self._connect() as db:
             rows = db.execute(
                 """SELECT forecast_id, symbol, timeframe, direction, model_version,
-                probability, outcome, forecast_at, resolved_at, provenance
+                probability, outcome, forecast_at, resolved_at, provenance, out_of_sample
                 FROM tenant_probability_forecasts
                 WHERE tenant_id=? AND subject_id=? AND resolved_at IS NOT NULL
+                  AND out_of_sample=1
                 ORDER BY forecast_at ASC""",
                 (owner.tenant_id, owner.subject_id),
             ).fetchall()
@@ -190,5 +203,5 @@ class TenantForecastAuditStore:
             "forecast_at": row["forecast_at"],
             "resolved_at": row["resolved_at"],
             "provenance": row["provenance"],
-            "out_of_sample": True,
+            "out_of_sample": bool(row["out_of_sample"]),
         } for row in rows]
