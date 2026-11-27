@@ -77,19 +77,17 @@ class TenantScopedDecisionMemory:
         if record.execution_allowed:
             raise ValueError("decision memory cannot store execution authority")
         record_key = self._RECORD_PREFIX + record.decision_id
-        # A candle-cycle ID is stable across retries. Never overwrite an
-        # existing record: doing so could erase a manually annotated outcome.
-        if self.storage.get(trusted, record_key) is not None:
-            return False
-        self.storage.put(trusted, record_key, record.to_dict())
-        added = self.storage.append_unique_list_item(
+        # Record and index are committed together. Concurrent retries cannot
+        # overwrite a manual outcome or leave an unindexed orphan record.
+        return self.storage.put_if_absent_with_index(
             trusted,
+            record_key,
+            record.to_dict(),
             self._INDEX_KEY,
             {"decision_id": record.decision_id},
             unique_field="decision_id",
             limit=2000,
         )
-        return added
 
     def load(self, context: TenantContext, *, limit: int = 1000) -> list[DecisionRecord]:
         trusted = self._context(context)
