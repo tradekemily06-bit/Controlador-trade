@@ -259,3 +259,55 @@ def test_ctrader_adapter_fails_closed_when_refreshed_token_unavailable():
     with pytest.raises(PermissionError, match="token OAuth cTrader renovado indisponível"):
         adapter.reconnect()
     assert adapter.status()["connected"] is False
+
+
+@pytest.mark.parametrize("bad_field", [True, "110000", 10 ** 1000])
+def test_ctrader_rejects_non_integer_trendbar_price_fields(bad_field):
+    transport = FakeTransport()
+    transport.get_trendbars = lambda *args: [{
+        "low": bad_field,
+        "deltaOpen": 1000,
+        "deltaHigh": 3000,
+        "deltaClose": 2000,
+        "utcTimestampInMinutes": 30000000,
+        "volume": 125,
+    }]
+    adapter = CTraderReadOnlyMarketDataAdapter(transport, account_id=123)
+    adapter.connect()
+    adapter.handshake()
+
+    with pytest.raises(ValueError, match="trendbar"):
+        adapter.fetch(MarketDataRequest("EURUSD", "5m", 20))
+
+
+@pytest.mark.parametrize("bad_volume", [True, "125", float("nan"), float("inf"), 10 ** 1000])
+def test_ctrader_rejects_non_finite_or_non_numeric_volume(bad_volume):
+    transport = FakeTransport()
+    transport.get_trendbars = lambda *args: [{
+        "low": 110000,
+        "deltaOpen": 1000,
+        "deltaHigh": 3000,
+        "deltaClose": 2000,
+        "utcTimestampInMinutes": 30000000,
+        "volume": bad_volume,
+    }]
+    adapter = CTraderReadOnlyMarketDataAdapter(transport, account_id=123)
+    adapter.connect()
+    adapter.handshake()
+
+    with pytest.raises(ValueError, match="trendbar"):
+        adapter.fetch(MarketDataRequest("EURUSD", "5m", 20))
+
+
+def test_ctrader_drops_boolean_or_non_finite_live_quote_values():
+    transport = FakeTransport()
+    adapter = CTraderReadOnlyMarketDataAdapter(transport, account_id=123)
+    adapter.connect()
+    adapter.handshake()
+    received = []
+    adapter.subscribe_live_quotes("EURUSD", received.append)
+
+    transport.spot_callback({"symbol_id": 44, "bid": True, "ask": 110145, "timestamp": 1800000000})
+    transport.spot_callback({"symbol_id": 44, "bid": 110123, "ask": None, "timestamp": float("nan")})
+
+    assert received == []
