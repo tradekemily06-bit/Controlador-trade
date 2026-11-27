@@ -362,3 +362,13 @@ def test_ctrader_handshake_rejects_coerced_account_identity(returned_id):
         adapter.handshake()
 
     assert adapter.status()["connected"] is False
+
+@pytest.mark.parametrize("timeframe", ["1m", "M1", "5m", "M5", "1h", "H1", "1d", "D1"])
+def test_ctrader_declares_supported_timeframes(timeframe):
+    assert CTraderReadOnlyMarketDataAdapter.supports_timeframe(timeframe) is True
+
+
+@pytest.mark.parametrize("timeframe", ["2m", "M2", "7m", "unknown"])
+def test_ctrader_does_not_declare_unsupported_timeframes(timeframe):
+    assert CTraderReadOnlyMarketDataAdapter.supports_timeframe(timeframe) is False
+
