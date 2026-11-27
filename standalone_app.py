@@ -404,6 +404,22 @@ class StandaloneWSGIApplication:
                 )
             return _json_response(start_response, HTTPStatus.CREATED, result, request_id)
 
+        tv_alert_prefix = "/api/market-data/connections/"
+        tv_alert_suffix = "/tradingview-alerts"
+        if method == "GET" and path.startswith(tv_alert_prefix) and path.endswith(tv_alert_suffix):
+            context = _tenant_context_for_request(environ, reason)
+            inbox = getattr(self.runtime, "tenant_tradingview_alert_inbox", None)
+            connection_id = path[len(tv_alert_prefix):-len(tv_alert_suffix)].strip("/")
+            if context is None or inbox is None:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": "identidade ou inbox TradingView indisponível", "execution_authorized": False}, request_id)
+            try:
+                query = parse_qs(str(environ.get("QUERY_STRING", "")), keep_blank_values=True)
+                limit = int(query.get("limit", ["50"])[0])
+                events = inbox.list_events(context, connection_id, limit=limit)
+            except (ValueError, TypeError) as exc:
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
+            return _json_response(start_response, HTTPStatus.OK, {"events": events, "read_only": True, "execution_authorized": False}, request_id)
+
         if method == "POST" and path == "/api/market-data/connections":
             try:
                 context = _tenant_context_for_request(environ, reason)
