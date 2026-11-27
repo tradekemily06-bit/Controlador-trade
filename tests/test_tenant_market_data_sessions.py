@@ -125,3 +125,28 @@ def test_stale_adapter_heartbeat_is_not_reported_as_connected(tmp_path):
     status = sessions.status(owner)[0]
     assert status["adapter_status"] == "BOUND"
     assert status["health_status"] == "HEARTBEAT_STALE_OR_UNVERIFIED"
+
+
+
+def test_quote_stream_backpressure_is_not_reported_as_healthy(tmp_path):
+    connections, sessions = _setup(tmp_path)
+    owner = TenantContext("tenant-a", "alice")
+    account = _verified(connections, owner, "Conta A", "account-a")
+
+    class BackpressuredAdapter(FakeAdapter):
+        def status(self):
+            return {
+                "connected": True,
+                "last_seen": datetime.now(timezone.utc).isoformat(),
+                "active_spot_symbols": 2,
+                "spot_event_queue_depth": 2048,
+                "spot_event_overflow_count": 3,
+            }
+
+    sessions.bind(
+        owner, connection_id=account["connection_id"], adapter=BackpressuredAdapter(),
+        source="ctrader_open_api:account-a", handshake_verified=True,
+    )
+    status = sessions.status(owner)[0]
+    assert status["health_status"] == "STREAM_BACKPRESSURE"
+    assert status["health"]["spot_event_overflow_count"] == 3
