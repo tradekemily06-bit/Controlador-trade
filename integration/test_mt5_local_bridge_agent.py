@@ -79,3 +79,21 @@ def test_build_relay_endpoint_rejects_invalid_connection_id_and_http():
         pass
     else:
         raise AssertionError("HTTP relay endpoint must be rejected")
+
+
+def test_retry_delay_uses_bounded_exponential_backoff_and_resets_after_success():
+    assert agent.compute_retry_delay(5, 0) == 5
+    assert agent.compute_retry_delay(5, 1) == 10
+    assert agent.compute_retry_delay(5, 2) == 20
+    assert agent.compute_retry_delay(5, 20) == 60
+    assert agent.compute_retry_delay(5, 1, max_backoff_seconds=7) == 7
+
+
+def test_retry_delay_rejects_invalid_inputs():
+    for interval, failures in ((0, 1), (5, -1), (5, True)):
+        try:
+            agent.compute_retry_delay(interval, failures)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("invalid retry configuration must be rejected")
