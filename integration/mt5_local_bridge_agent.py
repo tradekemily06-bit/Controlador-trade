@@ -121,7 +121,8 @@ def main() -> None:
         raise RuntimeError("CONTROLADOR_MT5_RELAY_SOURCE_ID é obrigatório no modo multi-conta")
     if not source_id:
         source_id = "mt5-local"
-    adapter = ICMarketsMT5DemoMarketDataAdapter()
+    terminal_path = os.getenv("CONTROLADOR_MT5_TERMINAL_PATH", "").strip() or None
+    adapter = ICMarketsMT5DemoMarketDataAdapter(terminal_path=terminal_path)
     relay_url = build_relay_endpoint(base_url, connection_id)
     while True:
         started = time.monotonic()
