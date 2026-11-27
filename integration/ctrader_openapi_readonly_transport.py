@@ -464,7 +464,7 @@ class CTraderOpenApiReadOnlyTransport:
         for account in accounts:
             raw_id = self._field(account, "ctidTraderAccountId")
             is_live = self._field(account, "isLive")
-            if raw_id is None or not self._field_present(account, "isLive") or not isinstance(is_live, bool):
+            if raw_id is None or isinstance(raw_id, bool) or not self._field_present(account, "isLive") or not isinstance(is_live, bool):
                 raise PermissionError("Spotware retornou uma conta sem confirmação de ID/modo")
             try:
                 account_id = int(raw_id)
