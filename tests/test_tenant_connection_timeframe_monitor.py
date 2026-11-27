@@ -68,10 +68,41 @@ def test_subscriptions_and_results_are_isolated_per_account(tmp_path):
     assert len(results) == 2
     assert {item["connection_id"] for item in results} == {_id("a"), _id("b")}
     assert {item["provider_id"] for item in results} == {"broker_a", "broker_b"}
-    assert len(monitor.latest_results(owner, _id("a"))) == 1
-    assert len(monitor.latest_results(owner, _id("b"))) == 1
+    assert len(monitor.latest_results(owner, _id("a"), now=now)) == 1
+    assert len(monitor.latest_results(owner, _id("b"), now=now)) == 1
     assert monitor.latest_results(owner, _id("a"))[0]["result"]["signal"] == "COMPRA"
     assert monitor.latest_results(owner, _id("b"))[0]["result"]["signal"] == "VENDA"
+
+
+
+def test_latest_results_expires_signal_at_next_timeframe_close(tmp_path):
+    owner = TenantContext("tenant-expiry", "alice")
+    connection = _id("e")
+    sessions = Sessions()
+    sessions.add(owner, connection, "broker_a")
+    now = datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc)
+    expected = datetime(2026, 11, 27, 12, 0, tzinfo=timezone.utc)
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "signal-expiry.sqlite3", sessions,
+        lambda _session, _context: Analyzer(expected.isoformat(), "COMPRA"),
+    )
+    monitor.subscribe(owner, connection, "EURUSD", "M5")
+    assert len(monitor.run_once(now=now)) == 1
+
+    still_valid = monitor.latest_results(owner, connection, now=now)
+    assert still_valid[0]["signal_valid"] is True
+    assert still_valid[0]["signal_validity"] == "VALID"
+    assert still_valid[0]["result"]["signal"] == "COMPRA"
+
+    # At 12:11 the 12:05 M5 candle has closed. The old 12:00 signal
+    # remains in history but must never be exposed as an active direction.
+    expired_at = datetime(2026, 11, 27, 12, 11, tzinfo=timezone.utc)
+    expired = monitor.latest_results(owner, connection, now=expired_at)
+    assert expired[0]["signal_valid"] is False
+    assert expired[0]["signal_validity"] == "EXPIRED"
+    assert expired[0]["result"]["original_signal"] == "COMPRA"
+    assert expired[0]["result"]["signal"] == "AGUARDAR"
+    assert expired[0]["result"]["status"] == "SIGNAL_EXPIRED"
 
 
 def test_other_tenant_cannot_list_or_unsubscribe_account_watch(tmp_path):
