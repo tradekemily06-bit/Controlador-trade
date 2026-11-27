@@ -66,3 +66,27 @@ def test_validates_subject_ttl_and_endpoint():
 def test_rejects_non_finite_timeout():
     with pytest.raises(ValueError, match="finite"):
         PyWebPushSender(lambda: "A" * 48, subject="mailto:ops@example.com", timeout_seconds=float("nan"))
+
+
+
+def test_factory_requires_injected_durable_encrypted_store():
+    from integration.pywebpush_sender import build_tenant_web_push_sink
+    from integration.tenant_web_push_notification_sink import TenantWebPushNotificationSink
+
+    class Store:
+        production_durable = True
+        encrypted_at_rest = True
+
+        def list_for_owner(self, context):
+            return []
+
+        def delete_for_owner(self, context, device_id):
+            return True
+
+    sink = build_tenant_web_push_sink(
+        Store(),
+        lambda: "A" * 48,
+        subject="mailto:ops@example.com",
+    )
+    assert isinstance(sink, TenantWebPushNotificationSink)
+    assert sink.ttl_seconds == 300
