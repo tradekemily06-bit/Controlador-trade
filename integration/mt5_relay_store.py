@@ -120,8 +120,11 @@ class MT5RelayStore:
                 timestamp = datetime.fromisoformat(str(item["timestamp"]).replace("Z", "+00:00"))
                 if timestamp.tzinfo is None:
                     raise ValueError("timestamp sem fuso")
+                timestamp = timestamp.astimezone(timezone.utc)
+                if (timestamp - datetime.now(timezone.utc)).total_seconds() > 10:
+                    raise ValueError("candle timestamp is in the future")
                 candle = Candle(
-                    timestamp=timestamp.astimezone(timezone.utc),
+                    timestamp=timestamp,
                     open=self._finite_number(item["open"]),
                     high=self._finite_number(item["high"]),
                     low=self._finite_number(item["low"]),
