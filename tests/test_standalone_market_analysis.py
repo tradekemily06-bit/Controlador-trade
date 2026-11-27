@@ -39,6 +39,31 @@ def candle_series(timeframe="5m", count=8, age_intervals=1):
 
 
 class StandaloneMarketAnalysisTests(unittest.TestCase):
+    def test_live_candle_is_used_by_the_analysis_pipeline(self):
+        candles = candle_series()
+        provider = FakeMarketDataProvider(candles)
+        service = StandaloneMarketAnalysisService(
+            provider=provider,
+            source="LIVE_OVERLAY_TEST",
+            intelligence=UnifiedIntelligence(),
+        )
+        base = candles[-1]
+        live = Candle(
+            timestamp=base.timestamp,
+            open=base.open,
+            high=base.high + 0.001,
+            low=base.low,
+            close=base.close + 0.0005,
+            volume=base.volume + 10,
+        )
+        result = service.analyze(
+            symbol="EURUSD", timeframe="5m", limit=8, live_candle=live
+        )
+        self.assertEqual(result["market_data"]["last_candle_at"], live.timestamp.isoformat())
+        self.assertEqual(result["market_data"]["ohlcv"][-1]["close"], live.close)
+        self.assertEqual(result["market_data"]["ohlcv"][-1]["volume"], live.volume)
+        self.assertFalse(result["execution_allowed"])
+
     def test_provider_neutral_analysis_never_authorizes_execution(self):
         provider = FakeMarketDataProvider(candle_series())
         intelligence = UnifiedIntelligence()
