@@ -34,9 +34,14 @@ class TenantProviderConnectionRegistry:
         records = self.storage.get(trusted, self.STORAGE_KEY) or []
         if not isinstance(records, list) or any(not isinstance(item, dict) for item in records):
             raise RuntimeError("stored broker connection metadata is invalid")
-        # Only explicitly allowlisted, non-secret fields leave this boundary.
+        required = ("connection_id", "provider_id", "account_alias", "status")
         safe = []
         for item in records:
+            if any(not isinstance(item.get(field), str) or not item[field] for field in required):
+                raise RuntimeError("stored broker connection metadata is malformed")
+            capabilities = item.get("capabilities", [])
+            if not isinstance(capabilities, list) or any(not isinstance(value, str) for value in capabilities):
+                raise RuntimeError("stored broker connection capabilities are malformed")
             safe.append({
                 "connection_id": item["connection_id"],
                 "provider_id": item["provider_id"],
@@ -44,7 +49,7 @@ class TenantProviderConnectionRegistry:
                 "account_reference": item.get("account_reference"),
                 "status": item["status"],
                 "last_verified_at": item.get("last_verified_at"),
-                "capabilities": list(item.get("capabilities", [])),
+                "capabilities": list(capabilities),
                 "read_only": True,
                 "execution_authorized": False,
             })
@@ -82,34 +87,33 @@ class TenantProviderConnectionRegistry:
                 clean_capabilities.append(capability)
         if len(clean_capabilities) > 30:
             raise ValueError("capabilities excedem o limite")
-        records = self.storage.get(trusted, self.STORAGE_KEY) or []
-        if not isinstance(records, list) or any(not isinstance(item, dict) for item in records):
-            raise RuntimeError("stored broker connection metadata is invalid")
-        # A broker account is unique within one user's tenant scope.
-        for item in records:
-            if item.get("provider_id") == provider_id and item.get("account_reference") == account_reference:
-                item.update({
-                    "account_alias": account_alias.strip(),
-                    "status": "CONNECTED",
-                    "last_verified_at": self._timestamp(),
-                    "capabilities": clean_capabilities,
-                })
-                self.storage.put(trusted, self.STORAGE_KEY, records)
-                return self.list_connections(trusted)[records.index(item)]
-        if len(records) >= self.MAX_CONNECTIONS:
-            raise ValueError("limite de conexões de corretoras atingido")
+        if not callable(getattr(self.storage, "upsert_unique_list_item", None)):
+            raise RuntimeError("tenant storage does not support atomic broker connection updates")
         record = {
             "connection_id": uuid.uuid4().hex,
             "provider_id": provider_id,
             "account_alias": account_alias.strip(),
-            "account_reference": account_reference.strip() if account_reference else None,
+            "account_reference": account_reference.strip(),
             "status": "CONNECTED",
             "last_verified_at": self._timestamp(),
             "capabilities": clean_capabilities,
         }
-        records.append(record)
-        self.storage.put(trusted, self.STORAGE_KEY, records)
-        return self.list_connections(trusted)[-1]
+        saved = self.storage.upsert_unique_list_item(
+            trusted, self.STORAGE_KEY, record,
+            unique_fields=("provider_id", "account_reference"),
+            limit=self.MAX_CONNECTIONS,
+        )
+        return {
+            "connection_id": saved["connection_id"],
+            "provider_id": saved["provider_id"],
+            "account_alias": saved["account_alias"],
+            "account_reference": saved["account_reference"],
+            "status": saved["status"],
+            "last_verified_at": saved.get("last_verified_at"),
+            "capabilities": list(saved.get("capabilities", [])),
+            "read_only": True,
+            "execution_authorized": False,
+        }
 
     def mark_disconnected(
         self, context: TenantContext | None, *, connection_id: str
@@ -117,12 +121,9 @@ class TenantProviderConnectionRegistry:
         trusted = require_tenant_context(context)
         if not isinstance(connection_id, str) or not re.fullmatch(r"[a-f0-9]{32}", connection_id):
             raise ValueError("connection_id inválido")
-        records = self.storage.get(trusted, self.STORAGE_KEY) or []
-        if not isinstance(records, list) or any(not isinstance(item, dict) for item in records):
-            raise RuntimeError("stored broker connection metadata is invalid")
-        for item in records:
-            if item.get("connection_id") == connection_id:
-                item["status"] = "DISCONNECTED"
-                self.storage.put(trusted, self.STORAGE_KEY, records)
-                return True
-        return False
+        if not callable(getattr(self.storage, "update_list_item", None)):
+            raise RuntimeError("tenant storage does not support atomic broker connection updates")
+        return self.storage.update_list_item(
+            trusted, self.STORAGE_KEY, match_field="connection_id",
+            match_value=connection_id, updates={"status": "DISCONNECTED"},
+        )
