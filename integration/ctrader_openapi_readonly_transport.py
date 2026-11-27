@@ -117,6 +117,8 @@ class CTraderOpenApiReadOnlyTransport:
                 ProtoOAGetTrendbarsReq,
                 ProtoOASubscribeSpotsReq,
                 ProtoOAUnsubscribeSpotsReq,
+                ProtoOASubscribeLiveTrendbarReq,
+                ProtoOAUnsubscribeLiveTrendbarReq,
             )
             from ctrader_open_api.messages.OpenApiModelMessages_pb2 import ProtoOATrendbarPeriod
         except ImportError as exc:
@@ -136,6 +138,8 @@ class CTraderOpenApiReadOnlyTransport:
             "trendbars": ProtoOAGetTrendbarsReq,
             "subscribe_spots": ProtoOASubscribeSpotsReq,
             "unsubscribe_spots": ProtoOAUnsubscribeSpotsReq,
+            "subscribe_trendbars": ProtoOASubscribeLiveTrendbarReq,
+            "unsubscribe_trendbars": ProtoOAUnsubscribeLiveTrendbarReq,
         }
         self._period_enum = ProtoOATrendbarPeriod
         self._client_id = client_id.strip()
@@ -151,6 +155,7 @@ class CTraderOpenApiReadOnlyTransport:
         self._account_authenticated = False
         self._symbols_cache: dict[str, dict[str, Any]] = {}
         self._spot_callbacks: dict[int, Any] = {}
+        self._trendbar_callbacks: dict[tuple[int, str], Any] = {}
         self._spot_queue: queue.Queue = queue.Queue(maxsize=2048)
         self._spot_worker: threading.Thread | None = None
         self._spot_worker_stop = threading.Event()
@@ -194,8 +199,6 @@ class CTraderOpenApiReadOnlyTransport:
                     return
                 with self._lock:
                     callback = self._spot_callbacks.get(symbol_key)
-                if callback is None:
-                    return
                 event_account_id = self._field(_message, "ctidTraderAccountId")
                 try:
                     if int(event_account_id) != self._account_id:
@@ -209,11 +212,29 @@ class CTraderOpenApiReadOnlyTransport:
                     "ask": self._field(_message, "ask"),
                     "timestamp": self._field(_message, "timestamp"),
                 }
-                try:
-                    self._spot_queue.put_nowait((callback, event))
-                except queue.Full:
-                    with self._lock:
-                        self._spot_overflow_count += 1
+                callbacks = []
+                if callback is not None:
+                    callbacks.append((callback, event))
+                trendbars = self._field(_message, "trendbar") or ()
+                with self._lock:
+                    trendbar_targets = [
+                        (period, target)
+                        for (registered_symbol, period), target in self._trendbar_callbacks.items()
+                        if registered_symbol == symbol_key
+                    ]
+                for period, target in trendbar_targets:
+                    for bar in trendbars:
+                        callbacks.append((target, {
+                            **event,
+                            "period": period,
+                            "trendbar": bar,
+                        }))
+                for target, payload in callbacks:
+                    try:
+                        self._spot_queue.put_nowait((target, payload))
+                    except queue.Full:
+                        with self._lock:
+                            self._spot_overflow_count += 1
 
             self._client.setConnectedCallback(connected)
             self._client.setDisconnectedCallback(disconnected)
@@ -287,6 +308,49 @@ class CTraderOpenApiReadOnlyTransport:
         self._send(request)
         with self._lock:
             self._spot_callbacks.pop(symbol_id, None)
+
+    def subscribe_live_trendbars(
+        self, account_id: int, symbol_id: int, period: str, callback
+    ) -> None:
+        self._require_account(account_id)
+        if isinstance(symbol_id, bool) or not isinstance(symbol_id, int) or symbol_id <= 0:
+            raise ValueError("symbol_id cTrader inválido")
+        if not isinstance(period, str) or not period.strip():
+            raise ValueError("period cTrader inválido")
+        if not callable(callback):
+            raise ValueError("callback de trendbar deve ser executável")
+        key = (symbol_id, period.strip().upper())
+        with self._lock:
+            if key in self._trendbar_callbacks:
+                raise ValueError("já existe assinatura de trendbar para este símbolo/período")
+        # Spot events are the required carrier for live trendbars in Spotware Open API.
+        if symbol_id not in self._spot_callbacks:
+            self.subscribe_spots(account_id, symbol_id, lambda _event: None)
+        request = self._messages["subscribe_trendbars"]()
+        request.ctidTraderAccountId = account_id
+        request.symbolId = symbol_id
+        request.period = self._period_enum.Value(key[1])
+        with self._lock:
+            self._trendbar_callbacks[key] = callback
+        try:
+            self._send(request)
+        except Exception:
+            with self._lock:
+                self._trendbar_callbacks.pop(key, None)
+            raise
+
+    def unsubscribe_live_trendbars(
+        self, account_id: int, symbol_id: int, period: str
+    ) -> None:
+        self._require_account(account_id)
+        key = (symbol_id, str(period).strip().upper())
+        request = self._messages["unsubscribe_trendbars"]()
+        request.ctidTraderAccountId = account_id
+        request.symbolId = symbol_id
+        request.period = self._period_enum.Value(key[1])
+        self._send(request)
+        with self._lock:
+            self._trendbar_callbacks.pop(key, None)
 
     def application_auth(self) -> None:
         request = self._messages["application_auth"]()
@@ -364,6 +428,7 @@ class CTraderOpenApiReadOnlyTransport:
             "account_mode": "DEMO" if self._account_authenticated else None,
             "last_seen": self._last_seen,
             "active_spot_symbols": len(self._spot_callbacks),
+            "active_trendbar_streams": len(self._trendbar_callbacks),
             "spot_event_queue_depth": self._spot_queue.qsize(),
             "spot_event_overflow_count": self._spot_overflow_count,
         }
@@ -376,6 +441,7 @@ class CTraderOpenApiReadOnlyTransport:
         self._symbols_cache.clear()
         with self._lock:
             self._spot_callbacks.clear()
+            self._trendbar_callbacks.clear()
         self._spot_worker_stop.set()
         worker = self._spot_worker
         if worker is not None and worker.is_alive():
