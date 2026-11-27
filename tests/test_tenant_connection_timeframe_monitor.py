@@ -1400,7 +1400,7 @@ def test_live_stream_rejects_boolean_account_id_that_equals_integer_one(tmp_path
 
 @pytest.mark.parametrize(
     "lease_seconds",
-    [True, 0, -1, float("nan"), float("inf"), float("-inf"), "30", None],
+    [True, 0, -1, float("nan"), float("inf"), float("-inf"), 10**1000, "30", None],
 )
 def test_notification_dispatch_rejects_invalid_lease_duration(tmp_path, lease_seconds):
     monitor = TenantConnectionTimeframeMonitor(
