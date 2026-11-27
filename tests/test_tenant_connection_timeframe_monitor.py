@@ -1790,3 +1790,23 @@ def test_future_live_candle_cannot_poison_stream_cache(tmp_path):
     valid_at = monitor.expected_last_closed_candle("M5", now)
     adapter.callback({**event, "candle": candle(valid_at)})
     assert monitor._live_candles[key].timestamp == valid_at
+
+
+def test_monitor_public_clock_inputs_reject_timezone_without_utc_offset(tmp_path):
+    from datetime import tzinfo
+
+    class MissingOffset(tzinfo):
+        def utcoffset(self, dt):
+            return None
+
+    invalid_now = datetime(2026, 11, 27, 12, 6, tzinfo=MissingOffset())
+    owner = TenantContext("tenant-clock-offset", "alice")
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "invalid-offset.sqlite3", Sessions(),
+        lambda _session, _context: Analyzer(None, "AGUARDAR"),
+    )
+
+    with pytest.raises(ValueError, match="fuso horário válido"):
+        monitor.run_once(now=invalid_now)
+    with pytest.raises(ValueError, match="fuso horário válido"):
+        monitor.latest_results(owner, now=invalid_now)
