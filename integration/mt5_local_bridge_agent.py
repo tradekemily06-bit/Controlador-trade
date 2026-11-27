@@ -66,6 +66,12 @@ def publish_once(
 ) -> int:
     if adapter.get_account_mode() != "DEMO":
         raise RuntimeError("terminal MT5 não confirmou conta DEMO")
+    account_reference_reader = getattr(adapter, "get_account_reference", None)
+    if not callable(account_reference_reader):
+        raise RuntimeError("adapter MT5 não oferece referência estável da conta")
+    account_reference = account_reference_reader()
+    if not isinstance(account_reference, str) or not re.fullmatch(r"mt5_[a-f0-9]{32}", account_reference):
+        raise RuntimeError("referência pseudônima da conta MT5 inválida")
     sent = 0
     for symbol in symbols:
         for timeframe in timeframes:
@@ -75,6 +81,7 @@ def publish_once(
                 continue
             payload = {
                 "source_id": source_id,
+                "account_reference": account_reference,
                 "message_id": str(uuid.uuid4()),
                 "sent_at": datetime.now(timezone.utc).isoformat(),
                 "account_mode": "DEMO",
