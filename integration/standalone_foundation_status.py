@@ -183,7 +183,12 @@ def standalone_storage_status(runtime: Any) -> dict[str, Any]:
     for store_id, filename, required, expected_schema in _DATABASES:
         path = root / filename
         missing_schema: dict[str, list[str]] = {}
-        if not path.is_file():
+        if path.is_symlink():
+            # A database path must remain inside the configured runtime directory.
+            # Following a symlink here could make readiness inspect an unrelated file.
+            state = "UNSAFE_PATH"
+            detail = "SYMLINK_NOT_ALLOWED"
+        elif not path.is_file():
             state = "MISSING"
             detail = None
         else:
