@@ -1670,3 +1670,62 @@ def test_expected_last_closed_candle_rejects_naive_datetime(tmp_path):
     )
     with pytest.raises(ValueError, match="datetime com fuso"):
         monitor.expected_last_closed_candle("M1", datetime(2026, 11, 27, 12, 1))
+
+
+@pytest.mark.parametrize("malformation", ["invalid_timezone", "validity_exception"])
+def test_live_stream_discards_malformed_candle_without_breaking_worker(
+    tmp_path, malformation
+):
+    from datetime import tzinfo
+    from types import SimpleNamespace
+
+    owner = TenantContext("tenant-malformed-live", "alice")
+    expected = datetime(2026, 11, 27, 12, 0, tzinfo=timezone.utc)
+
+    class InvalidTimezone(tzinfo):
+        def utcoffset(self, dt):
+            return None
+
+    class StreamAdapter:
+        account_id = 987
+        def subscribe_live_candles(self, symbol, timeframe, callback):
+            self.callback = callback
+        def unsubscribe_live_candles(self, symbol, timeframe):
+            self.callback = None
+
+    adapter = StreamAdapter()
+    session = Session("ctrader_open_api", "ctrader:987", adapter)
+
+    class Registry:
+        def get(self, context, *, connection_id):
+            return session if context == owner else None
+
+    analyzer = Analyzer(expected.isoformat(), "COMPRA")
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / f"malformed-live-{malformation}.sqlite3",
+        Registry(),
+        lambda _session, _context: analyzer,
+    )
+    monitor.subscribe(owner, _id("m"), "EURUSD", "M5")
+
+    if malformation == "invalid_timezone":
+        candle = SimpleNamespace(
+            timestamp=datetime(2026, 11, 27, 12, 0, tzinfo=InvalidTimezone()),
+            is_valid=lambda: True,
+        )
+    else:
+        def broken_validation():
+            raise RuntimeError("provider candle validation failed")
+        candle = SimpleNamespace(timestamp=expected, is_valid=broken_validation)
+
+    adapter.callback({
+        "account_id": 987,
+        "symbol": "EURUSD",
+        "timeframe": "M5",
+        "candle": candle,
+        "closed": True,
+    })
+
+    assert monitor.run_once(now=datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc)) == []
+    assert analyzer.calls == 0
+    assert monitor.subscriptions(owner)[0]["last_status"] == "WAITING_FOR_LIVE_CLOSED_CANDLE"
