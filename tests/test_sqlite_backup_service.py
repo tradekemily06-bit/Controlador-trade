@@ -4,6 +4,7 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from core.sqlite_backup_service import SQLiteBackupService
 
@@ -46,6 +47,45 @@ class SQLiteBackupServiceTests(unittest.TestCase):
             self.assertFalse(result["live_database_modified"])
             with sqlite3.connect(source) as db:
                 self.assertEqual(db.execute("SELECT decision_id FROM decisions").fetchone()[0], "restore-record")
+            self.assertFalse(list(backups.glob(".decision_memory-restore-test-*")))
+
+    def test_restore_verification_checks_rows_in_the_isolated_restored_copy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "runtime"
+            backups = root / "backups"
+            runtime.mkdir()
+            source = runtime / "decision-memory.sqlite3"
+            with sqlite3.connect(source) as db:
+                db.execute("CREATE TABLE decisions (decision_id TEXT)")
+                db.execute("INSERT INTO decisions VALUES (?)", ("durable-decision",))
+
+            service = SQLiteBackupService(runtime, backups)
+            created = service.backup(["decision_memory"])["results"][0]
+            original_check = SQLiteBackupService._check
+            inspected_rows = []
+
+            def inspect_restored_copy(path):
+                original_check(path)
+                with sqlite3.connect(path) as restored:
+                    inspected_rows.append(
+                        restored.execute(
+                            "SELECT decision_id FROM decisions"
+                        ).fetchone()[0]
+                    )
+
+            with patch.object(
+                SQLiteBackupService, "_check", side_effect=inspect_restored_copy
+            ):
+                result = service.verify_restore("decision_memory", created["filename"])
+
+            self.assertEqual(result["status"], "RESTORE_VALIDATED_IN_ISOLATION")
+            self.assertEqual(inspected_rows, ["durable-decision"])
+            with sqlite3.connect(source) as db:
+                self.assertEqual(
+                    db.execute("SELECT decision_id FROM decisions").fetchone()[0],
+                    "durable-decision",
+                )
             self.assertFalse(list(backups.glob(".decision_memory-restore-test-*")))
 
     def test_restore_verification_rejects_traversal_and_wrong_database(self):
@@ -132,6 +172,163 @@ class SQLiteBackupServiceTests(unittest.TestCase):
             runtime.mkdir()
             with self.assertRaises(ValueError):
                 SQLiteBackupService(runtime, runtime / "backups")
+
+
+    def test_restore_verification_rejects_corrupt_backup_and_cleans_temporary_copy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "runtime"
+            backups = root / "backups"
+            runtime.mkdir()
+            backups.mkdir()
+            filename = "decision_memory-20261127T010203000000Z.sqlite3"
+            (backups / filename).write_bytes(b"not a sqlite database")
+            result = SQLiteBackupService(runtime, backups).verify_restore(
+                "decision_memory", filename
+            )
+            self.assertEqual(result["status"], "RESTORE_VALIDATION_FAILED")
+            self.assertEqual(result["error_class"], "DatabaseError")
+            self.assertFalse(result["live_database_modified"])
+            self.assertFalse(list(backups.glob(".decision_memory-restore-test-*")))
+
+    def test_restore_verification_rejects_symlink_backup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "runtime"
+            backups = root / "backups"
+            runtime.mkdir()
+            backups.mkdir()
+            outside = root / "outside.sqlite3"
+            with sqlite3.connect(outside) as db:
+                db.execute("CREATE TABLE sample (id INTEGER)")
+            filename = "decision_memory-20261127T010203000000Z.sqlite3"
+            link = backups / filename
+            try:
+                link.symlink_to(outside)
+            except (OSError, NotImplementedError):
+                self.skipTest("symlinks unavailable in this environment")
+            with self.assertRaisesRegex(ValueError, "existing regular file"):
+                SQLiteBackupService(runtime, backups).verify_restore(
+                    "decision_memory", filename
+                )
+
+
+
+    def test_tenant_market_data_database_is_included_in_allowlisted_backups(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "runtime"
+            backups = root / "backups"
+            runtime.mkdir()
+            source = runtime / "tenant-connection-timeframe-monitor.sqlite3"
+            with sqlite3.connect(source) as db:
+                db.execute(
+                    "CREATE TABLE tenant_connection_timeframe_results "
+                    "(tenant_id TEXT, subject_id TEXT, connection_id TEXT, result_json TEXT)"
+                )
+                db.execute(
+                    "INSERT INTO tenant_connection_timeframe_results VALUES (?, ?, ?, ?)",
+                    ("tenant-a", "user-a", "connection-1", '{"signal":"AGUARDAR"}'),
+                )
+                db.execute(
+                    "CREATE TABLE tenant_connection_timeframe_processing_lease "
+                    "(lease_key TEXT, owner_token TEXT, expires_at REAL)"
+                )
+                db.execute(
+                    """
+                    CREATE TABLE tenant_connection_notification_outbox (
+                        event_id TEXT PRIMARY KEY,
+                        tenant_id TEXT NOT NULL,
+                        subject_id TEXT NOT NULL,
+                        connection_id TEXT NOT NULL,
+                        symbol TEXT NOT NULL,
+                        timeframe TEXT NOT NULL,
+                        candle_at TEXT NOT NULL,
+                        result_json TEXT NOT NULL,
+                        created_at REAL NOT NULL,
+                        attempts INTEGER NOT NULL DEFAULT 0,
+                        lease_until REAL,
+                        lease_token TEXT,
+                        delivered_at REAL,
+                        dead_at REAL,
+                        last_error TEXT
+                    )
+                    """
+                )
+                db.execute(
+                    "INSERT INTO tenant_connection_timeframe_processing_lease "
+                    "VALUES (?, ?, ?)",
+                    ("lease-a", "worker-a", 9999999999.0),
+                )
+                db.execute(
+                    """
+                    INSERT INTO tenant_connection_notification_outbox (
+                        event_id, tenant_id, subject_id, connection_id, symbol,
+                        timeframe, candle_at, result_json, created_at, attempts,
+                        lease_until, lease_token, delivered_at, dead_at, last_error
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        "event-a", "tenant-a", "user-a", "connection-1",
+                        "EURUSD", "5m", "2026-11-27T12:00:00+00:00",
+                        '{"signal":"AGUARDAR"}', 1795780800.0, 0,
+                        None, None, None, None, None,
+                    ),
+                )
+            result = SQLiteBackupService(runtime, backups).backup(["tenant_market_data"])
+            item = result["results"][0]
+            self.assertEqual(item["status"], "BACKUP_CREATED")
+            with sqlite3.connect(backups / item["filename"]) as db:
+                self.assertEqual(
+                    db.execute(
+                        "SELECT tenant_id, subject_id, connection_id FROM "
+                        "tenant_connection_timeframe_results"
+                    ).fetchone(),
+                    ("tenant-a", "user-a", "connection-1"),
+                )
+                self.assertEqual(
+                    db.execute(
+                        "SELECT COUNT(*) FROM tenant_connection_timeframe_processing_lease"
+                    ).fetchone()[0],
+                    1,
+                )
+                self.assertEqual(
+                    db.execute(
+                        "SELECT COUNT(*) FROM tenant_connection_notification_outbox"
+                    ).fetchone()[0],
+                    1,
+                )
+
+
+
+    def test_tenant_tradingview_alert_history_is_included_in_backups(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "runtime"
+            backups = root / "backups"
+            runtime.mkdir()
+            source = runtime / "tenant-tradingview-alerts.sqlite3"
+            with sqlite3.connect(source) as db:
+                db.execute(
+                    "CREATE TABLE tenant_tradingview_alert_events "
+                    "(tenant_id TEXT, subject_id TEXT, connection_id TEXT, event_id TEXT, payload_json TEXT)"
+                )
+                db.execute(
+                    "INSERT INTO tenant_tradingview_alert_events VALUES (?, ?, ?, ?, ?)",
+                    ("tenant-a", "user-a", "connection-1", "event-0001", '{"action":"BUY"}'),
+                )
+            result = SQLiteBackupService(runtime, backups).backup(["tenant_tradingview_alerts"])
+            item = result["results"][0]
+            self.assertEqual(item["status"], "BACKUP_CREATED")
+            with sqlite3.connect(backups / item["filename"]) as db:
+                self.assertEqual(
+                    db.execute(
+                        "SELECT tenant_id, subject_id, connection_id, event_id "
+                        "FROM tenant_tradingview_alert_events"
+                    ).fetchone(),
+                    ("tenant-a", "user-a", "connection-1", "event-0001"),
+                )
+
 
 
 if __name__ == "__main__":

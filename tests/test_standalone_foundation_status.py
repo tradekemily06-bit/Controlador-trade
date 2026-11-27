@@ -10,6 +10,18 @@ from integration.standalone_foundation_status import _integrity, standalone_stor
 
 
 class StandaloneFoundationStatusTests(unittest.TestCase):
+    def test_missing_runtime_directory_reports_production_blockers(self):
+        result = standalone_storage_status(SimpleNamespace(runtime_dir=None))
+
+        self.assertEqual(result["required_stores"], "NOT_AVAILABLE")
+        self.assertEqual(result["backup_restore"], "NOT_AVAILABLE")
+        self.assertEqual(result["deployment_topology"], "UNKNOWN_NO_RUNTIME_DIRECTORY")
+        self.assertEqual(result["multi_replica_readiness"], "BLOCKED_RUNTIME_NOT_AVAILABLE")
+        self.assertIn("RUNTIME_STORAGE_NOT_AVAILABLE", result["production_release_blockers"])
+        self.assertIn("EXTERNAL_NOTIFICATION_DELIVERY_PROVIDER", result["production_release_blockers"])
+        self.assertIn("TRUSTED_IDENTITY_PROVIDER_RUNTIME_VERIFICATION", result["production_release_blockers"])
+        self.assertFalse(result["execution_authorized"])
+
     def test_reports_required_sqlite_stores_as_healthy(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -24,7 +36,22 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
                 },
                 "ecosystem-state.sqlite3": {"ecosystem_state": "key TEXT, value_json TEXT"},
                 "tenant-state.sqlite3": {"tenant_state": "tenant_id TEXT, subject_id TEXT, key TEXT, value_json TEXT, updated_at TEXT"},
-                "notification-outbox.sqlite3": {"notification_outbox": "idempotency_key TEXT, payload_json TEXT, status TEXT, attempts INTEGER, available_at REAL, lease_until REAL, created_at REAL, delivered_at REAL, last_error TEXT"},
+                "tenant-connection-timeframe-monitor.sqlite3": {
+                    "tenant_connection_timeframe_watch": "tenant_id TEXT, subject_id TEXT, connection_id TEXT, symbol TEXT, timeframe TEXT, enabled INTEGER, created_at REAL, last_processed_candle TEXT, last_signal TEXT, last_status TEXT, last_error TEXT",
+                    "tenant_connection_timeframe_results": "tenant_id TEXT, subject_id TEXT, connection_id TEXT, symbol TEXT, timeframe TEXT, candle_at TEXT, result_json TEXT, recorded_at REAL",
+                    "tenant_connection_timeframe_processing_lease": "lease_key TEXT, owner_token TEXT, expires_at REAL",
+                    "tenant_connection_notification_outbox": "event_id TEXT, tenant_id TEXT, subject_id TEXT, connection_id TEXT, symbol TEXT, timeframe TEXT, candle_at TEXT, result_json TEXT, created_at REAL, attempts INTEGER, lease_until REAL, lease_token TEXT, delivered_at REAL, dead_at REAL, last_error TEXT",
+                },
+                "tenant-mt5-relay-tokens.sqlite3": {
+                    "tenant_mt5_relay_tokens": "token_hash TEXT, tenant_id TEXT, subject_id TEXT, connection_id TEXT, source_id TEXT, created_at REAL, revoked INTEGER",
+                },
+                "tenant-tradingview-webhook-secrets.sqlite3": {
+                    "tenant_tradingview_webhook_secrets": "secret_hash TEXT, tenant_id TEXT, subject_id TEXT, connection_id TEXT, revoked INTEGER",
+                },
+                "tenant-tradingview-alerts.sqlite3": {
+                    "tenant_tradingview_alert_events": "tenant_id TEXT, subject_id TEXT, connection_id TEXT, event_id TEXT, ticker TEXT, interval TEXT, action TEXT, price REAL, fired_at TEXT, received_at TEXT, payload_json TEXT",
+                },
+                "notification-outbox.sqlite3": {"notification_outbox": "idempotency_key TEXT, payload_json TEXT, status TEXT, attempts INTEGER, available_at REAL, lease_until REAL, lease_token TEXT, created_at REAL, delivered_at REAL, last_error TEXT"},
                 "decision-memory.sqlite3": {"decisions": "decision_id TEXT, created_at TEXT, symbol TEXT, timeframe TEXT, signal TEXT, score REAL, confirmed INTEGER, reason TEXT, execution_allowed INTEGER, outcome TEXT, outcome_source TEXT"},
                 "assistant-conversations.sqlite3": {
                     "conversations": "id TEXT, owner TEXT, title TEXT, updated_at TEXT",
@@ -38,7 +65,18 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
             result = standalone_storage_status(SimpleNamespace(runtime_dir=root))
         self.assertEqual(result["required_stores"], "HEALTHY")
         self.assertEqual(result["multi_tenant_isolation"], "NOT_IMPLEMENTED")
-        self.assertEqual(result["backup_restore"], "NOT_CONFIGURED")
+        self.assertEqual(result["backup_restore"], "ON_DEMAND_LOCAL_ONLY")
+        self.assertEqual(result["deployment_topology"], "SINGLE_HOST_ONLY")
+        self.assertEqual(
+            result["multi_replica_readiness"],
+            "BLOCKED_SHARED_TRANSACTIONAL_DATABASE_REQUIRED",
+        )
+        self.assertIn(
+            "DURABLE_SHARED_OAUTH_STORAGE_WITH_KMS",
+            result["production_release_blockers"],
+        )
+        self.assertIn("EXTERNAL_NOTIFICATION_DELIVERY_PROVIDER", result["production_release_blockers"])
+        self.assertIn("TRUSTED_IDENTITY_PROVIDER_RUNTIME_VERIFICATION", result["production_release_blockers"])
         self.assertFalse(result["execution_authorized"])
 
     def test_missing_fiscal_pending_queue_degrades_fiscal_store(self):
@@ -102,6 +140,9 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
         assistant = next(item for item in result["stores"] if item["id"] == "assistant_conversations")
         self.assertEqual(assistant["state"], "MISSING")
         self.assertTrue(assistant["required"])
+        tradingview_alerts = next(item for item in result["stores"] if item["id"] == "tenant_tradingview_alerts")
+        self.assertEqual(tradingview_alerts["state"], "MISSING")
+        self.assertTrue(tradingview_alerts["required"])
 
     def test_empty_but_valid_sqlite_is_schema_incomplete(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -195,6 +236,44 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
             integrity, missing = _integrity(path, {"child": {"parent_id"}})
         self.assertEqual(integrity, "FOREIGN_KEY_VIOLATIONS:1")
         self.assertEqual(missing, {})
+
+
+    def test_reports_scheduled_backup_worker_state_without_claiming_off_host_copy(self):
+        scheduler = SimpleNamespace(status=lambda: {
+            "provider": "LOCAL_SQLITE_SCHEDULED",
+            "enabled": True,
+            "worker_running": True,
+            "last_status": "WAITING_FOR_FIRST_SCHEDULE",
+            "off_host_replication": "NOT_CONFIGURED",
+            "deployment_continuity": "PROCESS_LIFETIME_ONLY",
+        })
+        with tempfile.TemporaryDirectory() as directory:
+            result = standalone_storage_status(
+                SimpleNamespace(runtime_dir=Path(directory), backup_scheduler=scheduler)
+            )
+        self.assertEqual(result["backup_restore"], "SCHEDULED_LOCAL_ONLY")
+        self.assertTrue(result["backup_scheduler"]["worker_running"])
+        self.assertEqual(result["backup_scheduler"]["off_host_replication"], "NOT_CONFIGURED")
+
+
+    def test_symlinked_required_store_is_rejected_without_following_target(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            outside = root.parent / f"{root.name}-outside.sqlite3"
+            try:
+                with sqlite3.connect(outside) as connection:
+                    connection.execute("CREATE TABLE fiscal_reserve_entries (id INTEGER)")
+                (root / "fiscal-reserve.sqlite3").symlink_to(outside)
+                result = standalone_storage_status(SimpleNamespace(runtime_dir=root))
+            except (OSError, NotImplementedError):
+                self.skipTest("symlink creation is not supported in this environment")
+            finally:
+                outside.unlink(missing_ok=True)
+
+        fiscal = next(item for item in result["stores"] if item["id"] == "fiscal")
+        self.assertEqual(fiscal["state"], "UNSAFE_PATH")
+        self.assertEqual(fiscal["integrity"], "SYMLINK_NOT_ALLOWED")
+        self.assertEqual(result["required_stores"], "DEGRADED")
 
 
 if __name__ == "__main__":
