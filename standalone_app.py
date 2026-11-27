@@ -8,6 +8,7 @@ from __future__ import annotations
 import hmac
 import json
 import os
+import re
 from http import HTTPStatus
 from socketserver import ThreadingMixIn
 from wsgiref.simple_server import WSGIServer, make_server
@@ -126,6 +127,37 @@ def _mt5_relay_authorized(environ) -> bool:
     return direct_tls or trusted_proxy_tls
 
 
+def _tenant_mt5_relay_identity(environ, resolver):
+    """Resolve a per-account relay bearer token to a trusted owner and connection."""
+    if resolver is None or not callable(getattr(resolver, "resolve", None)):
+        return None
+    authorization = str(environ.get("HTTP_AUTHORIZATION") or "")
+    if not authorization.startswith("Bearer "):
+        return None
+    token = authorization[7:].strip()
+    if not token or len(token) > 512:
+        return None
+    direct_tls = str(environ.get("wsgi.url_scheme", "")).lower() == "https"
+    trusted_proxy_tls = (
+        os.getenv("CONTROLADOR_TRUST_PROXY_TLS", "").strip().lower() in {"1", "true", "yes"}
+        and str(environ.get("HTTP_X_FORWARDED_PROTO", "")).lower() == "https"
+    )
+    if not (direct_tls or trusted_proxy_tls):
+        return None
+    try:
+        resolved = resolver.resolve(token)
+    except Exception:
+        return None
+    if not isinstance(resolved, tuple) or len(resolved) != 2:
+        return None
+    context, connection_id = resolved
+    if not isinstance(context, TenantContext):
+        return None
+    if not isinstance(connection_id, str) or not re.fullmatch(r"[a-f0-9]{32}", connection_id):
+        return None
+    return context, connection_id
+
+
 def _read_json(environ) -> dict[str, Any]:
     raw_length = environ.get("CONTENT_LENGTH") or "0"
     try:
@@ -202,6 +234,51 @@ class StandaloneWSGIApplication:
             ]
             start_response("204 No Content", headers)
             return []
+
+        tenant_mt5_prefix = "/api/bridge/mt5/connections/"
+        if method == "POST" and path.startswith(tenant_mt5_prefix) and path.endswith("/candles"):
+            connection_id = path[len(tenant_mt5_prefix):-len("/candles")].strip("/")
+            relay_identity = _tenant_mt5_relay_identity(
+                environ, getattr(self.runtime, "tenant_mt5_relay_token_resolver", None)
+            )
+            if relay_identity is None:
+                return _json_response(
+                    start_response, HTTPStatus.UNAUTHORIZED,
+                    {"error": "token de relay por conta inválido ou TLS não confirmado", "execution_authorized": False},
+                    request_id,
+                )
+            context, token_connection_id = relay_identity
+            if connection_id != token_connection_id:
+                return _json_response(
+                    start_response, HTTPStatus.FORBIDDEN,
+                    {"error": "token não pertence à conexão solicitada", "execution_authorized": False},
+                    request_id,
+                )
+            relay_registry = getattr(self.runtime, "tenant_mt5_relay_registry", None)
+            if relay_registry is None:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "relay MT5 por conta não provisionado no servidor", "execution_authorized": False},
+                    request_id,
+                )
+            try:
+                payload = _read_json(environ)
+                result = relay_registry.ingest(context, connection_id, payload)
+            except PermissionError as exc:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "execution_authorized": False}, request_id)
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
+            except Exception:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "falha ao receber candles da conta MT5", "execution_authorized": False},
+                    request_id,
+                )
+            return _json_response(
+                start_response, HTTPStatus.ACCEPTED,
+                {**result, "connection_id": connection_id, "read_only": True, "execution_authorized": False},
+                request_id,
+            )
 
         if method == "POST" and path == "/api/bridge/mt5/candles":
             if not _mt5_relay_authorized(environ):
