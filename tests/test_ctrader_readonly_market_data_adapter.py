@@ -81,6 +81,10 @@ def test_ctrader_exposes_broker_schedule_metadata_without_enabling_d1_w1():
     assert calendar["provider_id"] == "ctrader_open_api"
     assert calendar["account_id"] == 123
     assert calendar["schedule_time_zone"] == "Europe/London"
+    assert calendar["timezone_validation_status"] in {
+        "VALIDATED_BY_RUNTIME", "NOT_VALIDATED_BY_RUNTIME"
+    }
+    assert calendar["holiday_timezones_validated_by_runtime"] is True
     assert calendar["schedule"] == ({"start_second": 3600, "end_second": 604800},)
     assert calendar["holidays"] == ()
     assert calendar["status"] == "METADATA_AVAILABLE_NOT_CALENDAR_VALIDATED"
