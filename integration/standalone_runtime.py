@@ -23,6 +23,7 @@ from integration.tenant_tradingview_alert_inbox import TenantTradingViewAlertInb
 from integration.tenant_oauth_state_vault import TenantOAuthStateVault
 from integration.tenant_oauth_token_vault import TenantOAuthTokenVault
 from integration.tenant_ctrader_oauth_service import TenantCTraderOAuthService
+from integration.tenant_oauth_refresh_worker import TenantOAuthRefreshWorker
 from integration.tenant_ctrader_account_service import TenantCTraderAccountService
 from security.tenant_scoped_ecosystem_state import TenantScopedEcosystemState
 from security.tenant_scoped_decision_memory import TenantScopedDecisionMemory
@@ -149,6 +150,7 @@ class StandaloneRuntime:
         ctrader_oauth_refresh_tokens=None,
         ctrader_oauth_client_id: str | None = None,
         ctrader_oauth_redirect_uri: str | None = None,
+        ctrader_refresh_lease_provider=None,
         ctrader_transport_factory=None,
     ) -> None:
         configured_identity = os.getenv("CONTROLADOR_SINGLE_USER_IDENTITY", "").strip()
@@ -229,6 +231,7 @@ class StandaloneRuntime:
                     redirect_uri=ctrader_oauth_redirect_uri,
                     exchange_code=ctrader_oauth_exchange_code,
                     refresh_tokens=ctrader_oauth_refresh_tokens,
+                    refresh_lease_provider=ctrader_refresh_lease_provider,
                 )
             self.tenant_market_data_sessions = TenantMarketDataSessionRegistry(
                 self.tenant_provider_connections
@@ -295,6 +298,16 @@ class StandaloneRuntime:
                 tenant_id="local-single-user",
                 subject_id=configured_identity,
             )
+            self.tenant_oauth_refresh_worker = None
+            if self.tenant_ctrader_oauth_service is not None:
+                self.tenant_oauth_refresh_worker = TenantOAuthRefreshWorker(
+                    self.tenant_ctrader_token_vault,
+                    self.tenant_ctrader_oauth_service,
+                    self.local_tenant_context,
+                    poll_interval_seconds=60,
+                    refresh_within_seconds=900,
+                )
+                self.tenant_oauth_refresh_worker.start()
             # Prepared owner-sharded fiscal repositories are available as an
             # internal primitive; remote HTTP requests remain fail-closed until
             # trusted identity, durable storage and recovery are production-ready.
@@ -508,6 +521,7 @@ class StandaloneRuntime:
             workers = (
                 (getattr(self, "market_monitor", None), "worker_running"),
                 (getattr(self, "tenant_market_monitor", None), "worker_running"),
+                (getattr(self, "tenant_oauth_refresh_worker", None), "running"),
                 (getattr(self, "notification_worker", None), "running"),
                 (getattr(self, "backup_scheduler", None), "worker_running"),
             )
@@ -530,6 +544,7 @@ class StandaloneRuntime:
         workers = (
             (self.market_monitor, "worker_running"),
             (getattr(self, "tenant_market_monitor", None), "worker_running"),
+            (getattr(self, "tenant_oauth_refresh_worker", None), "running"),
             (self.notification_worker, "running"),
             (self.backup_scheduler, "worker_running"),
         )
