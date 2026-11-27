@@ -255,7 +255,14 @@ class TenantConnectionTimeframeMonitor:
             # Live streams are accepted only when both sides prove the same
             # provider account. Missing identity is not a wildcard: it must
             # fail closed rather than allowing an unbound stream into analysis.
-            if adapter_account is None or event_account != adapter_account:
+            if (
+                adapter_account is None
+                or event_account is None
+                or isinstance(adapter_account, bool)
+                or type(event_account) is not type(adapter_account)
+                or (isinstance(adapter_account, str) and not adapter_account.strip())
+                or event_account != adapter_account
+            ):
                 return
             candle = event.get("candle")
             timestamp = getattr(candle, "timestamp", None)
