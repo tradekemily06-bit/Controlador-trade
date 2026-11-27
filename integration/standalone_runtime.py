@@ -405,7 +405,7 @@ class StandaloneRuntime:
         # second runtime to open the same SQLite state concurrently.
         workers = (
             (self.market_monitor, "worker_running"),
-            (self.tenant_market_monitor, "worker_running"),
+            (getattr(self, "tenant_market_monitor", None), "worker_running"),
             (self.notification_worker, "running"),
             (self.backup_scheduler, "worker_running"),
         )
