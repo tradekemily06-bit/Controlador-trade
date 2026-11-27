@@ -13,6 +13,14 @@ This contract is for connecting the existing approved frontend without changing 
 - The MT5 relay ingest route uses its own dedicated bearer token and HTTPS/TLS validation.
 - Never expose server tokens, provider credentials, or relay secrets in browser code.
 
+## Per-device Web Push subscription foundation
+
+The backend now defines a tenant-and-subject-scoped subscription registry contract in `security/push_subscription_registry.py`. It validates HTTPS endpoints and Web Push key shape, supports same-device key rotation, owner-scoped listing/revocation, and removes an endpoint only after a sender confirms HTTP 404/410. Browser-facing list results omit endpoint URLs and encryption keys.
+
+The registry refuses to initialize unless its injected store explicitly declares both `production_durable=True` and `encrypted_at_rest=True`. The current local SQLite tenant store does not satisfy this contract and is not adapted as a push-subscription store. Device IDs are opaque owner-local record keys, never identities or authorization evidence.
+
+This is a backend foundation contract only. No HTTP registration/revocation route is exposed yet; no encrypted production store, VAPID key management, Web Push sender, hosted outbox worker, browser permission flow or deployed frontend integration is configured. Push delivery remains disabled until those components and real-device tenant-isolation tests are complete.
+
 ## Core application
 
 ### `GET /api/health`
