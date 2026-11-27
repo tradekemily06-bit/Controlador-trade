@@ -40,10 +40,7 @@ class TenantContext:
 
     @property
     def key(self) -> str:
-        return (
-            f"tenant:{len(self.tenant_id)}:{self.tenant_id}:"
-            f"subject:{len(self.subject_id)}:{self.subject_id}"
-        )
+        return f"tenant:{self.tenant_id}:subject:{self.subject_id}"
 
 
 def build_trusted_tenant_context(
