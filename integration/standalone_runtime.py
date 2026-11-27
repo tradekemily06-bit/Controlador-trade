@@ -18,6 +18,7 @@ from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
 from finance.fiscal_identity import configured_fiscal_owner_id
 from finance.fiscal_pending_queue import FiscalPendingQueue
 from finance.fiscal_reserve import FiscalReserve
+from finance.tenant_fiscal_store import TenantFiscalStoreFactory
 from finance.fiscal_schema import migrate_fiscal_schema
 from integration.ecosystem_service import EcosystemService
 from integration.standalone_application_factory import build_standalone_application
@@ -86,6 +87,10 @@ class StandaloneRuntime:
                 tenant_id="local-single-user",
                 subject_id=configured_identity,
             )
+            # Prepared owner-sharded fiscal repositories are available as an
+            # internal primitive; remote HTTP requests remain fail-closed until
+            # trusted identity, durable storage and recovery are production-ready.
+            self.tenant_fiscal_store_factory = TenantFiscalStoreFactory(self.runtime_dir)
             # Available to trusted, explicitly addressed event producers.
             # No global broadcast or automatic legacy-event migration occurs.
             self.tenant_notification_dispatcher = TenantNotificationDispatcher(
