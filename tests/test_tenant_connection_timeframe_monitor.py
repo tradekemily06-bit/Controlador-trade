@@ -92,7 +92,7 @@ def test_stale_or_unclosed_candle_is_not_published_or_marked_processed(tmp_path)
     now = datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc)
     monitor = TenantConnectionTimeframeMonitor(
         tmp_path / "cycles.sqlite3", sessions,
-        lambda session, context: Analyzer("2026-11-27T12:00:00+00:00", "COMPRA"),
+        lambda session, context: Analyzer("2026-11-27T11:55:00+00:00", "COMPRA"),
         on_result=emitted.append,
     )
     monitor.subscribe(owner, _id("a"), "EURUSD", "M5")
