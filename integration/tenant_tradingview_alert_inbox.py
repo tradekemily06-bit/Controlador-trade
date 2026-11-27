@@ -36,6 +36,7 @@ class TenantTradingViewAlertInbox:
         path: str | Path,
         connections: Any,
         secret_resolver: Callable[[TenantContext, str], str],
+        *, on_event=None,
     ) -> None:
         if connections is None or not callable(getattr(connections, "list_connections", None)):
             raise ValueError("tenant provider connection registry is required")
@@ -45,6 +46,9 @@ class TenantTradingViewAlertInbox:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.connections = connections
         self.secret_resolver = secret_resolver
+        if on_event is not None and not callable(on_event):
+            raise ValueError("on_event deve ser callable")
+        self.on_event = on_event
         with self._connect() as db:
             db.execute("""
                 CREATE TABLE IF NOT EXISTS tenant_tradingview_alert_events (
@@ -168,6 +172,12 @@ class TenantTradingViewAlertInbox:
         self.connections.mark_connected_after_relay_handshake(
             owner, connection_id=connection_id
         )
+        if self.on_event is not None:
+            try:
+                self.on_event(owner, dict(safe_payload, connection_id=connection_id))
+            except Exception:
+                # The alert is durably accepted even if a downstream notifier is unavailable.
+                pass
         return {
             "accepted": True,
             "event_id": event_id,
