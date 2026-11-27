@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 from typing import Any, Callable, Mapping
 from urllib.parse import urlsplit
@@ -30,8 +31,8 @@ class PyWebPushSender:
             raise ValueError("VAPID subject must be a mailto contact address")
         if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)):
             raise ValueError("timeout_seconds must be a positive finite number")
-        if timeout_seconds <= 0 or timeout_seconds > 30:
-            raise ValueError("timeout_seconds must be between 0 and 30")
+        if not math.isfinite(float(timeout_seconds)) or timeout_seconds <= 0 or timeout_seconds > 30:
+            raise ValueError("timeout_seconds must be a finite number between 0 and 30")
         self._private_key_provider = private_key_provider
         self.subject = subject
         self.timeout_seconds = float(timeout_seconds)
@@ -88,3 +89,28 @@ class PyWebPushSender:
             timeout=self.timeout_seconds,
             verbose=False,
         )
+
+
+
+def build_tenant_web_push_sink(
+    store: Any,
+    private_key_provider: Callable[[], str],
+    *,
+    subject: str,
+    ttl_seconds: int = 300,
+    timeout_seconds: float = 10.0,
+) -> Any:
+    """Compose the tenant-isolated sink with the host-configured VAPID sender.
+
+    This factory deliberately requires the caller to inject the durable,
+    encrypted subscription store and secret-manager callback. It does not
+    discover credentials from environment variables or enable a global sender.
+    """
+    from integration.tenant_web_push_notification_sink import TenantWebPushNotificationSink
+
+    sender = PyWebPushSender(
+        private_key_provider,
+        subject=subject,
+        timeout_seconds=timeout_seconds,
+    )
+    return TenantWebPushNotificationSink(store, sender, ttl_seconds=ttl_seconds)
