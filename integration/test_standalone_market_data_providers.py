@@ -26,6 +26,7 @@ def test_mt5_relay_provider_factory_uses_persistent_store(monkeypatch, tmp_path)
     from integration.mt5_relay_store import MT5RelayStore
 
     monkeypatch.setenv("CONTROLADOR_RUNTIME_DIR", str(tmp_path))
+    monkeypatch.setenv("CONTROLADOR_MT5_RELAY_SOURCE_ID", "local-demo")
     providers = build_configured_market_data_providers("mt5_relay")
 
     provider, source = providers["mt5_relay"]
