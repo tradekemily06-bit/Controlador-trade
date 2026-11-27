@@ -1666,6 +1666,10 @@ class StandaloneWSGIApplication:
                 external_delivery = "WORKER_RUNNING"
             else:
                 external_delivery = "WORKER_STOPPED"
+            tenant_delivery_worker = getattr(self.runtime, "tenant_notification_worker", None)
+            tenant_delivery_status = tenant_delivery_worker.status() if tenant_delivery_worker is not None else {
+                "configured": False, "running": False, "state": "NO_TENANT_EXTERNAL_SINK_CONFIGURED",
+            }
             if reason == "trusted_identity":
                 tenant_context = _tenant_context_for_request(environ, reason)
                 tenant_state = getattr(self.runtime, "tenant_state", None)
@@ -1675,11 +1679,19 @@ class StandaloneWSGIApplication:
                         {"error": "status individual de notificações não configurado", "execution_authorized": False},
                         request_id,
                     )
-                # Never expose the legacy global inbox count to a remote tenant.
+                # Never expose another owner's inbox or outbox counts.
                 tenant_items = tenant_state.load_notifications(tenant_context)
+                tenant_outbox = self.runtime.tenant_notification_dispatcher.outbox
                 summary = {
                     "total": len(tenant_items),
                     "scope": "TENANT_SCOPED",
+                    "tenant_outbox": tenant_outbox.status_counts(tenant_context),
+                    "tenant_delivery_worker": tenant_delivery_status,
+                    "tenant_external_delivery": (
+                        "WORKER_DEGRADED" if tenant_delivery_status.get("state") == "DEGRADED"
+                        else "WORKER_RUNNING" if tenant_delivery_status.get("running") is True
+                        else "OUTBOX_ONLY_NO_PROVIDER"
+                    ),
                 }
             else:
                 summary = self.runtime.ecosystem_service.notification_summary()
