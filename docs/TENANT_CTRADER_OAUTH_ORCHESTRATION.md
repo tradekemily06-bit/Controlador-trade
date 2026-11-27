@@ -24,4 +24,4 @@ The test cipher is reversible and test-only. It is not suitable for production.
 
 The runtime may receive either this HTTP client object or explicit `exchange_code` and `refresh_tokens` callbacks. Both callbacks are mandatory when OAuth is enabled. The encrypted token vault persists the new access and refresh token together after each rotation. Refreshes are serialized per connection within the single runtime process; a future multi-replica deployment must use a distributed lease or equivalent cross-process refresh lock before sharing the same cTrader connection across workers.
 
-The default OAuth scope remains `accounts`, which Spotware defines as view-only. The broader `trading` scope is not requested by this read-only application.
+The OAuth scope is hard-restricted to `accounts`, which Spotware defines as view-only. Construction fails if a caller attempts to request the broader `trading` scope; this application does not request broker trading permissions.
