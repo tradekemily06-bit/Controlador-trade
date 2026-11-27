@@ -46,8 +46,8 @@ class TenantCTraderOAuthService:
             raise ValueError("cTrader OAuth redirect_uri must use HTTPS")
         if not callable(exchange_code):
             raise ValueError("OAuth authorization-code exchange is not configured")
-        if scope not in {"accounts", "trading"}:
-            raise ValueError("unsupported cTrader OAuth scope")
+        if scope != "accounts":
+            raise ValueError("read-only cTrader integration permits only the accounts OAuth scope")
         self.connections = connections
         self.state_vault = state_vault
         self.token_vault = token_vault
