@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Mapping
 import secrets
 import threading
+from contextlib import contextmanager
 from urllib.parse import urlencode
 
 from execution.p128_ctrader_demo_auth import CTRADER_AUTHORIZATION_URL
@@ -33,6 +34,7 @@ class TenantCTraderOAuthService:
         redirect_uri: str,
         exchange_code: Callable[[str, str], Mapping[str, Any]],
         refresh_tokens: Callable[[str], Mapping[str, Any]] | None = None,
+        refresh_lease_provider: Any | None = None,
         scope: str = "accounts",
     ) -> None:
         if connections is None or not callable(getattr(connections, "list_connections", None)):
@@ -58,6 +60,9 @@ class TenantCTraderOAuthService:
         if refresh_tokens is not None and not callable(refresh_tokens):
             raise ValueError("OAuth token refresh client is invalid")
         self.refresh_tokens = refresh_tokens
+        if refresh_lease_provider is not None and not callable(getattr(refresh_lease_provider, "acquire", None)):
+            raise ValueError("distributed refresh lease provider must implement acquire(key, lease_seconds, wait_seconds)")
+        self.refresh_lease_provider = refresh_lease_provider
         self._refresh_locks: dict[str, threading.Lock] = {}
         self._refresh_locks_guard = threading.Lock()
         self.scope = scope
@@ -178,6 +183,33 @@ class TenantCTraderOAuthService:
             "execution_authorized": False,
         }
 
+    @contextmanager
+    def _refresh_guard(self, owner: TenantContext, connection_id: str):
+        """Serialize token rotation across workers when a shared lease is injected.
+
+        The fallback lock is process-local and is suitable only for a
+        single-process deployment. Multi-worker/replica hosts must inject a
+        shared lease backend (for example Redis or a database advisory lease).
+        """
+        key = f"oauth-refresh:{owner.tenant_id}:{owner.subject_id}:{connection_id}"
+        if self.refresh_lease_provider is not None:
+            lease = self.refresh_lease_provider.acquire(key, lease_seconds=90, wait_seconds=15)
+            if lease is None:
+                raise TimeoutError("cTrader token refresh is already running in another worker")
+            if not callable(getattr(lease, "__enter__", None)) or not callable(getattr(lease, "__exit__", None)):
+                raise RuntimeError("distributed refresh lease must return a context manager")
+            with lease:
+                yield
+            return
+        with self._refresh_locks_guard:
+            lock = self._refresh_locks.setdefault(key, threading.Lock())
+        if not lock.acquire(timeout=15):
+            raise TimeoutError("cTrader token refresh is already running in this worker")
+        try:
+            yield
+        finally:
+            lock.release()
+
     def refresh(self, context: TenantContext, *, connection_id: str) -> dict[str, Any]:
         """Rotate an expiring token set using the provider's one-time refresh rotation."""
         owner = require_tenant_context(context)
@@ -192,9 +224,7 @@ class TenantCTraderOAuthService:
             raise PermissionError("cTrader connection does not belong to this identity")
         if account.get("status") not in {"PENDING", "CONNECTED"}:
             raise PermissionError("cTrader connection is not eligible for token refresh")
-        with self._refresh_locks_guard:
-            lock = self._refresh_locks.setdefault(connection_id, threading.Lock())
-        with lock:
+        with self._refresh_guard(owner, connection_id):
             # Access-token expiry must not prevent use of the separately
             # encrypted refresh token. Normal adapter resolution remains
             # fail-closed for expired access tokens.
