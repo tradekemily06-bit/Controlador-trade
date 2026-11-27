@@ -33,7 +33,12 @@ def test_token_vault_encrypts_and_resolves_only_for_owner(tmp_path):
     )
     assert result["secret_material_returned"] is False
     assert vault.resolve(owner, account["connection_id"])["refresh_token"] == "refresh-secret"
-    assert vault.resolve(other, account["connection_id"]) is None
+    try:
+        vault.resolve(other, account["connection_id"])
+    except PermissionError:
+        pass
+    else:
+        raise AssertionError("cross-tenant token resolution must be denied")
     with vault._connect() as db:
         row = db.execute("SELECT ciphertext_b64 FROM tenant_oauth_tokens").fetchone()
     assert b"access-secret" not in base64.b64decode(row[0])
