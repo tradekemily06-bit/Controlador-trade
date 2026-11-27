@@ -41,7 +41,7 @@ computer time or broker-wall-clock time.
 Intraday periods use fixed UTC interval buckets and require an exact
 timestamp match before analysis or notification. Daily and weekly periods are
 different: the tenant timeframe monitor now requires the provider adapter to
-implement `expected_last_closed_candle(timeframe, now, close_grace_seconds)`.
+implement `expected_last_closed_candle(timeframe, symbol, now, close_grace_seconds)`.
 The method must return a timezone-aware timestamp calculated from the verified
 broker/account session calendar. If that capability is absent or returns an
 invalid value, analysis is withheld with `WAITING_FOR_SESSION_CALENDAR`; stored
