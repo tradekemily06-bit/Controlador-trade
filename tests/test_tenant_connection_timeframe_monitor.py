@@ -422,3 +422,30 @@ def test_notification_failure_does_not_discard_durable_analysis(tmp_path):
     assert watch["last_processed_candle"] == expected.isoformat()
     assert watch["last_status"] == "ANALYZED"
     assert watch["last_error"] is None
+
+
+def test_status_live_stream_counters_are_isolated_by_tenant_and_subject(tmp_path):
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "tenant-status-isolation.sqlite3", Registry(),
+        lambda session, owner: None,
+    )
+    alice = TenantContext("tenant-a", "alice")
+    bob = TenantContext("tenant-b", "bob")
+    alice_key = (alice.tenant_id, alice.subject_id, "a" * 32, "EURUSD", "5m")
+    bob_key = (bob.tenant_id, bob.subject_id, "b" * 32, "GBPUSD", "1m")
+    with monitor._lock:
+        monitor._live_streams.update({alice_key, bob_key})
+        monitor._live_stream_adapters.update({alice_key: object(), bob_key: object()})
+        monitor._live_candles.update({alice_key: object(), bob_key: object()})
+        monitor._worker_error = "ProviderFailure"
+    alice_status = monitor.status(alice)
+    bob_status = monitor.status(bob)
+    operator_status = monitor.status()
+    assert alice_status["live_streams"] == 1
+    assert alice_status["buffered_live_candles"] == 1
+    assert alice_status["live_stream_adapter_bindings"] == 1
+    assert alice_status["worker_error_class"] is None
+    assert bob_status["live_streams"] == 1
+    assert bob_status["buffered_live_candles"] == 1
+    assert operator_status["live_streams"] == 2
+    assert operator_status["worker_error_class"] == "ProviderFailure"
