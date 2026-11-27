@@ -19,20 +19,14 @@ This contract is for connecting the existing approved frontend without changing 
 Liveness response: service name, architecture identifier, visible area count and `execution_authorized: false`.
 
 ### `GET /api/readiness`
-Consolidated diagnostic for the frontend's connection/status indicators. Returns:
-- architecture and area count;
-- market-data registry status;
-- candle monitor status;
-- news provider status;
-- assistant readiness;
-- in-app notification/outbox summary;
-- external notification worker status;
-- identity policy status, including explicit unconfigured trusted identity provider and missing multi-tenant isolation;
-- decision-memory persistence mode/state, including explicit in-memory-only or persistence-error status; only `PERSISTENT_READY` is reported as durability confirmed for that local SQLite store;
-- tenant-scoped local preference-store status, explicitly not production-ready;
-- deployment marker `PROCESS_RUNNING_DEPLOYMENT_NOT_VERIFIED`.
+Read-only diagnostic for frontend connection/status indicators. The response is intentionally scope-dependent:
 
-A configured/registered provider is not proof of a live connection. The deployment marker is deliberately not a production deployment claim.
+- Local single-user runtime: returns the detailed diagnostic, including architecture/area count, provider registry, candle monitor, news, assistant, notification/outbox worker, identity policy, local persistence states, tenant-store readiness and deployment marker.
+- Verified remote tenant: returns only an `INFRASTRUCTURE_ONLY` contract with architecture/area count, identity-policy status and pointers to the dedicated tenant-scoped status endpoints. It does not expose global notification counts, assistant counters, shared storage details, or cross-user monitor state.
+
+Remote clients must use `GET /api/notifications/status` for their own notification count and `GET /api/market-monitor/status` for their own subscriptions. Other personal data must be read through its dedicated tenant-scoped endpoint. This split prevents a shared readiness response from becoming a side channel for another user's operational data.
+
+A configured/registered provider is not proof of a live connection. The deployment marker is deliberately not a production deployment claim. All variants return `execution_authorized: false`.
 
 ### `GET /api/areas`
 Returns the seven visible application areas.
