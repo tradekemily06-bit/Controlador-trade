@@ -22,6 +22,7 @@ from core.live_orchestrator import TradingOrchestrator
 from core.unified_intelligence import UnifiedIntelligence
 from core.p122_broker_market_data import BrokerMarketDataSnapshot
 from data.feed import MarketDataFeed, MarketDataProvider, MarketDataRequest
+from data.models import Candle
 from data.timeframes import get_timeframe_interval, normalize_timeframe
 
 
@@ -95,6 +96,7 @@ class StandaloneMarketAnalysisService:
         confirmed: bool = False,
         filters_ok: bool = True,
         decision_context: TenantContext | None = None,
+        live_candle: Candle | None = None,
     ) -> dict[str, Any]:
         if not isinstance(confirmed, bool) or not isinstance(filters_ok, bool):
             raise ValueError("confirmed and filters_ok must be booleans")
@@ -111,6 +113,7 @@ class StandaloneMarketAnalysisService:
             confirmed=confirmed,
             filters_ok=filters_ok,
             filters_required=True,
+            live_candle=live_candle,
         )
         interval = int(get_timeframe_interval(timeframe).total_seconds())
         max_age = max(300, interval * 2)
