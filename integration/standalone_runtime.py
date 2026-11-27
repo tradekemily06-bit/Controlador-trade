@@ -224,15 +224,25 @@ class StandaloneRuntime:
                 senior_context=self.ecosystem_service.senior_context
             )
             provider_map = dict(market_data_providers or {})
+            configured_provider_list = (
+                os.getenv("CONTROLADOR_MARKET_DATA_PROVIDERS", "").strip()
+                or os.getenv("CONTROLADOR_MARKET_DATA_PROVIDER", "").strip()
+                or ""
+            )
             configured_provider = (
                 selected_market_data_provider
+                or os.getenv("CONTROLADOR_SELECTED_MARKET_DATA_PROVIDER", "").strip()
                 or os.getenv("CONTROLADOR_MARKET_DATA_PROVIDER", "").strip()
                 or None
             )
             if configured_provider == "icmarkets_mt5_demo":
                 configured_provider = "mt5_demo"
             if not provider_map and market_data_provider is None:
-                provider_map = build_configured_market_data_providers(configured_provider)
+                provider_map = build_configured_market_data_providers(
+                    configured_provider_list or configured_provider
+                )
+            if configured_provider is None and provider_map:
+                configured_provider = next(iter(provider_map))
             if market_data_provider is not None:
                 if provider_map:
                     raise ValueError("use market_data_provider or market_data_providers, not both")
