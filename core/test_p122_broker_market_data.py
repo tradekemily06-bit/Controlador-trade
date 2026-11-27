@@ -119,3 +119,15 @@ def test_boundary_rejects_naive_snapshot_received_at():
             BrokerMarketDataRequest("EURUSD", "1m", 1),
             received_at=datetime(2026, 9, 9, 12, 0),
         )
+
+def test_boundary_rejects_timeframe_not_confirmed_by_provider():
+    class RestrictedProvider(FakeProvider):
+        def supports_timeframe(self, timeframe):
+            return timeframe == "5m"
+
+    provider = RestrictedProvider([candle_at(0), candle_at(1)])
+    boundary = BrokerMarketDataBoundary(provider, "demo-broker")
+
+    with pytest.raises(ValueError, match="não confirma suporte"):
+        boundary.fetch(BrokerMarketDataRequest("EURUSD", "1m", 2))
+
