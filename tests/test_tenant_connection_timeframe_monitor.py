@@ -1672,7 +1672,7 @@ def test_expected_last_closed_candle_rejects_naive_datetime(tmp_path):
         monitor.expected_last_closed_candle("M1", datetime(2026, 11, 27, 12, 1))
 
 
-@pytest.mark.parametrize("malformation", ["invalid_timezone", "validity_exception"])
+@pytest.mark.parametrize("malformation", ["invalid_timezone", "validity_exception", "timestamp_conversion_overflow"])
 def test_live_stream_discards_malformed_candle_without_breaking_worker(
     tmp_path, malformation
 ):
@@ -1685,6 +1685,10 @@ def test_live_stream_discards_malformed_candle_without_breaking_worker(
     class InvalidTimezone(tzinfo):
         def utcoffset(self, dt):
             return None
+
+    class OverflowingTimezone(tzinfo):
+        def utcoffset(self, dt):
+            return timedelta(hours=1)
 
     class StreamAdapter:
         account_id = 987
@@ -1711,6 +1715,11 @@ def test_live_stream_discards_malformed_candle_without_breaking_worker(
     if malformation == "invalid_timezone":
         candle = SimpleNamespace(
             timestamp=datetime(2026, 11, 27, 12, 0, tzinfo=InvalidTimezone()),
+            is_valid=lambda: True,
+        )
+    elif malformation == "timestamp_conversion_overflow":
+        candle = SimpleNamespace(
+            timestamp=datetime.min.replace(tzinfo=OverflowingTimezone()),
             is_valid=lambda: True,
         )
     else:
