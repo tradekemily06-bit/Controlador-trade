@@ -152,6 +152,46 @@ class TenantProviderConnectionRegistry:
             "read_only": True, "execution_authorized": False,
         }
 
+    def mark_connected_after_provider_handshake(
+        self, context: TenantContext | None, *, connection_id: str,
+        account_reference: str, capabilities: list[str],
+    ) -> bool:
+        """Promote an owned pending account only after its provider handshake."""
+        trusted = require_tenant_context(context)
+        if not isinstance(connection_id, str) or not re.fullmatch(r"[a-f0-9]{32}", connection_id):
+            raise ValueError("connection_id inválido")
+        if not isinstance(account_reference, str) or not account_reference.strip() or len(account_reference.strip()) > 120:
+            raise ValueError("account_reference inválida")
+        clean: list[str] = []
+        for value in capabilities:
+            if not isinstance(value, str) or not re.fullmatch(r"[a-z0-9][a-z0-9:_-]{0,63}", value):
+                raise ValueError("capability inválida")
+            if value not in clean:
+                clean.append(value)
+        records = self.list_connections(trusted)
+        target = next((item for item in records if item["connection_id"] == connection_id), None)
+        if target is None or target["status"] != "PENDING":
+            raise PermissionError("somente uma conexão pendente e pertencente à identidade pode ser ativada")
+        if any(
+            item["connection_id"] != connection_id
+            and item["provider_id"] == target["provider_id"]
+            and item.get("account_reference") == account_reference.strip()
+            for item in records
+        ):
+            raise ValueError("esta conta do provedor já está vinculada a outra conexão")
+        if not callable(getattr(self.storage, "update_list_item", None)):
+            raise RuntimeError("tenant storage does not support atomic broker connection updates")
+        return self.storage.update_list_item(
+            trusted, self.STORAGE_KEY, match_field="connection_id",
+            match_value=connection_id,
+            updates={
+                "status": "CONNECTED",
+                "account_reference": account_reference.strip(),
+                "capabilities": clean,
+                "last_verified_at": self._timestamp(),
+            },
+        )
+
     def mark_connected_after_relay_handshake(
         self, context: TenantContext | None, *, connection_id: str,
     ) -> bool:
