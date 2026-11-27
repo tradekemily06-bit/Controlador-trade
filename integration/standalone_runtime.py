@@ -23,7 +23,7 @@ from integration.tenant_tradingview_alert_inbox import TenantTradingViewAlertInb
 from integration.tenant_oauth_state_vault import TenantOAuthStateVault
 from integration.tenant_oauth_token_vault import TenantOAuthTokenVault
 from integration.tenant_ctrader_oauth_service import TenantCTraderOAuthService
-from integration.tenant_oauth_refresh_worker import TenantOAuthRefreshWorker
+from integration.tenant_oauth_refresh_worker_manager import TenantOAuthRefreshWorkerManager
 from integration.tenant_ctrader_account_service import TenantCTraderAccountService
 from security.tenant_scoped_ecosystem_state import TenantScopedEcosystemState
 from security.tenant_scoped_decision_memory import TenantScopedDecisionMemory
@@ -203,6 +203,7 @@ class StandaloneRuntime:
             self.tenant_ctrader_oauth_service = None
             self.tenant_ctrader_account_service = None
             self.tenant_ctrader_token_vault = None
+            self.tenant_oauth_refresh_worker = None
             ctrader_token_vault = None
             if ctrader_oauth_configured:
                 if any(value is None for value in (
@@ -232,6 +233,15 @@ class StandaloneRuntime:
                     exchange_code=ctrader_oauth_exchange_code,
                     refresh_tokens=ctrader_oauth_refresh_tokens,
                     refresh_lease_provider=ctrader_refresh_lease_provider,
+                    on_tokens_stored=lambda owner: self.tenant_oauth_refresh_worker.register_owner(owner),
+                )
+            if self.tenant_ctrader_oauth_service is not None:
+                self.tenant_oauth_refresh_worker = TenantOAuthRefreshWorkerManager(
+                    self.tenant_ctrader_token_vault,
+                    self.tenant_ctrader_oauth_service,
+                    max_owners=100,
+                    poll_interval_seconds=60,
+                    refresh_within_seconds=900,
                 )
             self.tenant_market_data_sessions = TenantMarketDataSessionRegistry(
                 self.tenant_provider_connections
@@ -298,16 +308,8 @@ class StandaloneRuntime:
                 tenant_id="local-single-user",
                 subject_id=configured_identity,
             )
-            self.tenant_oauth_refresh_worker = None
-            if self.tenant_ctrader_oauth_service is not None:
-                self.tenant_oauth_refresh_worker = TenantOAuthRefreshWorker(
-                    self.tenant_ctrader_token_vault,
-                    self.tenant_ctrader_oauth_service,
-                    self.local_tenant_context,
-                    poll_interval_seconds=60,
-                    refresh_within_seconds=900,
-                )
-                self.tenant_oauth_refresh_worker.start()
+            if self.tenant_oauth_refresh_worker is not None:
+                self.tenant_oauth_refresh_worker.register_owner(self.local_tenant_context)
             # Prepared owner-sharded fiscal repositories are available as an
             # internal primitive; remote HTTP requests remain fail-closed until
             # trusted identity, durable storage and recovery are production-ready.
