@@ -270,6 +270,28 @@ def test_missing_adapter_marks_data_unavailable_without_signal(tmp_path):
     assert row["last_signal"] is None
 
 
+def test_provider_exception_details_are_not_persisted_in_watch_status(tmp_path):
+    owner = TenantContext("tenant-error-safety", "alice")
+    sessions = Sessions()
+    sessions.add(owner, _id("a"), "broker_a")
+    secret_detail = "authorization=Bearer-super-secret-value"
+
+    def fail_analysis(_session, _context):
+        raise RuntimeError(secret_detail)
+
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "sanitized-provider-errors.sqlite3",
+        sessions,
+        fail_analysis,
+    )
+    monitor.subscribe(owner, _id("a"), "EURUSD", "M5")
+    monitor.run_once(now=datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc))
+
+    watch = monitor.subscriptions(owner)[0]
+    assert watch["last_status"] == "DATA_UNAVAILABLE"
+    assert watch["last_error"] == "RuntimeError"
+    assert secret_detail not in str(watch)
+
 def test_repeated_poll_does_not_process_same_closed_candle_twice(tmp_path):
     owner = TenantContext("tenant-a", "alice")
     sessions = Sessions()
