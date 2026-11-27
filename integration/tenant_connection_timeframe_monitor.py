@@ -38,6 +38,7 @@ class TenantConnectionTimeframeMonitor:
         poll_interval_seconds: float = 2.0,
         close_grace_seconds: float = 3.0,
         max_workers: int = 8,
+        max_notification_attempts: int = 8,
     ) -> None:
         if session_registry is None or not callable(getattr(session_registry, "get", None)):
             raise ValueError("tenant market-data session registry is required")
@@ -47,6 +48,8 @@ class TenantConnectionTimeframeMonitor:
             raise ValueError("invalid monitor timing")
         if isinstance(max_workers, bool) or not isinstance(max_workers, int) or not 1 <= max_workers <= 32:
             raise ValueError("max_workers deve ser inteiro entre 1 e 32")
+        if isinstance(max_notification_attempts, bool) or not isinstance(max_notification_attempts, int) or max_notification_attempts < 1:
+            raise ValueError("max_notification_attempts deve ser inteiro positivo")
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.session_registry = session_registry
@@ -55,6 +58,7 @@ class TenantConnectionTimeframeMonitor:
         self.poll_interval_seconds = float(poll_interval_seconds)
         self.close_grace_seconds = float(close_grace_seconds)
         self.max_workers = max_workers
+        self.max_notification_attempts = max_notification_attempts
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -127,6 +131,8 @@ class TenantConnectionTimeframeMonitor:
                     lease_until REAL,
                     lease_token TEXT,
                     delivered_at REAL,
+                    dead_at REAL,
+                    last_error TEXT,
                     UNIQUE(tenant_id, subject_id, connection_id, symbol, timeframe, candle_at)
                 )
             """)
@@ -140,6 +146,16 @@ class TenantConnectionTimeframeMonitor:
                 db.execute(
                     "ALTER TABLE tenant_connection_notification_outbox "
                     "ADD COLUMN lease_token TEXT"
+                )
+            if "dead_at" not in columns:
+                db.execute(
+                    "ALTER TABLE tenant_connection_notification_outbox "
+                    "ADD COLUMN dead_at REAL"
+                )
+            if "last_error" not in columns:
+                db.execute(
+                    "ALTER TABLE tenant_connection_notification_outbox "
+                    "ADD COLUMN last_error TEXT"
                 )
 
     @staticmethod
@@ -706,7 +722,8 @@ class TenantConnectionTimeframeMonitor:
                 db.execute("BEGIN IMMEDIATE")
                 row = db.execute("""
                     SELECT * FROM tenant_connection_notification_outbox
-                    WHERE delivered_at IS NULL AND (lease_until IS NULL OR lease_until <= ?)
+                    WHERE delivered_at IS NULL AND dead_at IS NULL
+                      AND (lease_until IS NULL OR lease_until <= ?)
                     ORDER BY created_at, event_id LIMIT 1
                 """, (now,)).fetchone()
                 if row is None:
@@ -716,7 +733,7 @@ class TenantConnectionTimeframeMonitor:
                 claimed = db.execute("""
                     UPDATE tenant_connection_notification_outbox
                     SET lease_until=?, lease_token=?, attempts=attempts+1
-                    WHERE event_id=? AND delivered_at IS NULL
+                    WHERE event_id=? AND delivered_at IS NULL AND dead_at IS NULL
                       AND (lease_until IS NULL OR lease_until <= ?)
                 """, (now + lease_seconds, lease_token, row["event_id"], now)).rowcount
                 db.commit()
@@ -737,8 +754,23 @@ class TenantConnectionTimeframeMonitor:
             }
             try:
                 self.on_result(event)
-            except Exception:
-                # Leave the event retryable after the lease expires.
+            except Exception as exc:
+                failed_at = time.time()
+                attempts = int(row["attempts"]) + 1
+                terminal = attempts >= self.max_notification_attempts
+                backoff = min(30.0 * (2 ** min(max(attempts - 1, 0), 5)), 900.0)
+                with self._lock, self._connect() as db:
+                    db.execute("""
+                        UPDATE tenant_connection_notification_outbox
+                        SET dead_at=CASE WHEN ? THEN ? ELSE dead_at END,
+                            last_error=?, lease_until=CASE WHEN ? THEN NULL ELSE ? END,
+                            lease_token=NULL
+                        WHERE event_id=? AND delivered_at IS NULL AND dead_at IS NULL
+                          AND lease_token=? AND lease_until>?
+                    """, (
+                        int(terminal), failed_at, type(exc).__name__, int(terminal),
+                        failed_at + backoff, row["event_id"], lease_token, failed_at,
+                    ))
                 continue
             acknowledged_at = time.time()
             with self._lock, self._connect() as db:
