@@ -993,3 +993,69 @@ def test_tenant_notification_outbox_dead_letters_after_bounded_attempts(tmp_path
     assert other_tenant_status["notification_outbox_dead_lettered"] == 0
     assert monitor.dispatch_pending_notifications() == 0
     assert calls == [row["event_id"], row["event_id"]]
+
+
+
+def test_persisted_watch_rebinds_live_stream_after_monitor_restart(tmp_path):
+    from datetime import datetime, timezone
+
+    owner = TenantContext("tenant-restart", "alice")
+    connection_id = _id("b")
+    database = tmp_path / "restart-recovery.sqlite3"
+
+    class StreamAdapter:
+        account_id = 987
+        def __init__(self):
+            self.callback = None
+            self.subscribe_calls = 0
+        def subscribe_live_candles(self, symbol, timeframe, callback):
+            self.subscribe_calls += 1
+            self.callback = callback
+        def unsubscribe_live_candles(self, symbol, timeframe):
+            self.callback = None
+
+    adapter_before_restart = StreamAdapter()
+    adapter_after_restart = StreamAdapter()
+
+    class Registry:
+        adapter = adapter_before_restart
+        def get(self, context, *, connection_id):
+            if context != owner or connection_id != _id("b"):
+                return None
+            return Session("ctrader_open_api", "ctrader:987", self.adapter)
+
+    registry = Registry()
+    analyzer_calls = []
+
+    class RestartAnalyzer:
+        def analyze(self, **kwargs):
+            analyzer_calls.append(kwargs)
+            return {
+                "signal": "AGUARDAR",
+                "status": "ANALYZED",
+                "market_data": {"last_candle_at": "2026-11-27T12:00:00+00:00"},
+            }
+
+    first = TenantConnectionTimeframeMonitor(
+        database, registry, lambda _session, _context: RestartAnalyzer()
+    )
+    first.subscribe(owner, connection_id, "EURUSD", "M5")
+    assert adapter_before_restart.callback is not None
+    first.stop()
+
+    # Simulate process restart: in-memory streams disappear, but the durable
+    # watch remains and the new provider session is rebound from its registry.
+    registry.adapter = adapter_after_restart
+    restarted = TenantConnectionTimeframeMonitor(
+        database, registry, lambda _session, _context: RestartAnalyzer()
+    )
+
+    assert len(restarted.subscriptions(owner)) == 1
+    restarted.run_once(now=datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc))
+
+    assert adapter_after_restart.subscribe_calls == 1
+    assert adapter_after_restart.callback is not None
+    assert restarted.status(owner)["live_streams"] == 1
+    assert analyzer_calls == []
+    assert restarted.subscriptions(owner)[0]["last_status"] == "WAITING_FOR_LIVE_CLOSED_CANDLE"
+    restarted.stop()
