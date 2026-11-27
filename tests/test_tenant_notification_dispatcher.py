@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -88,7 +89,7 @@ def test_tenant_outbox_delivers_only_explicit_recipient_and_is_idempotent(tmp_pa
     assert dispatcher.publish(alice, event) is False
 
     sink = _TenantSink()
-    result = dispatcher.outbox.dispatch_due(sink, now=1000)
+    result = dispatcher.outbox.dispatch_due(sink)
     assert result.claimed == 1
     assert result.delivered == 1
     assert sink.deliveries[0][1] == {"tenant_id": "tenant-a", "subject_id": "alice"}
@@ -109,8 +110,9 @@ def test_tenant_outbox_retries_and_dead_letters_without_cross_owner_visibility(t
         message="Conexão interrompida",
     )
     dispatcher.publish(alice, event)
-    item = dispatcher.outbox.claim_due(now=100, lease_seconds=10)[0]
-    assert dispatcher.outbox.mark_failed(item, "Bearer secret-token", now=100) == "PENDING"
+    now = time.time()
+    item = dispatcher.outbox.claim_due(now=now, lease_seconds=10)[0]
+    assert dispatcher.outbox.mark_failed(item, "Bearer secret-token", now=now) == "PENDING"
     assert dispatcher.outbox.status_counts(alice)["PENDING"] == 1
     assert dispatcher.outbox.status_counts(bob)["PENDING"] == 0
     with storage._connect() as db:
