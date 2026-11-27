@@ -115,6 +115,24 @@ class StandaloneMarketAnalysisTests(unittest.TestCase):
         self.assertEqual(second["decision_memory"]["status"], "ALREADY_RECORDED")
         self.assertEqual(first["decision_memory"]["decision_id"], record.decision_id)
 
+
+    def test_decision_memory_identity_isolated_by_provider_account_source(self):
+        provider = FakeMarketDataProvider(candle_series())
+        intelligence = UnifiedIntelligence()
+        account_a = StandaloneMarketAnalysisService(
+            provider=provider, source="broker:account-a", intelligence=intelligence
+        )
+        account_b = StandaloneMarketAnalysisService(
+            provider=provider, source="broker:account-b", intelligence=intelligence
+        )
+        candle_at = "2026-11-27T12:00:00+00:00"
+        id_a = account_a._decision_record_id("EURUSD", "5m", candle_at)
+        id_b = account_b._decision_record_id("EURUSD", "5m", candle_at)
+        self.assertNotEqual(id_a, id_b)
+        self.assertEqual(
+            id_a, account_a._decision_record_id("EURUSD", "5m", candle_at)
+        )
+
     def test_decision_memory_failure_is_reported_without_faking_persistence(self):
         def fail_save(_record):
             raise OSError("storage unavailable")
