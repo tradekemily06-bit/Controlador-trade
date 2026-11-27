@@ -187,7 +187,7 @@ class TenantNotificationOutbox:
             delay = min(self.base_backoff_seconds * (2 ** max(0, attempts - 1)), self.max_backoff_seconds)
             message = str(error)[:300].replace("\\n", " ")
             import re
-            message = re.sub(r"(?i)bearer\\s+\\S+|https?://\\S+|(?:token|secret|password|api[_-]?key)\\s*[:=]\\s*\\S+",
+            message = re.sub(r"(?i)bearer\s+\S+|https?://\S+|(?:token|secret|password|api[_-]?key)\s*[:=]\s*\S+",
                              "[REDACTED]", message)[:300]
             cursor = db.execute("""
                 UPDATE tenant_notification_outbox SET status=?, available_at=?,
