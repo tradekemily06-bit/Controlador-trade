@@ -76,7 +76,7 @@ jobs:
         env:
           CONTROLADOR_SINGLE_USER_IDENTITY: ci-owner
           CONTROLADOR_REMOTE_ACCESS_REQUIRED: "false"
-          CONTROLADOR_BIND_HOST: 0.0.0.0
+          CONTROLADOR_BIND_HOST: 127.0.0.1
           CONTROLADOR_BIND_PORT: "8765"
           CONTROLADOR_RUNTIME_DIR: /var/lib/controlador
         shell: bash
@@ -92,7 +92,7 @@ jobs:
             -p 8765:8765 \
             -e CONTROLADOR_SINGLE_USER_IDENTITY=ci-owner \
             -e CONTROLADOR_REMOTE_ACCESS_REQUIRED=false \
-            -e CONTROLADOR_BIND_HOST=0.0.0.0 \
+            -e CONTROLADOR_BIND_HOST=127.0.0.1 \
             -e CONTROLADOR_BIND_PORT=8765 \
             -e CONTROLADOR_RUNTIME_DIR=/var/lib/controlador \
             controlador-trade-standalone:ci
