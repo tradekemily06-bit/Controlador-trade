@@ -794,6 +794,36 @@ class StandaloneWSGIApplication:
                         "execution_authorized": False,
                     }
                 ),
+                "provider_recovery": (
+                    {
+                        "status": (
+                            "NO_SAVED_CONNECTIONS" if not self.runtime.provider_recovery_status
+                            else "DEGRADED" if any(
+                                item.get("status") in {"RECOVERY_NOT_CONFIGURED", "RECONNECT_FAILED"}
+                                for item in self.runtime.provider_recovery_status
+                            )
+                            else "RECOVERY_ATTEMPTED"
+                        ),
+                        "accounts": [
+                            {
+                                key: item[key]
+                                for key in (
+                                    "connection_id", "provider_id", "status",
+                                    "adapter_status", "error_class", "execution_authorized",
+                                )
+                                if key in item
+                            }
+                            for item in self.runtime.provider_recovery_status
+                        ],
+                        "execution_authorized": False,
+                    }
+                    if isinstance(getattr(self.runtime, "provider_recovery_status", None), list)
+                    else {
+                        "status": "NOT_CONFIGURED",
+                        "accounts": [],
+                        "execution_authorized": False,
+                    }
+                ),
                 "storage_foundation": standalone_storage_status(self.runtime),
                 "tenant_state": (
                     self.runtime.tenant_state.readiness()
