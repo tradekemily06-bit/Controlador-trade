@@ -141,3 +141,15 @@ def test_relay_rejects_non_json_numeric_or_non_finite_candle_values(tmp_path, fi
         store.ingest(payload)
 
     assert store.status()["stored_candles"] == 0
+
+
+def test_relay_rejects_future_dated_market_candles(tmp_path):
+    store = MT5RelayStore(tmp_path / "relay.sqlite3", expected_source_id="local-demo")
+    future = datetime.now(timezone.utc) + timedelta(minutes=2)
+    payload = _payload()
+    payload["candles"][0]["timestamp"] = future.isoformat()
+
+    with pytest.raises(MT5RelayError, match="formato de candle inválido"):
+        store.ingest(payload)
+
+    assert store.status()["stored_candles"] == 0
