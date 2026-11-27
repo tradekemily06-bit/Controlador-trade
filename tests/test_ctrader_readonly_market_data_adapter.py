@@ -311,3 +311,22 @@ def test_ctrader_drops_boolean_or_non_finite_live_quote_values():
     transport.spot_callback({"symbol_id": 44, "bid": 110123, "ask": None, "timestamp": float("nan")})
 
     assert received == []
+
+
+@pytest.mark.parametrize("quote", [
+    {"bid": 0, "ask": 110145},
+    {"bid": -1, "ask": 110145},
+    {"bid": 110123, "ask": 0},
+    {"bid": 110123, "ask": -1},
+])
+def test_ctrader_drops_non_positive_live_quotes(quote):
+    transport = FakeTransport()
+    adapter = CTraderReadOnlyMarketDataAdapter(transport, account_id=123)
+    adapter.connect()
+    adapter.handshake()
+    received = []
+    adapter.subscribe_live_quotes("EURUSD", received.append)
+
+    transport.spot_callback({"symbol_id": 44, **quote, "timestamp": 1800000000})
+
+    assert received == []
