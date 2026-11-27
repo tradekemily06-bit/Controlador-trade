@@ -42,15 +42,22 @@ e os demais módulos não devem depender da presença do SDK cTrader.
    e autenticação da conta DEMO.
 5. Só depois do handshake verificado, registrar/bindar o adaptador na sessão
    isolada do tenant.
-6. Consultar candles pelo adaptador. O adaptador limita chamadas históricas a
-   cinco por segundo por conexão.
+6. Consultar candles históricos pelo adaptador. O adaptador limita chamadas
+   históricas a cinco por segundo por conexão.
+7. Para cotação atual, chamar `subscribe_live_quotes(symbol, callback)`. O
+   transporte assina `ProtoOASubscribeSpotsReq`, solicita timestamp e encaminha
+   bid/ask para uma fila limitada processada fora do reactor. O callback recebe
+   valores normalizados, horário do provedor e horário de recebimento. Use
+   `unsubscribe_live_quotes(symbol)` ao encerrar a assinatura.
 
 ## O que ainda não está concluído
 
 Este commit entrega o transporte de protocolo e seus limites de segurança, mas
 não configura credenciais de aplicação, KMS de produção, worker de renovação,
 provisionamento de conta no ambiente hospedado nem conexão real com uma conta
-DEMO. Também não habilita streaming de ticks/trendbars; a leitura atual é
-histórica/polling e precisa ser validada com uma conta Spotware antes de ser
-considerada operacional. Não marcar conta como conectada nem mostrar dados
+DEMO. O streaming de cotações spot (bid/ask) agora tem implementação e testes de
+contrato, mas ainda não foi validado com uma conta Spotware real. O streaming de
+trendbars por timeframe e a integração desse fluxo ao worker de análise ainda
+não estão concluídos. A geração de sinais continua dependendo do ciclo de
+candles fechados e não deve tratar uma cotação spot isolada como candle fechado. Não marcar conta como conectada nem mostrar dados
 como atuais sem handshake e heartbeat reais.
