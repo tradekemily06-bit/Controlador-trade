@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import threading
 
 from integration.tenant_connection_timeframe_monitor import TenantConnectionTimeframeMonitor
 from security.tenant_context import TenantContext
@@ -131,3 +132,32 @@ def test_repeated_poll_does_not_process_same_closed_candle_twice(tmp_path):
     monitor.subscribe(owner, _id("a"), "EURUSD", "M5")
     assert len(monitor.run_once(now=now)) == 1
     assert monitor.run_once(now=now) == []
+
+
+def test_slow_account_does_not_serialize_other_account_cycles(tmp_path):
+    owner = TenantContext("tenant-a", "alice")
+    sessions = Sessions()
+    sessions.add(owner, _id("a"), "broker_a")
+    sessions.add(owner, _id("b"), "broker_b")
+    now = datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc)
+    barrier = threading.Barrier(2)
+    expected = "2026-11-27T12:00:00+00:00"
+
+    class ConcurrentAnalyzer:
+        def analyze(self, **kwargs):
+            barrier.wait(timeout=3)
+            return {
+                "signal": "AGUARDAR",
+                "status": "ANALYZED",
+                "market_data": {"last_candle_at": expected},
+            }
+
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "cycles.sqlite3", sessions,
+        lambda session, context: ConcurrentAnalyzer(),
+        max_workers=2,
+    )
+    monitor.subscribe(owner, _id("a"), "EURUSD", "M5")
+    monitor.subscribe(owner, _id("b"), "EURUSD", "M5")
+    results = monitor.run_once(now=now)
+    assert len(results) == 2
