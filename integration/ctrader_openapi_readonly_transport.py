@@ -160,6 +160,7 @@ class CTraderOpenApiReadOnlyTransport:
         self._spot_worker: threading.Thread | None = None
         self._spot_worker_stop = threading.Event()
         self._spot_overflow_count = 0
+        self._last_spot_overflow_at: str | None = None
 
     @staticmethod
     def _field(obj: Any, *names: str):
@@ -235,6 +236,7 @@ class CTraderOpenApiReadOnlyTransport:
                     except queue.Full:
                         with self._lock:
                             self._spot_overflow_count += 1
+                        self._last_spot_overflow_at = datetime.now(timezone.utc).isoformat()
 
             self._client.setConnectedCallback(connected)
             self._client.setDisconnectedCallback(disconnected)
@@ -431,6 +433,7 @@ class CTraderOpenApiReadOnlyTransport:
             "active_trendbar_streams": len(self._trendbar_callbacks),
             "spot_event_queue_depth": self._spot_queue.qsize(),
             "spot_event_overflow_count": self._spot_overflow_count,
+            "last_spot_overflow_at": self._last_spot_overflow_at,
         }
 
     def disconnect(self) -> None:
