@@ -47,5 +47,4 @@ These endpoints use the same standalone access boundary as the other app
 endpoints. They do not mark items as read and do not create push subscriptions.
 A configured worker still needs a real delivery sink; merely having queued
 notifications or a running worker is not proof that a browser or phone received
-them. Browser push also requires frontend service-worker and permission
-integration, which remains separate from this backend API.
+them. Mobile and desktop use the same tenant-scoped inbox and API. Phone delivery while the browser is closed is not enabled yet: it requires the frontend PWA service worker, per-device subscription lifecycle, server-side tenant-scoped subscription storage, VAPID credentials, a real Web Push sender, hosted worker continuity, and device-level end-to-end validation. Do not treat a queued outbox item as a delivered push notification.
