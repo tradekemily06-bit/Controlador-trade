@@ -72,7 +72,7 @@ def _validate_endpoint(value: str) -> str:
     hostname = parsed.hostname or ""
     try:
         # Reject malformed ports and IP literals before any sender can make a request.
-        parsed.port
+        port = parsed.port
         is_ip_literal = False
         import ipaddress
         try:
@@ -86,6 +86,7 @@ def _validate_endpoint(value: str) -> str:
         parsed.scheme != "https"
         or not hostname
         or is_ip_literal
+        or port not in (None, 443)
         or not _is_allowed_push_host(hostname)
         or parsed.username is not None
         or parsed.password is not None
