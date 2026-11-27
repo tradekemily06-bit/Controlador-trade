@@ -157,6 +157,15 @@ class TenantForecastAuditStore:
             )
         return {"forecast_id": forecast_id.strip(), "resolved": True}
 
+    def calibration_forecasts(self, context: TenantContext) -> list[Any]:
+        """Return resolved, tenant-scoped records in the evaluator's strict type."""
+        from analysis.probability_calibration import ProbabilityForecast
+
+        return [
+            ProbabilityForecast(**record)
+            for record in self.calibration_records(context)
+        ]
+
     def calibration_records(self, context: TenantContext) -> list[dict[str, Any]]:
         owner = _owner(context)
         with self._connect() as db:
