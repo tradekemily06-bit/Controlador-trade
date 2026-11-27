@@ -60,6 +60,14 @@ class BrokerMarketDataBoundary:
         if not isinstance(request, BrokerMarketDataRequest):
             raise TypeError("request deve ser BrokerMarketDataRequest")
 
+        snapshot_received_at = received_at or datetime.now(timezone.utc)
+        if (
+            not isinstance(snapshot_received_at, datetime)
+            or snapshot_received_at.tzinfo is None
+            or snapshot_received_at.utcoffset() is None
+        ):
+            raise ValueError("received_at deve conter fuso horário")
+
         canonical_timeframe = normalize_timeframe(request.timeframe)
         canonical_request = BrokerMarketDataRequest(
             symbol=request.symbol.strip().upper(),
@@ -101,14 +109,6 @@ class BrokerMarketDataBoundary:
 
         if len(normalized) > request.limit:
             normalized = normalized[-request.limit:]
-
-        snapshot_received_at = received_at or datetime.now(timezone.utc)
-        if (
-            not isinstance(snapshot_received_at, datetime)
-            or snapshot_received_at.tzinfo is None
-            or snapshot_received_at.utcoffset() is None
-        ):
-            raise ValueError("received_at deve conter fuso horário")
 
         return BrokerMarketDataSnapshot(
             symbol=canonical_request.symbol,
