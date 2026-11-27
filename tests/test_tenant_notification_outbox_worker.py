@@ -53,13 +53,14 @@ def test_outbox_failure_diagnostic_never_persists_provider_exception_text(tmp_pa
     owner = TenantContext("tenant-1", "subject-1")
     event = EcosystemNotification(
         notification_id="provider-secret-error", kind=NotificationKind.SECURITY,
-        severity=NotificationSeverity.ERROR, title="Falha", message="Falha no provedor",
+        severity=NotificationSeverity.CRITICAL, title="Falha", message="Falha no provedor",
     )
     dispatcher.publish(owner, event)
-    item = dispatcher.outbox.claim_due(now=100.0, lease_seconds=30.0)[0]
+    claim_time = time.time() + 1.0
+    item = dispatcher.outbox.claim_due(now=claim_time, lease_seconds=30.0)[0]
     dispatcher.outbox.mark_failed(
         item, RuntimeError("Bearer super-secret-value customer=email@example.com"),
-        now=101.0,
+        now=claim_time + 1.0,
     )
     with storage._connect() as db:
         row = db.execute(
