@@ -293,6 +293,30 @@ class StandaloneWSGIApplication:
             return _json_response(start_response, HTTPStatus.OK, payload, request_id)
 
         if method == "GET" and path == "/api/readiness":
+            # Shared runtime readiness contains local operational counters and
+            # storage details. Remote users receive only a deliberately minimal
+            # infrastructure contract; tenant data is exposed through the
+            # dedicated tenant-scoped endpoints instead.
+            if reason == "trusted_identity":
+                architecture = self.runtime.application.architecture()
+                return _json_response(
+                    start_response, HTTPStatus.OK,
+                    {
+                        "identity": IdentityPolicy().status(
+                            remote_identity_middleware_configured=True
+                        ),
+                        "architecture": architecture.get("architecture", "UNKNOWN"),
+                        "areas": len(architecture.get("application_areas", [])),
+                        "tenant_readiness": "AVAILABLE_ONLY_THROUGH_SCOPED_ENDPOINTS",
+                        "notifications": "USE_TENANT_SCOPED_STATUS_ENDPOINT",
+                        "market_monitor": "USE_TENANT_SCOPED_STATUS_ENDPOINT",
+                        "storage_details": "NOT_EXPOSED_IN_SHARED_READINESS",
+                        "deployment": "PROCESS_RUNNING_DEPLOYMENT_NOT_VERIFIED",
+                        "scope": "INFRASTRUCTURE_ONLY",
+                        "execution_authorized": False,
+                    },
+                    request_id,
+                )
             architecture = self.runtime.application.architecture()
             ecosystem = self.runtime.ecosystem_service
             registry = getattr(self.runtime, "market_data_registry", None)
