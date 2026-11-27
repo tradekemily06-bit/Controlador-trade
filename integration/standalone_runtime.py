@@ -18,6 +18,8 @@ from integration.tenant_connection_timeframe_monitor import TenantConnectionTime
 from integration.tenant_provider_connection_service import TenantProviderConnectionService
 from integration.tenant_mt5_relay_registry import TenantMT5RelayRegistry
 from integration.tenant_mt5_relay_onboarding import TenantMT5RelayTokenVault, TenantMT5RelayOnboardingService
+from integration.tenant_tradingview_webhook_vault import TenantTradingViewWebhookVault, TenantTradingViewWebhookOnboardingService
+from integration.tenant_tradingview_alert_inbox import TenantTradingViewAlertInbox
 from security.tenant_scoped_ecosystem_state import TenantScopedEcosystemState
 from security.tenant_scoped_decision_memory import TenantScopedDecisionMemory
 from integration.tenant_notification_dispatcher import TenantNotificationDispatcher
@@ -184,6 +186,18 @@ class StandaloneRuntime:
             )
             self.tenant_mt5_relay_onboarding = TenantMT5RelayOnboardingService(
                 self.tenant_provider_connections, self.tenant_mt5_relay_token_vault
+            )
+            self.tenant_tradingview_webhook_vault = TenantTradingViewWebhookVault(
+                self.runtime_dir / "tenant-tradingview-webhook-secrets.sqlite3",
+                self.tenant_provider_connections,
+            )
+            self.tenant_tradingview_webhook_onboarding = TenantTradingViewWebhookOnboardingService(
+                self.tenant_provider_connections, self.tenant_tradingview_webhook_vault
+            )
+            self.tenant_tradingview_alert_inbox = TenantTradingViewAlertInbox(
+                self.runtime_dir / "tenant-tradingview-alerts.sqlite3",
+                self.tenant_provider_connections,
+                self.tenant_tradingview_webhook_vault,
             )
             self.tenant_provider_connection_service = TenantProviderConnectionService(
                 self.tenant_provider_connections,
