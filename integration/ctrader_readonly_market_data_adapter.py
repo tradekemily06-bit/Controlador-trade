@@ -74,6 +74,7 @@ class CTraderReadOnlyMarketDataAdapter:
         self._connected = False
         self._authenticated = False
         self._symbols: dict[str, Any] = {}
+        self._symbol_metadata: dict[str, dict[str, Any]] = {}
         self._request_lock = threading.Lock()
         self._last_historical_request = 0.0
 
@@ -147,7 +148,39 @@ class CTraderReadOnlyMarketDataAdapter:
             if isinstance(digits, bool) or not isinstance(digits, int) or not 0 <= digits <= 12:
                 raise ValueError("precisão do símbolo cTrader é inválida")
             self._symbols[symbol] = (symbol_id, digits)
+            self._symbol_metadata[symbol] = (
+                dict(resolved) if isinstance(resolved, Mapping) else {}
+            )
         return self._symbols[symbol]
+
+    def get_symbol_session_calendar_metadata(self, symbol: str) -> dict[str, Any] | None:
+        """Return broker-supplied schedule metadata without asserting candle alignment.
+
+        D1/W1 remain fail-closed until observed provider candle opens have been
+        reconciled with this schedule across DST, holidays and weekend reopen.
+        """
+        clean_symbol = str(symbol).strip()
+        if not clean_symbol:
+            raise ValueError("símbolo cTrader é obrigatório")
+        self._resolve_symbol(clean_symbol)
+        metadata = self._symbol_metadata.get(clean_symbol, {})
+        if metadata.get("calendar_metadata_status") != "AVAILABLE":
+            return None
+        schedule = metadata.get("schedule")
+        holidays = metadata.get("holidays")
+        if not isinstance(schedule, (tuple, list)) or not schedule:
+            return None
+        if not isinstance(holidays, (tuple, list)):
+            return None
+        return {
+            "provider_id": "ctrader_open_api",
+            "account_id": self.account_id,
+            "symbol": clean_symbol,
+            "schedule_time_zone": metadata.get("schedule_time_zone"),
+            "schedule": tuple(dict(item) for item in schedule if isinstance(item, Mapping)),
+            "holidays": tuple(dict(item) for item in holidays if isinstance(item, Mapping)),
+            "status": "METADATA_AVAILABLE_NOT_CALENDAR_VALIDATED",
+        }
 
     def subscribe_live_quotes(self, symbol: str, callback) -> None:
         """Subscribe to provider-pushed bid/ask updates without polling the API."""
