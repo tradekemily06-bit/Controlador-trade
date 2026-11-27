@@ -118,3 +118,31 @@ def test_restore_verification_rejects_path_traversal(tmp_path):
     context = TenantContext("tenant-a", "alice")
     with pytest.raises(ValueError, match="nome de backup"):
         service.verify_restore(context, "../tenant-fiscal-other.sqlite3")
+
+
+def test_tenant_fiscal_backup_rejects_broken_foreign_key_relations(tmp_path):
+    runtime = tmp_path / "runtime"
+    backups = tmp_path / "backups"
+    factory = TenantFiscalStoreFactory(runtime)
+    context = TenantContext("tenant-a", "alice")
+    repositories = factory.get(context)
+    with sqlite3.connect(repositories.database_path) as db:
+        db.execute("PRAGMA foreign_keys = OFF")
+        db.execute(
+            """INSERT INTO fiscal_pending_reviews
+               (review_id, owner_id, pending_id, candidate_classification,
+                confirmed_jurisdiction, reviewer_name, reviewer_role,
+                professional_registration, evidence_reference, reviewed_on,
+                review_notes, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            ("bad-review", repositories.owner_id, "missing-pending",
+             "UNCLASSIFIED", "US", "Test Reviewer", "TEST",
+             "TEST-REG", "test-evidence", "2026-11-27", "", "2026-11-27T00:00:00Z"),
+        )
+
+    service = TenantFiscalBackupService(factory, backups)
+    result = service.backup(context)
+
+    assert result["status"] == "BACKUP_FAILED"
+    assert result["scope"] == "ONE_TENANT_AND_SUBJECT"
+    assert not list(backups.glob("tenant-fiscal-*.sqlite3"))
