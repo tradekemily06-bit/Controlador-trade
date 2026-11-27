@@ -512,7 +512,12 @@ class TenantConnectionTimeframeMonitor:
             if owner_key in self._processing:
                 return None
             self._processing.add(owner_key)
-        lease = self._acquire_processing_lease(row)
+        try:
+            lease = self._acquire_processing_lease(row)
+        except Exception:
+            with self._lock:
+                self._processing.discard(owner_key)
+            raise
         if lease is None:
             with self._lock:
                 self._processing.discard(owner_key)
@@ -544,9 +549,11 @@ class TenantConnectionTimeframeMonitor:
         finally:
             heartbeat_stop.set()
             heartbeat.join(timeout=2.0)
-            self._release_processing_lease(lease)
-            with self._lock:
-                self._processing.discard(owner_key)
+            try:
+                self._release_processing_lease(lease)
+            finally:
+                with self._lock:
+                    self._processing.discard(owner_key)
 
     def _process_claimed(
         self, row: dict[str, Any], now: datetime, *,
