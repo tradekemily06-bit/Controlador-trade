@@ -67,6 +67,10 @@ A interface mantém DEMO como ciclo operacional padrão e expõe a superfície R
 
 O manifest web é servido pelo próprio aplicativo e os endpoints possuem contratos automatizados.
 
+## Relay MT5 independente (somente leitura)
+
+O relay MT5 do aplicativo independente é configurado por operador e permanece restrito a uma origem por instância. O agente local atual usa IC Markets MT5 DEMO; não representa suporte genérico a todas as corretoras nem multi-conta simultânea. Consulte [o runbook de provisionamento](docs/MT5_RELAY_SETUP.md) para variáveis, segurança TLS, execução do agente e limites operacionais.
+
 ## Validação
 
 Para validação local, execute `python app.py` em um ambiente Python compatível e abra o endereço exibido pelo servidor. A suíte de testes cobre a interface e seus contratos; a verificação visual em dispositivos reais é uma validação de uso, não uma autorização de execução financeira.
