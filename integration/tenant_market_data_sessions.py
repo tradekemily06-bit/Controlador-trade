@@ -136,13 +136,27 @@ class TenantMarketDataSessionRegistry:
                                     "connected", "account_mode", "last_seen", "source_id",
                                     "stored_candles", "active_spot_symbols",
                                     "spot_event_queue_depth", "spot_event_overflow_count",
+                                    "last_spot_overflow_at",
                                 )
                                 if key in reported
                             }
                             if reported.get("connected") is False:
                                 health_status = "DISCONNECTED"
                             elif reported.get("connected") is True:
-                                if int(reported.get("spot_event_overflow_count", 0) or 0) > 0:
+                                overflow_age = float("inf")
+                                raw_overflow = reported.get("last_spot_overflow_at")
+                                if raw_overflow:
+                                    try:
+                                        overflow_at = datetime.fromisoformat(
+                                            str(raw_overflow).replace("Z", "+00:00")
+                                        )
+                                        overflow_age = (
+                                            datetime.now(timezone.utc)
+                                            - overflow_at.astimezone(timezone.utc)
+                                        ).total_seconds() if overflow_at.tzinfo else float("inf")
+                                    except (TypeError, ValueError, OverflowError):
+                                        overflow_age = float("inf")
+                                if -5 <= overflow_age <= 60:
                                     health_status = "STREAM_BACKPRESSURE"
                                 else:
                                     raw_seen = reported.get("last_seen")
