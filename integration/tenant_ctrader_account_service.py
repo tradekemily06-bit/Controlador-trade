@@ -24,6 +24,7 @@ class TenantCTraderAccountService:
         token_vault: Any,
         *,
         transport_factory: Callable[[str], Any],
+        oauth_service: Any | None = None,
     ) -> None:
         if connections is None or not callable(getattr(connections, "list_connections", None)):
             raise ValueError("tenant connection registry is required")
@@ -37,6 +38,9 @@ class TenantCTraderAccountService:
         self.sessions = sessions
         self.token_vault = token_vault
         self.transport_factory = transport_factory
+        if oauth_service is not None and not callable(getattr(oauth_service, "refresh", None)):
+            raise ValueError("cTrader OAuth service must implement refresh(context, connection_id)")
+        self.oauth_service = oauth_service
 
     def _owned_pending(self, owner: TenantContext, connection_id: str) -> dict[str, Any]:
         account = next(
@@ -53,8 +57,14 @@ class TenantCTraderAccountService:
     def _access_token(self, owner: TenantContext, connection_id: str) -> str:
         tokens = self.token_vault.resolve(owner, connection_id)
         if not isinstance(tokens, dict) or not isinstance(tokens.get("access_token"), str) or not tokens["access_token"]:
+            # A restart may happen after access-token expiry. Refresh through
+            # the tenant-bound OAuth service, then resolve the new token again.
+            if self.oauth_service is not None:
+                self.oauth_service.refresh(owner, connection_id=connection_id)
+                tokens = self.token_vault.resolve(owner, connection_id)
+        if not isinstance(tokens, dict) or not isinstance(tokens.get("access_token"), str) or not tokens["access_token"]:
             raise PermissionError("token OAuth cTrader ausente, expirado ou não autorizado")
-        return tokens["access_token"]
+        return tokens["access_token]
 
     def list_demo_accounts(
         self, context: TenantContext, *, connection_id: str
@@ -167,3 +177,108 @@ class TenantCTraderAccountService:
             except Exception:
                 pass
             raise
+
+
+    def reconnect_saved(
+        self, context: TenantContext, *, connection_id: str
+    ) -> dict[str, Any]:
+        """Rebind a previously selected DEMO account after process restart."""
+        owner = require_tenant_context(context)
+        account = next(
+            (item for item in self.connections.list_connections(owner)
+             if item.get("connection_id") == connection_id),
+            None,
+        )
+        if account is None or account.get("provider_id") != _PROVIDER_ID:
+            raise PermissionError("conexão cTrader não pertence a esta identidade")
+        if account.get("status") != "CONNECTED":
+            raise PermissionError("somente uma conta cTrader previamente conectada pode ser recuperada")
+        try:
+            account_id = int(account.get("account_reference", ""))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("referência salva da conta cTrader é inválida") from exc
+        if account_id <= 0:
+            raise ValueError("referência salva da conta cTrader é inválida")
+
+        access_token = self._access_token(owner, connection_id)
+        transport = self.transport_factory(access_token)
+        if transport is None:
+            raise RuntimeError("factory cTrader não retornou transporte")
+        adapter = CTraderReadOnlyMarketDataAdapter(
+            transport,
+            account_id=account_id,
+            access_token_resolver=lambda: self._access_token(owner, connection_id),
+        )
+        try:
+            adapter.connect()
+            handshake = adapter.handshake()
+            if (
+                handshake.get("verified") is not True
+                or handshake.get("provider_id") != _PROVIDER_ID
+                or handshake.get("account_reference") != str(account_id)
+            ):
+                raise PermissionError("handshake cTrader não confirmou a conta DEMO salva")
+            updated = self.connections.record_verified_connection(
+                owner,
+                provider_id=_PROVIDER_ID,
+                account_alias=account["account_alias"],
+                account_reference=str(account_id),
+                capabilities=list(handshake["capabilities"]),
+                adapter_verified=True,
+            )
+            if updated.get("connection_id") != connection_id:
+                raise RuntimeError("recuperação cTrader não preservou a identidade da conexão")
+            session = self.sessions.bind(
+                owner,
+                connection_id=connection_id,
+                adapter=adapter,
+                source=f"ctrader:{account_id}",
+                handshake_verified=True,
+            )
+            return {
+                "connection_id": connection_id,
+                "provider_id": _PROVIDER_ID,
+                "account_reference": str(account_id),
+                "status": "RECONNECTED",
+                "adapter_status": session["status"],
+                "account_mode": "DEMO",
+                "read_only": True,
+                "execution_authorized": False,
+            }
+        except Exception:
+            try:
+                self.sessions.unbind(owner, connection_id=connection_id)
+            except Exception:
+                pass
+            try:
+                adapter.disconnect()
+            except Exception:
+                pass
+            raise
+
+    def reconnect_available(self, context: TenantContext) -> list[dict[str, Any]]:
+        """Recover each previously connected cTrader DEMO account independently."""
+        owner = require_tenant_context(context)
+        outcomes: list[dict[str, Any]] = []
+        for account in self.connections.list_connections(owner):
+            if account.get("provider_id") != _PROVIDER_ID or account.get("status") != "CONNECTED":
+                continue
+            connection_id = account["connection_id"]
+            try:
+                result = self.reconnect_saved(owner, connection_id=connection_id)
+                outcomes.append({
+                    "connection_id": connection_id,
+                    "provider_id": _PROVIDER_ID,
+                    "status": result["status"],
+                    "adapter_status": result["adapter_status"],
+                    "execution_authorized": False,
+                })
+            except Exception as exc:
+                outcomes.append({
+                    "connection_id": connection_id,
+                    "provider_id": _PROVIDER_ID,
+                    "status": "RECONNECT_FAILED",
+                    "error_class": type(exc).__name__,
+                    "execution_authorized": False,
+                })
+        return outcomes
