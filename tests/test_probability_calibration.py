@@ -123,6 +123,7 @@ class ProbabilityCalibrationTests(unittest.TestCase):
         item = result["EURUSD|1m|COMPRA|v1"]
         self.assertEqual(item["calibration_status"], "EVALUATED_REQUIRES_REVIEW")
         self.assertAlmostEqual(item["brier_score"], 0.21)
+        self.assertAlmostEqual(item["expected_calibration_error"], 0.0)
         self.assertTrue(item["reliability_bins"])
         self.assertEqual(len(item["reliability_bins"][0]["observed_rate_95ci"]), 2)
         self.assertIsNone(item["probability_of_profit"])
