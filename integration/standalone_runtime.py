@@ -143,6 +143,7 @@ class StandaloneRuntime:
         provider_secret_resolver=None,
         provider_adapter_factories: Mapping[str, Any] | None = None,
         ctrader_oauth_cipher=None,
+        ctrader_oauth_http_client=None,
         ctrader_oauth_exchange_code=None,
         ctrader_oauth_refresh_tokens=None,
         ctrader_oauth_client_id: str | None = None,
@@ -178,8 +179,14 @@ class StandaloneRuntime:
             )
             self.tenant_state = TenantScopedEcosystemState(tenant_storage)
             self.tenant_provider_connections = TenantProviderConnectionRegistry(tenant_storage)
+            if ctrader_oauth_http_client is not None:
+                if ctrader_oauth_exchange_code is not None or ctrader_oauth_refresh_tokens is not None:
+                    raise RuntimeError("use ctrader_oauth_http_client ou callbacks separados, não ambos")
+                ctrader_oauth_exchange_code = getattr(ctrader_oauth_http_client, "exchange_code", None)
+                ctrader_oauth_refresh_tokens = getattr(ctrader_oauth_http_client, "refresh_tokens", None)
             ctrader_oauth_configured = any((
                 ctrader_oauth_cipher is not None,
+                ctrader_oauth_http_client is not None,
                 ctrader_oauth_exchange_code is not None,
                 ctrader_oauth_refresh_tokens is not None,
                 ctrader_oauth_client_id is not None,
