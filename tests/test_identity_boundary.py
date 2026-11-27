@@ -10,7 +10,7 @@ class IdentityPolicyTests(unittest.TestCase):
         status = IdentityPolicy().status()
         self.assertEqual(status["trusted_identity_provider"], "NOT_CONFIGURED")
         self.assertEqual(status["tenant_isolation"], "SINGLE_USER_RUNTIME_ONLY")
-        self.assertEqual(status["multi_tenant_isolation"], "NOT_IMPLEMENTED")
+        self.assertEqual(status["multi_tenant_isolation"], "SINGLE_USER_RUNTIME_ONLY")
         self.assertFalse(status["shared_bearer_token_is_user_identity"])
         self.assertEqual(status["real_execution"], "DISABLED")
 
