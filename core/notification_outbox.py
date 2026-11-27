@@ -28,17 +28,16 @@ class NotificationDispatchResult:
 def redact_delivery_error(error: object) -> str:
     """Bound diagnostics and remove URLs, auth values and common secret fields."""
     value = str(error)[:2000]
-    value = re.sub(r"(?i)\\bBearer\\s+[A-Za-z0-9._~+/-]+=*", "Bearer [REDACTED]", value)
+    value = re.sub(r"(?i)\bBearer\s+[A-Za-z0-9._~+/-]+=*", "Bearer [REDACTED]", value)
     value = re.sub(
         r"(?i)(authorization|token|secret|password|api[_-]?key|private[_-]?key)"
-        r"(\\s*[:=]\\s*)([^\\s,;]+)",
-        r"\\1\\2[REDACTED]",
+        r"(\s*[:=]\s*)([^\s,;]+)",
+        r"\1\2[REDACTED]",
         value,
     )
-    value = re.sub(r"https?://[^\\s'\\"<>]+", "[URL REDACTED]", value)
-    value = re.sub(r"(?i)(p256dh|auth)(\\s*[:=]\\s*)([^\\s,;]+)", r"\\1\\2[REDACTED]", value)
+    value = re.sub(r"https?://[^\s'\"<>]+", "[URL REDACTED]", value)
+    value = re.sub(r"(?i)(p256dh|auth)(\s*[:=]\s*)([^\s,;]+)", r"\1\2[REDACTED]", value)
     return value[:500]
-
 
 class NotificationSink(Protocol):
     """External destination; implementations must honor the idempotency key."""
