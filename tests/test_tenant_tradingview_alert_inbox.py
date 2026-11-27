@@ -88,3 +88,20 @@ def test_alerts_are_isolated_by_tenant_identity(tmp_path):
     assert inbox.list_events(other, account["connection_id"]) == []
     with pytest.raises(PermissionError, match="não pertence"):
         inbox.ingest(other, account["connection_id"], _payload())
+
+
+@pytest.mark.parametrize("bad_price", [
+    True,
+    "231.45",
+    float("nan"),
+    float("inf"),
+    float("-inf"),
+    10 ** 1000,
+])
+def test_alert_rejects_non_finite_or_non_numeric_price(tmp_path, bad_price):
+    _, owner, account, inbox = _setup(tmp_path)
+
+    with pytest.raises(TradingViewAlertError, match="price"):
+        inbox.ingest(owner, account["connection_id"], _payload(price=bad_price))
+
+    assert inbox.list_events(owner, account["connection_id"]) == []
