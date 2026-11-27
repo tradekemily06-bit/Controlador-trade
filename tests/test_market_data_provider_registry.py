@@ -55,6 +55,38 @@ class MarketDataProviderRegistryTests(unittest.TestCase):
         self.assertEqual(status["account_mode"]["status"], "NOT_PROBED")
         self.assertFalse(status["account_mode"]["execution_authorized"])
 
+    def test_provider_health_status_reports_live_heartbeat_without_account_probe(self):
+        class HealthyRelay(FakeProvider):
+            def status(self):
+                return {
+                    "connected": True,
+                    "account_mode": "DEMO",
+                    "last_seen": "2026-11-27T00:00:00+00:00",
+                    "source_id": "mt5-local",
+                    "stored_candles": 42,
+                    "secret": "must-not-leak",
+                }
+
+        registry = MarketDataProviderRegistry()
+        registry.register("mt5_relay", HealthyRelay(), "MT5 local relay DEMO")
+        status = registry.status(probe_account_mode=False)
+        provider = status["providers"][0]
+        self.assertEqual(provider["status"], "CONNECTED")
+        self.assertEqual(provider["health"]["account_mode"], "DEMO")
+        self.assertEqual(provider["health"]["stored_candles"], 42)
+        self.assertNotIn("secret", provider["health"])
+        self.assertEqual(status["account_mode"]["status"], "NOT_PROBED")
+        self.assertFalse(provider["execution_authorized"])
+
+    def test_provider_health_status_reports_disconnected_heartbeat(self):
+        class OfflineRelay(FakeProvider):
+            def status(self):
+                return {"connected": False, "account_mode": None, "last_seen": None}
+
+        registry = MarketDataProviderRegistry()
+        registry.register("mt5_relay", OfflineRelay(), "MT5 local relay DEMO")
+        self.assertEqual(registry.status(probe_account_mode=False)["providers"][0]["status"], "DISCONNECTED")
+
     def test_single_provider_is_selected_by_default(self):
         registry = MarketDataProviderRegistry()
         registry.register("default", FakeProvider(), "DEFAULT_FEED")
