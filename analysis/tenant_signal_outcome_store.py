@@ -8,6 +8,7 @@ from typing import Any, Mapping
 from analysis.signal_outcome_resolver import resolve_next_candle_direction_safe
 from analysis.tenant_signal_evidence_store import TenantSignalEvidenceStore
 from security.tenant_context import TenantContext
+from security.tenant_storage import require_tenant_context
 
 
 class TenantSignalOutcomeStore:
@@ -54,8 +55,7 @@ class TenantSignalOutcomeStore:
         *,
         provenance: str,
     ) -> dict[str, Any]:
-        if not isinstance(context, TenantContext):
-            raise PermissionError("trusted tenant context is required")
+        context = require_tenant_context(context)
         if not isinstance(signal_id, str) or not signal_id.strip():
             raise ValueError("signal_id is required")
         with self._connect() as db:
@@ -108,8 +108,7 @@ class TenantSignalOutcomeStore:
         Source identity is mandatory so one broker account's candle cannot
         resolve another account's signal, even for the same tenant/symbol.
         """
-        if not isinstance(context, TenantContext):
-            raise PermissionError("trusted tenant context is required")
+        context = require_tenant_context(context)
         if not isinstance(source_id, str) or not source_id.strip():
             raise ValueError("source_id is required")
         symbol = candle.get("symbol")
@@ -154,8 +153,7 @@ class TenantSignalOutcomeStore:
         return resolved
 
     def list_outcomes(self, context: TenantContext) -> list[dict[str, Any]]:
-        if not isinstance(context, TenantContext):
-            raise PermissionError("trusted tenant context is required")
+        context = require_tenant_context(context)
         with self._connect() as db:
             rows = db.execute(
                 """SELECT signal_id, outcome, outcome_status, outcome_definition,
