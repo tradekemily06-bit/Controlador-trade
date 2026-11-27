@@ -52,6 +52,7 @@ Instale as dependências compatíveis com o terminal MetaTrader 5 e configure no
 - `CONTROLADOR_MT5_RELAY_TOKEN`: token de uso único provisionado para esta conexão.
 - `CONTROLADOR_MT5_RELAY_CONNECTION_ID`: ID de 32 caracteres hexadecimais retornado pelo provisionamento da conta. Quando definido, o agente usa `/api/bridge/mt5/connections/{connection_id}/candles`; sem ele, permanece no endpoint legado global.
 - `CONTROLADOR_MT5_RELAY_SOURCE_ID`: identificador de origem retornado pelo provisionamento do servidor, exatamente igual ao cadastrado para esta conexão. É obrigatório no modo multi-conta.
+- `CONTROLADOR_MT5_TERMINAL_PATH`: caminho opcional do `terminal64.exe` desta instalação MT5. Configure um caminho distinto em cada instância quando operar várias contas/terminais.
 - `CONTROLADOR_MT5_SYMBOLS`: lista separada por vírgulas dos símbolos disponíveis na conta.
 - `CONTROLADOR_MT5_TIMEFRAMES`: períodos suportados pelo adapter, separados por vírgulas.
 - Opcional: `CONTROLADOR_MT5_RELAY_INTERVAL` (padrão 5 segundos) e `CONTROLADOR_MT5_RELAY_CANDLE_LIMIT` (padrão 250, máximo 500).
