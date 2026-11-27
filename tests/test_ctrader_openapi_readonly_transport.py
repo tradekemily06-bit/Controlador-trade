@@ -144,6 +144,7 @@ def test_live_trendbar_subscription_sends_spots_first_and_uses_period():
     transport._lock = RLock()
     transport._spot_callbacks = {}
     transport._trendbar_callbacks = {}
+    transport._trendbar_spot_only = set()
     transport._spot_queue = queue.Queue(maxsize=2048)
     transport._spot_worker = None
     transport._spot_worker_stop = Event()
@@ -173,6 +174,7 @@ def test_live_trendbar_subscription_rejects_duplicate_and_other_account():
     transport._account_authenticated = True
     transport._account_id = 77
     transport._trendbar_callbacks = {(9001, "M5"): lambda _event: None}
+    transport._trendbar_spot_only = set()
     transport._spot_callbacks = {}
     transport._lock = RLock()
     transport._spot_queue = queue.Queue(maxsize=2048)
@@ -184,3 +186,52 @@ def test_live_trendbar_subscription_rejects_duplicate_and_other_account():
         transport.subscribe_live_trendbars(88, 9002, "M5", lambda _event: None)
     with pytest.raises(ValueError, match="já existe"):
         transport.subscribe_live_trendbars(77, 9001, "M5", lambda _event: None)
+
+
+def test_last_live_trendbar_unsubscribes_its_internal_spot_carrier():
+    from threading import Event, RLock
+    import queue
+
+    class Request:
+        def __init__(self):
+            self.ctidTraderAccountId = None
+            self.symbolId = []
+            self.period = None
+
+    class Period:
+        @staticmethod
+        def Value(value):
+            return {"M5": 5}[value]
+
+    transport = object.__new__(CTraderOpenApiReadOnlyTransport)
+    transport._account_authenticated = True
+    transport._account_id = 77
+    transport._messages = {
+        "subscribe_spots": Request,
+        "unsubscribe_spots": Request,
+        "subscribe_trendbars": Request,
+        "unsubscribe_trendbars": Request,
+    }
+    transport._period_enum = Period
+    transport._lock = RLock()
+    transport._spot_callbacks = {}
+    transport._trendbar_callbacks = {}
+    transport._trendbar_spot_only = set()
+    transport._spot_queue = queue.Queue(maxsize=2048)
+    transport._spot_worker = None
+    transport._spot_worker_stop = Event()
+    transport._spot_overflow_count = 0
+    transport._start_spot_worker = lambda: None
+    sent = []
+    transport._send = sent.append
+
+    transport.subscribe_live_trendbars(77, 9001, "M5", lambda _event: None)
+    assert 9001 in transport._trendbar_spot_only
+    sent.clear()
+    transport.unsubscribe_live_trendbars(77, 9001, "M5")
+
+    assert len(sent) == 2
+    assert sent[0].period == 5
+    assert list(sent[1].symbolId) == [9001]
+    assert 9001 not in transport._spot_callbacks
+    assert 9001 not in transport._trendbar_spot_only
