@@ -19,6 +19,7 @@ class SecureStore:
         self.deleted = []
 
     def list_for_owner(self, context):
+        self.last_owner = (context.tenant_id, context.subject_id)
         return list(self.records)
 
     def delete_for_owner(self, context, device_id):
@@ -73,6 +74,7 @@ def test_delivers_only_to_explicit_owner_and_filters_payload():
     sink.deliver("idem-1", {"tenant_id": "tenant-a", "subject_id": "alice"}, _payload())
 
     assert len(sent) == 1
+    assert store.last_owner == ("tenant-a", "alice")
     assert sent[0][0]["endpoint"] == "https://fcm.googleapis.com/fcm/send/token"
     assert sent[0][1]["idempotency_key"] == "idem-1"
     assert "internal_secret" not in sent[0][1]
@@ -97,7 +99,8 @@ def test_removes_only_expired_404_410_subscription():
         raise Gone()
 
     sink = TenantWebPushNotificationSink(store, sender)
-    sink.deliver("idem-1", {"tenant_id": "tenant-a", "subject_id": "alice"}, _payload())
+    with pytest.raises(NoActivePushSubscriptions):
+        sink.deliver("idem-1", {"tenant_id": "tenant-a", "subject_id": "alice"}, _payload())
     assert store.deleted == [("tenant-a", "alice", "phone-1")]
 
 
