@@ -323,6 +323,25 @@ class CTraderReadOnlyMarketDataAdapter:
             "execution_authorized": False,
         }
 
+    def reconnect(self) -> dict[str, Any]:
+        reconnect = getattr(self.transport, "reconnect", None)
+        if not callable(reconnect):
+            raise RuntimeError("transport cTrader não oferece reconexão segura")
+        details = reconnect()
+        if not isinstance(details, dict) or details.get("is_live") is not False:
+            self._connected = False
+            self._authenticated = False
+            raise PermissionError("reconexão cTrader não confirmou conta DEMO")
+        self._connected = True
+        self._authenticated = True
+        return {
+            "connected": True,
+            "account_id": self.account_id,
+            "account_mode": "DEMO",
+            "read_only": True,
+            "execution_authorized": False,
+        }
+
     def disconnect(self) -> None:
         disconnect = getattr(self.transport, "disconnect", None)
         if callable(disconnect):
