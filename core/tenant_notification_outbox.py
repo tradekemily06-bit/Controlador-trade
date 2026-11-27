@@ -206,8 +206,9 @@ class TenantNotificationOutbox:
                      now: float | None = None, lease_seconds: float = 60.0) -> TenantOutboxDispatchResult:
         if not callable(getattr(sink, "deliver", None)):
             raise ValueError("tenant sink must implement deliver")
-        current = time() if now is None else float(now)
-        items = self.claim_due(limit=limit, now=current, lease_seconds=lease_seconds)
+        deterministic_clock = now is not None
+        claim_time = time() if now is None else float(now)
+        items = self.claim_due(limit=limit, now=claim_time, lease_seconds=lease_seconds)
         delivered = retried = dead = 0
         for item in items:
             recipient = {"tenant_id": item.tenant_id, "subject_id": item.subject_id}
@@ -215,13 +216,16 @@ class TenantNotificationOutbox:
                 sink.deliver(item.idempotency_key, recipient, item.payload)
             except Exception as exc:
                 try:
-                    status = self.mark_failed(item, exc, now=current)
+                    status = self.mark_failed(
+                        item, exc, now=claim_time if deterministic_clock else time()
+                    )
                 except ValueError:
                     continue
                 if status == "DEAD": dead += 1
                 else: retried += 1
             else:
-                if self._finish(item, status="DELIVERED", now=current):
+                receipt_time = claim_time if deterministic_clock else time()
+                if self._finish(item, status="DELIVERED", now=receipt_time):
                     delivered += 1
         return TenantOutboxDispatchResult(len(items), delivered, retried, dead)
 
