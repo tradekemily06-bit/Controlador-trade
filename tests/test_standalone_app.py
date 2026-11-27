@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import io
 import json
 import tempfile
@@ -10,6 +11,7 @@ from urllib.parse import urlsplit
 
 from standalone_app import StandaloneWSGIApplication, _validate_bind_security
 from analysis.decision_record import DecisionRecord
+from security.push_subscription_registry import TenantPushSubscriptionRegistry
 
 
 class FakeRuntime:
@@ -1994,3 +1996,99 @@ class PublicBindSecurityTests(unittest.TestCase):
         self.assertEqual(body["oauth_token_refresh"]["state"], "RUNNING")
         self.assertNotIn("registered_owner_count", body["oauth_token_refresh"])
         self.assertFalse(body["oauth_token_refresh"]["execution_authorized"])
+
+
+
+class PushSubscriptionStandaloneRouteTests(unittest.TestCase):
+    class Store:
+        production_durable = True
+        encrypted_at_rest = True
+
+        def __init__(self):
+            self.rows = {}
+
+        def list_for_owner(self, context):
+            return [
+                {**value, "device_id": device}
+                for (tenant, subject, device), value in self.rows.items()
+                if tenant == context.tenant_id and subject == context.subject_id
+            ]
+
+        def put_for_owner(self, context, device_id, record):
+            self.rows[(context.tenant_id, context.subject_id, device_id)] = record
+
+        def delete_for_owner(self, context, device_id):
+            return self.rows.pop((context.tenant_id, context.subject_id, device_id), None) is not None
+
+    @staticmethod
+    def subscription_payload():
+        public_key = b"\\x04" + b"p" * 64
+        return {
+            "device_id": "browser-1",
+            "subscription": {
+                "endpoint": "https://fcm.googleapis.com/fcm/send/example",
+                "keys": {
+                    "p256dh": base64.urlsafe_b64encode(public_key).decode().rstrip("="),
+                    "auth": base64.urlsafe_b64encode(b"a" * 16).decode().rstrip("="),
+                },
+                "expirationTime": None,
+            },
+        }
+
+    def test_push_subscription_routes_mount_only_when_registry_is_injected(self):
+        runtime = FakeRuntime()
+        runtime.tenant_push_subscription_registry = TenantPushSubscriptionRegistry(self.Store())
+        app = StandaloneWSGIApplication(runtime)
+        with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
+            status, created = call_wsgi(
+                app, "/api/push/subscriptions", method="POST",
+                body=self.subscription_payload(),
+            )
+            self.assertEqual(status, "201 Created")
+            self.assertEqual(created["device"]["status"], "ACTIVE")
+
+            status, listed = call_wsgi(app, "/api/push/subscriptions")
+            self.assertEqual(status, "200 OK")
+            self.assertEqual(listed["devices"][0]["device_id"], "browser-1")
+            self.assertNotIn("endpoint", listed["devices"][0])
+
+            status, revoked = call_wsgi(
+                app, "/api/push/subscriptions/browser-1", method="DELETE",
+            )
+            self.assertEqual(status, "200 OK")
+            self.assertTrue(revoked["device"]["revoked"])
+
+    def test_push_routes_use_verified_remote_tenant_and_deny_missing_identity(self):
+        runtime = FakeRuntime()
+        runtime.tenant_push_subscription_registry = TenantPushSubscriptionRegistry(self.Store())
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, denied = call_wsgi(
+                app, "/api/push/subscriptions",
+                remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+            )
+            self.assertEqual(status, "503 Service Unavailable")
+
+            status, created = call_wsgi(
+                app, "/api/push/subscriptions", method="POST",
+                body=self.subscription_payload(),
+                remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+            self.assertEqual(status, "201 Created")
+
+            status, bob = call_wsgi(
+                app, "/api/push/subscriptions",
+                remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="bob", tenant_id="tenant-a",
+            )
+            self.assertEqual(status, "200 OK")
+            self.assertEqual(bob["devices"], [])
