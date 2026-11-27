@@ -21,6 +21,7 @@ from integration.standalone_foundation_status import standalone_storage_status
 from security.identity_boundary import IdentityPolicy
 from security.wsgi_identity import trusted_tenant_context_from_wsgi
 from security.tenant_context import TenantContext
+from integration.tenant_web_push_wsgi import TenantPushSubscriptionWSGI
 from data.timeframes import list_supported_timeframes
 from analysis.tenant_decision_analytics import summarize_tenant_decisions, build_tenant_decision_report
 
@@ -180,6 +181,23 @@ class StandaloneWSGIApplication:
         if runtime is None or runtime.closed:
             raise ValueError("runtime standalone ativo é obrigatório")
         self.runtime = runtime
+        registry = getattr(runtime, "tenant_push_subscription_registry", None)
+        self.push_subscription_app = None
+        if registry is not None:
+            self.push_subscription_app = TenantPushSubscriptionWSGI(
+                registry,
+                context_resolver=self._push_tenant_context,
+                # The standalone API uses bearer-token access plus exact-origin
+                # CORS; it does not authenticate via ambient browser cookies.
+                mutation_authorizer=lambda environ: _authorized(environ)[0],
+            )
+
+    @staticmethod
+    def _push_tenant_context(environ):
+        authorized, reason = _authorized(environ)
+        if not authorized:
+            return None
+        return _tenant_context_for_request(environ, reason)
 
     def __call__(self, environ, start_response):
         request_id = SECURITY.request_id()
@@ -375,6 +393,13 @@ class StandaloneWSGIApplication:
                 {"error": reason, "execution_authorized": False},
                 request_id,
             )
+
+        # Push registration/revocation shares the same verified tenant identity
+        # and bearer-token authorization boundary as the standalone analyst API.
+        if self.push_subscription_app is not None:
+            push_response = self.push_subscription_app(environ, start_response)
+            if push_response is not None:
+                return push_response
 
         # Dedicated market analysis, monitor, memory, statistics and report APIs
         # are tenant-scoped. The generic cross-area route remains blocked.
