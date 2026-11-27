@@ -507,3 +507,49 @@ def test_subscription_diagnostics_distinguish_disconnected_waiting_and_fresh(tmp
     row = monitor.subscriptions(owner)[0]
     assert row["adapter_status"] == "DISCONNECTED"
     assert row["data_freshness_state"] == "DISCONNECTED"
+
+
+def test_concurrent_cycle_ticks_do_not_duplicate_analysis_or_notifications(tmp_path):
+    owner = TenantContext("tenant-a", "alice")
+    connection = _id("c")
+    sessions = Sessions()
+    sessions.add(owner, connection, "broker_a")
+    now = datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc)
+    expected = datetime(2026, 11, 27, 12, 0, tzinfo=timezone.utc)
+    entered = threading.Event()
+    release = threading.Event()
+    emitted = []
+
+    class SlowAnalyzer:
+        calls = 0
+        def analyze(self, **kwargs):
+            self.calls += 1
+            entered.set()
+            assert release.wait(3)
+            return {
+                "signal": "AGUARDAR", "status": "ANALYZED",
+                "market_data": {"last_candle_at": expected.isoformat()},
+            }
+
+    analyzer = SlowAnalyzer()
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "concurrent-cycle.sqlite3", sessions,
+        lambda _session, _context: analyzer, on_result=emitted.append,
+    )
+    monitor.subscribe(owner, connection, "EURUSD", "5m")
+    first_result = []
+    first = threading.Thread(target=lambda: first_result.extend(monitor.run_once(now=now)))
+    first.start()
+    assert entered.wait(2)
+
+    # A second scheduler tick overlaps the first one for the same watch.
+    second_result = monitor.run_once(now=now)
+    release.set()
+    first.join(3)
+
+    assert not first.is_alive()
+    assert len(first_result) == 1
+    assert second_result == []
+    assert analyzer.calls == 1
+    assert len(emitted) == 1
+    assert len(monitor.latest_results(owner, connection)) == 1
