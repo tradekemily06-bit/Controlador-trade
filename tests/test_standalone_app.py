@@ -1094,6 +1094,29 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertFalse(body["delivery_worker"]["running"])
         self.assertEqual(body["delivery_worker"]["outbox"]["PENDING"], 1)
 
+    def test_notification_status_surfaces_degraded_worker(self):
+        runtime = FakeRuntime()
+
+        class DegradedWorker:
+            def status(self):
+                return {
+                    "configured": True,
+                    "running": True,
+                    "state": "DEGRADED",
+                    "last_error": "provider timeout",
+                    "last_result": None,
+                    "outbox": {"PENDING": 1, "IN_FLIGHT": 0, "DELIVERED": 0, "DEAD": 0},
+                }
+
+        runtime.notification_worker = DegradedWorker()
+        app = StandaloneWSGIApplication(runtime)
+        status, body = call_wsgi(app, "/api/notifications/status")
+
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["external_delivery"], "WORKER_DEGRADED")
+        self.assertTrue(body["delivery_worker"]["running"])
+        self.assertEqual(body["delivery_worker"]["state"], "DEGRADED")
+
     def test_notification_status_reports_running_worker(self):
         runtime = FakeRuntime()
 
