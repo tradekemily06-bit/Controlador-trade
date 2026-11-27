@@ -583,12 +583,13 @@ class TenantConnectionTimeframeMonitor:
         self, row: dict[str, Any], *, lease_seconds: float = 300.0,
     ) -> tuple[str, str] | None:
         """Atomically claim a watch across workers sharing this SQLite database."""
-        if (
-            isinstance(lease_seconds, bool)
-            or not isinstance(lease_seconds, (int, float))
-            or not math.isfinite(lease_seconds)
-            or lease_seconds <= 0
-        ):
+        if isinstance(lease_seconds, bool) or not isinstance(lease_seconds, (int, float)):
+            raise ValueError("lease_seconds deve ser um número finito positivo")
+        try:
+            lease_is_finite = math.isfinite(lease_seconds)
+        except OverflowError:
+            lease_is_finite = False
+        if not lease_is_finite or lease_seconds <= 0:
             raise ValueError("lease_seconds deve ser um número finito positivo")
         key = self._processing_lease_key(row)
         token = uuid.uuid4().hex
