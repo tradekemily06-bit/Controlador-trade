@@ -344,7 +344,7 @@ def test_live_closed_candle_stream_gates_account_timeframe_analysis(tmp_path):
     monitor.subscribe(owner, _id("c"), "EURUSD", "M5")
     assert monitor.run_once(now=now) == []
     assert analyzer.calls == 0
-    assert monitor.subscriptions(owner)[0]["last_status"] == "WAITING_FOR_LIVE_CLOSED_CANDLE"
+    assert monitor.subscriptions(owner)[0]["last_status"] == "LIVE_STREAM_UNAVAILABLE"
 
     candle = SimpleNamespace(
         timestamp=expected,
@@ -761,6 +761,7 @@ def test_reconnect_is_serialized_for_timeframes_sharing_one_account_adapter(tmp_
     connection = _id("e")
 
     class ReconnectingAdapter:
+        account_id = 700
         def __init__(self):
             self.connected = False
             self.reconnect_calls = 0
