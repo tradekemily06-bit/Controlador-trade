@@ -605,6 +605,67 @@ class StandaloneWSGIApplication:
                 request_id,
             )
 
+        if method == "GET" and path == "/api/fiscal/summary":
+            # The existing fiscal database is bound to one configured local owner.
+            # Do not expose it to remote tenants, even when their identity is verified.
+            if reason != "local":
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {
+                        "error": "resumo fiscal remoto indisponível até a persistência fiscal por tenant estar integrada e validada",
+                        "state": "FISCAL_REMOTE_STORAGE_NOT_READY",
+                        "execution_authorized": False,
+                    },
+                    request_id,
+                )
+            tenant_context = _tenant_context_for_request(environ, reason)
+            fiscal = getattr(self.runtime, "fiscal_reserve", None)
+            owner_id = getattr(self.runtime, "fiscal_owner_id", None)
+            if tenant_context is None or fiscal is None or not isinstance(owner_id, str) or not owner_id:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "repositório fiscal local não configurado", "state": "FISCAL_NOT_CONFIGURED", "execution_authorized": False},
+                    request_id,
+                )
+            try:
+                params = parse_qs(str(environ.get("QUERY_STRING") or ""), strict_parsing=False)
+                raw_limit = params.get("limit", ["100"])[-1]
+                raw_offset = params.get("offset", ["0"])[-1]
+                limit = int(raw_limit)
+                offset = int(raw_offset)
+                if isinstance(limit, bool) or not 1 <= limit <= 500:
+                    raise ValueError("limit deve estar entre 1 e 500")
+                if isinstance(offset, bool) or not 0 <= offset <= 100000:
+                    raise ValueError("offset deve estar entre 0 e 100000")
+                summary = fiscal.summary(
+                    owner_id,
+                    history_limit=limit,
+                    history_offset=offset,
+                )
+            except (ValueError, TypeError, OverflowError) as exc:
+                return _json_response(
+                    start_response, HTTPStatus.BAD_REQUEST,
+                    {"error": str(exc), "execution_authorized": False},
+                    request_id,
+                )
+            except Exception:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "não foi possível consultar o resumo fiscal local", "execution_authorized": False},
+                    request_id,
+                )
+            return _json_response(
+                start_response, HTTPStatus.OK,
+                {
+                    "summary": summary,
+                    "scope": "LOCAL_SINGLE_USER",
+                    "tax_assessment": False,
+                    "money_movement": False,
+                    "execution_authorized": False,
+                },
+                request_id,
+            )
+
         if method == "POST" and path == "/api/analysis/run":
             tenant_context = _tenant_context_for_request(environ, reason)
             if tenant_context is None:
