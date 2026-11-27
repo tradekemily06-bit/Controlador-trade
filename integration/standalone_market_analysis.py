@@ -1,7 +1,7 @@
 """Read-only, broker-neutral market analysis for the standalone application."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from hashlib import sha256
 from typing import Any, Callable
 
@@ -36,6 +36,8 @@ class StandaloneMarketAnalysisService:
         source: str,
         intelligence: UnifiedIntelligence,
         decision_sink: Callable[..., bool | None] | None = None,
+        signal_evidence_sink: Callable[..., dict[str, Any]] | None = None,
+        market_data_provenance: str | None = None,
     ) -> None:
         if provider is None:
             raise ValueError("market data provider is required")
@@ -47,6 +49,12 @@ class StandaloneMarketAnalysisService:
         if decision_sink is not None and not callable(decision_sink):
             raise ValueError("decision_sink must be callable")
         self.decision_sink = decision_sink
+        if signal_evidence_sink is not None and not callable(signal_evidence_sink):
+            raise ValueError("signal_evidence_sink must be callable")
+        if market_data_provenance not in (None, "REAL_MARKET_DATA"):
+            raise ValueError("unsupported market data provenance")
+        self.signal_evidence_sink = signal_evidence_sink
+        self.market_data_provenance = market_data_provenance
         self.feed = MarketDataFeed(provider, source=self.source)
         self.orchestrator = TradingOrchestrator(
             feed=self.feed,
@@ -288,6 +296,52 @@ class StandaloneMarketAnalysisService:
             "execution_authorized": False,
             "order_submitted": False,
         }
+        response["signal_evidence_audit"] = {"status": "NOT_CONFIGURED"}
+        if (
+            self.signal_evidence_sink is not None
+            and self.market_data_provenance == "REAL_MARKET_DATA"
+            and isinstance(decision_context, TenantContext)
+            and integrity.safe_for_analysis
+        ):
+            last_candle = result.market_data.candles[-1]
+            candle_at = last_candle.timestamp
+            candle_close_at = candle_at + get_timeframe_interval(timeframe)
+            observed_at = datetime.now(timezone.utc)
+            valid_until = candle_at + get_timeframe_interval(timeframe) * 2
+            evidence_identity = (
+                f"{self.source}|{symbol.strip().upper()}|{timeframe}|"
+                f"{candle_at.isoformat()}"
+            )
+            signal_id = "signal-" + sha256(evidence_identity.encode("utf-8")).hexdigest()[:32]
+            try:
+                audited = self.signal_evidence_sink(
+                    decision_context,
+                    signal_id=signal_id,
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    direction=signal,
+                    model_version="standalone-technical-v1",
+                    evidence_score=float(score),
+                    score_semantics="EVIDENCE_STRENGTH_NOT_WIN_PROBABILITY",
+                    candle_close_at=candle_close_at.isoformat(),
+                    observed_at=observed_at.isoformat(),
+                    valid_until=valid_until.isoformat(),
+                    provenance=self.market_data_provenance,
+                )
+                response["signal_evidence_audit"] = {
+                    "status": "RECORDED",
+                    "signal_id": signal_id,
+                    "timeframe": timeframe,
+                    "score_type": "EVIDENCE_STRENGTH",
+                    "probability_of_profit": None,
+                    "store_status": audited.get("audit_status", "RECORDED"),
+                }
+            except Exception as exc:
+                response["signal_evidence_audit"] = {
+                    "status": "PERSISTENCE_ERROR",
+                    "error_class": type(exc).__name__,
+                    "signal_id": signal_id,
+                }
         response["decision_memory"] = {"status": "NOT_CONFIGURED"}
         if self.decision_sink is not None:
             candle_at = result.market_data.candles[-1].timestamp.isoformat()
