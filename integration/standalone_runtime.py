@@ -16,6 +16,7 @@ from security.tenant_provider_connections import TenantProviderConnectionRegistr
 from integration.tenant_market_data_sessions import TenantMarketDataSessionRegistry
 from integration.tenant_connection_timeframe_monitor import TenantConnectionTimeframeMonitor
 from integration.tenant_provider_connection_service import TenantProviderConnectionService
+from integration.tenant_mt5_relay_registry import TenantMT5RelayRegistry
 from security.tenant_scoped_ecosystem_state import TenantScopedEcosystemState
 from security.tenant_scoped_decision_memory import TenantScopedDecisionMemory
 from integration.tenant_notification_dispatcher import TenantNotificationDispatcher
@@ -135,6 +136,8 @@ class StandaloneRuntime:
         notification_sink=None,
         provider_secret_resolver=None,
         provider_adapter_factories: Mapping[str, Any] | None = None,
+        tenant_mt5_relay_source_id_resolver=None,
+        tenant_mt5_relay_token_resolver=None,
     ) -> None:
         configured_identity = os.getenv("CONTROLADOR_SINGLE_USER_IDENTITY", "").strip()
         if not configured_identity:
@@ -168,6 +171,15 @@ class StandaloneRuntime:
             self.tenant_provider_connections = TenantProviderConnectionRegistry(tenant_storage)
             self.tenant_market_data_sessions = TenantMarketDataSessionRegistry(
                 self.tenant_provider_connections
+            )
+            self.tenant_mt5_relay_token_resolver = tenant_mt5_relay_token_resolver
+            self.tenant_mt5_relay_registry = (
+                TenantMT5RelayRegistry(
+                    self.tenant_provider_connections,
+                    self.runtime_dir / "tenant-mt5-relays",
+                    tenant_mt5_relay_source_id_resolver,
+                )
+                if callable(tenant_mt5_relay_source_id_resolver) else None
             )
             self.tenant_provider_connection_service = TenantProviderConnectionService(
                 self.tenant_provider_connections,
