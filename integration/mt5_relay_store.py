@@ -119,16 +119,16 @@ class MT5RelayStore:
             raise MT5RelayError("candles duplicados no mesmo lote")
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as db:
-            # This relay store intentionally supports one active MT5 source.
-            # Switching source IDs clears the previous source's candles so a
-            # new account can never inherit another account's cached history.
+            # One relay database is permanently bound to its first source.
+            # Never let a bearer-token holder switch accounts by changing an
+            # untrusted payload field; separate accounts need separate stores.
             if db.execute("SELECT 1 FROM mt5_relay_messages WHERE message_id=?", (message_id,)).fetchone():
                 raise MT5RelayError("mensagem repetida")
             previous = db.execute(
                 "SELECT source_id FROM mt5_relay_state WHERE singleton=1"
             ).fetchone()
             if previous is not None and previous["source_id"] != source_id:
-                db.execute("DELETE FROM mt5_relay_candles")
+                raise MT5RelayError("origem diferente da origem vinculada a este relay")
             db.execute(
                 "INSERT INTO mt5_relay_messages(message_id,accepted_at) VALUES(?,?)",
                 (message_id, now),
