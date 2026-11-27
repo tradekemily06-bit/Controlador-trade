@@ -67,7 +67,11 @@ class TenantConnectionTimeframeMonitor:
         # uses them as a closed-candle readiness gate before analysis.
         self._live_streams: set[tuple[str, str, str, str, str]] = set()
         self._live_stream_adapters: dict[tuple[str, str, str, str, str], Any] = {}
-        self._live_candles: dict[tuple[str, str, str, str, str], Any] = {}
+        # A generation token prevents callbacks retained by a provider from a
+        # previous subscribe/unsubscribe cycle from becoming valid again when
+        # the same adapter instance is rebound to the same watch.
+        self._live_stream_tokens: dict[tuple[str, str, str, str, str], str] = {}
+        self._live_candles: dict[tuple[str, str, str, str, str], Any] = {};
         self._live_stream_retry_at: dict[tuple[str, str, str, str, str], float] = {}
         self._processing: set[tuple[str, str, str, str, str]] = set()
         self._adapter_reconnect_locks: dict[int, threading.Lock] = {}
@@ -216,6 +220,7 @@ class TenantConnectionTimeframeMonitor:
             if key in self._live_streams:
                 self._live_streams.discard(key)
                 previous_adapter = self._live_stream_adapters.pop(key, None)
+                self._live_stream_tokens.pop(key, None)
                 self._live_candles.pop(key, None)
                 self._live_stream_retry_at.pop(key, None)
             if self._live_stream_retry_at.get(key, 0.0) > time.monotonic():
@@ -249,6 +254,7 @@ class TenantConnectionTimeframeMonitor:
                 with self._lock:
                     self._live_stream_retry_at[key] = time.monotonic() + 10.0
                 return False
+        binding_token = uuid.uuid4().hex
         def receive(event: Any) -> None:
             if not isinstance(event, dict) or event.get("closed") is not True:
                 return
@@ -285,7 +291,11 @@ class TenantConnectionTimeframeMonitor:
                 # A callback retained by an old adapter may fire after account
                 # rebind/disconnect. Accept events only from the currently
                 # registered adapter for this exact tenant/account watch.
-                if key not in self._live_streams or self._live_stream_adapters.get(key) is not adapter:
+                if (
+                    key not in self._live_streams
+                    or self._live_stream_adapters.get(key) is not adapter
+                    or self._live_stream_tokens.get(key) != binding_token
+                ):
                     return
                 previous = self._live_candles.get(key)
                 previous_at = getattr(previous, "timestamp", None)
@@ -296,6 +306,7 @@ class TenantConnectionTimeframeMonitor:
         with self._lock:
             self._live_streams.add(key)
             self._live_stream_adapters[key] = adapter
+            self._live_stream_tokens[key] = binding_token
             self._live_candles.pop(key, None)
         try:
             subscribe(symbol, timeframe, receive)
@@ -304,6 +315,7 @@ class TenantConnectionTimeframeMonitor:
                 if self._live_stream_adapters.get(key) is adapter:
                     self._live_streams.discard(key)
                     self._live_stream_adapters.pop(key, None)
+                    self._live_stream_tokens.pop(key, None)
                     self._live_candles.pop(key, None)
                 self._live_stream_retry_at[key] = time.monotonic() + 10.0
             return False
@@ -365,6 +377,7 @@ class TenantConnectionTimeframeMonitor:
             with self._lock:
                 self._live_streams.discard(key)
                 previous_adapter = self._live_stream_adapters.pop(key, None)
+                self._live_stream_tokens.pop(key, None)
                 self._live_candles.pop(key, None)
                 self._live_stream_retry_at.pop(key, None)
             session = self.session_registry.get(owner, connection_id=connection)
