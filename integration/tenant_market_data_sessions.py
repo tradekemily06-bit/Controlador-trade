@@ -132,13 +132,20 @@ class TenantMarketDataSessionRegistry:
                         if isinstance(reported, dict):
                             health = {
                                 key: reported[key]
-                                for key in ("connected", "account_mode", "last_seen", "source_id", "stored_candles")
+                                for key in (
+                                    "connected", "account_mode", "last_seen", "source_id",
+                                    "stored_candles", "active_spot_symbols",
+                                    "spot_event_queue_depth", "spot_event_overflow_count",
+                                )
                                 if key in reported
                             }
                             if reported.get("connected") is False:
                                 health_status = "DISCONNECTED"
                             elif reported.get("connected") is True:
-                                raw_seen = reported.get("last_seen")
+                                if int(reported.get("spot_event_overflow_count", 0) or 0) > 0:
+                                    health_status = "STREAM_BACKPRESSURE"
+                                else:
+                                    raw_seen = reported.get("last_seen")
                                 try:
                                     seen = datetime.fromisoformat(str(raw_seen).replace("Z", "+00:00"))
                                     age = (
@@ -147,10 +154,10 @@ class TenantMarketDataSessionRegistry:
                                     ).total_seconds() if seen.tzinfo else float("inf")
                                 except (TypeError, ValueError, OverflowError):
                                     age = float("inf")
-                                health_status = (
-                                    "CONNECTED" if -5 <= age <= 30
-                                    else "HEARTBEAT_STALE_OR_UNVERIFIED"
-                                )
+                                    health_status = (
+                                        "CONNECTED" if -5 <= age <= 30
+                                        else "HEARTBEAT_STALE_OR_UNVERIFIED"
+                                    )
                     except Exception:
                         health_status = "STATUS_ERROR"
             output.append({
