@@ -697,3 +697,21 @@ def test_processing_lease_prevents_duplicate_work_across_monitor_instances(tmp_p
     assert len(first_result) == 1
     assert analyzer.calls == 1
     assert len(first.latest_results(owner, connection)) == 1
+
+
+def test_processing_lease_renewal_requires_current_owner_and_unexpired_lease(tmp_path):
+    owner = TenantContext("tenant-a", "alice")
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "lease-renewal.sqlite3", Sessions(),
+        lambda _session, _context: None,
+    )
+    row = {
+        "tenant_id": owner.tenant_id, "subject_id": owner.subject_id,
+        "connection_id": _id("a"), "symbol": "EURUSD", "timeframe": "5m",
+    }
+    lease = monitor._acquire_processing_lease(row, lease_seconds=30)
+    assert lease is not None
+    assert monitor._renew_processing_lease(lease, lease_seconds=60) is True
+    assert monitor._renew_processing_lease(("wrong-key", "wrong-token")) is False
+    monitor._release_processing_lease(lease)
+    assert monitor._renew_processing_lease(lease) is False
