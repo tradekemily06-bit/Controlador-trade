@@ -1424,6 +1424,76 @@ def test_notification_dispatch_validates_arguments_without_sink(tmp_path):
         monitor.dispatch_pending_notifications(limit=0)
     assert monitor.dispatch_pending_notifications() == 0
 
+def test_malformed_notification_is_dead_lettered_without_blocking_valid_events(tmp_path):
+    import json
+    import uuid
+
+    owner = TenantContext("tenant-outbox-poison", "alice")
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "notification-poison-pill.sqlite3",
+        Sessions(),
+        lambda _session, _context: None,
+        on_result=lambda _event: None,
+    )
+    now = datetime.now(timezone.utc)
+    current_m5 = monitor.expected_last_closed_candle("M5", now)
+    connection = _id("d")
+    malformed_id = str(uuid.uuid4())
+    valid_id = str(uuid.uuid4())
+    with monitor._connect() as db:
+        db.execute(
+            """
+            INSERT INTO tenant_connection_notification_outbox (
+                event_id, tenant_id, subject_id, connection_id, symbol,
+                timeframe, candle_at, result_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                malformed_id, owner.tenant_id, owner.subject_id, connection,
+                "EURUSD", "M5", current_m5.isoformat(), "{not-json",
+                now.timestamp(),
+            ),
+        )
+        db.execute(
+            """
+            INSERT INTO tenant_connection_notification_outbox (
+                event_id, tenant_id, subject_id, connection_id, symbol,
+                timeframe, candle_at, result_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                valid_id, owner.tenant_id, owner.subject_id, connection,
+                "GBPUSD", "M5", current_m5.isoformat(),
+                json.dumps({"result": {"signal": "VENDA", "status": "ANALYZED"}}),
+                now.timestamp() + 1,
+            ),
+        )
+
+    delivered = []
+    monitor.on_result = delivered.append
+    assert monitor.dispatch_pending_notifications(limit=10) == 1
+    assert len(delivered) == 1
+    assert delivered[0]["symbol"] == "GBPUSD"
+    assert delivered[0]["result"]["signal"] == "VENDA"
+    with monitor._connect() as db:
+        malformed = db.execute(
+            """
+            SELECT dead_at, last_error, lease_until, lease_token
+            FROM tenant_connection_notification_outbox WHERE event_id=?
+            """,
+            (malformed_id,),
+        ).fetchone()
+        valid = db.execute(
+            "SELECT delivered_at FROM tenant_connection_notification_outbox WHERE event_id=?",
+            (valid_id,),
+        ).fetchone()
+    assert malformed["dead_at"] is not None
+    assert malformed["last_error"] == "InvalidPayload"
+    assert malformed["lease_until"] is None
+    assert malformed["lease_token"] is None
+    assert valid["delivered_at"] is not None
+
+
 def test_notification_expiry_is_scoped_to_its_own_timeframe(tmp_path):
     import json
     import uuid
