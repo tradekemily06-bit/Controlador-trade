@@ -40,6 +40,7 @@ class FakeRuntime:
 
     ecosystem_service = EcosystemService()
     notification_worker = None
+    backup_scheduler = None
 
     class TenantState:
         def __init__(self):
@@ -392,6 +393,37 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertFalse(body["tenant_fiscal_storage"]["production_ready"])
         self.assertEqual(body["identity"]["multi_tenant_isolation"], "NOT_IMPLEMENTED")
         self.assertFalse(body["identity"]["shared_bearer_token_is_user_identity"])
+        self.assertFalse(body["backup_scheduler"]["enabled"])
+        self.assertEqual(body["backup_scheduler"]["status"], "NOT_CONFIGURED")
+        self.assertFalse(body["execution_authorized"])
+
+    def test_backup_status_endpoint_never_claims_unconfigured_backup_or_replication(self):
+        app = StandaloneWSGIApplication(FakeRuntime())
+        status, body = call_wsgi(app, "/api/backup/status")
+        self.assertEqual(status, "200 OK")
+        self.assertFalse(body["enabled"])
+        self.assertFalse(body["worker_running"])
+        self.assertEqual(body["status"], "NOT_CONFIGURED")
+        self.assertEqual(body["off_host_replication"], "NOT_CONFIGURED")
+        self.assertFalse(body["execution_authorized"])
+
+    def test_backup_status_endpoint_reports_injected_scheduler(self):
+        runtime = FakeRuntime()
+        class Scheduler:
+            def status(self):
+                return {
+                    "enabled": True,
+                    "worker_running": True,
+                    "last_status": "SUCCESS",
+                    "off_host_replication": "NOT_CONFIGURED",
+                    "execution_authorized": False,
+                }
+        runtime.backup_scheduler = Scheduler()
+        status, body = call_wsgi(StandaloneWSGIApplication(runtime), "/api/backup/status")
+        self.assertEqual(status, "200 OK")
+        self.assertTrue(body["enabled"])
+        self.assertTrue(body["worker_running"])
+        self.assertEqual(body["last_status"], "SUCCESS")
         self.assertFalse(body["execution_authorized"])
 
     def test_timeframe_catalog_exposes_supported_intervals_and_limits(self):
