@@ -38,21 +38,23 @@ of the nominal start of the trendbar. The adapter converts it to an
 timezone-aware UTC `datetime`; it does not reinterpret the value as local
 computer time or broker-wall-clock time.
 
-The timeframe monitor currently computes its expected close from fixed UTC
-interval buckets (including UTC day boundaries and a Monday-anchored UTC week).
-It then requires an exact timestamp match before analysis or notification.
-This is intentionally fail-closed: a D1/W1 bar whose broker session opens on a
-different UTC boundary is withheld rather than shifted, relabeled, or analyzed
-as if it belonged to another candle.
+Intraday periods use fixed UTC interval buckets and require an exact
+timestamp match before analysis or notification. Daily and weekly periods are
+different: the tenant timeframe monitor now requires the provider adapter to
+implement `expected_last_closed_candle(timeframe, now, close_grace_seconds)`.
+The method must return a timezone-aware timestamp calculated from the verified
+broker/account session calendar. If that capability is absent or returns an
+invalid value, analysis is withheld with `WAITING_FOR_SESSION_CALENDAR`; stored
+D1/W1 signals are also withheld from the active view with
+`SESSION_CALENDAR_UNAVAILABLE`.
 
-**Important limitation:** a UTC timestamp does not by itself prove that a
-provider's D1/W1 session boundary matches the monitor's UTC bucket. Before
-enabling D1/W1 signals for a specific cTrader broker/account, compare several
-actual historical and live bar open timestamps with that broker's documented
-session convention, including daylight-saving transitions and weekend reopen.
-If the boundaries differ, provider-specific session-calendar support must be
-implemented and tested before those periods are considered signal-ready. Do not
-weaken the exact candle match to make a mismatched feed appear fresh.
+**cTrader D1/W1 remain blocked by default:** the current adapter does not yet
+implement a verified broker-session calendar. A UTC timestamp does not by
+itself prove that the broker's D1/W1 session boundary matches a UTC bucket.
+Before implementing that capability, compare actual historical and live bar
+open timestamps with the broker/account's documented session convention,
+including daylight-saving transitions and weekend reopen. Do not weaken exact
+candle matching or substitute a guessed timezone.
 
 M1/M5 and other intraday periods are also matched by exact provider candle-open
 timestamp and canonical timeframe; no timeframe may reuse another period's
