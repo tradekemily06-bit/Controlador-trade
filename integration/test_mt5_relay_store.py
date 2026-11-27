@@ -34,7 +34,7 @@ def _payload(**overrides):
 
 
 def test_relay_ingests_validated_demo_candles_and_serves_provider_contract(tmp_path):
-    store = MT5RelayStore(tmp_path / "relay.sqlite3")
+    store = MT5RelayStore(tmp_path / "relay.sqlite3", expected_source_id="local-demo")
     result = store.ingest(_payload())
 
     candles = store.fetch(MarketDataRequest("EURUSD", "M5", 10))
@@ -53,13 +53,13 @@ def test_relay_ingests_validated_demo_candles_and_serves_provider_contract(tmp_p
     {"candles": []},
 ])
 def test_relay_rejects_unsafe_or_invalid_payloads(tmp_path, overrides):
-    store = MT5RelayStore(tmp_path / "relay.sqlite3")
+    store = MT5RelayStore(tmp_path / "relay.sqlite3", expected_source_id="local-demo")
     with pytest.raises(MT5RelayError):
         store.ingest(_payload(**overrides))
 
 
 def test_relay_rejects_replayed_message_id(tmp_path):
-    store = MT5RelayStore(tmp_path / "relay.sqlite3")
+    store = MT5RelayStore(tmp_path / "relay.sqlite3", expected_source_id="local-demo")
     payload = _payload()
     store.ingest(payload)
     with pytest.raises(MT5RelayError, match="repetida"):
@@ -67,7 +67,7 @@ def test_relay_rejects_replayed_message_id(tmp_path):
 
 
 def test_relay_fails_closed_when_heartbeat_is_stale(tmp_path):
-    store = MT5RelayStore(tmp_path / "relay.sqlite3")
+    store = MT5RelayStore(tmp_path / "relay.sqlite3", expected_source_id="local-demo")
     store.ingest(_payload())
     with store._connect() as db:
         db.execute(
