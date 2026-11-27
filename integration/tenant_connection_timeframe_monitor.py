@@ -125,10 +125,22 @@ class TenantConnectionTimeframeMonitor:
                     created_at REAL NOT NULL,
                     attempts INTEGER NOT NULL DEFAULT 0,
                     lease_until REAL,
+                    lease_token TEXT,
                     delivered_at REAL,
                     UNIQUE(tenant_id, subject_id, connection_id, symbol, timeframe, candle_at)
                 )
             """)
+            columns = {
+                str(row[1])
+                for row in db.execute(
+                    "PRAGMA table_info(tenant_connection_notification_outbox)"
+                ).fetchall()
+            }
+            if "lease_token" not in columns:
+                db.execute(
+                    "ALTER TABLE tenant_connection_notification_outbox "
+                    "ADD COLUMN lease_token TEXT"
+                )
 
     @staticmethod
     def _owner(context: TenantContext | None) -> TenantContext:
@@ -700,12 +712,13 @@ class TenantConnectionTimeframeMonitor:
                 if row is None:
                     db.commit()
                     break
+                lease_token = uuid.uuid4().hex
                 claimed = db.execute("""
                     UPDATE tenant_connection_notification_outbox
-                    SET lease_until=?, attempts=attempts+1
+                    SET lease_until=?, lease_token=?, attempts=attempts+1
                     WHERE event_id=? AND delivered_at IS NULL
                       AND (lease_until IS NULL OR lease_until <= ?)
-                """, (now + lease_seconds, row["event_id"], now)).rowcount
+                """, (now + lease_seconds, lease_token, row["event_id"], now)).rowcount
                 db.commit()
             if claimed != 1:
                 continue
@@ -730,9 +743,10 @@ class TenantConnectionTimeframeMonitor:
             with self._lock, self._connect() as db:
                 db.execute("""
                     UPDATE tenant_connection_notification_outbox
-                    SET delivered_at=?, lease_until=NULL
+                    SET delivered_at=?, lease_until=NULL, lease_token=NULL
                     WHERE event_id=? AND delivered_at IS NULL
-                """, (time.time(), row["event_id"]))
+                      AND lease_token=? AND lease_until>?
+                """, (time.time(), row["event_id"], lease_token, time.time()))
             delivered += 1
         return delivered
 
