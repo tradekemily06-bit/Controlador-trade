@@ -1871,7 +1871,7 @@ def test_daily_and_weekly_signals_use_provider_session_boundary_for_expiry(
 
     class SessionCalendarAdapter:
         def expected_last_closed_candle(self, requested_timeframe, now, *, close_grace_seconds):
-            assert requested_timeframe == timeframe.lower()
+            assert requested_timeframe == {"D1": "1d", "W1": "1w"}[timeframe]
             assert now.tzinfo is timezone.utc
             assert close_grace_seconds == 3.0
             return expected_at
