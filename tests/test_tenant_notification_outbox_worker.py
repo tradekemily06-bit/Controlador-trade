@@ -107,3 +107,30 @@ def test_worker_rejects_invalid_stop_timeouts(tmp_path, bad):
     worker = TenantNotificationOutboxWorker(dispatcher.outbox, _Sink())
     with pytest.raises(ValueError):
         worker.stop(timeout=bad)
+
+
+def test_worker_status_marks_stale_delivery_cycle_degraded(tmp_path):
+    storage = SQLiteTenantStorage(tmp_path / "tenant-stale.sqlite3")
+    dispatcher = TenantNotificationDispatcher(TenantScopedEcosystemState(storage))
+    worker = TenantNotificationOutboxWorker(dispatcher.outbox, _Sink())
+    worker._thread = __import__("threading").Thread(target=lambda: time.sleep(2), daemon=True)
+    worker._thread.start()
+    worker._last_cycle_at = time.time() - 120
+
+    status = worker.status()
+
+    assert status["running"] is True
+    assert status["state"] == "DEGRADED"
+    assert status["last_cycle_age_seconds"] >= 120
+    worker.stop(timeout=3)
+
+
+def test_worker_status_reports_starting_before_first_cycle(tmp_path):
+    storage = SQLiteTenantStorage(tmp_path / "tenant-starting.sqlite3")
+    dispatcher = TenantNotificationDispatcher(TenantScopedEcosystemState(storage))
+    worker = TenantNotificationOutboxWorker(dispatcher.outbox, _Sink())
+    worker._thread = __import__("threading").Thread(target=lambda: time.sleep(0.05), daemon=True)
+    worker._thread.start()
+
+    assert worker.status()["state"] == "STARTING"
+    worker.stop(timeout=1)
