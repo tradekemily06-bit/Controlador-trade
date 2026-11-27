@@ -157,3 +157,37 @@ def test_provision_rejects_untrusted_tenant_context(tmp_path):
     _owner, _connections, _account, _tokens, service = _setup(tmp_path)
     with pytest.raises(PermissionError):
         service.provision(None, account_alias="Demo")
+
+
+def test_refresh_can_rotate_after_access_token_expiry_without_exposing_it_to_adapters(tmp_path):
+    from datetime import datetime, timedelta, timezone
+
+    owner, connections, account, tokens, service = _setup(
+        tmp_path,
+        refresh=lambda old: {
+            "accessToken": "renewed-access",
+            "refreshToken": "renewed-refresh",
+            "expiresIn": 3600,
+        },
+    )
+    tokens.store(
+        owner,
+        connection_id=account["connection_id"],
+        provider_id="ctrader_open_api",
+        token_set={
+            "access_token": "expired-access",
+            "refresh_token": "still-valid-refresh",
+        },
+        expires_at=(datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
+        scopes=("accounts",),
+    )
+
+    # Normal provider resolution must never return an expired access token.
+    assert tokens.resolve(owner, account["connection_id"]) is None
+
+    # Only the OAuth refresh path may resolve the encrypted refresh material.
+    result = service.refresh(owner, connection_id=account["connection_id"])
+    assert result["status"] == "TOKEN_REFRESHED_ENCRYPTED"
+    resolved = tokens.resolve(owner, account["connection_id"])
+    assert resolved["access_token"] == "renewed-access"
+    assert resolved["refresh_token"] == "renewed-refresh"
