@@ -715,3 +715,42 @@ def test_processing_lease_renewal_requires_current_owner_and_unexpired_lease(tmp
     assert monitor._renew_processing_lease(("wrong-key", "wrong-token")) is False
     monitor._release_processing_lease(lease)
     assert monitor._renew_processing_lease(lease) is False
+
+
+def test_expired_or_replaced_processing_lease_cannot_persist_analysis(tmp_path):
+    owner = TenantContext("tenant-a", "alice")
+    connection = _id("b")
+    sessions = Sessions()
+    sessions.add(owner, connection, "broker_a")
+    now = datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc)
+    expected = datetime(2026, 11, 27, 12, 0, tzinfo=timezone.utc)
+    emitted = []
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "lease-fencing.sqlite3", sessions,
+        lambda _session, _context: Analyzer(expected.isoformat(), "AGUARDAR"),
+        on_result=emitted.append,
+    )
+    monitor.subscribe(owner, connection, "EURUSD", "5m")
+    with monitor._connect() as db:
+        row = dict(db.execute("""
+            SELECT tenant_id, subject_id, connection_id, symbol, timeframe,
+                   last_processed_candle, last_signal
+            FROM tenant_connection_timeframe_watch
+        """).fetchone())
+    stale_lease = monitor._acquire_processing_lease(row)
+    assert stale_lease is not None
+
+    # Simulate lease expiry and a different worker taking ownership.
+    with monitor._connect() as db:
+        db.execute("""
+            UPDATE tenant_connection_timeframe_processing_lease
+            SET owner_token=?, expires_at=?
+            WHERE lease_key=?
+        """, ("new-owner-token", time.time() + 300, stale_lease[0]))
+
+    result = monitor._process_claimed(
+        row, now, processing_lease=stale_lease,
+    )
+    assert result is None
+    assert monitor.latest_results(owner, connection) == []
+    assert emitted == []
