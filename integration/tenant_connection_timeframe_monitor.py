@@ -187,6 +187,16 @@ class TenantConnectionTimeframeMonitor:
         subscribe = getattr(adapter, "subscribe_live_candles", None)
         if not callable(subscribe):
             return False
+        # A stream cannot be advertised as bound unless the adapter itself
+        # exposes a concrete account identity that callbacks can be matched to.
+        adapter_account_id = getattr(adapter, "account_id", None)
+        if (
+            adapter_account_id is None
+            or isinstance(adapter_account_id, bool)
+            or (isinstance(adapter_account_id, str) and not adapter_account_id.strip())
+            or not isinstance(adapter_account_id, (str, int))
+        ):
+            return False
         key = (owner.tenant_id, owner.subject_id, connection, symbol, timeframe)
         previous_adapter = None
         with self._lock:
