@@ -101,3 +101,12 @@ def test_signal_evidence_id_cannot_be_reused_for_different_evidence(tmp_path):
     _record(store, owner, "immutable-id")
     with pytest.raises(ValueError, match="different immutable evidence"):
         _record(store, owner, "immutable-id", direction="VENDA")
+
+def test_signal_evidence_rejects_tampered_noncanonical_tenant_context(tmp_path):
+    store = TenantSignalEvidenceStore(tmp_path / "signals-context.sqlite3")
+    owner = TenantContext("tenant-a", "alice")
+    object.__setattr__(owner, "subject_id", "alice" + chr(10))
+    with pytest.raises(PermissionError):
+        _record(store, owner)
+
+
