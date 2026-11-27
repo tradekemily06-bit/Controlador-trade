@@ -1293,17 +1293,12 @@ def test_live_stream_rejects_missing_account_identity(tmp_path):
         Registry(),
         lambda _session, _context: analyzer,
     )
-    monitor.subscribe(owner, _id("a"), "EURUSD", "M5")
-    candle = SimpleNamespace(timestamp=expected, is_valid=lambda: True)
+    subscription = monitor.subscribe(owner, _id("a"), "EURUSD", "M5")
 
-    # Even a well-formed closed candle cannot enter analysis without an
-    # explicit account identity matching the adapter's bound account.
-    adapter.callback({
-        "symbol": "EURUSD",
-        "timeframe": "M5",
-        "candle": candle,
-        "closed": True,
-    })
+    # Missing adapter identity is rejected before the monitor advertises a
+    # bound stream; no callback can be registered as a false-positive bind.
+    assert subscription["live_candle_stream"] == "NOT_SUPPORTED_OR_UNAVAILABLE"
+    assert not hasattr(adapter, "callback")
     assert monitor.run_once(now=now) == []
     assert analyzer.calls == 0
     assert monitor.subscriptions(owner)[0]["last_status"] == "WAITING_FOR_LIVE_CLOSED_CANDLE"
