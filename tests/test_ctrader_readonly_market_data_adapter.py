@@ -361,4 +361,4 @@ def test_ctrader_handshake_rejects_coerced_account_identity(returned_id):
     with pytest.raises(PermissionError, match="identificador de conta inválido"):
         adapter.handshake()
 
-    assert adapter.status()["authenticated"] is False
+    assert adapter.status()["connected"] is False
