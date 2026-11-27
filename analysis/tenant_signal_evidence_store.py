@@ -7,6 +7,7 @@ intentionally separate from probability calibration: an evidence score such as
 from __future__ import annotations
 
 import sqlite3
+from math import isfinite
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -102,8 +103,12 @@ class TenantSignalEvidenceStore:
             raise ValueError("direction must be COMPRA, VENDA or AGUARDAR")
         if isinstance(evidence_score, bool) or not isinstance(evidence_score, (int, float)):
             raise ValueError("evidence_score must be numeric")
-        if not 0 <= float(evidence_score) <= 100:
-            raise ValueError("evidence_score must be between 0 and 100")
+        try:
+            evidence_score_value = float(evidence_score)
+        except (OverflowError, ValueError) as exc:
+            raise ValueError("evidence_score must be finite and between 0 and 100") from exc
+        if not isfinite(evidence_score_value) or not 0 <= evidence_score_value <= 100:
+            raise ValueError("evidence_score must be finite and between 0 and 100")
         if score_semantics != "EVIDENCE_STRENGTH_NOT_WIN_PROBABILITY":
             raise ValueError("technical score semantics must be explicit")
         if provenance not in _ALLOWED_PROVENANCE:
@@ -121,7 +126,7 @@ class TenantSignalEvidenceStore:
         expected = (
             source_id.strip(), signal_id.strip(), symbol.strip().upper(),
             canonical_timeframe, canonical_direction, model_version.strip(),
-            float(evidence_score), score_semantics, closed, observed, expiry, provenance,
+            evidence_score_value, score_semantics, closed, observed, expiry, provenance,
         )
         with self._connect() as db:
             db.execute(
