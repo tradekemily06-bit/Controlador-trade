@@ -48,13 +48,25 @@ invalid value, analysis is withheld with `WAITING_FOR_SESSION_CALENDAR`; stored
 D1/W1 signals are also withheld from the active view with
 `SESSION_CALENDAR_UNAVAILABLE`.
 
-**cTrader D1/W1 remain blocked by default:** the current adapter does not yet
-implement a verified broker-session calendar. A UTC timestamp does not by
-itself prove that the broker's D1/W1 session boundary matches a UTC bucket.
-Before implementing that capability, compare actual historical and live bar
-open timestamps with the broker/account's documented session convention,
-including daylight-saving transitions and weekend reopen. Do not weaken exact
-candle matching or substitute a guessed timezone.
+**cTrader D1/W1 remain blocked by default:** the transport now retrieves the
+full symbol entity through `ProtoOASymbolByIdReq` and exposes the broker-supplied
+`schedule`, `scheduleTimeZone`, and `holiday` metadata through
+`get_symbol_session_calendar_metadata(symbol)`. The weekly intervals are
+expressed as seconds from Sunday 00:00 in the supplied schedule timezone; each
+holiday also carries its timezone/date and optional intraday bounds.
+
+This is a necessary input, not yet a verified D1/W1 candle calendar. The
+adapter deliberately does **not** implement
+`expected_last_closed_candle` from these fields alone. Before enabling it,
+reconcile actual historical and live D1/W1 trendbar open timestamps against the
+symbol schedule and broker aggregation convention, including daylight-saving
+transitions, early closes, holidays and weekend reopen. A trading-hours
+schedule does not, by itself, prove the exact daily/weekly candle roll time.
+Do not weaken exact candle matching or substitute a guessed timezone.
+
+If the full symbol request is unavailable or the timezone/schedule is
+incomplete, metadata is reported unavailable/incomplete; intraday symbol
+resolution remains usable, while D1/W1 continue to fail closed.
 
 M1/M5 and other intraday periods are also matched by exact provider candle-open
 timestamp and canonical timeframe; no timeframe may reuse another period's
