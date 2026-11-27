@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
@@ -15,6 +16,7 @@ class NotificationOutboxItem:
     idempotency_key: str
     payload: dict[str, Any]
     attempts: int
+    lease_token: str
 
 
 @dataclass(frozen=True)
@@ -87,12 +89,16 @@ class PersistentNotificationOutbox:
                     attempts INTEGER NOT NULL DEFAULT 0,
                     available_at REAL NOT NULL,
                     lease_until REAL,
+                    lease_token TEXT,
                     created_at REAL NOT NULL,
                     delivered_at REAL,
                     last_error TEXT
                 )
                 """
             )
+            columns = {str(row[1]) for row in db.execute("PRAGMA table_info(notification_outbox)").fetchall()}
+            if "lease_token" not in columns:
+                db.execute("ALTER TABLE notification_outbox ADD COLUMN lease_token TEXT")
             db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_notification_outbox_due "
                 "ON notification_outbox(status, available_at, lease_until)"
@@ -141,45 +147,47 @@ class PersistentNotificationOutbox:
             ).fetchall()
             for row in rows:
                 attempts = int(row["attempts"]) + 1
+                lease_token = uuid.uuid4().hex
                 db.execute(
                     """
                     UPDATE notification_outbox
-                    SET status='IN_FLIGHT', attempts=?, lease_until=?, last_error=NULL
+                    SET status='IN_FLIGHT', attempts=?, lease_until=?, lease_token=?, last_error=NULL
                     WHERE idempotency_key=?
                     """,
-                    (attempts, current + lease_seconds, row["idempotency_key"]),
+                    (attempts, current + lease_seconds, lease_token, row["idempotency_key"]),
                 )
                 claimed.append(
                     NotificationOutboxItem(
                         idempotency_key=str(row["idempotency_key"]),
                         payload=json.loads(row["payload_json"]),
                         attempts=attempts,
+                        lease_token=lease_token,
                     )
                 )
             db.commit()
         return tuple(claimed)
 
-    def mark_delivered(self, idempotency_key: str, *, now: float | None = None) -> bool:
+    def mark_delivered(self, idempotency_key: str, lease_token: str, *, now: float | None = None) -> bool:
         current = time() if now is None else float(now)
         with self._lock, self._connect() as db:
             cursor = db.execute(
                 """
                 UPDATE notification_outbox
-                SET status='DELIVERED', delivered_at=?, lease_until=NULL, last_error=NULL
-                WHERE idempotency_key=? AND status='IN_FLIGHT'
+                SET status='DELIVERED', delivered_at=?, lease_until=NULL, lease_token=NULL, last_error=NULL
+                WHERE idempotency_key=? AND status='IN_FLIGHT' AND lease_token=?
                 """,
-                (current, idempotency_key),
+                (current, idempotency_key, lease_token),
             )
         return cursor.rowcount == 1
 
-    def mark_failed(self, idempotency_key: str, error: str, *,
+    def mark_failed(self, idempotency_key: str, lease_token: str, error: str, *,
                     now: float | None = None) -> str:
         current = time() if now is None else float(now)
         with self._lock, self._connect() as db:
             row = db.execute(
                 "SELECT attempts FROM notification_outbox "
-                "WHERE idempotency_key=? AND status='IN_FLIGHT'",
-                (idempotency_key,),
+                "WHERE idempotency_key=? AND status='IN_FLIGHT' AND lease_token=?",
+                (idempotency_key, lease_token),
             ).fetchone()
             if row is None:
                 raise ValueError("notification is not currently in flight")
@@ -197,10 +205,10 @@ class PersistentNotificationOutbox:
             db.execute(
                 """
                 UPDATE notification_outbox
-                SET status=?, available_at=?, lease_until=NULL, last_error=?
-                WHERE idempotency_key=? AND status='IN_FLIGHT'
+                SET status=?, available_at=?, lease_until=NULL, lease_token=NULL, last_error=?
+                WHERE idempotency_key=? AND status='IN_FLIGHT' AND lease_token=?
                 """,
-                (status, available_at, redact_delivery_error(error), idempotency_key),
+                (status, available_at, redact_delivery_error(error), idempotency_key, lease_token),
             )
         return status
 
@@ -214,13 +222,13 @@ class PersistentNotificationOutbox:
             try:
                 sink.deliver(item.idempotency_key, item.payload)
             except Exception as exc:
-                status = self.mark_failed(item.idempotency_key, str(exc), now=now)
+                status = self.mark_failed(item.idempotency_key, item.lease_token, str(exc), now=now)
                 if status == "DEAD":
                     dead_lettered += 1
                 else:
                     retried += 1
             else:
-                if self.mark_delivered(item.idempotency_key, now=now):
+                if self.mark_delivered(item.idempotency_key, item.lease_token, now=now):
                     delivered += 1
         return NotificationDispatchResult(
             claimed=len(claimed),
