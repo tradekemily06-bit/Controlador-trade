@@ -43,3 +43,32 @@ def test_worker_start_is_idempotent(tmp_path):
     worker.start()
     assert worker._thread is first
     worker.stop()
+
+
+
+def test_worker_status_redacts_provider_error_details(tmp_path):
+    outbox = PersistentNotificationOutbox(tmp_path / "outbox.sqlite3")
+
+    class LeakyFailingSink:
+        def deliver(self, idempotency_key, payload):
+            raise RuntimeError(
+                "failed https://push.example.test/private "
+                "Bearer worker-secret api_key=hidden-value"
+            )
+
+    outbox.enqueue("worker-secret-event", {"title": "Alert"})
+    worker = NotificationOutboxWorker(
+        outbox, LeakyFailingSink(), poll_interval_seconds=0.01
+    )
+    worker.start()
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline and worker.status()["last_error"] is None:
+        time.sleep(0.01)
+    worker.stop()
+
+    error = worker.status()["last_error"]
+    assert error is not None
+    assert "push.example.test" not in error
+    assert "worker-secret" not in error
+    assert "hidden-value" not in error
+    assert "[URL REDACTED]" in error
