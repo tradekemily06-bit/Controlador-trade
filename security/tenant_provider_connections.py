@@ -29,10 +29,6 @@ class TenantProviderConnectionRegistry:
     def _timestamp() -> str:
         return datetime.now(timezone.utc).isoformat()
 
-    @classmethod
-    def _read_records(cls, context: TenantContext) -> list[dict[str, Any]]:
-        return []
-
     def list_connections(self, context: TenantContext | None) -> list[dict[str, Any]]:
         trusted = require_tenant_context(context)
         records = self.storage.get(trusted, self.STORAGE_KEY) or []
@@ -72,10 +68,12 @@ class TenantProviderConnectionRegistry:
             raise ValueError("provider_id inválido")
         if not isinstance(account_alias, str) or not account_alias.strip() or len(account_alias.strip()) > 80:
             raise ValueError("account_alias deve conter de 1 a 80 caracteres")
-        if account_reference is not None and (
-            not isinstance(account_reference, str) or len(account_reference.strip()) > 120
+        if (
+            not isinstance(account_reference, str)
+            or not account_reference.strip()
+            or len(account_reference.strip()) > 120
         ):
-            raise ValueError("account_reference inválido")
+            raise ValueError("account_reference deve identificar a conta sem conter credenciais")
         clean_capabilities = []
         for capability in capabilities or []:
             if not isinstance(capability, str) or not re.fullmatch(r"[a-z0-9][a-z0-9:_-]{0,63}", capability):
