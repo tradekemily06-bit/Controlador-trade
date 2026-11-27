@@ -5,7 +5,8 @@ from typing import Any
 
 from core.ecosystem_notifications import EcosystemNotification, NotificationKind, NotificationSeverity
 from security.tenant_context import TenantContext
-from security.tenant_scoped_ecosystem_state import TenantScopedEcosystemState\nfrom core.tenant_notification_outbox import TenantNotificationOutbox
+from security.tenant_scoped_ecosystem_state import TenantScopedEcosystemState
+from core.tenant_notification_outbox import TenantNotificationOutbox
 
 
 class TenantNotificationDispatcher:
@@ -19,7 +20,8 @@ class TenantNotificationDispatcher:
     def __init__(self, state: TenantScopedEcosystemState) -> None:
         if not isinstance(state, TenantScopedEcosystemState):
             raise TypeError("TenantScopedEcosystemState is required")
-        self.state = state\n        self.outbox = TenantNotificationOutbox(state.storage)
+        self.state = state
+        self.outbox = TenantNotificationOutbox(state.storage)
 
     def publish(self, context: TenantContext, notification: EcosystemNotification) -> bool:
         if not isinstance(context, TenantContext):
