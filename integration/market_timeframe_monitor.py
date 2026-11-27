@@ -407,9 +407,13 @@ class MarketTimeframeMonitor:
     def stop(self, timeout: float = 5.0) -> None:
         self._stop.set()
         thread = self._thread
-        if thread is not None and thread.is_alive():
-            thread.join(timeout=timeout)
-        self._thread = None
+        if thread is not None:
+            thread.join(timeout=max(0.0, timeout))
+            # A provider call may still be blocked after the join timeout.
+            # Keep the thread reference so status remains truthful and start()
+            # cannot create a second monitor worker alongside the first one.
+            if not thread.is_alive():
+                self._thread = None
 
     def status(self, context: TenantContext | None = None) -> dict[str, Any]:
         subscriptions = self.subscriptions(context)
