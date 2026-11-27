@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import os
+import threading
+import time
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -41,7 +43,32 @@ from integration.rss_news_provider import RSSNewsProvider
 # Failed startup workers may be blocked in an external provider/sink. Retain
 # their references and the process lock until process exit rather than allowing
 # a second runtime to open the same SQLite files concurrently.
-_FAILED_STARTUP_LOCKS: list[tuple[Any, tuple[Any, ...]]] = []
+_FAILED_STARTUP_LOCKS: list[tuple[Any, tuple[Any, str], ...]] = []
+_FAILED_STARTUP_LOCKS_GUARD = threading.Lock()
+
+
+def _release_failed_startup_lock_when_safe(
+    process_lock: Any, workers: tuple[tuple[Any, str], ...]
+) -> None:
+    # The failed constructor has no runtime object left to call close() again.
+    # A small daemon reaper releases the OS lock only after every worker is
+    # confirmed stopped; status errors deliberately keep the lock held.
+    while True:
+        try:
+            if all(
+                worker.status().get(running_key) is not True
+                for worker, running_key in workers
+            ):
+                process_lock.release()
+                with _FAILED_STARTUP_LOCKS_GUARD:
+                    _FAILED_STARTUP_LOCKS[:] = [
+                        item for item in _FAILED_STARTUP_LOCKS
+                        if item[0] is not process_lock
+                    ]
+                return
+        except Exception:
+            pass
+        time.sleep(0.25)
 
 
 def _stop_workers_and_report_active(workers: tuple[tuple[Any, str], ...]) -> list[str]:
@@ -69,9 +96,17 @@ def _cleanup_failed_startup(process_lock: Any, workers: tuple[tuple[Any, str], .
     if still_running:
         # Keep strong references: closing the lock file would release the OS
         # lock while a background worker may still use SQLite.
-        _FAILED_STARTUP_LOCKS.append(
-            (process_lock, tuple(worker for worker, _ in workers if worker is not None))
+        retained_workers = tuple(
+            (worker, running_key) for worker, running_key in workers if worker is not None
         )
+        with _FAILED_STARTUP_LOCKS_GUARD:
+            _FAILED_STARTUP_LOCKS.append((process_lock, retained_workers))
+        threading.Thread(
+            target=_release_failed_startup_lock_when_safe,
+            args=(process_lock, retained_workers),
+            name="standalone-failed-startup-lock-reaper",
+            daemon=True,
+        ).start()
     else:
         process_lock.release()
     return still_running
