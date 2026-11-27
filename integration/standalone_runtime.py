@@ -254,6 +254,7 @@ class StandaloneRuntime:
                     self.tenant_market_data_sessions,
                     ctrader_token_vault,
                     transport_factory=ctrader_transport_factory,
+                    oauth_service=self.tenant_ctrader_oauth_service,
                 )
             self.tenant_mt5_relay_token_vault = TenantMT5RelayTokenVault(
                 self.runtime_dir / "tenant-mt5-relay-tokens.sqlite3",
@@ -313,9 +314,16 @@ class StandaloneRuntime:
             self.provider_recovery_status = self.tenant_provider_connection_service.reconnect_available(
                 self.local_tenant_context
             )
+            self.ctrader_recovery_status = []
             if self.tenant_oauth_refresh_worker is not None:
                 for refresh_owner in self.tenant_ctrader_token_vault.list_refresh_owners(limit=100):
                     self.tenant_oauth_refresh_worker.register_owner(refresh_owner)
+            if self.tenant_ctrader_account_service is not None:
+                self.ctrader_recovery_status = (
+                    self.tenant_ctrader_account_service.reconnect_available(
+                        self.local_tenant_context
+                    )
+                )
             # Prepared owner-sharded fiscal repositories are available as an
             # internal primitive; remote HTTP requests remain fail-closed until
             # trusted identity, durable storage and recovery are production-ready.
