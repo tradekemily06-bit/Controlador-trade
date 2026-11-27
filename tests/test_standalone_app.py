@@ -292,6 +292,78 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(body["state"], "FISCAL_TENANT_ISOLATION_REQUIRED")
         self.assertEqual(runtime.assistant.calls, [])
 
+    def test_local_fiscal_summary_api_returns_owner_bound_read_only_data(self):
+        runtime = FakeRuntime()
+
+        class FiscalReserve:
+            def __init__(self):
+                self.calls = []
+
+            def summary(self, owner_id, *, history_limit, history_offset):
+                self.calls.append((owner_id, history_limit, history_offset))
+                return {
+                    "name": "Reserva Fiscal",
+                    "total_reserved_brl": 125.50,
+                    "history": [],
+                    "reserve_semantics": {"kind": "PLANNING_ESTIMATE_ONLY"},
+                }
+
+        runtime.fiscal_reserve = FiscalReserve()
+        app = StandaloneWSGIApplication(runtime)
+        with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
+            status, body = call_wsgi(app, "/api/fiscal/summary?limit=25&offset=10")
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["scope"], "LOCAL_SINGLE_USER")
+        self.assertEqual(body["summary"]["total_reserved_brl"], 125.50)
+        self.assertFalse(body["tax_assessment"])
+        self.assertFalse(body["money_movement"])
+        self.assertFalse(body["execution_authorized"])
+        self.assertEqual(runtime.fiscal_reserve.calls, [("local-fiscal-owner", 25, 10)])
+
+    def test_remote_fiscal_summary_never_reads_legacy_single_owner_database(self):
+        runtime = FakeRuntime()
+
+        class FiscalReserve:
+            def __init__(self):
+                self.called = False
+
+            def summary(self, *args, **kwargs):
+                self.called = True
+                raise AssertionError("legacy shared fiscal database must not be read remotely")
+
+        runtime.fiscal_reserve = FiscalReserve()
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/fiscal/summary",
+                remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "503 Service Unavailable")
+        self.assertEqual(body["state"], "FISCAL_REMOTE_STORAGE_NOT_READY")
+        self.assertFalse(runtime.fiscal_reserve.called)
+        self.assertFalse(body["execution_authorized"])
+
+    def test_fiscal_summary_rejects_invalid_pagination(self):
+        runtime = FakeRuntime()
+
+        class FiscalReserve:
+            def summary(self, *args, **kwargs):
+                raise AssertionError("invalid pagination must be rejected before repository access")
+
+        runtime.fiscal_reserve = FiscalReserve()
+        app = StandaloneWSGIApplication(runtime)
+        with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
+            status, body = call_wsgi(app, "/api/fiscal/summary?limit=0")
+        self.assertEqual(status, "400 Bad Request")
+        self.assertFalse(body["execution_authorized"])
+
     def test_health_exposes_one_intelligence_and_seven_areas(self):
         app = StandaloneWSGIApplication(FakeRuntime())
         status, body = call_wsgi(app, "/api/health")
