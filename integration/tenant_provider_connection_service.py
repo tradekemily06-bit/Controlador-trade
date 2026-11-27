@@ -191,3 +191,30 @@ class TenantProviderConnectionService:
                 "execution_authorized": False,
             }
         return {"disconnected": True, "status": "DISCONNECTED", "execution_authorized": False}
+
+
+    def reconnect_saved(
+        self, context: TenantContext | None, *, connection_id: str,
+    ) -> dict[str, Any]:
+        """Rebuild a saved session with fresh secret resolution and provider handshake."""
+        owner = require_tenant_context(context)
+        account = next(
+            (item for item in self.connections.list_connections(owner)
+             if item["connection_id"] == connection_id),
+            None,
+        )
+        if account is None:
+            raise PermissionError("connection does not belong to this tenant and subject")
+        # Fail closed: stale CONNECTED metadata is cleared before reconnect.
+        self.connections.mark_disconnected(owner, connection_id=connection_id)
+        credential_ref = self.connections.get_credential_reference(
+            owner, connection_id=connection_id
+        )
+        if credential_ref is None:
+            raise RuntimeError("referência do cofre não disponível; reconexão exige novo provisionamento")
+        return self.connect(
+            owner,
+            provider_id=account["provider_id"],
+            account_alias=account["account_alias"],
+            credential_ref=credential_ref,
+        )
