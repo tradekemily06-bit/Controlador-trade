@@ -161,3 +161,30 @@ def test_disconnect_service_can_revoke_account_without_vault_provisioned(tmp_pat
             owner, provider_id="broker_a", account_alias="Conta",
             credential_ref="vault://tenant-a/broker-a",
         )
+
+
+def test_provider_handshake_promotion_updates_reference_and_rejects_duplicate(tmp_path):
+    storage = SQLiteTenantStorage(tmp_path / "tenant-promotion.sqlite3")
+    connections = TenantProviderConnectionRegistry(storage)
+    owner = TenantContext("tenant-a", "alice")
+    first = connections.record_pending_connection(
+        owner, provider_id="ctrader_open_api", account_alias="demo-a",
+        account_reference="pending:first", capabilities=["candles:read"],
+    )
+    second = connections.record_pending_connection(
+        owner, provider_id="ctrader_open_api", account_alias="demo-b",
+        account_reference="pending:second", capabilities=["candles:read"],
+    )
+    assert connections.mark_connected_after_provider_handshake(
+        owner, connection_id=first["connection_id"],
+        account_reference="12345", capabilities=["candles:read", "candles:stream"],
+    ) is True
+    saved = next(item for item in connections.list_connections(owner) if item["connection_id"] == first["connection_id"])
+    assert saved["status"] == "CONNECTED"
+    assert saved["account_reference"] == "12345"
+    assert saved["capabilities"] == ["candles:read", "candles:stream"]
+    with pytest.raises(ValueError, match="já está vinculada"):
+        connections.mark_connected_after_provider_handshake(
+            owner, connection_id=second["connection_id"],
+            account_reference="12345", capabilities=["candles:read"],
+        )
