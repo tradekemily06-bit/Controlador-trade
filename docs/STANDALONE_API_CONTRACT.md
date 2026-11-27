@@ -58,7 +58,7 @@ The area and task are required strings; context must be an object. The selected 
 ## Market data and timeframe monitoring
 
 ### `GET /api/market-data/providers`
-Lists provider registration/configuration status. Status values must not be presented as proof of a live feed.
+Lists provider registration/configuration status. A provider exposing a side-effect-free `status()` may report a verified fresh connection heartbeat (`CONNECTED`/`DISCONNECTED`) and a bounded set of non-secret health fields. Providers without that capability remain `REGISTERED_NOT_TESTED`; a heartbeat does not prove every symbol/timeframe is available or guarantee uninterrupted delivery. Status polling does not initialize or probe a broker terminal. Status values must not be presented as proof of a live feed beyond the precise heartbeat evidence reported.
 
 ### `GET /api/market-data/timeframes`
 Returns the intervals accepted by the backend normalizer in compact and platform notation, with limits and explicit exclusions. The current parser covers 1–59 minutes, 1–24 hours, 1–31 days and 1–4 weeks. Seconds and calendar months (MN1) are not supported. The response also reports adapter-declared `provider_compatibility.supported` and `unsupported` intervals when the adapter exposes a side-effect-free capability check. `DECLARED_NOT_LIVE_TESTED` means the adapter can map/derive the interval but real data availability has not been tested; `NOT_DECLARED` means the adapter does not publish a capability list. A supported interval is never a claim of a live feed. The frontend should use this endpoint for the selector while showing provider availability separately.
