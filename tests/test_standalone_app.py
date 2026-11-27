@@ -388,6 +388,8 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertFalse(body["tenant_state"]["production_ready"])
         self.assertEqual(body["tenant_decision_memory"]["status"], "LOCAL_TENANT_SCOPED_DECISION_MEMORY")
         self.assertFalse(body["tenant_decision_memory"]["production_ready"])
+        self.assertEqual(body["tenant_fiscal_storage"]["status"], "NOT_CONFIGURED")
+        self.assertFalse(body["tenant_fiscal_storage"]["production_ready"])
         self.assertEqual(body["identity"]["multi_tenant_isolation"], "NOT_IMPLEMENTED")
         self.assertFalse(body["identity"]["shared_bearer_token_is_user_identity"])
         self.assertFalse(body["execution_authorized"])
