@@ -1899,4 +1899,5 @@ def test_daily_and_weekly_signals_use_provider_session_boundary_for_expiry(
         now=datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc),
     )
     assert current[0]["signal_valid"] is True
+    assert "signal_valid_until" not in current[0]
     assert current[0]["result"]["signal"] == "COMPRA"
