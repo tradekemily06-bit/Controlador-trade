@@ -35,6 +35,7 @@ class TenantCTraderOAuthService:
         exchange_code: Callable[[str, str], Mapping[str, Any]],
         refresh_tokens: Callable[[str], Mapping[str, Any]] | None = None,
         refresh_lease_provider: Any | None = None,
+        on_tokens_stored: Callable[[TenantContext], None] | None = None,
         scope: str = "accounts",
     ) -> None:
         if connections is None or not callable(getattr(connections, "list_connections", None)):
@@ -63,6 +64,9 @@ class TenantCTraderOAuthService:
         if refresh_lease_provider is not None and not callable(getattr(refresh_lease_provider, "acquire", None)):
             raise ValueError("distributed refresh lease provider must implement acquire(key, lease_seconds, wait_seconds)")
         self.refresh_lease_provider = refresh_lease_provider
+        if on_tokens_stored is not None and not callable(on_tokens_stored):
+            raise ValueError("OAuth token stored callback is invalid")
+        self.on_tokens_stored = on_tokens_stored
         self._refresh_locks: dict[str, threading.Lock] = {}
         self._refresh_locks_guard = threading.Lock()
         self.scope = scope
@@ -173,6 +177,10 @@ class TenantCTraderOAuthService:
             expires_at=expires_at,
             scopes=(self.scope,),
         )
+        if self.on_tokens_stored is not None:
+            # Internal callback receives only the trusted owner context; token
+            # material and connection secrets are never passed to the worker manager.
+            self.on_tokens_stored(owner)
         return {
             "connection_id": connection_id,
             "provider_id": _PROVIDER_ID,
