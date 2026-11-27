@@ -1514,10 +1514,14 @@ class StandaloneWSGIApplication:
                 "running": False,
                 "state": "NO_EXTERNAL_SINK_CONFIGURED",
             }
-            external_delivery = (
-                "WORKER_CONFIGURED" if worker is not None
-                else "OUTBOX_ONLY_NO_PROVIDER"
-            )
+            if worker is None:
+                external_delivery = "OUTBOX_ONLY_NO_PROVIDER"
+            elif delivery_worker.get("state") == "DEGRADED":
+                external_delivery = "WORKER_DEGRADED"
+            elif delivery_worker.get("running") is True:
+                external_delivery = "WORKER_RUNNING"
+            else:
+                external_delivery = "WORKER_STOPPED"
             if reason == "trusted_identity":
                 tenant_context = _tenant_context_for_request(environ, reason)
                 tenant_state = getattr(self.runtime, "tenant_state", None)
