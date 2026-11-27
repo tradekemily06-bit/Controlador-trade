@@ -27,7 +27,7 @@ class TestCipher:
         return self._xor(ciphertext[len(tag):])
 
 
-def _setup(tmp_path, exchange=None, refresh=None):
+def _setup(tmp_path, exchange=None, refresh=None, on_tokens_stored=None):
     owner = TenantContext("tenant-a", "alice")
     storage = SQLiteTenantStorage(tmp_path / "tenant.sqlite3")
     connections = TenantProviderConnectionRegistry(storage)
@@ -43,6 +43,7 @@ def _setup(tmp_path, exchange=None, refresh=None):
             "accessToken": "access-token", "refreshToken": "refresh-token", "expiresIn": 3600
         }),
         refresh_tokens=refresh,
+        on_tokens_stored=on_tokens_stored,
     )
     return owner, connections, account, tokens, service
 
@@ -243,3 +244,19 @@ def test_refresh_fails_closed_when_shared_lease_is_unavailable(tmp_path):
     service.refresh_lease_provider = BusyLeaseProvider()
     with pytest.raises(TimeoutError):
         service.refresh(owner, connection_id=account["connection_id"])
+
+
+def test_callback_registers_trusted_owner_for_background_refresh_only_after_token_storage(tmp_path):
+    registrations = []
+    owner, connections, account, tokens, service = _setup(
+        tmp_path, on_tokens_stored=registrations.append
+    )
+    started = service.begin(owner, connection_id=account["connection_id"])
+    state = parse_qs(urlparse(started["authorization_url"]).query)["state"][0]
+
+    assert registrations == []
+    result = service.complete_callback(state=state, code="code")
+
+    assert registrations == [owner]
+    assert result["account_connected"] is False
+    assert tokens.resolve(owner, account["connection_id"])["refresh_token"] == "refresh-token"
