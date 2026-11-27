@@ -180,7 +180,7 @@ Returns relay inbox status. A configured relay is not proof that the user's PC i
 
 ## Product and safety invariants
 
-- Seven visible areas remain fixed: Cabine de Comando, Análise, Estudo, Memória, Reserva Fiscal, Assistente do Ecossistema and Central.
+- Six visible areas remain fixed: Cabine de Comando, Análise, Estudo, Reserva Fiscal, Assistente do Ecossistema and Central. Memory, decision history and audit are internal capabilities within Analysis/Study.
 - The approved frontend design is unchanged by this backend contract.
 - Signal direction is informational; manual review is required.
 - No endpoint authorizes broker orders, trades, or money movement.
