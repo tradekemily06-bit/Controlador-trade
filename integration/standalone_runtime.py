@@ -56,7 +56,7 @@ def _release_failed_startup_lock_when_safe(
     while True:
         try:
             if all(
-                worker.status().get(running_key) is not True
+                worker.status().get(running_key) is not False
                 for worker, running_key in workers
             ):
                 process_lock.release()
@@ -78,7 +78,7 @@ def _stop_workers_and_report_active(workers: tuple[tuple[Any, str], ...]) -> lis
             continue
         worker.stop()
         status = worker.status()
-        if status.get(running_key) is True:
+        if status.get(running_key) is not False:
             still_running.append(type(worker).__name__)
     return still_running
 
