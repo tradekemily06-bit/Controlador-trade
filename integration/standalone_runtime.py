@@ -264,12 +264,30 @@ class StandaloneRuntime:
     def close(self) -> None:
         if self.closed:
             return
-        if self.market_monitor is not None:
-            self.market_monitor.stop()
-        if self.notification_worker is not None:
-            self.notification_worker.stop()
-        if self.backup_scheduler is not None:
-            self.backup_scheduler.stop()
+
+        # Never release the process-exclusive runtime lock while a background
+        # worker is still executing. A blocked provider/sink must not allow a
+        # second runtime to open the same SQLite state concurrently.
+        workers = (
+            (self.market_monitor, "worker_running"),
+            (self.notification_worker, "running"),
+            (self.backup_scheduler, "worker_running"),
+        )
+        still_running: list[str] = []
+        for worker, running_key in workers:
+            if worker is None:
+                continue
+            worker.stop()
+            status = worker.status()
+            if status.get(running_key) is True:
+                still_running.append(type(worker).__name__)
+
+        if still_running:
+            names = ", ".join(sorted(still_running))
+            raise RuntimeError(
+                "runtime shutdown aguardando workers ativos: " + names
+            )
+
         self.process_lock.release()
         self.closed = True
 
