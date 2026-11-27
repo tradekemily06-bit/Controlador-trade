@@ -134,9 +134,26 @@ def _integrity(path: Path, expected_schema: dict[str, set[str]]) -> tuple[str, d
     return "ok", missing
 
 
+def _backup_status(runtime: Any) -> dict[str, Any]:
+    if getattr(runtime, "runtime_dir", None) is None:
+        return {"state": "NOT_AVAILABLE", "scheduler": None}
+    scheduler = getattr(runtime, "backup_scheduler", None)
+    if scheduler is None:
+        return {"state": "ON_DEMAND_LOCAL_ONLY", "scheduler": None}
+    try:
+        status = scheduler.status()
+    except Exception as exc:
+        return {"state": "STATUS_UNAVAILABLE", "scheduler": None, "error_class": type(exc).__name__}
+    return {
+        "state": "SCHEDULED_LOCAL_ONLY",
+        "scheduler": status,
+    }
+
+
 def standalone_storage_status(runtime: Any) -> dict[str, Any]:
     """Report actual local SQLite presence/integrity without overstating production readiness."""
     runtime_dir = getattr(runtime, "runtime_dir", None)
+    backup = _backup_status(runtime)
     if runtime_dir is None:
         return {
             "provider": "LOCAL_SQLITE",
@@ -144,7 +161,8 @@ def standalone_storage_status(runtime: Any) -> dict[str, Any]:
             "stores": [],
             "tenant_isolation": "UNKNOWN",
             "multi_tenant_isolation": "NOT_IMPLEMENTED",
-            "backup_restore": "NOT_CONFIGURED",
+            "backup_restore": backup["state"],
+            "backup_scheduler": backup["scheduler"],
             "production_storage": "NOT_PROVEN_BY_LOCAL_SQLITE_HEALTH",
             "deployment_topology": "UNKNOWN_NO_RUNTIME_DIRECTORY",
             "multi_replica_readiness": "BLOCKED_RUNTIME_NOT_AVAILABLE",
@@ -195,7 +213,8 @@ def standalone_storage_status(runtime: Any) -> dict[str, Any]:
         "stores": stores,
         "tenant_isolation": "SINGLE_CONFIGURED_RUNTIME_IDENTITY",
         "multi_tenant_isolation": "NOT_IMPLEMENTED",
-        "backup_restore": "NOT_CONFIGURED",
+        "backup_restore": backup["state"],
+        "backup_scheduler": backup["scheduler"],
         "production_storage": "NOT_PROVEN_BY_LOCAL_SQLITE_HEALTH",
         "deployment_topology": "SINGLE_HOST_ONLY",
         "multi_replica_readiness": "BLOCKED_SHARED_TRANSACTIONAL_DATABASE_REQUIRED",
