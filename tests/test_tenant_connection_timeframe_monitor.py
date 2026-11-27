@@ -1411,3 +1411,16 @@ def test_notification_dispatch_rejects_invalid_lease_duration(tmp_path, lease_se
     )
     with pytest.raises(ValueError, match="lease_seconds"):
         monitor.dispatch_pending_notifications(lease_seconds=lease_seconds)
+
+def test_notification_dispatch_validates_arguments_without_sink(tmp_path):
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "notification-no-sink.sqlite3",
+        Sessions(),
+        lambda _session, _context: None,
+    )
+    with pytest.raises(ValueError, match="lease_seconds"):
+        monitor.dispatch_pending_notifications(lease_seconds=10**1000)
+    with pytest.raises(ValueError, match="limit"):
+        monitor.dispatch_pending_notifications(limit=0)
+    assert monitor.dispatch_pending_notifications() == 0
+
