@@ -150,6 +150,7 @@ class CTraderOpenApiReadOnlyTransport:
         self._connected = threading.Event()
         self._disconnected = threading.Event()
         self._lock = threading.RLock()
+        self._reconnect_lock = threading.Lock()
         self._last_seen: str | None = None
         self._account_id: int | None = None
         self._account_authenticated = False
@@ -248,6 +249,59 @@ class CTraderOpenApiReadOnlyTransport:
         if not self._connected.wait(self._timeout):
             self.disconnect()
             raise TimeoutError("conexão TCP DEMO do cTrader não foi estabelecida")
+
+    def reconnect(self) -> dict[str, Any]:
+        """Re-authenticate the selected DEMO account and restore read-only streams."""
+        with self._reconnect_lock:
+            account_id = self._account_id
+            if account_id is None:
+                raise RuntimeError("conta cTrader não foi selecionada para reconexão")
+            if self._connected.is_set() and self._account_authenticated:
+                return {"account_id": account_id, "is_live": False}
+            spot_callbacks = dict(self._spot_callbacks)
+            trendbar_callbacks = dict(self._trendbar_callbacks)
+            spot_only = set(self._trendbar_spot_only)
+            previous_client = self._client
+            self._connected.clear()
+            self._account_authenticated = False
+            if previous_client is not None:
+                try:
+                    _SharedTwistedReactor.call(previous_client.stopService, self._timeout)
+                except Exception:
+                    pass
+            self._client = None
+            try:
+                self.connect()
+                self.application_auth()
+                details = self.account_details(account_id)
+                if details.get("is_live") is not False:
+                    raise PermissionError("reconexão recusada: a conta cTrader não é DEMO")
+                self.account_auth(account_id)
+                self._start_spot_worker()
+                # Spot subscription must be restored before trendbar subscriptions.
+                for symbol_id in sorted(spot_callbacks):
+                    request = self._messages["subscribe_spots"]()
+                    request.ctidTraderAccountId = account_id
+                    request.symbolId.append(symbol_id)
+                    request.subscribeToSpotTimestamp = True
+                    self._send(request)
+                for symbol_id, period in sorted(trendbar_callbacks):
+                    request = self._messages["subscribe_trendbars"]()
+                    request.ctidTraderAccountId = account_id
+                    request.symbolId = symbol_id
+                    request.period = self._period_enum.Value(period)
+                    self._send(request)
+                return details
+            except Exception:
+                # Keep the desired subscriptions and account identity so a later
+                # bounded retry can restore them; never report the session healthy.
+                self._account_id = account_id
+                self._account_authenticated = False
+                self._spot_callbacks = spot_callbacks
+                self._trendbar_callbacks = trendbar_callbacks
+                self._trendbar_spot_only = spot_only
+                self._connected.clear()
+                raise
 
     def _send(self, request):
         if not self._connected.is_set() or self._client is None:
