@@ -755,3 +755,76 @@ def test_expired_or_replaced_processing_lease_cannot_persist_analysis(tmp_path):
     assert result is None
     assert monitor.latest_results(owner, connection) == []
     assert emitted == []
+
+
+
+def test_worker_losing_lease_during_analysis_is_fenced_before_persistence(tmp_path):
+    owner = TenantContext("tenant-a", "alice")
+    connection = _id("c")
+    sessions = Sessions()
+    sessions.add(owner, connection, "broker_a")
+    now = datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc)
+    expected = datetime(2026, 11, 27, 12, 0, tzinfo=timezone.utc)
+    entered = threading.Event()
+    release_analysis = threading.Event()
+    emitted = []
+
+    class SlowAnalyzer:
+        def analyze(self, **kwargs):
+            entered.set()
+            assert release_analysis.wait(3)
+            return {
+                "signal": "AGUARDAR", "status": "ANALYZED",
+                "market_data": {"last_candle_at": expected.isoformat()},
+            }
+
+    db_path = tmp_path / "mid-analysis-lease-fencing.sqlite3"
+    first = TenantConnectionTimeframeMonitor(
+        db_path, sessions, lambda _session, _context: SlowAnalyzer(),
+        on_result=emitted.append,
+    )
+    second = TenantConnectionTimeframeMonitor(
+        db_path, sessions, lambda _session, _context: Analyzer(expected.isoformat(), "AGUARDAR"),
+    )
+    first.subscribe(owner, connection, "EURUSD", "5m")
+    with first._connect() as db:
+        row = dict(db.execute("""
+            SELECT tenant_id, subject_id, connection_id, symbol, timeframe,
+                   last_processed_candle, last_signal
+            FROM tenant_connection_timeframe_watch
+        """).fetchone())
+
+    first_result = []
+    worker = threading.Thread(target=lambda: first_result.extend(first.run_once(now=now)))
+    worker.start()
+    assert entered.wait(2)
+
+    # Expire the first worker's lease while its provider analysis is in flight.
+    first_lease_key = first._processing_lease_key(row)
+    with first._connect() as db:
+        db.execute("""
+            UPDATE tenant_connection_timeframe_processing_lease
+            SET expires_at=0 WHERE lease_key=?
+        """, (first_lease_key,))
+
+    replacement_lease = second._acquire_processing_lease(row, lease_seconds=300)
+    assert replacement_lease is not None
+    assert replacement_lease[0] == first_lease_key
+
+    # The old worker finishes after ownership has changed. Its final DB fence
+    # must reject both the analysis result and its notification event.
+    release_analysis.set()
+    worker.join(3)
+    assert not worker.is_alive()
+    assert first_result == []
+    assert first.latest_results(owner, connection) == []
+    assert emitted == []
+
+    with first._connect() as db:
+        current = db.execute("""
+            SELECT owner_token FROM tenant_connection_timeframe_processing_lease
+            WHERE lease_key=?
+        """, (first_lease_key,)).fetchone()
+    assert current is not None
+    assert current["owner_token"] == replacement_lease[1]
+    second._release_processing_lease(replacement_lease)
