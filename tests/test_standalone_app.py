@@ -463,7 +463,7 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(status, "400 Bad Request")
         self.assertFalse(body["execution_authorized"])
 
-    def test_health_exposes_one_intelligence_and_seven_areas(self):
+    def test_health_exposes_one_intelligence_and_six_areas(self):
         app = StandaloneWSGIApplication(FakeRuntime())
         status, body = call_wsgi(app, "/api/health")
         self.assertEqual(status, "200 OK")
@@ -475,7 +475,7 @@ class StandaloneWSGITests(unittest.TestCase):
         app = StandaloneWSGIApplication(FakeRuntime())
         status, body = call_wsgi(app, "/api/readiness")
         self.assertEqual(status, "200 OK")
-        self.assertEqual(body["areas"], 7)
+        self.assertEqual(body["areas"], 6)
         self.assertEqual(body["market_data"]["status"], "NOT_CONFIGURED")
         self.assertEqual(body["news"]["status"], "NOT_CONFIGURED")
         self.assertEqual(body["decision_memory"]["state"], "STATUS_NOT_EXPOSED")
