@@ -13,6 +13,7 @@ from typing import Any, Mapping
 
 from data.feed import MarketDataRequest
 from data.models import Candle
+from data.timeframes import normalize_timeframe
 
 
 _CTRADER_PERIODS = {
@@ -78,8 +79,6 @@ class CTraderReadOnlyMarketDataAdapter:
 
     @classmethod
     def supports_timeframe(cls, timeframe: str) -> bool:
-        from data.timeframes import normalize_timeframe
-
         try:
             normalized = normalize_timeframe(timeframe)
         except (TypeError, ValueError):
@@ -215,10 +214,10 @@ class CTraderReadOnlyMarketDataAdapter:
         if not callable(callback):
             raise ValueError("callback de candle deve ser executável")
         clean_symbol = symbol.strip()
-        clean_timeframe = timeframe.strip().lower()
         try:
+            clean_timeframe = normalize_timeframe(timeframe)
             period = _CTRADER_PERIODS[clean_timeframe]
-        except KeyError as exc:
+        except (KeyError, TypeError, ValueError) as exc:
             raise ValueError(f"timeframe {timeframe} não suportado pelo cTrader") from exc
         symbol_id, digits = self._resolve_symbol(clean_symbol)
         subscribe = getattr(self.transport, "subscribe_live_trendbars", None)
@@ -277,10 +276,10 @@ class CTraderReadOnlyMarketDataAdapter:
     def unsubscribe_live_candles(self, symbol: str, timeframe: str) -> None:
         if not self._authenticated:
             raise RuntimeError("cTrader DEMO ainda não concluiu o handshake")
-        clean_timeframe = timeframe.strip().lower()
         try:
+            clean_timeframe = normalize_timeframe(timeframe)
             period = _CTRADER_PERIODS[clean_timeframe]
-        except KeyError as exc:
+        except (KeyError, TypeError, ValueError) as exc:
             raise ValueError(f"timeframe {timeframe} não suportado pelo cTrader") from exc
         symbol_id, _digits = self._resolve_symbol(symbol.strip())
         unsubscribe = getattr(self.transport, "unsubscribe_live_trendbars", None)
@@ -294,8 +293,9 @@ class CTraderReadOnlyMarketDataAdapter:
         if not isinstance(request, MarketDataRequest):
             raise TypeError("request deve ser MarketDataRequest")
         try:
-            period = _CTRADER_PERIODS[request.timeframe.strip().lower()]
-        except KeyError as exc:
+            clean_timeframe = normalize_timeframe(request.timeframe)
+            period = _CTRADER_PERIODS[clean_timeframe]
+        except (KeyError, TypeError, ValueError) as exc:
             raise ValueError(
                 f"timeframe {request.timeframe} não suportado pelo cTrader Open API adapter"
             ) from exc
