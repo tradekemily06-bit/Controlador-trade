@@ -159,8 +159,16 @@ class TenantOAuthTokenVault:
             "execution_authorized": False,
         }
 
-    def resolve(self, context: TenantContext, connection_id: str) -> dict[str, Any] | None:
-        """Resolve credentials for trusted server-side adapter code only."""
+    def resolve(
+        self, context: TenantContext, connection_id: str, *,
+        allow_expired_access_for_refresh: bool = False,
+    ) -> dict[str, Any] | None:
+        """Resolve credentials for trusted server-side code.
+
+        Expired access tokens remain unavailable to adapters. The refresh
+        service may explicitly retrieve the encrypted refresh token so an
+        expired access token can be renewed without weakening normal resolve.
+        """
         owner = require_tenant_context(context)
         account = self._owned_connection(owner, connection_id, allow_disconnected=True)
         if account["status"] == "DISCONNECTED":
@@ -175,7 +183,9 @@ class TenantOAuthTokenVault:
             return None
         if row[3] is not None:
             expires = datetime.fromisoformat(row[3])
-            if expires.tzinfo is None or expires <= datetime.now(timezone.utc):
+            if expires.tzinfo is None:
+                return None
+            if expires <= datetime.now(timezone.utc) and not allow_expired_access_for_refresh:
                 return None
         try:
             ciphertext = base64.b64decode(row[2], validate=True)
