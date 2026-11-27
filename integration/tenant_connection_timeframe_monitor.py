@@ -375,10 +375,19 @@ class TenantConnectionTimeframeMonitor:
             stream_key = (owner.tenant_id, owner.subject_id, connection, symbol, timeframe)
             # Rebind persisted watches after process restart or a transient adapter
             # rebind; retry is throttled so a broken provider is not hammered.
-            self._ensure_live_stream(owner, session, connection, symbol, timeframe)
+            stream_capable = callable(getattr(getattr(session, "adapter", None), "subscribe_live_candles", None))
+            stream_ready = self._ensure_live_stream(owner, session, connection, symbol, timeframe)
             with self._lock:
                 stream_bound = stream_key in self._live_streams
                 stream_candle = self._live_candles.get(stream_key)
+            if stream_capable and not stream_ready:
+                with self._lock, self._connect() as db:
+                    db.execute("""
+                        UPDATE tenant_connection_timeframe_watch
+                        SET last_status='LIVE_STREAM_UNAVAILABLE', last_error=NULL
+                        WHERE tenant_id=? AND subject_id=? AND connection_id=? AND symbol=? AND timeframe=?
+                    """, (owner.tenant_id, owner.subject_id, connection, symbol, timeframe))
+                return None
             if stream_bound:
                 stream_at = getattr(stream_candle, "timestamp", None)
                 if stream_at is None or stream_at.tzinfo is None or stream_at.astimezone(timezone.utc) != expected:
