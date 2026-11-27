@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime, timezone
 from typing import Any, Mapping
 
 from analysis.signal_outcome_resolver import resolve_next_candle_direction_safe
@@ -118,6 +119,13 @@ class TenantSignalOutcomeStore:
             raise ValueError("candle identity and open_time are required")
         from data.timeframes import normalize_timeframe
         canonical_timeframe = normalize_timeframe(timeframe)
+        try:
+            parsed_open = datetime.fromisoformat(open_time.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError("candle open_time must be a valid ISO-8601 timestamp") from exc
+        if parsed_open.tzinfo is None:
+            raise ValueError("candle open_time must include timezone")
+        canonical_open_time = parsed_open.astimezone(timezone.utc).isoformat()
         with self._connect() as db:
             rows = db.execute(
                 """SELECT e.signal_id FROM tenant_signal_evidence e
@@ -130,7 +138,7 @@ class TenantSignalOutcomeStore:
                 ORDER BY e.observed_at ASC""",
                 (
                     context.tenant_id, context.subject_id, source_id.strip(),
-                    symbol.strip().upper(), canonical_timeframe, open_time,
+                    symbol.strip().upper(), canonical_timeframe, canonical_open_time,
                 ),
             ).fetchall()
         resolved = []
