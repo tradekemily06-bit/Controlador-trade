@@ -311,7 +311,7 @@ class CTraderReadOnlyMarketDataAdapter:
             reported = {}
         return {
             "connected": self._connected and self._authenticated and reported.get("connected", True) is True,
-            "account_mode": "DEMO" if self._authenticated else None,
+            "account_mode": "DEMO" if self._connected and self._authenticated and reported.get("connected", True) is True else None,
             "last_seen": reported.get("last_seen"),
             "active_spot_symbols": reported.get("active_spot_symbols", 0),
             "active_trendbar_streams": reported.get("active_trendbar_streams", 0),
@@ -327,7 +327,12 @@ class CTraderReadOnlyMarketDataAdapter:
         reconnect = getattr(self.transport, "reconnect", None)
         if not callable(reconnect):
             raise RuntimeError("transport cTrader não oferece reconexão segura")
-        details = reconnect()
+        try:
+            details = reconnect()
+        except Exception:
+            self._connected = False
+            self._authenticated = False
+            raise
         if not isinstance(details, dict) or details.get("is_live") is not False:
             self._connected = False
             self._authenticated = False
