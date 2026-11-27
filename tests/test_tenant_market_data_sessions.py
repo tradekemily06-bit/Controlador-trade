@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime, timedelta, timezone
 
 from security.sqlite_tenant_storage import SQLiteTenantStorage
 from security.tenant_context import TenantContext
@@ -77,3 +78,50 @@ def test_disconnected_account_cannot_bind_adapter(tmp_path):
     connections.mark_disconnected(owner, connection_id=account["connection_id"])
     with pytest.raises(PermissionError, match="fresh handshake"):
         sessions.bind(owner, connection_id=account["connection_id"], adapter=FakeAdapter(), source="broker_x", handshake_verified=True)
+
+
+def test_adapter_health_is_reported_without_exposing_unapproved_fields(tmp_path):
+    connections, sessions = _setup(tmp_path)
+    owner = TenantContext("tenant-a", "alice")
+    account = _verified(connections, owner, "Conta A", "account-a")
+
+    class HealthAdapter(FakeAdapter):
+        def status(self):
+            return {
+                "connected": True,
+                "last_seen": datetime.now(timezone.utc).isoformat(),
+                "source_id": "safe-source",
+                "stored_candles": 12,
+                "api_key": "must-not-leak",
+            }
+
+    sessions.bind(
+        owner, connection_id=account["connection_id"], adapter=HealthAdapter(),
+        source="broker_x:account-a", handshake_verified=True,
+    )
+    status = sessions.status(owner)[0]
+    assert status["adapter_status"] == "BOUND"
+    assert status["health_status"] == "CONNECTED"
+    assert status["health"]["stored_candles"] == 12
+    assert "api_key" not in status["health"]
+
+
+def test_stale_adapter_heartbeat_is_not_reported_as_connected(tmp_path):
+    connections, sessions = _setup(tmp_path)
+    owner = TenantContext("tenant-a", "alice")
+    account = _verified(connections, owner, "Conta A", "account-a")
+
+    class StaleAdapter(FakeAdapter):
+        def status(self):
+            return {
+                "connected": True,
+                "last_seen": (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat(),
+            }
+
+    sessions.bind(
+        owner, connection_id=account["connection_id"], adapter=StaleAdapter(),
+        source="broker_x:account-a", handshake_verified=True,
+    )
+    status = sessions.status(owner)[0]
+    assert status["adapter_status"] == "BOUND"
+    assert status["health_status"] == "HEARTBEAT_STALE_OR_UNVERIFIED"
