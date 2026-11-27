@@ -114,7 +114,6 @@ def test_ctrader_incomplete_or_invalid_schedule_metadata_is_not_exposed(metadata
         {"name": "Holiday", "holiday_date": 20000, "is_recurring": False, "schedule_time_zone": ""},
         {"name": "Holiday", "holiday_date": True, "is_recurring": False, "schedule_time_zone": "UTC"},
         {"name": "Holiday", "holiday_date": 20000, "is_recurring": "false", "schedule_time_zone": "UTC"},
-        {"name": "Holiday", "holiday_date": 20000, "is_recurring": False, "schedule_time_zone": "Not/A_Real_Zone"},
         {"name": "Holiday", "holiday_date": 20000, "is_recurring": False, "schedule_time_zone": "UTC", "start_second": 90000},
         {"name": "Holiday", "holiday_date": 20000, "is_recurring": False, "schedule_time_zone": "UTC", "start_second": 500, "end_second": 400},
     ],
@@ -134,6 +133,27 @@ def test_ctrader_invalid_holiday_metadata_is_not_exposed(holiday):
     adapter.handshake()
 
     assert adapter.get_symbol_session_calendar_metadata("EURUSD") is None
+
+
+def test_ctrader_unknown_timezone_is_exposed_as_unvalidated_not_rejected():
+    transport = FakeTransport()
+    transport.resolve_symbol = lambda account_id, symbol: {
+        "symbol_id": 44,
+        "digits": 5,
+        "schedule_time_zone": "Not/A_Real_Zone",
+        "schedule": ({"start_second": 3600, "end_second": 604800},),
+        "holidays": (),
+        "calendar_metadata_status": "AVAILABLE",
+    }
+    adapter = CTraderReadOnlyMarketDataAdapter(transport, account_id=123)
+    adapter.connect()
+    adapter.handshake()
+
+    metadata = adapter.get_symbol_session_calendar_metadata("EURUSD")
+
+    assert metadata is not None
+    assert metadata["timezone_validation_status"] == "NOT_VALIDATED_BY_RUNTIME"
+    assert metadata["status"] == "METADATA_AVAILABLE_NOT_CALENDAR_VALIDATED"
 
 
 def test_ctrader_adapter_verifies_demo_and_normalizes_trendbars():
