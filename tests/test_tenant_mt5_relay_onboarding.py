@@ -6,6 +6,8 @@ from integration.tenant_mt5_relay_onboarding import (
     TenantMT5RelayTokenVault,
 )
 from integration.tenant_mt5_relay_registry import TenantMT5RelayRegistry
+from integration.tenant_market_data_sessions import TenantMarketDataSessionRegistry
+from data.feed import MarketDataRequest
 from security.sqlite_tenant_storage import SQLiteTenantStorage
 from security.tenant_context import TenantContext
 from security.tenant_provider_connections import TenantProviderConnectionRegistry
@@ -37,7 +39,10 @@ def test_first_valid_demo_batch_completes_relay_handshake_and_disconnect_revokes
     provisioned = TenantMT5RelayOnboardingService(connections, vault).provision(
         owner, account_alias="MT5 principal"
     )
-    registry = TenantMT5RelayRegistry(connections, tmp_path / "relays", vault.source_id)
+    sessions = TenantMarketDataSessionRegistry(connections)
+    registry = TenantMT5RelayRegistry(
+        connections, tmp_path / "relays", vault.source_id, sessions=sessions
+    )
     now = datetime.now(timezone.utc)
     payload = {
         "source_id": provisioned["source_id"],
@@ -58,6 +63,10 @@ def test_first_valid_demo_batch_completes_relay_handshake_and_disconnect_revokes
                    if item["connection_id"] == provisioned["connection_id"])
     assert account["status"] == "CONNECTED"
     assert registry.status(owner, provisioned["connection_id"])["connected"] is True
+    session = sessions.get(owner, connection_id=provisioned["connection_id"])
+    assert session is not None
+    assert session.provider_id == "mt5_relay"
+    assert len(session.adapter.fetch(MarketDataRequest("EURUSD", "M5", 10))) == 1
     assert vault.revoke(owner, provisioned["connection_id"]) is True
     assert vault.resolve(provisioned["relay_token"]) is None
 
