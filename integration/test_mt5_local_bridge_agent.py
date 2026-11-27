@@ -8,6 +8,9 @@ class FakeDemoAdapter:
     def get_account_mode(self):
         return "DEMO"
 
+    def get_account_reference(self):
+        return "mt5_" + "a" * 32
+
     def fetch_market_data(self, request):
         return (
             Candle(datetime(2026, 11, 26, 12, 0, tzinfo=timezone.utc), 1.1, 1.2, 1.0, 1.15, 100),
@@ -28,6 +31,7 @@ def test_publish_once_posts_only_confirmed_demo_candles(monkeypatch):
     assert url.startswith("https://")
     assert token == "secret"
     assert payload["account_mode"] == "DEMO"
+    assert payload["account_reference"] == "mt5_" + "a" * 32
     assert payload["symbol"] == "EURUSD"
     assert payload["message_id"]
     assert payload["sent_at"]
