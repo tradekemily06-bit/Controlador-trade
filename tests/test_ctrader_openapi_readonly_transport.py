@@ -184,8 +184,9 @@ def test_live_trendbar_subscription_rejects_duplicate_and_other_account():
 
     with pytest.raises(PermissionError):
         transport.subscribe_live_trendbars(88, 9002, "M5", lambda _event: None)
-    with pytest.raises(ValueError, match="já existe"):
-        transport.subscribe_live_trendbars(77, 9001, "M5", lambda _event: None)
+    replacement = lambda _event: None
+    transport.subscribe_live_trendbars(77, 9001, "M5", replacement)
+    assert transport._trendbar_callbacks[(9001, "M5")] is replacement
 
 
 def test_last_live_trendbar_unsubscribes_its_internal_spot_carrier():
