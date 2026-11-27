@@ -123,3 +123,21 @@ def test_relay_rejects_rewriting_an_existing_candle_and_rolls_back_batch(tmp_pat
     assert after == original_candles
     with store._connect() as db:
         assert db.execute("SELECT COUNT(*) FROM mt5_relay_messages").fetchone()[0] == 1
+
+
+@pytest.mark.parametrize("field,bad_value", [
+    ("open", True),
+    ("high", "1.2"),
+    ("low", float("nan")),
+    ("close", float("inf")),
+    ("volume", 10 ** 1000),
+])
+def test_relay_rejects_non_json_numeric_or_non_finite_candle_values(tmp_path, field, bad_value):
+    store = MT5RelayStore(tmp_path / "relay.sqlite3", expected_source_id="local-demo")
+    payload = _payload()
+    payload["candles"][0][field] = bad_value
+
+    with pytest.raises(MT5RelayError, match="formato de candle inválido"):
+        store.ingest(payload)
+
+    assert store.status()["stored_candles"] == 0
