@@ -119,24 +119,42 @@ class TenantSignalEvidenceStore:
             raise ValueError("analysis cannot precede the closed candle")
         if datetime.fromisoformat(expiry) <= datetime.fromisoformat(observed):
             raise ValueError("signal validity must end after observation")
+        expected = (
+            source_id.strip(), signal_id.strip(), symbol.strip().upper(),
+            canonical_timeframe, canonical_direction, model_version.strip(),
+            float(evidence_score), score_semantics, closed, observed, expiry, provenance,
+        )
         with self._connect() as db:
             db.execute(
-                """INSERT INTO tenant_signal_evidence
+                """INSERT OR IGNORE INTO tenant_signal_evidence
                 (tenant_id, subject_id, source_id, signal_id, symbol, timeframe, direction,
                  model_version, evidence_score, score_semantics, candle_close_at,
                  observed_at, valid_until, provenance)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    owner.tenant_id, owner.subject_id, source_id.strip(), signal_id.strip(),
-                    symbol.strip().upper(), canonical_timeframe, canonical_direction,
-                    model_version.strip(), float(evidence_score), score_semantics,
-                    closed, observed, expiry, provenance,
-                ),
+                (owner.tenant_id, owner.subject_id, *expected),
             )
+            row = db.execute(
+                """SELECT source_id, signal_id, symbol, timeframe, direction,
+                model_version, evidence_score, score_semantics, candle_close_at,
+                observed_at, valid_until, provenance
+                FROM tenant_signal_evidence
+                WHERE tenant_id=? AND subject_id=? AND signal_id=?""",
+                (owner.tenant_id, owner.subject_id, signal_id.strip()),
+            ).fetchone()
+            if row is None:
+                raise RuntimeError("signal evidence insert could not be verified")
+            actual = tuple(row[key] for key in (
+                "source_id", "signal_id", "symbol", "timeframe", "direction",
+                "model_version", "evidence_score", "score_semantics",
+                "candle_close_at", "observed_at", "valid_until", "provenance",
+            ))
+            if actual != expected:
+                raise ValueError("signal_id already exists with different immutable evidence")
+            audit_status = "RECORDED" if db.total_changes else "ALREADY_RECORDED"
         return {
             "signal_id": signal_id.strip(),
             "timeframe": canonical_timeframe,
-            "audit_status": "RECORDED",
+            "audit_status": audit_status,
             "score_type": "EVIDENCE_STRENGTH",
             "probability_of_profit": None,
             "outcome_status": "NOT_RESOLVED",
