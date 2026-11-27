@@ -303,6 +303,10 @@ class TenantConnectionTimeframeMonitor:
                 or timestamp.utcoffset() is None
             ):
                 return
+            # A provider event too far in the future must not poison the
+            # monotonic latest-candle cache and block subsequent valid bars.
+            if (timestamp.astimezone(timezone.utc) - datetime.now(timezone.utc)).total_seconds() > 10:
+                return
             valid = getattr(candle, "is_valid", None)
             if not callable(valid):
                 return
