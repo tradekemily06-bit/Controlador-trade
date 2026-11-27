@@ -212,6 +212,49 @@ class StandaloneMarketAnalysisTests(unittest.TestCase):
         self.assertEqual(provider.requests[0].timeframe, "2m")
         self.assertFalse(result["execution_authorized"])
 
+    def test_daily_weekly_fail_closed_without_provider_session_calendar(self):
+        for timeframe in ("1d", "1w"):
+            with self.subTest(timeframe=timeframe):
+                provider = FakeMarketDataProvider(
+                    candle_series(timeframe=timeframe, age_intervals=1)
+                )
+                evidence_calls = []
+                outcome_calls = []
+                service = StandaloneMarketAnalysisService(
+                    provider=provider,
+                    source="SESSION_CALENDAR_TEST_FEED",
+                    intelligence=UnifiedIntelligence(),
+                    market_data_provenance="REAL_MARKET_DATA",
+                    signal_source_id="session-calendar-test",
+                    signal_evidence_sink=lambda *args, **kwargs: evidence_calls.append(kwargs),
+                    signal_outcome_sink=lambda *args, **kwargs: outcome_calls.append(kwargs),
+                )
+
+                result = service.analyze(
+                    symbol="EURUSD",
+                    timeframe=timeframe,
+                    limit=8,
+                    decision_context=__import__(
+                        "security.tenant_context", fromlist=["TenantContext"]
+                    ).TenantContext("tenant-a", "subject-a"),
+                )
+
+                self.assertEqual(result["signal"], "AGUARDAR")
+                self.assertEqual(result["status"], "REASSESS_REQUIRED")
+                self.assertEqual(
+                    result["signal_cycle"]["status"],
+                    "SESSION_CALENDAR_UNAVAILABLE",
+                )
+                self.assertIsNone(result["signal_cycle"]["valid_until"])
+                self.assertFalse(result["data_integrity"]["safe_for_analysis"])
+                self.assertEqual(
+                    result["data_integrity"]["session_calendar_status"],
+                    "SESSION_CALENDAR_UNAVAILABLE",
+                )
+                self.assertEqual(evidence_calls, [])
+                self.assertEqual(outcome_calls, [])
+                self.assertFalse(result["execution_allowed"])
+
     def test_unsupported_timeframe_and_unbounded_limit_are_rejected(self):
         service = StandaloneMarketAnalysisService(
             provider=FakeMarketDataProvider(candle_series()),
