@@ -82,3 +82,25 @@ pela fila limitada fora do reactor. A fila e o número de streams ativos são
 expostos no status da conexão. Ainda é necessário ligar esse callback ao
 monitor multi-tenant, validar timestamps e fechamento em ambiente DEMO real e
 testar reconexão/reassinatura após queda de rede.
+
+## Reconexão e rotação do token OAuth
+
+O transporte mantém o conjunto de assinaturas spot/trendbar desejadas e oferece
+`reconnect()` para autenticar novamente a mesma conta DEMO e restaurar primeiro
+as assinaturas spot e depois as trendbars. O monitor multi-tenant descarta
+callbacks atrasados de adaptadores substituídos e só aceita candles da instância
+atualmente vinculada àquela conexão.
+
+No fluxo tenant-scoped, o adaptador recebe um `access_token_resolver` criado
+pelo serviço de contas com o contexto autenticado e o `connection_id` fixos.
+Antes de reconectar, ele consulta novamente o cofre OAuth criptografado; assim,
+um token rotacionado pelo worker pode substituir o token antigo mantido em
+memória pelo transporte. Se o token atual não puder ser resolvido, a atualização
+falhar ou o transporte não suportar a rotação, a reconexão falha fechada e o
+adaptador não informa estado DEMO conectado.
+
+Esse mecanismo possui testes automatizados de contrato, mas ainda exige
+validação prática com credenciais Spotware, KMS de produção e uma conta DEMO
+real. O worker de renovação e a infraestrutura de lease compartilhado também
+precisam estar configurados no ambiente hospedado antes de operar em múltiplas
+réplicas.
