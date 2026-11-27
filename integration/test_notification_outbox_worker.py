@@ -46,8 +46,11 @@ def test_worker_start_is_idempotent(tmp_path):
 
 
 
-def test_worker_status_redacts_provider_error_details(tmp_path):
-    outbox = PersistentNotificationOutbox(tmp_path / "outbox.sqlite3")
+def test_worker_dispatch_persists_redacted_provider_error(tmp_path):
+    import sqlite3
+
+    outbox_path = tmp_path / "outbox.sqlite3"
+    outbox = PersistentNotificationOutbox(outbox_path)
 
     class LeakyFailingSink:
         def deliver(self, idempotency_key, payload):
@@ -62,13 +65,18 @@ def test_worker_status_redacts_provider_error_details(tmp_path):
     )
     worker.start()
     deadline = time.monotonic() + 2
-    while time.monotonic() < deadline and worker.status()["last_error"] is None:
+    while time.monotonic() < deadline and outbox.status_counts().get("DEAD_LETTER", 0) == 0:
         time.sleep(0.01)
     worker.stop()
 
-    error = worker.status()["last_error"]
-    assert error is not None
+    assert outbox.status_counts().get("DEAD_LETTER", 0) == 1
+    with sqlite3.connect(outbox_path) as db:
+        error = db.execute(
+            "SELECT last_error FROM notification_outbox WHERE idempotency_key=?",
+            ("worker-secret-event",),
+        ).fetchone()[0]
     assert "push.example.test" not in error
     assert "worker-secret" not in error
     assert "hidden-value" not in error
     assert "[URL REDACTED]" in error
+    assert "Bearer [REDACTED]" in error
