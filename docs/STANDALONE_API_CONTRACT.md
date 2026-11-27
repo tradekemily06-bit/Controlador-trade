@@ -18,6 +18,9 @@ This contract is for connecting the existing approved frontend without changing 
 ### `GET /api/health`
 Liveness response: service name, architecture identifier, visible area count and `execution_authorized: false`.
 
+### `GET /api/backup/status` and `GET /api/bridge/mt5/status`
+Local single-user operators receive detailed local backup/relay status. Verified remote tenants receive only a minimal `INFRASTRUCTURE_ONLY` response: shared backup result paths/history, relay source identifiers, candle totals and global heartbeat metadata are not exposed. These are host-wide operational resources, not tenant-owned records. Neither endpoint authorizes execution.
+
 ### `GET /api/readiness`
 Read-only diagnostic for frontend connection/status indicators. The response is intentionally scope-dependent:
 
