@@ -240,6 +240,8 @@ def test_live_stream_rejects_wrong_account_and_unclosed_candles(tmp_path):
 
 
 def test_live_stream_rebinds_when_provider_adapter_instance_changes(tmp_path):
+    from types import SimpleNamespace
+
     owner = TenantContext("tenant-a", "alice")
     now = datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc)
 
@@ -273,6 +275,16 @@ def test_live_stream_rebinds_when_provider_adapter_instance_changes(tmp_path):
     assert first.unsubscribed is True
     assert second.callback is not None
     assert monitor.status(owner)["live_streams"] == 1
+
+    candle_at = datetime(2026, 11, 27, 12, 0, tzinfo=timezone.utc)
+    stale_candle = SimpleNamespace(timestamp=candle_at, is_valid=lambda: True)
+    fresh_candle = SimpleNamespace(timestamp=candle_at, is_valid=lambda: True)
+    event = {"account_id": 789, "symbol": "EURUSD", "timeframe": "5m", "closed": True}
+    first.callback({**event, "candle": stale_candle})
+    key = (owner.tenant_id, owner.subject_id, _id("e"), "EURUSD", "5m")
+    assert key not in monitor._live_candles
+    second.callback({**event, "candle": fresh_candle})
+    assert monitor._live_candles[key] is fresh_candle
 
 
 def test_disconnected_stream_provider_reconnects_before_subscribing(tmp_path):
