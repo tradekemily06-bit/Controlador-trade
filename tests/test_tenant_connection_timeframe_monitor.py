@@ -897,3 +897,38 @@ def test_expired_notification_worker_cannot_ack_after_outbox_reclaim(tmp_path):
     assert final["delivered_at"] is None
     assert calls == [row["event_id"], row["event_id"], row["event_id"]]
 
+def test_expired_notification_lease_is_not_counted_as_delivered(tmp_path):
+    owner = TenantContext("tenant-a", "alice")
+    connection = _id("f")
+    sessions = Sessions()
+    sessions.add(owner, connection, "broker_a")
+    now = datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc)
+    expected = datetime(2026, 11, 27, 12, 0, tzinfo=timezone.utc)
+    holder = {}
+
+    def sink(event):
+        monitor = holder["monitor"]
+        with monitor._connect() as db:
+            db.execute(
+                "UPDATE tenant_connection_notification_outbox "
+                "SET lease_until=0 WHERE event_id=?",
+                (event["event_id"],),
+            )
+
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "notification-expired-ack.sqlite3", sessions,
+        lambda _session, _context: Analyzer(expected.isoformat(), "AGUARDAR"),
+        on_result=sink,
+    )
+    holder["monitor"] = monitor
+    monitor.subscribe(owner, connection, "EURUSD", "5m")
+    assert len(monitor.run_once(now=now)) == 1
+
+    # run_once dispatches once; the callback succeeds, but its lease expires
+    # before the durable acknowledgement can be written.
+    with monitor._connect() as db:
+        row = db.execute(
+            "SELECT delivered_at FROM tenant_connection_notification_outbox"
+        ).fetchone()
+    assert row["delivered_at"] is None
+
