@@ -93,6 +93,19 @@ def test_forecast_timestamp_must_precede_resolution_and_resolution_is_immutable(
         )
 
 
+def test_probability_store_rejects_non_finite_and_unrepresentable_values(tmp_path):
+    store = TenantForecastAuditStore(tmp_path / "forecast-probability-bounds.sqlite3")
+    owner = TenantContext("tenant-a", "alice")
+    for index, probability in enumerate((float("nan"), float("inf"), float("-inf"), 10**1000)):
+        with pytest.raises(ValueError):
+            store.record_forecast(
+                owner, forecast_id=f"invalid-{index}", symbol="EURUSD", timeframe="M1",
+                direction="COMPRA", model_version="model-v1", probability=probability,
+                forecast_at="2026-11-27T10:00:00Z",
+            )
+    assert store.calibration_records(owner) == []
+
+
 def test_invalid_probability_timeframe_and_identity_are_rejected(tmp_path):
     store = TenantForecastAuditStore(tmp_path / "forecast-audit.sqlite3")
     owner = TenantContext("tenant-a", "alice")
