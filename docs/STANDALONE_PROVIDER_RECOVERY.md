@@ -11,9 +11,15 @@ When the standalone runtime starts, it calls
 `TenantProviderConnectionService.reconnect_available()` for its configured
 single-user runtime identity. Recovery is attempted only when both a
 tenant-scoped secret resolver and a provider adapter factory are configured.
-For each previously active account, the service resolves the stored vault
-reference again and requires a fresh provider handshake before binding a new
-adapter session.
+For each previously active generic provider account, the service resolves the
+stored vault reference again and requires a fresh provider handshake before
+binding a new adapter session.
+
+The generic recovery service explicitly delegates `ctrader` accounts to
+`TenantCTraderAccountService`. This prevents two recovery owners from
+refreshing OAuth credentials and racing to replace the same process-local
+adapter binding. The generic result reports `RECOVERY_DELEGATED`; the
+dedicated cTrader result is reported in `ctrader_recovery`.
 
 A failed attempt is isolated to that account and is reported as
 `RECONNECT_FAILED`. If the required resolver or factory is missing, the
