@@ -330,3 +330,19 @@ def test_ctrader_drops_non_positive_live_quotes(quote):
     transport.spot_callback({"symbol_id": 44, **quote, "timestamp": 1800000000})
 
     assert received == []
+
+
+def test_ctrader_drops_crossed_live_bid_ask_quote():
+    transport = FakeTransport()
+    adapter = CTraderReadOnlyMarketDataAdapter(transport, account_id=123)
+    adapter.connect()
+    adapter.handshake()
+    received = []
+    adapter.subscribe_live_quotes("EURUSD", received.append)
+
+    transport.spot_callback({
+        "symbol_id": 44, "bid": 110200, "ask": 110100,
+        "timestamp": 1800000000,
+    })
+
+    assert received == []
