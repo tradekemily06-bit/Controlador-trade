@@ -2022,7 +2022,7 @@ class PushSubscriptionStandaloneRouteTests(unittest.TestCase):
 
     @staticmethod
     def subscription_payload():
-        public_key = b"\\x04" + b"p" * 64
+        public_key = b"\x04" + b"p" * 64
         return {
             "device_id": "browser-1",
             "subscription": {
