@@ -4,7 +4,7 @@ This roadmap defines the evidence required to call the independent application c
 
 ## Delivery boundaries
 
-- One standalone application, backed by the existing seven visible areas: Cabine de Comando, Análise, Estudo, Memória, Reserva Fiscal, Assistente do Ecossistema and Central.
+- One standalone application, backed by the existing six visible areas: Cabine de Comando, Análise, Estudo, Reserva Fiscal, Assistente do Ecossistema and Central.
 - Preserve the approved Lovable UI. Backend work must connect to its existing screens and controls; visual redesign is out of scope.
 - No EA and no broker order submission. Market analysis and notifications are informational and require human review.
 - DEMO-first. REAL remains unavailable until separately reviewed, explicitly authorized, and validated; this roadmap does not authorize REAL execution.
@@ -18,7 +18,7 @@ This roadmap defines the evidence required to call the independent application c
 - Provider-neutral market-data contracts, provider registry and timeframe normalization.
 - API contract, identity boundary, process lifecycle and fail-closed safety defaults.
 
-**Exit evidence:** migrations and persistence tests pass; API schemas are documented; all seven areas are represented; no hidden order/money-movement route exists; a clean startup and shutdown succeeds.
+**Exit evidence:** migrations and persistence tests pass; API schemas are documented; all six areas are represented; no hidden order/money-movement route exists; a clean startup and shutdown succeeds.
 
 ## Phase B — Frontend/API integration
 
@@ -81,3 +81,8 @@ This roadmap defines the evidence required to call the independent application c
 ## Release definition
 
 The application is complete only when Phases A–E have their exit evidence, the existing Lovable UI is connected without visual changes, all seven areas pass end-to-end acceptance, live data and claimed notification channels are demonstrated, and the release is deployed with security, monitoring, backup and rollback in place.
+
+
+## Navigation boundary correction
+
+The approved product navigation contains six visible areas. Memory is an internal capability, not a separate area: decision history and reports are surfaced through Analysis, while validated learning and retained study context belong within Study. The legacy `memory` API area value is mapped to Analysis for compatibility and is not listed as a visible area.
