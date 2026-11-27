@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Mapping
+import threading
 from urllib.parse import urlencode
 
 from execution.p128_ctrader_demo_auth import CTRADER_AUTHORIZATION_URL
@@ -30,6 +31,7 @@ class TenantCTraderOAuthService:
         client_id: str,
         redirect_uri: str,
         exchange_code: Callable[[str, str], Mapping[str, Any]],
+        refresh_tokens: Callable[[str], Mapping[str, Any]] | None = None,
         scope: str = "accounts",
     ) -> None:
         if connections is None or not callable(getattr(connections, "list_connections", None)):
@@ -52,6 +54,11 @@ class TenantCTraderOAuthService:
         self.client_id = client_id.strip()
         self.redirect_uri = redirect_uri
         self.exchange_code = exchange_code
+        if refresh_tokens is not None and not callable(refresh_tokens):
+            raise ValueError("OAuth token refresh client is invalid")
+        self.refresh_tokens = refresh_tokens
+        self._refresh_locks: dict[str, threading.Lock] = {}
+        self._refresh_locks_guard = threading.Lock()
         self.scope = scope
 
     def begin(self, context: TenantContext, *, connection_id: str) -> dict[str, Any]:
@@ -138,3 +145,58 @@ class TenantCTraderOAuthService:
             "account_connected": False,
             "execution_authorized": False,
         }
+
+    def refresh(self, context: TenantContext, *, connection_id: str) -> dict[str, Any]:
+        """Rotate an expiring token set using the provider's one-time refresh rotation."""
+        owner = require_tenant_context(context)
+        if self.refresh_tokens is None:
+            raise RuntimeError("cTrader OAuth refresh client is not configured")
+        account = next(
+            (item for item in self.connections.list_connections(owner)
+             if item.get("connection_id") == connection_id),
+            None,
+        )
+        if account is None or account.get("provider_id") != _PROVIDER_ID:
+            raise PermissionError("cTrader connection does not belong to this identity")
+        if account.get("status") not in {"PENDING", "CONNECTED"}:
+            raise PermissionError("cTrader connection is not eligible for token refresh")
+        with self._refresh_locks_guard:
+            lock = self._refresh_locks.setdefault(connection_id, threading.Lock())
+        with lock:
+            current = self.token_vault.resolve(owner, connection_id)
+            if not isinstance(current, Mapping) or not current.get("refresh_token"):
+                raise PermissionError("cTrader refresh token is unavailable or revoked")
+            payload = self.refresh_tokens(current["refresh_token"])
+            if not isinstance(payload, Mapping) or payload.get("errorCode") or payload.get("error"):
+                raise PermissionError("cTrader token refresh was rejected")
+            access_token = payload.get("accessToken") or payload.get("access_token")
+            refresh_token = payload.get("refreshToken") or payload.get("refresh_token")
+            expires_in = payload.get("expiresIn") or payload.get("expires_in")
+            if isinstance(expires_in, bool) or not isinstance(expires_in, (int, float)) or not 1 <= expires_in <= 31536000:
+                raise ValueError("cTrader refreshed token expiry is invalid")
+            if refresh_token is None:
+                refresh_token = current["refresh_token"]
+            expires_at = (
+                datetime.now(timezone.utc) + timedelta(seconds=int(expires_in))
+            ).isoformat()
+            stored = self.token_vault.store(
+                owner,
+                connection_id=connection_id,
+                provider_id=_PROVIDER_ID,
+                token_set={
+                    "access_token": access_token,
+                    "refresh_token": refresh_token,
+                    "token_type": payload.get("tokenType", "Bearer"),
+                },
+                expires_at=expires_at,
+                scopes=tuple(current.get("scopes", (self.scope,))),
+            )
+            return {
+                "connection_id": connection_id,
+                "provider_id": _PROVIDER_ID,
+                "status": "TOKEN_REFRESHED_ENCRYPTED",
+                "expires_at": stored.get("expires_at"),
+                "execution_authorized": False,
+                "secret_material_returned": False,
+            }
+
