@@ -108,6 +108,19 @@ class ProbabilityCalibrationTests(unittest.TestCase):
         )
         self.assertEqual(evaluate_probability_calibration([late, invalid]), {})
 
+    def test_malformed_provenance_and_timestamps_are_rejected_safely(self):
+        base = forecast("bad-provenance")
+        malformed_provenance = ProbabilityForecast(
+            **{**base.__dict__, "provenance": ["REAL_MARKET_DATA"]}
+        )
+        malformed_timestamp = ProbabilityForecast(
+            **{**forecast("bad-time").__dict__, "forecast_at": 123}
+        )
+        self.assertEqual(
+            evaluate_probability_calibration([malformed_provenance, malformed_timestamp]),
+            {},
+        )
+
     def test_duplicate_forecast_ids_are_not_double_counted(self):
         item = forecast("duplicate")
         result = evaluate_probability_calibration([item, item])
