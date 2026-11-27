@@ -67,6 +67,15 @@ Returns broker connections owned by the authenticated tenant and subject, from t
 
 The registry is metadata-only: it is not an OAuth flow, credential vault, provider adapter, or market-data feed. No browser endpoint can create a verified connection. Production OAuth/consent, encrypted credential storage, tenant-specific adapter lifecycle, reconnect/revocation and real broker handshake tests remain required. Current market analysis still selects one configured source at a time; no cross-broker signal fusion is implemented. A verified account connection also does not prove every symbol/timeframe is available or guarantee uninterrupted delivery.
 
+### Account-specific timeframe cycles
+
+- `POST /api/market-data/connections/{connection_id}/subscriptions` — body `{"symbol":"EURUSD","timeframe":"M5"}`; creates or re-enables a read-only candle-close subscription for that exact verified account.
+- `GET /api/market-data/connections/{connection_id}/subscriptions` — lists only subscriptions owned by the authenticated tenant and subject for that connection.
+- `DELETE /api/market-data/connections/{connection_id}/subscriptions` — body `{"symbol":"EURUSD","timeframe":"M5"}`; disables that exact subscription.
+- `GET /api/market-data/timeframe-results?connection_id={connection_id}&limit=50` — reads recent analysis results, optionally restricted to one account.
+
+The background worker resolves the adapter from the trusted tenant/account session for every cycle. Its idempotency key includes tenant, subject, connection, symbol, timeframe and candle close. A missing adapter or a candle that is not the expected closed candle cannot produce a current signal. Subscriptions are capped at 100 active symbol/timeframe pairs per account. The worker runs only while the standalone server process is alive; continuous operation after the user's computer is shut down still requires a continuously running hosted/VPS deployment.
+
 ### `POST /api/market-data/connections/{connection_id}/analysis`
 
 Runs read-only analysis against the server-side adapter bound to exactly one verified account connection. The connection ID is resolved only inside the authenticated tenant-and-subject scope; a connection belonging to another user or lacking an active adapter returns no session. Body: `{"symbol":"EURUSD","timeframe":"M5","limit":120}`. The response identifies the connection/provider/source used. Each account has its own adapter instance; this route does not merge feeds or imply that every provider is live. It never submits orders. Adapter bindings are process-local and require a fresh server-side handshake after restart.
