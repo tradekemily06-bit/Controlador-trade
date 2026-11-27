@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import threading
 import time
 
@@ -70,8 +70,8 @@ def test_subscriptions_and_results_are_isolated_per_account(tmp_path):
     assert {item["provider_id"] for item in results} == {"broker_a", "broker_b"}
     assert len(monitor.latest_results(owner, _id("a"), now=now)) == 1
     assert len(monitor.latest_results(owner, _id("b"), now=now)) == 1
-    assert monitor.latest_results(owner, _id("a"))[0]["result"]["signal"] == "COMPRA"
-    assert monitor.latest_results(owner, _id("b"))[0]["result"]["signal"] == "VENDA"
+    assert monitor.latest_results(owner, _id("a"), now=now)[0]["result"]["signal"] == "COMPRA"
+    assert monitor.latest_results(owner, _id("b"), now=now)[0]["result"]["signal"] == "VENDA"
 
 
 
