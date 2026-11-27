@@ -35,6 +35,7 @@ from integration.ecosystem_service import EcosystemService
 from integration.p135_senior_analysis_boundary import SeniorAnalysisBoundary
 from integration.p137_operational_risk_bridge import OperationalRiskBridge
 from execution.mt5_instrument_universe import discover_mt5_instruments
+from data.timeframes import get_timeframe_interval, normalize_timeframe
 from integration.mt5_asset_suitability_bridge import prioritize_mt5_assets
 
 
@@ -169,13 +170,18 @@ class ConfiguredEcosystemService(EcosystemService):
         """Evaluate the existing DEMO safety stack from this exact market cycle."""
         if self.operational_runtime is None:
             return DemoReadinessReport(False, ("runtime operacional não conectado.",))
+        try:
+            expected_interval_seconds = int(
+                get_timeframe_interval(
+                    normalize_timeframe(orchestration.market_data.timeframe)
+                ).total_seconds()
+            )
+        except (TypeError, ValueError, OverflowError):
+            expected_interval_seconds = None
         integrity = MarketDataIntegrity().assess(
             tuple(orchestration.market_data.candles),
             now=orchestration.timestamp,
-            expected_interval_seconds={
-                "1m": 60, "5m": 300, "15m": 900, "30m": 1800,
-                "1h": 3600, "4h": 14400, "1d": 86400,
-            }.get(orchestration.market_data.timeframe.lower()),
+            expected_interval_seconds=expected_interval_seconds,
         )
         recovery = self.operational_runtime.recovery.assess()
         config = RuntimeConfig(
