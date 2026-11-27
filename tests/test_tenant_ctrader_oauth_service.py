@@ -27,7 +27,7 @@ class TestCipher:
         return self._xor(ciphertext[len(tag):])
 
 
-def _setup(tmp_path, exchange=None):
+def _setup(tmp_path, exchange=None, refresh=None):
     owner = TenantContext("tenant-a", "alice")
     storage = SQLiteTenantStorage(tmp_path / "tenant.sqlite3")
     connections = TenantProviderConnectionRegistry(storage)
@@ -42,6 +42,7 @@ def _setup(tmp_path, exchange=None):
         exchange_code=exchange or (lambda code, redirect: {
             "accessToken": "access-token", "refreshToken": "refresh-token", "expiresIn": 3600
         }),
+        refresh_tokens=refresh,
     )
     return owner, connections, account, tokens, service
 
@@ -89,3 +90,34 @@ def test_begin_rejects_other_tenant_connection(tmp_path):
     other = TenantContext("tenant-b", "bob")
     with pytest.raises(PermissionError):
         service.begin(other, connection_id=account["connection_id"])
+
+def test_refresh_rotates_tokens_and_persists_new_encrypted_values(tmp_path):
+    owner, connections, account, tokens, service = _setup(
+        tmp_path,
+        refresh=lambda old: {
+            "accessToken": "rotated-access",
+            "refreshToken": "rotated-refresh",
+            "expiresIn": 7200,
+            "tokenType": "bearer",
+        },
+    )
+    started = service.begin(owner, connection_id=account["connection_id"])
+    state = parse_qs(urlparse(started["authorization_url"]).query)["state"][0]
+    service.complete_callback(state=state, code="code")
+    result = service.refresh(owner, connection_id=account["connection_id"])
+    assert result["status"] == "TOKEN_REFRESHED_ENCRYPTED"
+    resolved = tokens.resolve(owner, account["connection_id"])
+    assert resolved["access_token"] == "rotated-access"
+    assert resolved["refresh_token"] == "rotated-refresh"
+    assert resolved["scopes"] == ["accounts"]
+    assert result["secret_material_returned"] is False
+
+
+def test_refresh_fails_closed_without_refresh_client(tmp_path):
+    owner, connections, account, tokens, service = _setup(tmp_path)
+    started = service.begin(owner, connection_id=account["connection_id"])
+    state = parse_qs(urlparse(started["authorization_url"]).query)["state"][0]
+    service.complete_callback(state=state, code="code")
+    with pytest.raises(RuntimeError):
+        service.refresh(owner, connection_id=account["connection_id"])
+
