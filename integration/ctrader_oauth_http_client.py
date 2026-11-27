@@ -79,6 +79,17 @@ class CTraderOAuthHttpClient:
             },
         )
 
+    def create_readonly_transport(self, access_token: str):
+        """Build the official DEMO-only Open API transport without exposing app secrets."""
+        if not isinstance(access_token, str) or not access_token.strip():
+            raise ValueError("cTrader access token is required")
+        from integration.ctrader_openapi_readonly_transport import CTraderOpenApiReadOnlyTransport
+        return CTraderOpenApiReadOnlyTransport(
+            client_id=self._client_id,
+            client_secret=self._client_secret,
+            access_token=access_token,
+        )
+
     def refresh_tokens(self, refresh_token: str) -> dict[str, Any]:
         if not isinstance(refresh_token, str) or not refresh_token or len(refresh_token) > 16384:
             raise ValueError("cTrader refresh token is invalid")
