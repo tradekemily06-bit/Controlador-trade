@@ -27,16 +27,27 @@ browser while the application is closed until a real provider, subscription
 management, production worker configuration, and end-to-end device delivery test
 are configured.
 
-Important scope distinction: the legacy/shared ecosystem notification path can enqueue into
-this outbox, but the tenant-scoped market/provider alert path currently writes to
-the recipient's in-app tenant inbox through `TenantNotificationDispatcher` and
-does not yet atomically enqueue the same event into an external-delivery outbox.
-Therefore a new market signal, MT5/cTrader connection event, or TradingView alert
-must not be described as delivered to a phone/browser outside the in-app inbox.
-The missing work is a tenant-scoped transactional outbox in the same storage
-transaction as the tenant inbox write, plus a tenant-aware delivery sink and
-subscription/consent routing. Reusing the global outbox without that ownership
-boundary would risk cross-tenant delivery and is intentionally not done.
+The tenant-scoped market/provider alert path now writes the in-app inbox and
+`tenant_notification_outbox` in the same SQLite transaction. The outbox is
+partitioned by tenant, subject and notification ID; its worker sends the exact
+recipient identity to a tenant-aware sink, uses collision-resistant idempotency
+keys, lease ownership, retries, and dead-letter handling. The tenant notification
+status endpoint reports only the authenticated owner's outbox counts and worker
+state. A local tenant outbox cannot be claimed or delivered by another owner.
+
+The tenant-aware worker is an optional runtime dependency:
+`StandaloneRuntime(tenant_notification_sink=...)`. The default environment
+still supplies no sink, so external delivery remains disabled and status reports
+`NO_TENANT_EXTERNAL_SINK_CONFIGURED` / `OUTBOX_ONLY_NO_PROVIDER`. The worker
+and queue are now connected, but a real tenant-aware delivery adapter, consented
+device-subscription storage, VAPID credentials, browser/PWA lifecycle and
+end-to-end phone/browser delivery test remain required. Never describe an event
+as delivered merely because it is present in the outbox or the worker is running.
+
+This tenant outbox shares `tenant-state.sqlite3`, which is included in the
+allowlisted local SQLite backup. It remains single-host development storage;
+multi-replica production still requires a shared transactional database and
+distributed lease fencing.
 
 No provider credentials or user subscription data are stored in source code.
 The delivery adapter must be configured server-side and must never authorize
