@@ -269,6 +269,19 @@ class TenantProviderConnectionService:
             # must stay disconnected until a user requests reconnection.
             if account["status"] != "CONNECTED":
                 continue
+            # cTrader has a dedicated OAuth-aware recovery owner. Letting the
+            # generic credential-ref path bind it as well can race the
+            # cTrader token refresh/handshake and replace its adapter session.
+            # The dedicated TenantCTraderAccountService performs this recovery.
+            if provider_id == "ctrader":
+                outcomes.append({
+                    "connection_id": connection_id,
+                    "provider_id": provider_id,
+                    "status": "RECOVERY_DELEGATED",
+                    "recovery_owner": "TENANT_CTRADER_ACCOUNT_SERVICE",
+                    "execution_authorized": False,
+                })
+                continue
             if (
                 self.secret_resolver is None
                 or provider_id not in self.adapter_factories
