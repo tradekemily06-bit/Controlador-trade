@@ -86,3 +86,17 @@ class TenantFiscalStoreFactory:
             )
             self._stores[digest] = repositories
             return repositories
+
+
+    def readiness(self) -> dict[str, object]:
+        """Describe the local isolation primitive without implying production readiness."""
+        return {
+            "status": "LOCAL_TENANT_FISCAL_SHARDED_SQLITE_PRIMITIVE",
+            "tenant_context_required": True,
+            "separate_database_per_tenant_and_subject": True,
+            "remote_request_wiring": "NOT_ENABLED",
+            "production_durable": False,
+            "backup_restore": "NOT_VERIFIED",
+            "production_ready": False,
+            "execution_authorized": False,
+        }
