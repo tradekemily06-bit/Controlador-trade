@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-from math import log
+from math import isfinite, log
 from typing import Iterable
 
 from data.timeframes import normalize_timeframe
@@ -31,6 +31,16 @@ class ProbabilityForecast:
     resolved_at: str
     provenance: str
     out_of_sample: bool
+
+
+def _valid_probability(value: object) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        numeric = float(value)
+    except (OverflowError, ValueError):
+        return False
+    return isfinite(numeric) and 0.0 <= numeric <= 1.0
 
 
 def _utc(value: str) -> datetime:
@@ -98,9 +108,7 @@ def evaluate_probability_calibration(
             or item.provenance not in _ALLOWED_PROVENANCE
             or not isinstance(item.forecast_at, str)
             or not isinstance(item.resolved_at, str)
-            or isinstance(item.probability, bool)
-            or not isinstance(item.probability, (int, float))
-            or not 0.0 <= float(item.probability) <= 1.0
+            or not _valid_probability(item.probability)
         ):
             rejected += 1
             continue
