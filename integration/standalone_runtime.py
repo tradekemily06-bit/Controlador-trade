@@ -15,6 +15,7 @@ from security.tenant_context import TenantContext
 from security.tenant_provider_connections import TenantProviderConnectionRegistry
 from integration.tenant_market_data_sessions import TenantMarketDataSessionRegistry
 from integration.tenant_connection_timeframe_monitor import TenantConnectionTimeframeMonitor
+from integration.deployment_topology_guard import validate_single_replica_sqlite_topology
 from integration.tenant_provider_connection_service import TenantProviderConnectionService
 from integration.tenant_mt5_relay_registry import TenantMT5RelayRegistry
 from integration.tenant_mt5_relay_onboarding import TenantMT5RelayTokenVault, TenantMT5RelayOnboardingService
@@ -156,6 +157,11 @@ class StandaloneRuntime:
         configured_identity = os.getenv("CONTROLADOR_SINGLE_USER_IDENTITY", "").strip()
         if not configured_identity:
             raise RuntimeError("CONTROLADOR_SINGLE_USER_IDENTITY precisa estar configurada")
+
+        # The current runtime uses local SQLite and process-local adapters.
+        # Fail closed when the deployment declares multiple replicas; readiness
+        # must not rely on operators remembering an undocumented topology limit.
+        self.deployment_topology = validate_single_replica_sqlite_topology()
 
         self.runtime_dir = Path(
             runtime_dir or os.getenv("CONTROLADOR_RUNTIME_DIR", ".runtime-standalone")
