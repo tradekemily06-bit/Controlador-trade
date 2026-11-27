@@ -879,11 +879,15 @@ def test_expired_notification_worker_cannot_ack_after_outbox_reclaim(tmp_path):
     assert monitor.dispatch_pending_notifications() == 0
     with monitor._connect() as db:
         reclaimed = db.execute(
-            "SELECT lease_token, delivered_at FROM tenant_connection_notification_outbox WHERE event_id=?",
+            "SELECT lease_token, lease_until, delivered_at, dead_at "
+            "FROM tenant_connection_notification_outbox WHERE event_id=?",
             (row["event_id"],),
         ).fetchone()
-        assert reclaimed["lease_token"]
+        # The reclaimed owner also failed; it released its lease into backoff.
+        assert reclaimed["lease_token"] is None
+        assert reclaimed["lease_until"] is not None
         assert reclaimed["delivered_at"] is None
+        assert reclaimed["dead_at"] is None
 
     release.set()
     first.join(3)
@@ -893,7 +897,7 @@ def test_expired_notification_worker_cannot_ack_after_outbox_reclaim(tmp_path):
             "SELECT lease_token, delivered_at FROM tenant_connection_notification_outbox WHERE event_id=?",
             (row["event_id"],),
         ).fetchone()
-    assert final["lease_token"] == reclaimed["lease_token"]
+    assert final["lease_token"] is None
     assert final["delivered_at"] is None
     assert calls == [row["event_id"], row["event_id"], row["event_id"]]
 
