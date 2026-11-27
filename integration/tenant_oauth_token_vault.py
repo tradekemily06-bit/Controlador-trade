@@ -162,7 +162,9 @@ class TenantOAuthTokenVault:
     def resolve(self, context: TenantContext, connection_id: str) -> dict[str, Any] | None:
         """Resolve credentials for trusted server-side adapter code only."""
         owner = require_tenant_context(context)
-        account = self._owned_connection(owner, connection_id)
+        account = self._owned_connection(owner, connection_id, allow_disconnected=True)
+        if account["status"] == "DISCONNECTED":
+            return None
         with self._connect() as db:
             row = db.execute("""
                 SELECT provider_id,key_id,ciphertext_b64,expires_at,scopes_json,revoked_at
