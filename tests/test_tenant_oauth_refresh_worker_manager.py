@@ -46,3 +46,21 @@ def test_manager_rejects_untrusted_owner_and_enforces_capacity():
             manager.register_owner(TenantContext("tenant-b", "bob"))
     finally:
         manager.stop()
+
+
+def test_owner_status_is_scoped_and_does_not_expose_other_tenant_counts():
+    manager = TenantOAuthRefreshWorkerManager(Vault(), OAuth(), poll_interval_seconds=60)
+    alice = TenantContext("tenant-a", "alice")
+    bob = TenantContext("tenant-b", "bob")
+    try:
+        manager.register_owner(alice)
+        alice_status = manager.owner_status(alice)
+        bob_status = manager.owner_status(bob)
+        assert alice_status["registered"] is True
+        assert alice_status["running"] is True
+        assert alice_status["state"] == "RUNNING"
+        assert bob_status["registered"] is False
+        assert "registered_owner_count" not in alice_status
+        assert "tenant_id" not in alice_status
+    finally:
+        manager.stop()
