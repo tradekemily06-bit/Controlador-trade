@@ -240,7 +240,15 @@ class PersistentNotificationOutbox:
             try:
                 sink.deliver(item.idempotency_key, item.payload)
             except Exception as exc:
-                status = self.mark_failed(item.idempotency_key, item.lease_token, str(exc), now=now)
+                try:
+                    status = self.mark_failed(
+                        item.idempotency_key, item.lease_token, str(exc), now=now
+                    )
+                except ValueError:
+                    # The lease may have expired and been reclaimed while the
+                    # external sink was running. Do not let a stale worker abort
+                    # delivery of the remaining items in this batch.
+                    continue
                 if status == "DEAD":
                     dead_lettered += 1
                 else:
