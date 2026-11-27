@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 
 from security.sqlite_tenant_storage import SQLiteTenantStorage
@@ -79,3 +81,44 @@ def test_registry_requires_trusted_tenant_context(tmp_path):
     registry = _registry(tmp_path)
     with pytest.raises(PermissionError, match="trusted tenant context"):
         registry.list_connections(None)
+
+
+def test_concurrent_accounts_do_not_overwrite_each_other(tmp_path):
+    registry = _registry(tmp_path)
+    alice = TenantContext("tenant-a", "alice")
+
+    def connect(index):
+        return registry.record_verified_connection(
+            alice, provider_id="broker_x", account_alias=f"Conta {index}",
+            account_reference=f"account-{index}", adapter_verified=True,
+        )
+
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        results = list(pool.map(connect, range(24)))
+
+    listed = registry.list_connections(alice)
+    assert len(results) == 24
+    assert len(listed) == 24
+    assert len({item["account_reference"] for item in listed}) == 24
+    assert len({item["connection_id"] for item in listed}) == 24
+
+
+def test_concurrent_reverification_preserves_connection_identity(tmp_path):
+    registry = _registry(tmp_path)
+    alice = TenantContext("tenant-a", "alice")
+    first = registry.record_verified_connection(
+        alice, provider_id="broker_x", account_alias="Conta",
+        account_reference="account-123", adapter_verified=True,
+    )
+
+    def verify(index):
+        return registry.record_verified_connection(
+            alice, provider_id="broker_x", account_alias=f"Conta {index}",
+            account_reference="account-123", adapter_verified=True,
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(verify, range(16)))
+
+    assert all(item["connection_id"] == first["connection_id"] for item in results)
+    assert len(registry.list_connections(alice)) == 1
