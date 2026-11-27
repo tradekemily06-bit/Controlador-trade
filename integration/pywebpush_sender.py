@@ -113,3 +113,31 @@ def build_tenant_web_push_sink(
         timeout_seconds=timeout_seconds,
     )
     return TenantWebPushNotificationSink(store, sender, ttl_seconds=ttl_seconds)
+
+
+
+def build_tenant_web_push_components(
+    store: Any,
+    private_key_provider: Callable[[], str],
+    *,
+    subject: str,
+    ttl_seconds: int = 300,
+    timeout_seconds: float = 10.0,
+) -> tuple[Any, Any]:
+    """Build the matching registry and delivery sink for StandaloneRuntime.
+
+    Pass the returned registry as tenant_push_subscription_registry and the
+    returned sink as tenant_notification_sink. Both components share the exact
+    same encrypted store instance; no browser or global recipient is trusted.
+    """
+    from security.push_subscription_registry import TenantPushSubscriptionRegistry
+
+    registry = TenantPushSubscriptionRegistry(store)
+    sink = build_tenant_web_push_sink(
+        store,
+        private_key_provider,
+        subject=subject,
+        ttl_seconds=ttl_seconds,
+        timeout_seconds=timeout_seconds,
+    )
+    return registry, sink
