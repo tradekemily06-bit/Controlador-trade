@@ -41,6 +41,8 @@ class FakeMT5:
         self.selected = []
         self.initialize_path = None
         self.active_path = None
+        self.account_login = 123456
+        self.account_server = "ICMarketsSC-Demo"
 
     def initialize(self, path=None):
         self.initialized = True
@@ -56,7 +58,9 @@ class FakeMT5:
 
     def account_info(self):
         return SimpleNamespace(
-            trade_mode=self.ACCOUNT_TRADE_MODE_DEMO if self.demo else 1
+            trade_mode=self.ACCOUNT_TRADE_MODE_DEMO if self.demo else 1,
+            login=self.account_login,
+            server=self.account_server,
         )
 
     def symbol_select(self, symbol, enable):
@@ -251,3 +255,39 @@ def test_get_account_mode_fails_closed_for_disconnected_terminal(tmp_path):
     with pytest.raises(MT5MarketDataError, match="não está conectado"):
         adapter.get_account_mode()
     assert mt5.shutdown_called is True
+
+
+def test_get_account_reference_is_stable_and_does_not_expose_login_or_server():
+    mt5 = FakeMT5()
+    adapter = ICMarketsMT5DemoMarketDataAdapter(mt5)
+    reference = adapter.get_account_reference()
+    assert reference.startswith("mt5_")
+    assert len(reference) == 36
+    assert str(mt5.account_login) not in reference
+    assert mt5.account_server not in reference
+    assert mt5.shutdown_called is True
+
+
+def test_get_account_reference_changes_when_demo_login_or_server_changes():
+    first_mt5 = FakeMT5()
+    first = ICMarketsMT5DemoMarketDataAdapter(first_mt5).get_account_reference()
+    second_mt5 = FakeMT5()
+    second_mt5.account_login = 654321
+    second = ICMarketsMT5DemoMarketDataAdapter(second_mt5).get_account_reference()
+    third_mt5 = FakeMT5()
+    third_mt5.account_server = "Different-Demo-Server"
+    third = ICMarketsMT5DemoMarketDataAdapter(third_mt5).get_account_reference()
+    assert len({first, second, third}) == 3
+
+
+def test_get_account_reference_fails_closed_for_missing_login_or_server():
+    mt5 = FakeMT5()
+    mt5.account_login = None
+    adapter = ICMarketsMT5DemoMarketDataAdapter(mt5)
+    with pytest.raises(MT5MarketDataError, match="login MT5"):
+        adapter.get_account_reference()
+    mt5 = FakeMT5()
+    mt5.account_server = ""
+    adapter = ICMarketsMT5DemoMarketDataAdapter(mt5)
+    with pytest.raises(MT5MarketDataError, match="servidor MT5"):
+        adapter.get_account_reference()
