@@ -10,7 +10,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from typing import Any, Mapping
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo
 
 from data.feed import MarketDataRequest
 from data.models import Candle
