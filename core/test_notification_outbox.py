@@ -133,3 +133,28 @@ def test_failure_diagnostics_redact_urls_and_credentials(tmp_path):
     assert "private-key-value" not in error
     assert "[URL REDACTED]" in error
     assert "Bearer [REDACTED]" in error
+
+
+
+def test_expired_outbox_owner_cannot_acknowledge_or_fail_reclaimed_event(tmp_path):
+    outbox = PersistentNotificationOutbox(tmp_path / "outbox.sqlite3")
+    outbox.enqueue("lease-fenced-event", {"title": "Alert"}, now=10)
+
+    old_owner = outbox.claim_due(now=11, lease_seconds=5)[0]
+    new_owner = outbox.claim_due(now=17, lease_seconds=30)[0]
+
+    assert old_owner.lease_token != new_owner.lease_token
+    assert outbox.mark_delivered(
+        old_owner.idempotency_key, old_owner.lease_token, now=18
+    ) is False
+    with pytest.raises(ValueError):
+        outbox.mark_failed(
+            old_owner.idempotency_key, old_owner.lease_token,
+            "late failure from expired worker", now=18,
+        )
+
+    assert outbox.status_counts()["IN_FLIGHT"] == 1
+    assert outbox.mark_delivered(
+        new_owner.idempotency_key, new_owner.lease_token, now=19
+    ) is True
+    assert outbox.status_counts()["DELIVERED"] == 1
