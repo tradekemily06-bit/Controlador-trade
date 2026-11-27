@@ -297,15 +297,19 @@ class TenantConnectionTimeframeMonitor:
                 return
             candle = event.get("candle")
             timestamp = getattr(candle, "timestamp", None)
-            if (
-                not isinstance(timestamp, datetime)
-                or timestamp.tzinfo is None
-                or timestamp.utcoffset() is None
-            ):
+            if not isinstance(timestamp, datetime):
                 return
-            # A provider event too far in the future must not poison the
-            # monotonic latest-candle cache and block subsequent valid bars.
-            if (timestamp.astimezone(timezone.utc) - datetime.now(timezone.utc)).total_seconds() > 10:
+            try:
+                if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+                    return
+                normalized_timestamp = timestamp.astimezone(timezone.utc)
+                # A provider event too far in the future must not poison the
+                # monotonic latest-candle cache and block subsequent valid bars.
+                if (
+                    normalized_timestamp - datetime.now(timezone.utc)
+                ).total_seconds() > 10:
+                    return
+            except (OverflowError, TypeError, ValueError):
                 return
             valid = getattr(candle, "is_valid", None)
             if not callable(valid):
@@ -329,7 +333,15 @@ class TenantConnectionTimeframeMonitor:
                     return
                 previous = self._live_candles.get(key)
                 previous_at = getattr(previous, "timestamp", None)
-                if previous_at is None or timestamp.astimezone(timezone.utc) >= previous_at.astimezone(timezone.utc):
+                try:
+                    previous_normalized = (
+                        previous_at.astimezone(timezone.utc)
+                        if isinstance(previous_at, datetime)
+                        else None
+                    )
+                except (OverflowError, TypeError, ValueError):
+                    previous_normalized = None
+                if previous_normalized is None or normalized_timestamp >= previous_normalized:
                     self._live_candles[key] = candle
         # Reserve the callback identity before subscribing so synchronous
         # first events are not lost; roll back atomically if provider rejects.
