@@ -780,7 +780,7 @@ class TenantConnectionTimeframeMonitor:
         owner = TenantContext(row["tenant_id"], row["subject_id"])
         connection = row["connection_id"]
         symbol, timeframe = row["symbol"], row["timeframe"]
-        if row["last_processed_candle"] and not self._enabled(row):
+        if not self._enabled(row):
             return None
         try:
             session = self.session_registry.get(owner, connection_id=connection)
