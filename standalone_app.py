@@ -267,9 +267,14 @@ class StandaloneWSGIApplication:
                 }
             else:
                 connections = connection_registry.list_connections(context)
+                session_registry = getattr(self.runtime, "tenant_market_data_sessions", None)
                 payload = {
                     "status": "AVAILABLE" if connections else "NO_VERIFIED_CONNECTIONS",
                     "connections": connections,
+                    "adapter_sessions": (
+                        session_registry.status(context)
+                        if session_registry is not None else []
+                    ),
                     "count": len(connections),
                     "scope": "TENANT_AND_SUBJECT" if reason == "trusted_identity" else "LOCAL_SINGLE_USER",
                     "execution_authorized": False,
@@ -772,6 +777,86 @@ class StandaloneWSGIApplication:
                     "scope": "LOCAL_SINGLE_USER",
                     "tax_assessment": False,
                     "money_movement": False,
+                    "execution_authorized": False,
+                },
+                request_id,
+            )
+
+        if method == "POST" and path.startswith("/api/market-data/connections/") and path.endswith("/analysis"):
+            tenant_context = _tenant_context_for_request(environ, reason)
+            if tenant_context is None:
+                return _json_response(
+                    start_response, HTTPStatus.FORBIDDEN,
+                    {"error": "identidade confiável necessária para análise por conta", "execution_authorized": False},
+                    request_id,
+                )
+            connection_id = path[len("/api/market-data/connections/"):-len("/analysis")].strip("/")
+            if len(connection_id) != 32 or any(char not in "0123456789abcdef" for char in connection_id):
+                return _json_response(
+                    start_response, HTTPStatus.BAD_REQUEST,
+                    {"error": "connection_id inválido", "execution_authorized": False},
+                    request_id,
+                )
+            session_registry = getattr(self.runtime, "tenant_market_data_sessions", None)
+            session = (
+                session_registry.get(tenant_context, connection_id=connection_id)
+                if session_registry is not None else None
+            )
+            if session is None:
+                return _json_response(
+                    start_response, HTTPStatus.NOT_FOUND,
+                    {"error": "conexão sem adaptador ativo para esta identidade", "state": "ADAPTER_NOT_BOUND", "execution_authorized": False},
+                    request_id,
+                )
+            try:
+                payload = _read_json(environ)
+                symbol = payload.get("symbol")
+                timeframe = payload.get("timeframe")
+                limit = payload.get("limit", 120)
+                if not isinstance(symbol, str) or not symbol.strip():
+                    raise ValueError("symbol é obrigatório")
+                if not isinstance(timeframe, str) or not timeframe.strip():
+                    raise ValueError("timeframe é obrigatório")
+                if isinstance(limit, bool) or not isinstance(limit, int) or not 3 <= limit <= 1000:
+                    raise ValueError("limit deve ser um inteiro de 3 a 1000")
+                from integration.standalone_market_analysis import StandaloneMarketAnalysisService
+                analyzer = StandaloneMarketAnalysisService(
+                    provider=session.adapter,
+                    source=session.source,
+                    intelligence=self.runtime.intelligence,
+                    decision_sink=lambda record, context=None: self.runtime.tenant_decision_memory.save(
+                        context or tenant_context, record
+                    ),
+                )
+                result = analyzer.analyze(
+                    symbol=symbol.strip(),
+                    timeframe=timeframe.strip(),
+                    limit=limit,
+                    confirmed=False,
+                    filters_ok=True,
+                    decision_context=tenant_context,
+                )
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return _json_response(
+                    start_response, HTTPStatus.BAD_REQUEST,
+                    {"error": str(exc), "execution_authorized": False},
+                    request_id,
+                )
+            except Exception:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "análise desta conexão indisponível; nenhuma ordem foi enviada", "execution_authorized": False},
+                    request_id,
+                )
+            return _json_response(
+                start_response, HTTPStatus.OK,
+                {
+                    **result,
+                    "connection": {
+                        "connection_id": session.connection_id,
+                        "provider_id": session.provider_id,
+                        "source": session.source,
+                    },
                     "execution_authorized": False,
                 },
                 request_id,
