@@ -334,10 +334,13 @@ class TenantConnectionTimeframeMonitor:
                         """, (owner.tenant_id, owner.subject_id, connection, symbol, timeframe))
                     return None
             analyzer = self.analyzer_factory(session, owner)
-            result = analyzer.analyze(
-                symbol=symbol, timeframe=timeframe, limit=120,
-                confirmed=True, filters_ok=True, decision_context=owner,
-            )
+            analysis_kwargs = {
+                "symbol": symbol, "timeframe": timeframe, "limit": 120,
+                "confirmed": True, "filters_ok": True, "decision_context": owner,
+            }
+            if stream_bound:
+                analysis_kwargs["live_candle"] = stream_candle
+            result = analyzer.analyze(**analysis_kwargs)
             last_candle = result.get("market_data", {}).get("last_candle_at")
             if not isinstance(last_candle, str):
                 raise ValueError("analisador não informou o candle mais recente")
