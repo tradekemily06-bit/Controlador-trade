@@ -235,3 +235,75 @@ def test_last_live_trendbar_unsubscribes_its_internal_spot_carrier():
     assert list(sent[1].symbolId) == [9001]
     assert 9001 not in transport._spot_callbacks
     assert 9001 not in transport._trendbar_spot_only
+
+
+def _reconnect_test_transport(is_live=False):
+    from threading import Event, Lock
+
+    class Request:
+        def __init__(self):
+            self.ctidTraderAccountId = None
+            self.symbolId = []
+            self.subscribeToSpotTimestamp = False
+            self.period = None
+
+    class Period:
+        @staticmethod
+        def Value(value):
+            return {"M5": 5}[value]
+
+    transport = object.__new__(CTraderOpenApiReadOnlyTransport)
+    transport._reconnect_lock = Lock()
+    transport._account_id = 77
+    transport._account_authenticated = False
+    transport._connected = Event()
+    transport._disconnected = Event()
+    transport._client = None
+    transport._timeout = 5
+    transport._spot_callbacks = {9001: lambda _event: None}
+    transport._trendbar_callbacks = {(9001, "M5"): lambda _event: None}
+    transport._trendbar_spot_only = {9001}
+    transport._messages = {"subscribe_spots": Request, "subscribe_trendbars": Request}
+    transport._period_enum = Period
+    transport.steps = []
+    def connect():
+        transport.steps.append("connect")
+        transport._connected.set()
+    def application_auth():
+        transport.steps.append("application_auth")
+    def account_details(account_id):
+        transport.steps.append("account_details")
+        return {"account_id": account_id, "is_live": is_live}
+    def account_auth(account_id):
+        transport.steps.append("account_auth")
+        transport._account_authenticated = True
+    def send(request):
+        transport.steps.append("subscribe_spots" if request.symbolId and isinstance(request.symbolId, list) else "subscribe_trendbars")
+    transport.connect = connect
+    transport.application_auth = application_auth
+    transport.account_details = account_details
+    transport.account_auth = account_auth
+    transport._start_spot_worker = lambda: transport.steps.append("worker")
+    transport._send = send
+    return transport
+
+
+def test_reconnect_reauthenticates_demo_and_restores_spot_before_trendbars():
+    transport = _reconnect_test_transport(is_live=False)
+    result = transport.reconnect()
+    assert result == {"account_id": 77, "is_live": False}
+    assert transport._account_authenticated is True
+    assert transport.steps[:4] == ["connect", "application_auth", "account_details", "account_auth"]
+    assert transport.steps[4:] == ["worker", "subscribe_spots", "subscribe_trendbars"]
+    assert set(transport._spot_callbacks) == {9001}
+    assert set(transport._trendbar_callbacks) == {(9001, "M5")}
+
+
+def test_reconnect_refuses_real_account_and_keeps_session_unhealthy():
+    transport = _reconnect_test_transport(is_live=True)
+    with pytest.raises(PermissionError, match="não é DEMO"):
+        transport.reconnect()
+    assert transport._account_authenticated is False
+    assert transport._connected.is_set() is False
+    assert set(transport._spot_callbacks) == {9001}
+    assert set(transport._trendbar_callbacks) == {(9001, "M5")}
