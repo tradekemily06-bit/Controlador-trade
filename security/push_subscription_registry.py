@@ -27,8 +27,8 @@ def _is_allowed_push_host(hostname: str) -> bool:
     if normalized in {"fcm.googleapis.com", "web.push.apple.com"}:
         return True
     labels = normalized.split(".")
-    if len(labels) == 5 and labels[1:] == ["push", "services", "mozilla", "com"]:
-        return bool(re.fullmatch(r"[a-z0-9-]+", labels[0]))
+    if normalized == "updates.push.services.mozilla.com":
+        return True
     if len(labels) == 4 and labels[1:] == ["notify", "windows", "com"]:
         return bool(re.fullmatch(r"wns[0-9]+", labels[0]))
     return False
