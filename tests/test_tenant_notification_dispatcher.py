@@ -142,3 +142,16 @@ def test_tenant_outbox_does_not_acknowledge_delivery_after_lease_expiry(tmp_path
     assert result.claimed == 1
     assert result.delivered == 0
     assert dispatcher.outbox.status_counts(owner)["IN_FLIGHT"] == 1
+
+
+
+def test_tenant_outbox_remains_idempotent_after_inbox_retention_evicts_old_event(tmp_path):
+    storage = SQLiteTenantStorage(tmp_path / "tenant.sqlite3")
+    dispatcher = TenantNotificationDispatcher(TenantScopedEcosystemState(storage))
+    owner = TenantContext("tenant-a", "alice")
+    first = {"notification_id": "old-event", "title": "old", "message": "old"}
+    assert dispatcher.outbox.publish(owner, first, inbox_limit=2) is True
+    assert dispatcher.outbox.publish(owner, {"notification_id": "event-2"}, inbox_limit=2) is True
+    assert dispatcher.outbox.publish(owner, {"notification_id": "event-3"}, inbox_limit=2) is True
+    assert dispatcher.outbox.publish(owner, first, inbox_limit=2) is False
+    assert dispatcher.outbox.status_counts(owner)["PENDING"] == 3
