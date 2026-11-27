@@ -1679,8 +1679,16 @@ class StandaloneWSGIApplication:
                         {"error": "status individual de notificações não configurado", "execution_authorized": False},
                         request_id,
                     )
-                # Never expose another owner's inbox or outbox counts.
+                # Never expose another owner's inbox, outbox or worker counters.
                 tenant_items = tenant_state.load_notifications(tenant_context)
+                tenant_delivery_status = (
+                    tenant_delivery_worker.status(tenant_context)
+                    if tenant_delivery_worker is not None else {
+                        "configured": False, "running": False,
+                        "state": "NO_TENANT_EXTERNAL_SINK_CONFIGURED",
+                        "outbox": self.runtime.tenant_notification_dispatcher.outbox.status_counts(tenant_context),
+                    }
+                )
                 tenant_outbox = self.runtime.tenant_notification_dispatcher.outbox
                 summary = {
                     "total": len(tenant_items),
