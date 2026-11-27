@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from integration.standalone_foundation_status import standalone_storage_status
+from integration.standalone_foundation_status import _integrity, standalone_storage_status
 
 
 class StandaloneFoundationStatusTests(unittest.TestCase):
@@ -181,6 +181,20 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
         self.assertEqual(result["required_stores"], "DEGRADED")
         decision = next(item for item in result["stores"] if item["id"] == "decision_memory")
         self.assertEqual(decision["state"], "UNREADABLE")
+
+    def test_foreign_key_violation_is_reported_as_integrity_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "broken.sqlite3"
+            with sqlite3.connect(path) as connection:
+                connection.execute("PRAGMA foreign_keys = OFF")
+                connection.execute("CREATE TABLE parent (id INTEGER PRIMARY KEY)")
+                connection.execute(
+                    "CREATE TABLE child (parent_id INTEGER REFERENCES parent(id))"
+                )
+                connection.execute("INSERT INTO child (parent_id) VALUES (404)")
+            integrity, missing = _integrity(path, {"child": {"parent_id"}})
+        self.assertEqual(integrity, "FOREIGN_KEY_VIOLATIONS:1")
+        self.assertEqual(missing, {})
 
 
 if __name__ == "__main__":
