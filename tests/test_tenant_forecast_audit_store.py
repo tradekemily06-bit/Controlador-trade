@@ -37,6 +37,10 @@ def test_forecast_must_be_recorded_before_outcome_and_is_tenant_scoped(tmp_path)
     )
     assert resolved["resolved"] is True
     rows = store.calibration_records(alice)
+    forecasts = store.calibration_forecasts(alice)
+    assert len(forecasts) == 1
+    assert forecasts[0].forecast_id == "forecast-1"
+    assert forecasts[0].out_of_sample is True
     assert len(rows) == 1
     assert rows[0]["timeframe"] == "1m"
     assert rows[0]["probability"] == 0.72
