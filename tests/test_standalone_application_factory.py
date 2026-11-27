@@ -194,8 +194,8 @@ class StandaloneApplicationFactoryTests(unittest.TestCase):
         self.assertEqual(report["result"]["reporting_status"], "DECISION_REPORT_READY")
         self.assertEqual(report["result"]["report"]["report_type"], "STANDALONE_DECISION_REPORT")
         memory_view = app.handle(
-            area=ApplicationArea.ANALYSIS,
-            task="consultar memória",
+            area="memory",
+            task="consultar memória, alias legado",
             context={"operation": "memory"},
         )
         self.assertEqual(memory_view["result"]["records"], [])
