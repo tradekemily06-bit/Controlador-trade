@@ -58,6 +58,10 @@ class TenantConnectionTimeframeMonitor:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._worker_error: str | None = None
+        # Push streams are keyed by the full security boundary. The monitor
+        # uses them as a closed-candle readiness gate before analysis.
+        self._live_streams: set[tuple[str, str, str, str, str]] = set()
+        self._live_candles: dict[tuple[str, str, str, str, str], Any] = {}
         self._initialize()
 
     def _connect(self):
@@ -118,6 +122,49 @@ class TenantConnectionTimeframeMonitor:
             raise ValueError("symbol inválido")
         return result
 
+    def _ensure_live_stream(
+        self, owner: TenantContext, session: Any, connection: str,
+        symbol: str, timeframe: str,
+    ) -> bool:
+        adapter = getattr(session, "adapter", None)
+        subscribe = getattr(adapter, "subscribe_live_candles", None)
+        if not callable(subscribe):
+            return False
+        key = (owner.tenant_id, owner.subject_id, connection, symbol, timeframe)
+        with self._lock:
+            if key in self._live_streams:
+                return True
+        def receive(event: Any) -> None:
+            if not isinstance(event, dict) or event.get("closed") is not True:
+                return
+            if str(event.get("symbol", "")).strip().upper() != symbol:
+                return
+            if str(event.get("timeframe", "")).strip().lower() != timeframe:
+                return
+            event_account = event.get("account_id")
+            adapter_account = getattr(adapter, "account_id", None)
+            if adapter_account is not None and event_account != adapter_account:
+                return
+            candle = event.get("candle")
+            timestamp = getattr(candle, "timestamp", None)
+            if timestamp is None or timestamp.tzinfo is None:
+                return
+            valid = getattr(candle, "is_valid", None)
+            if not callable(valid) or not valid():
+                return
+            with self._lock:
+                previous = self._live_candles.get(key)
+                previous_at = getattr(previous, "timestamp", None)
+                if previous_at is None or timestamp.astimezone(timezone.utc) >= previous_at.astimezone(timezone.utc):
+                    self._live_candles[key] = candle
+        try:
+            subscribe(symbol, timeframe, receive)
+        except Exception:
+            return False
+        with self._lock:
+            self._live_streams.add(key)
+        return True
+
     def subscribe(self, context: TenantContext, connection_id: str, symbol: str, timeframe: str) -> dict[str, Any]:
         owner = self._owner(context)
         connection = self._connection(connection_id)
@@ -144,9 +191,13 @@ class TenantConnectionTimeframeMonitor:
                 ON CONFLICT(tenant_id, subject_id, connection_id, symbol, timeframe)
                 DO UPDATE SET enabled=1, last_error=NULL
             """, (owner.tenant_id, owner.subject_id, connection, normalized_symbol, normalized_timeframe, time.time()))
+        live_stream = self._ensure_live_stream(
+            owner, session, connection, normalized_symbol, normalized_timeframe
+        )
         return {
             "connection_id": connection,
             "provider_id": session.provider_id,
+            "live_candle_stream": "BOUND" if live_stream else "NOT_SUPPORTED_OR_UNAVAILABLE",
             "symbol": normalized_symbol,
             "timeframe": normalized_timeframe,
             "enabled": True,
@@ -163,6 +214,19 @@ class TenantConnectionTimeframeMonitor:
                 UPDATE tenant_connection_timeframe_watch SET enabled=0
                 WHERE tenant_id=? AND subject_id=? AND connection_id=? AND symbol=? AND timeframe=? AND enabled=1
             """, (owner.tenant_id, owner.subject_id, connection, normalized_symbol, normalized_timeframe))
+        if cursor.rowcount == 1:
+            key = (owner.tenant_id, owner.subject_id, connection, normalized_symbol, normalized_timeframe)
+            with self._lock:
+                self._live_streams.discard(key)
+                self._live_candles.pop(key, None)
+            session = self.session_registry.get(owner, connection_id=connection)
+            adapter = getattr(session, "adapter", None) if session else None
+            unsubscribe = getattr(adapter, "unsubscribe_live_candles", None)
+            if callable(unsubscribe):
+                try:
+                    unsubscribe(normalized_symbol, normalized_timeframe)
+                except Exception:
+                    pass
         return cursor.rowcount == 1
 
     def subscriptions(self, context: TenantContext, connection_id: str | None = None) -> list[dict[str, Any]]:
@@ -245,6 +309,20 @@ class TenantConnectionTimeframeMonitor:
             session = self.session_registry.get(owner, connection_id=connection)
             if session is None:
                 raise RuntimeError("adapter da conta desconectado ou não vinculado")
+            stream_key = (owner.tenant_id, owner.subject_id, connection, symbol, timeframe)
+            with self._lock:
+                stream_bound = stream_key in self._live_streams
+                stream_candle = self._live_candles.get(stream_key)
+            if stream_bound:
+                stream_at = getattr(stream_candle, "timestamp", None)
+                if stream_at is None or stream_at.tzinfo is None or stream_at.astimezone(timezone.utc) != expected:
+                    with self._lock, self._connect() as db:
+                        db.execute("""
+                            UPDATE tenant_connection_timeframe_watch
+                            SET last_status='WAITING_FOR_LIVE_CLOSED_CANDLE', last_error=NULL
+                            WHERE tenant_id=? AND subject_id=? AND connection_id=? AND symbol=? AND timeframe=?
+                        """, (owner.tenant_id, owner.subject_id, connection, symbol, timeframe))
+                    return None
             analyzer = self.analyzer_factory(session, owner)
             result = analyzer.analyze(
                 symbol=symbol, timeframe=timeframe, limit=120,
@@ -366,6 +444,8 @@ class TenantConnectionTimeframeMonitor:
             "close_grace_seconds": self.close_grace_seconds,
             "max_workers": self.max_workers,
             "worker_error_class": self._worker_error,
+            "live_streams": len(self._live_streams),
+            "buffered_live_candles": len(self._live_candles),
             "scope": "TENANT_SUBJECT_CONNECTION",
             "execution_authorized": False,
         }
