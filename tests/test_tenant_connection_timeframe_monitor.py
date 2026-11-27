@@ -982,5 +982,10 @@ def test_tenant_notification_outbox_dead_letters_after_bounded_attempts(tmp_path
     assert dead["lease_token"] is None
     assert dead["last_error"] == "RuntimeError"
     assert "sensitive provider detail" not in dead["last_error"]
+    tenant_status = monitor.status(owner)
+    assert tenant_status["notification_outbox_pending"] == 0
+    assert tenant_status["notification_outbox_dead_lettered"] == 1
+    other_tenant_status = monitor.status(TenantContext("tenant-b", "bob"))
+    assert other_tenant_status["notification_outbox_dead_lettered"] == 0
     assert monitor.dispatch_pending_notifications() == 0
     assert calls == [row["event_id"], row["event_id"]]
