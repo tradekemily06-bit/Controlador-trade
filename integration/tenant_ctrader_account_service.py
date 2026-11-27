@@ -112,6 +112,7 @@ class TenantCTraderAccountService:
         access_token = self._access_token(owner, connection_id)
         transport = self.transport_factory(access_token)
         adapter = CTraderReadOnlyMarketDataAdapter(transport, account_id=account_id)
+        promoted = False
         try:
             adapter.connect()
             handshake = adapter.handshake()
@@ -125,6 +126,7 @@ class TenantCTraderAccountService:
             )
             if updated is not True:
                 raise RuntimeError("não foi possível confirmar a conexão cTrader")
+            promoted = True
             session = self.sessions.bind(
                 owner,
                 connection_id=connection_id,
@@ -148,10 +150,11 @@ class TenantCTraderAccountService:
                 self.sessions.unbind(owner, connection_id=connection_id)
             except Exception:
                 pass
-            try:
-                self.connections.mark_disconnected(owner, connection_id=connection_id)
-            except Exception:
-                pass
+            if promoted:
+                try:
+                    self.connections.mark_disconnected(owner, connection_id=connection_id)
+                except Exception:
+                    pass
             try:
                 adapter.disconnect()
             except Exception:
