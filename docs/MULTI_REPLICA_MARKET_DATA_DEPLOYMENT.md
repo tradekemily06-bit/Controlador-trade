@@ -31,6 +31,24 @@ A multi-replica release is blocked until automated integration tests prove:
 - OAuth refresh rotation is serialized across replicas;
 - health/readiness reports a missing shared backend as unavailable rather than silently falling back to local coordination.
 
+
+## Local backup coverage
+
+The allowlisted on-demand SQLite backup set includes
+`tenant-connection-timeframe-monitor.sqlite3`, which contains tenant-scoped
+candle watches, analysis results, processing leases and notification outbox
+records. This store must be backed up together with tenant metadata; omitting it
+would lose active monitoring state and pending tenant notifications during
+recovery.
+
+Backups remain local/on-demand unless an operator separately configures a
+scheduled job and off-host replication. OAuth state, OAuth ciphertext, relay
+tokens and webhook secret stores are not implicitly copied by this allowlist;
+recovery procedures must account for provider re-authentication and key
+availability rather than assuming those credentials can be reconstructed.
+A successful isolated restore check validates SQLite integrity only; it does
+not prove full application recovery or multi-host disaster recovery.
+
 ## Current product safety
 
 Provider adapters remain read-only. A connected account is not considered operational until its provider handshake and fresh market data are verified. TradingView webhooks are event alerts, not continuous price feeds. A local MT5 relay requires its host terminal and machine to remain online. Closing the app window is not equivalent to shutting down the always-on worker host.
