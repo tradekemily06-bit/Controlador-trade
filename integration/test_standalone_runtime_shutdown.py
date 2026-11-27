@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+
 import pytest
 
 from integration.standalone_runtime import (
@@ -25,9 +27,11 @@ class FakeWorker:
 class FakeLock:
     def __init__(self) -> None:
         self.released = False
+        self.released_event = threading.Event()
 
     def release(self) -> None:
         self.released = True
+        self.released_event.set()
 
 
 @pytest.mark.parametrize(
@@ -94,7 +98,7 @@ def test_failed_startup_retains_process_lock_when_worker_is_still_running() -> N
     assert len(_FAILED_STARTUP_LOCKS) == before + 1
     retained_lock, retained_workers = _FAILED_STARTUP_LOCKS[-1]
     assert retained_lock is lock
-    assert retained_workers == (worker,)
+    assert retained_workers == ((worker, "worker_running"),)
 
 
 def test_failed_startup_releases_lock_when_all_workers_stopped() -> None:
@@ -123,3 +127,18 @@ def test_failed_startup_retains_lock_when_worker_status_cannot_be_read() -> None
     assert active == ["BrokenStatusWorker"]
     assert lock.released is False
     assert len(_FAILED_STARTUP_LOCKS) == before + 1
+
+
+
+def test_failed_startup_reaper_releases_lock_after_worker_exits() -> None:
+    lock = FakeLock()
+    worker = FakeWorker("worker_running")
+
+    active = _cleanup_failed_startup(lock, ((worker, "worker_running"),))
+    assert active == ["FakeWorker"]
+    assert lock.released is False
+
+    worker.running = False
+    assert lock.released_event.wait(timeout=2.0)
+    assert lock.released is True
+    assert all(item[0] is not lock for item in _FAILED_STARTUP_LOCKS)
