@@ -56,6 +56,9 @@ class FakeTransport:
     def status(self):
         return {"connected": True, "last_seen": datetime.now(timezone.utc).isoformat()}
 
+    def update_access_token(self, access_token):
+        self.calls.append(("update_access_token", access_token))
+
     def disconnect(self):
         self.connected = False
 
@@ -218,3 +221,41 @@ def test_ctrader_adapter_failed_reconnect_does_not_report_demo_connected():
         adapter.reconnect()
     assert adapter.status()["connected"] is False
     assert adapter.status()["account_mode"] is None
+
+
+def test_ctrader_adapter_refreshes_tenant_vault_token_before_reconnect():
+    transport = FakeTransport()
+    resolved = []
+    adapter = CTraderReadOnlyMarketDataAdapter(
+        transport,
+        account_id=123,
+        access_token_resolver=lambda: resolved.append("vault-token-rotated") or "vault-token-rotated",
+    )
+    adapter.connect()
+    adapter.handshake()
+    adapter._connected = False
+    adapter._authenticated = False
+    transport.reconnect = lambda: {"account_id": 123, "is_live": False}
+
+    result = adapter.reconnect()
+
+    assert resolved == ["vault-token-rotated"]
+    assert ("update_access_token", "vault-token-rotated") in transport.calls
+    assert result["account_mode"] == "DEMO"
+    assert adapter.status()["connected"] is True
+
+
+def test_ctrader_adapter_fails_closed_when_refreshed_token_unavailable():
+    transport = FakeTransport()
+    adapter = CTraderReadOnlyMarketDataAdapter(
+        transport, account_id=123, access_token_resolver=lambda: None,
+    )
+    adapter.connect()
+    adapter.handshake()
+    adapter._connected = False
+    adapter._authenticated = False
+    transport.reconnect = lambda: {"account_id": 123, "is_live": False}
+
+    with pytest.raises(PermissionError, match="token OAuth cTrader renovado indisponível"):
+        adapter.reconnect()
+    assert adapter.status()["connected"] is False
