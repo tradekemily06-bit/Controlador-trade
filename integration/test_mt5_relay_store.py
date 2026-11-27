@@ -76,3 +76,50 @@ def test_relay_fails_closed_when_heartbeat_is_stale(tmp_path):
         )
     with pytest.raises(MT5RelayError, match="heartbeat"):
         store.get_account_mode()
+
+
+
+def test_relay_allows_identical_overlapping_candles_without_rewriting(tmp_path):
+    store = MT5RelayStore(tmp_path / "relay.sqlite3", expected_source_id="local-demo")
+    payload = _payload()
+    store.ingest(payload)
+
+    overlapping = _payload(
+        message_id=str(uuid.uuid4()),
+        candles=[payload["candles"][0]],
+    )
+    result = store.ingest(overlapping)
+
+    candles = store.fetch(MarketDataRequest("EURUSD", "M5", 10))
+    assert result["accepted"] == 1
+    assert len(candles) == 2
+    assert candles[0].close == 1.15
+
+
+def test_relay_rejects_rewriting_an_existing_candle_and_rolls_back_batch(tmp_path):
+    store = MT5RelayStore(tmp_path / "relay.sqlite3", expected_source_id="local-demo")
+    original = _payload()
+    store.ingest(original)
+    original_candles = store.fetch(MarketDataRequest("EURUSD", "M5", 10))
+
+    changed = _payload(
+        message_id=str(uuid.uuid4()),
+        candles=[
+            {
+                **original["candles"][0],
+                "close": 1.18,
+                "high": 1.21,
+            },
+            {
+                "timestamp": (datetime.now(timezone.utc) - timedelta(minutes=15)).isoformat(),
+                "open": 1.0, "high": 1.1, "low": 0.9, "close": 1.05, "volume": 80,
+            },
+        ],
+    )
+    with pytest.raises(MT5RelayError, match="histórico imutável"):
+        store.ingest(changed)
+
+    after = store.fetch(MarketDataRequest("EURUSD", "M5", 10))
+    assert after == original_candles
+    with store._connect() as db:
+        assert db.execute("SELECT COUNT(*) FROM mt5_relay_messages").fetchone()[0] == 1
