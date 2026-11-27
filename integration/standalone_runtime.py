@@ -13,6 +13,7 @@ from assistant.conversation_store import AssistantConversationStore
 from security.sqlite_tenant_storage import SQLiteTenantStorage
 from security.tenant_context import TenantContext
 from security.tenant_provider_connections import TenantProviderConnectionRegistry
+from integration.tenant_market_data_sessions import TenantMarketDataSessionRegistry
 from security.tenant_scoped_ecosystem_state import TenantScopedEcosystemState
 from security.tenant_scoped_decision_memory import TenantScopedDecisionMemory
 from integration.tenant_notification_dispatcher import TenantNotificationDispatcher
@@ -161,6 +162,9 @@ class StandaloneRuntime:
             )
             self.tenant_state = TenantScopedEcosystemState(tenant_storage)
             self.tenant_provider_connections = TenantProviderConnectionRegistry(tenant_storage)
+            self.tenant_market_data_sessions = TenantMarketDataSessionRegistry(
+                self.tenant_provider_connections
+            )
             self.tenant_decision_memory = TenantScopedDecisionMemory(tenant_storage)
             self.local_tenant_context = TenantContext(
                 tenant_id="local-single-user",
