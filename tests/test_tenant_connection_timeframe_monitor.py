@@ -1266,3 +1266,43 @@ def test_pending_notification_is_delivered_after_monitor_restart(tmp_path):
     assert final["lease_token"] is None
     first.stop()
     restarted.stop()
+
+
+def test_live_stream_rejects_missing_account_identity(tmp_path):
+    from types import SimpleNamespace
+
+    owner = TenantContext("tenant-stream-no-account", "alice")
+    now = datetime(2026, 11, 27, 12, 6, tzinfo=timezone.utc)
+    expected = datetime(2026, 11, 27, 12, 0, tzinfo=timezone.utc)
+
+    class UnboundStreamAdapter:
+        def subscribe_live_candles(self, symbol, timeframe, callback):
+            self.callback = callback
+
+    adapter = UnboundStreamAdapter()
+    session = Session("unknown_stream_provider", "unbound", adapter)
+
+    class Registry:
+        def get(self, context, *, connection_id):
+            return session if context == owner else None
+
+    analyzer = Analyzer(expected.isoformat(), "COMPRA")
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "stream-missing-account.sqlite3",
+        Registry(),
+        lambda _session, _context: analyzer,
+    )
+    monitor.subscribe(owner, _id("g"), "EURUSD", "M5")
+    candle = SimpleNamespace(timestamp=expected, is_valid=lambda: True)
+
+    # Even a well-formed closed candle cannot enter analysis without an
+    # explicit account identity matching the adapter's bound account.
+    adapter.callback({
+        "symbol": "EURUSD",
+        "timeframe": "M5",
+        "candle": candle,
+        "closed": True,
+    })
+    assert monitor.run_once(now=now) == []
+    assert analyzer.calls == 0
+    assert monitor.subscriptions(owner)[0]["last_status"] == "WAITING_FOR_LIVE_CLOSED_CANDLE"
