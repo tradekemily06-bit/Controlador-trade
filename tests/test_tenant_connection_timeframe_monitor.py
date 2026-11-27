@@ -426,7 +426,7 @@ def test_notification_failure_does_not_discard_durable_analysis(tmp_path):
 
 def test_status_live_stream_counters_are_isolated_by_tenant_and_subject(tmp_path):
     monitor = TenantConnectionTimeframeMonitor(
-        tmp_path / "tenant-status-isolation.sqlite3", Registry(),
+        tmp_path / "tenant-status-isolation.sqlite3", Sessions(),
         lambda session, owner: None,
     )
     alice = TenantContext("tenant-a", "alice")
