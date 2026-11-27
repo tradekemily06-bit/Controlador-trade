@@ -1121,6 +1121,31 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(body["external_delivery"], "OUTBOX_ONLY_NO_PROVIDER")
         self.assertFalse(body["delivery_worker"]["configured"])
 
+    def test_local_notification_status_reports_tenant_outbox_separately(self):
+        from integration.tenant_notification_dispatcher import TenantNotificationDispatcher
+        from security.sqlite_tenant_storage import SQLiteTenantStorage
+        from security.tenant_context import TenantContext
+        from security.tenant_scoped_ecosystem_state import TenantScopedEcosystemState
+        from core.ecosystem_notifications import EcosystemNotification, NotificationKind, NotificationSeverity
+
+        runtime = FakeRuntime()
+        runtime.local_tenant_context = TenantContext("local-single-user", "local-user")
+        state = TenantScopedEcosystemState(SQLiteTenantStorage(self.temp_dir / "tenant-state.sqlite3"))
+        runtime.tenant_notification_dispatcher = TenantNotificationDispatcher(state)
+        runtime.tenant_notification_dispatcher.publish(
+            runtime.local_tenant_context,
+            EcosystemNotification(
+                notification_id="local-tenant-event", kind=NotificationKind.MARKET,
+                severity=NotificationSeverity.INFO, title="EURUSD", message="Novo sinal",
+            ),
+        )
+        app = StandaloneWSGIApplication(runtime)
+        status, body = call_wsgi(app, "/api/notifications/status")
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["tenant_outbox"]["PENDING"], 1)
+        self.assertEqual(body["tenant_external_delivery"], "OUTBOX_ONLY_NO_PROVIDER")
+        self.assertFalse(body["tenant_delivery_worker"]["configured"])
+
     def test_notification_status_distinguishes_configured_but_stopped_worker(self):
         runtime = FakeRuntime()
 
