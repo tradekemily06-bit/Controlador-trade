@@ -61,6 +61,7 @@ class TenantConnectionTimeframeMonitor:
         # Push streams are keyed by the full security boundary. The monitor
         # uses them as a closed-candle readiness gate before analysis.
         self._live_streams: set[tuple[str, str, str, str, str]] = set()
+        self._live_stream_adapters: dict[tuple[str, str, str, str, str], Any] = {}
         self._live_candles: dict[tuple[str, str, str, str, str], Any] = {}
         self._live_stream_retry_at: dict[tuple[str, str, str, str, str], float] = {}
         self._initialize()
@@ -132,11 +133,23 @@ class TenantConnectionTimeframeMonitor:
         if not callable(subscribe):
             return False
         key = (owner.tenant_id, owner.subject_id, connection, symbol, timeframe)
+        previous_adapter = None
         with self._lock:
-            if key in self._live_streams:
+            if key in self._live_streams and self._live_stream_adapters.get(key) is adapter:
                 return True
+            if key in self._live_streams:
+                self._live_streams.discard(key)
+                previous_adapter = self._live_stream_adapters.pop(key, None)
+                self._live_candles.pop(key, None)
             if self._live_stream_retry_at.get(key, 0.0) > time.monotonic():
                 return False
+        if previous_adapter is not None:
+            previous_unsubscribe = getattr(previous_adapter, "unsubscribe_live_candles", None)
+            if callable(previous_unsubscribe):
+                try:
+                    previous_unsubscribe(symbol, timeframe)
+                except Exception:
+                    pass
         def receive(event: Any) -> None:
             if not isinstance(event, dict) or event.get("closed") is not True:
                 return
@@ -169,6 +182,7 @@ class TenantConnectionTimeframeMonitor:
         with self._lock:
             self._live_stream_retry_at.pop(key, None)
             self._live_streams.add(key)
+            self._live_stream_adapters[key] = adapter
         return True
 
     def subscribe(self, context: TenantContext, connection_id: str, symbol: str, timeframe: str) -> dict[str, Any]:
@@ -224,10 +238,11 @@ class TenantConnectionTimeframeMonitor:
             key = (owner.tenant_id, owner.subject_id, connection, normalized_symbol, normalized_timeframe)
             with self._lock:
                 self._live_streams.discard(key)
+                previous_adapter = self._live_stream_adapters.pop(key, None)
                 self._live_candles.pop(key, None)
                 self._live_stream_retry_at.pop(key, None)
             session = self.session_registry.get(owner, connection_id=connection)
-            adapter = getattr(session, "adapter", None) if session else None
+            adapter = previous_adapter or (getattr(session, "adapter", None) if session else None)
             unsubscribe = getattr(adapter, "unsubscribe_live_candles", None)
             if callable(unsubscribe):
                 try:
@@ -459,6 +474,7 @@ class TenantConnectionTimeframeMonitor:
             "worker_error_class": self._worker_error,
             "live_streams": len(self._live_streams),
             "buffered_live_candles": len(self._live_candles),
+            "live_stream_adapter_bindings": len(self._live_stream_adapters),
             "scope": "TENANT_SUBJECT_CONNECTION",
             "execution_authorized": False,
         }
