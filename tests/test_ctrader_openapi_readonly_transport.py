@@ -307,3 +307,43 @@ def test_reconnect_refuses_real_account_and_keeps_session_unhealthy():
     assert transport._connected.is_set() is False
     assert set(transport._spot_callbacks) == {9001}
     assert set(transport._trendbar_callbacks) == {(9001, "M5")}
+
+
+def test_list_accounts_returns_only_safe_ids_and_mode_flags():
+    from types import SimpleNamespace
+
+    class Request:
+        def __init__(self): self.accessToken = None
+
+    transport = object.__new__(CTraderOpenApiReadOnlyTransport)
+    transport._messages = {"account_list": Request}
+    transport._access_token = "server-side-token"
+    sent = []
+    transport._send = lambda request: (
+        sent.append(request) or SimpleNamespace(ctidTraderAccount=[
+            SimpleNamespace(ctidTraderAccountId=123, isLive=False),
+            SimpleNamespace(ctidTraderAccountId=456, isLive=True),
+        ])
+    )
+    result = transport.list_accounts()
+    assert result == (
+        {"account_id": 123, "is_live": False},
+        {"account_id": 456, "is_live": True},
+    )
+    assert sent[0].accessToken == "server-side-token"
+
+
+def test_list_accounts_rejects_unconfirmed_account_mode():
+    from types import SimpleNamespace
+
+    class Request:
+        def __init__(self): self.accessToken = None
+
+    transport = object.__new__(CTraderOpenApiReadOnlyTransport)
+    transport._messages = {"account_list": Request}
+    transport._access_token = "server-side-token"
+    transport._send = lambda _request: SimpleNamespace(ctidTraderAccount=[
+        SimpleNamespace(ctidTraderAccountId=123, isLive=None),
+    ])
+    with pytest.raises(PermissionError, match="sem confirmação"):
+        transport.list_accounts()
