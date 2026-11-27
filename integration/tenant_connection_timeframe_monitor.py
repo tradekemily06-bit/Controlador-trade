@@ -857,6 +857,28 @@ class TenantConnectionTimeframeMonitor:
             rows = self.subscriptions(context)
             enabled = sum(1 for item in rows if item["enabled"])
             total = len(rows)
+        with self._lock, self._connect() as db:
+            if context is None:
+                pending_notifications = db.execute(
+                    "SELECT COUNT(*) FROM tenant_connection_notification_outbox "
+                    "WHERE delivered_at IS NULL AND dead_at IS NULL"
+                ).fetchone()[0]
+                dead_lettered_notifications = db.execute(
+                    "SELECT COUNT(*) FROM tenant_connection_notification_outbox "
+                    "WHERE dead_at IS NOT NULL"
+                ).fetchone()[0]
+            else:
+                scope = (context.tenant_id, context.subject_id)
+                pending_notifications = db.execute(
+                    "SELECT COUNT(*) FROM tenant_connection_notification_outbox "
+                    "WHERE tenant_id=? AND subject_id=? AND delivered_at IS NULL AND dead_at IS NULL",
+                    scope,
+                ).fetchone()[0]
+                dead_lettered_notifications = db.execute(
+                    "SELECT COUNT(*) FROM tenant_connection_notification_outbox "
+                    "WHERE tenant_id=? AND subject_id=? AND dead_at IS NOT NULL",
+                    scope,
+                ).fetchone()[0]
         with self._lock:
             if context is None:
                 live_streams = len(self._live_streams)
@@ -876,6 +898,8 @@ class TenantConnectionTimeframeMonitor:
             "poll_interval_seconds": self.poll_interval_seconds,
             "close_grace_seconds": self.close_grace_seconds,
             "max_workers": self.max_workers,
+            "notification_outbox_pending": pending_notifications,
+            "notification_outbox_dead_lettered": dead_lettered_notifications,
             "worker_error_class": worker_error_class,
             "live_streams": live_streams,
             "buffered_live_candles": buffered_live_candles,
