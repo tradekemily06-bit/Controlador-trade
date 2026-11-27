@@ -1133,7 +1133,15 @@ class StandaloneWSGIApplication:
                 )
             return _json_response(
                 start_response, HTTPStatus.OK,
-                {**result, "scope": "LOCAL_SINGLE_USER", "execution_authorized": False},
+                {
+                    **result,
+                    "scope": (
+                        "TENANT_AND_SUBJECT"
+                        if reason == "trusted_identity"
+                        else "LOCAL_SINGLE_USER"
+                    ),
+                    "execution_authorized": False,
+                },
                 request_id,
             )
 
@@ -1145,7 +1153,7 @@ class StandaloneWSGIApplication:
                 "conversation_scope": "TENANT_AND_SUBJECT",
                 "conversation_identity_required": True,
                 "remote_chat": (
-                    "BLOCKED_FISCAL_TENANT_ISOLATION_REQUIRED"
+                    "TENANT_SCOPED_FISCAL_CONTEXT"
                     if reason == "trusted_identity"
                     else "LOCAL_SINGLE_USER_ONLY"
                 ),
