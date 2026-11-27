@@ -37,6 +37,7 @@ class StandaloneMarketAnalysisService:
         intelligence: UnifiedIntelligence,
         decision_sink: Callable[..., bool | None] | None = None,
         signal_evidence_sink: Callable[..., dict[str, Any]] | None = None,
+        signal_outcome_sink: Callable[..., list[dict[str, Any]]] | None = None,
         market_data_provenance: str | None = None,
         signal_source_id: str | None = None,
     ) -> None:
@@ -52,9 +53,12 @@ class StandaloneMarketAnalysisService:
         self.decision_sink = decision_sink
         if signal_evidence_sink is not None and not callable(signal_evidence_sink):
             raise ValueError("signal_evidence_sink must be callable")
+        if signal_outcome_sink is not None and not callable(signal_outcome_sink):
+            raise ValueError("signal_outcome_sink must be callable")
         if market_data_provenance not in (None, "REAL_MARKET_DATA"):
             raise ValueError("unsupported market data provenance")
         self.signal_evidence_sink = signal_evidence_sink
+        self.signal_outcome_sink = signal_outcome_sink
         self.market_data_provenance = market_data_provenance
         if signal_source_id is not None and (not isinstance(signal_source_id, str) or not signal_source_id.strip()):
             raise ValueError("signal_source_id must be non-empty text")
@@ -300,6 +304,41 @@ class StandaloneMarketAnalysisService:
             "execution_authorized": False,
             "order_submitted": False,
         }
+        response["signal_outcome_audit"] = {"status": "NOT_CONFIGURED", "resolved_count": 0}
+        if (
+            self.signal_outcome_sink is not None
+            and self.market_data_provenance == "REAL_MARKET_DATA"
+            and isinstance(decision_context, TenantContext)
+            and integrity.safe_for_analysis
+        ):
+            last_candle = result.market_data.candles[-1]
+            outcome_candle = {
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "open_time": last_candle.timestamp.isoformat(),
+                "open": last_candle.open,
+                "high": last_candle.high,
+                "low": last_candle.low,
+                "close": last_candle.close,
+            }
+            try:
+                resolved = self.signal_outcome_sink(
+                    decision_context,
+                    source_id=self.signal_source_id,
+                    candle=outcome_candle,
+                    provenance=self.market_data_provenance,
+                )
+                response["signal_outcome_audit"] = {
+                    "status": "PROCESSED",
+                    "resolved_count": len(resolved),
+                    "outcomes": resolved,
+                }
+            except Exception as exc:
+                response["signal_outcome_audit"] = {
+                    "status": "PERSISTENCE_ERROR",
+                    "resolved_count": 0,
+                    "error_class": type(exc).__name__,
+                }
         response["signal_evidence_audit"] = {"status": "NOT_CONFIGURED"}
         if (
             self.signal_evidence_sink is not None
