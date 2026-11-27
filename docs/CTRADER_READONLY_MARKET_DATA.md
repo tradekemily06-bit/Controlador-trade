@@ -53,7 +53,12 @@ full symbol entity through `ProtoOASymbolByIdReq` and exposes the broker-supplie
 `schedule`, `scheduleTimeZone`, and `holiday` metadata through
 `get_symbol_session_calendar_metadata(symbol)`. The weekly intervals are
 expressed as seconds from Sunday 00:00 in the supplied schedule timezone; each
-holiday also carries its timezone/date and optional intraday bounds.
+holiday also carries its timezone/date and optional intraday bounds. The
+adapter validates interval bounds, holiday date/bounds and required timezone
+strings. It reports whether the current runtime could resolve each IANA timezone;
+a Windows runtime without a timezone database may expose the raw metadata as
+`NOT_VALIDATED_BY_RUNTIME`, but that status is never sufficient to calculate
+a session boundary.
 
 This is a necessary input, not yet a verified D1/W1 candle calendar. The
 adapter deliberately does **not** implement
