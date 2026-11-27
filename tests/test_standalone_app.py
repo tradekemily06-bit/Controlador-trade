@@ -805,6 +805,74 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(status, "503 Service Unavailable")
         self.assertFalse(body["execution_authorized"])
 
+    def test_remote_backup_status_hides_global_backup_details(self):
+        runtime = FakeRuntime()
+        class Scheduler:
+            def status(self):
+                return {
+                    "enabled": True,
+                    "worker_running": True,
+                    "last_status": "SUCCESS",
+                    "last_result": {"results": [{"path": "/private/backups/alice.sqlite3"}]},
+                    "off_host_replication": "NOT_CONFIGURED",
+                    "deployment_continuity": "PROCESS_LIFETIME_ONLY",
+                    "execution_authorized": False,
+                }
+        runtime.backup_scheduler = Scheduler()
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/backup/status",
+                remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertTrue(body["enabled"])
+        self.assertTrue(body["worker_running"])
+        self.assertEqual(body["scope"], "INFRASTRUCTURE_ONLY")
+        self.assertNotIn("last_result", body)
+        self.assertNotIn("last_status", body)
+        self.assertNotIn("results", body)
+        self.assertFalse(body["execution_authorized"])
+
+    def test_remote_mt5_bridge_status_hides_global_source_and_candle_counts(self):
+        runtime = FakeRuntime()
+        class Relay:
+            def status(self):
+                return {
+                    "connected": True, "account_mode": "DEMO",
+                    "source_id": "private-workstation",
+                    "stored_candles": 9876, "last_seen": "2026-11-27T00:00:00+00:00",
+                    "read_only": True, "execution_authorized": False,
+                }
+        runtime.mt5_relay_store = Relay()
+        app = StandaloneWSGIApplication(runtime)
+        settings = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+            "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+            "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+        }
+        with patch.dict("os.environ", settings):
+            status, body = call_wsgi(
+                app, "/api/bridge/mt5/status",
+                remote_addr="203.0.113.10",
+                authorization="Bearer shared-gateway-secret",
+                identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertTrue(body["configured"])
+        self.assertEqual(body["scope"], "INFRASTRUCTURE_ONLY")
+        self.assertNotIn("source_id", body)
+        self.assertNotIn("stored_candles", body)
+        self.assertNotIn("last_seen", body)
+        self.assertFalse(body["execution_authorized"])
+
     def test_remote_readiness_exposes_only_infrastructure_contract(self):
         runtime = FakeRuntime()
         runtime.assistant.readiness = lambda: {"private_global_counter": 987}
