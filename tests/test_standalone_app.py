@@ -1070,6 +1070,54 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(body["external_delivery"], "OUTBOX_ONLY_NO_PROVIDER")
         self.assertFalse(body["delivery_worker"]["configured"])
 
+    def test_notification_status_distinguishes_configured_but_stopped_worker(self):
+        runtime = FakeRuntime()
+
+        class StoppedWorker:
+            def status(self):
+                return {
+                    "configured": True,
+                    "running": False,
+                    "state": "STOPPED",
+                    "last_error": None,
+                    "last_result": None,
+                    "outbox": {"PENDING": 1, "IN_FLIGHT": 0, "DELIVERED": 0, "DEAD": 0},
+                }
+
+        runtime.notification_worker = StoppedWorker()
+        app = StandaloneWSGIApplication(runtime)
+        status, body = call_wsgi(app, "/api/notifications/status")
+
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["external_delivery"], "WORKER_STOPPED")
+        self.assertTrue(body["delivery_worker"]["configured"])
+        self.assertFalse(body["delivery_worker"]["running"])
+        self.assertEqual(body["delivery_worker"]["outbox"]["PENDING"], 1)
+
+    def test_notification_status_reports_running_worker(self):
+        runtime = FakeRuntime()
+
+        class RunningWorker:
+            def status(self):
+                return {
+                    "configured": True,
+                    "running": True,
+                    "state": "RUNNING",
+                    "last_error": None,
+                    "last_result": {"claimed": 1, "delivered": 1, "retried": 0, "dead_lettered": 0},
+                    "last_cycle_at": 123.0,
+                    "outbox": {"PENDING": 0, "IN_FLIGHT": 0, "DELIVERED": 1, "DEAD": 0},
+                }
+
+        runtime.notification_worker = RunningWorker()
+        app = StandaloneWSGIApplication(runtime)
+        status, body = call_wsgi(app, "/api/notifications/status")
+
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(body["external_delivery"], "WORKER_RUNNING")
+        self.assertTrue(body["delivery_worker"]["running"])
+        self.assertEqual(body["delivery_worker"]["last_result"]["delivered"], 1)
+
     def test_remote_notification_status_counts_only_verified_subject_notifications(self):
         runtime = FakeRuntime()
         runtime.tenant_state.save_notifications(
