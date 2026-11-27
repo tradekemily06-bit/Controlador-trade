@@ -241,12 +241,16 @@ class TenantProviderConnectionService:
         outcomes: list[dict[str, Any]] = []
         for account in self.connections.list_connections(owner):
             provider_id = account["provider_id"]
-            if provider_id not in self.adapter_factories:
-                continue
             connection_id = account["connection_id"]
-            if account["status"] not in {"CONNECTED", "DISCONNECTED"}:
+            # Only connections that were active before process shutdown are
+            # eligible for automatic recovery. Explicitly disconnected accounts
+            # must stay disconnected until a user requests reconnection.
+            if account["status"] != "CONNECTED":
                 continue
-            if self.secret_resolver is None:
+            if (
+                self.secret_resolver is None
+                or provider_id not in self.adapter_factories
+            ):
                 outcomes.append({
                     "connection_id": connection_id,
                     "provider_id": provider_id,
