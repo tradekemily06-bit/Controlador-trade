@@ -1228,7 +1228,7 @@ class StandaloneWSGITests(unittest.TestCase):
                 app, "/api/user/preferences", method="PUT",
                 body={"preferences": {"language": "pt-BR"}},
             )
-        self.assertEqual(status, "503 Service Unavailable")
+        self.assertEqual(status, "403 Forbidden")
         self.assertFalse(body["execution_authorized"])
 
     def test_user_preferences_reject_non_object_payload(self):
@@ -1384,7 +1384,7 @@ class StandaloneWSGITests(unittest.TestCase):
                 method="POST", body={"symbol": "EURUSD", "timeframe": "M5"},
                 remote_addr="203.0.113.13", authorization="Bearer shared-gateway-secret",
             )
-        self.assertEqual(status, "403 Forbidden")
+        self.assertEqual(status, "503 Service Unavailable")
         self.assertFalse(body["execution_authorized"])
 
 if __name__ == "__main__":
