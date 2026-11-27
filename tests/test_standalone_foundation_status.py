@@ -10,6 +10,15 @@ from integration.standalone_foundation_status import _integrity, standalone_stor
 
 
 class StandaloneFoundationStatusTests(unittest.TestCase):
+    def test_missing_runtime_directory_reports_production_blockers(self):
+        result = standalone_storage_status(SimpleNamespace(runtime_dir=None))
+
+        self.assertEqual(result["required_stores"], "NOT_AVAILABLE")
+        self.assertEqual(result["deployment_topology"], "UNKNOWN_NO_RUNTIME_DIRECTORY")
+        self.assertEqual(result["multi_replica_readiness"], "BLOCKED_RUNTIME_NOT_AVAILABLE")
+        self.assertIn("RUNTIME_STORAGE_NOT_AVAILABLE", result["production_release_blockers"])
+        self.assertFalse(result["execution_authorized"])
+
     def test_reports_required_sqlite_stores_as_healthy(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
