@@ -21,10 +21,10 @@ _ALLOWED_PUSH_HOSTS = (
 
 def _is_allowed_push_host(hostname: str) -> bool:
     normalized = hostname.rstrip(".").lower()
-    return any(
-        normalized == suffix or normalized.endswith("." + suffix)
-        for suffix in _ALLOWED_PUSH_HOSTS
-    )
+    # Browser push endpoints are provider-issued URLs. Accept only the exact
+    # documented service hosts; suffix matching would also admit arbitrary
+    # subdomains that are not part of the supported endpoint contract.
+    return normalized in _ALLOWED_PUSH_HOSTS
 
 
 class EncryptedPushSubscriptionStore(Protocol):
