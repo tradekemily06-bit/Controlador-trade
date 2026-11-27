@@ -95,3 +95,7 @@ read-only; it has no order placement or money-movement methods.
 - Account authentication: https://help.ctrader.com/open-api/account-authentication/
 - Python SDK: https://help.ctrader.com/open-api/python-SDK/python-sdk-index/
 - Spotware OpenApiPy sample: https://github.com/spotware/OpenApiPy
+
+### Subscription diagnostics
+
+The subscription diagnostics use the same provider-specific session-boundary resolver as analysis and delayed notification dispatch. For D1/W1, when the adapter cannot provide a verified boundary, `expected_last_closed_candle_at` is `null`, and both `data_freshness_state` and `live_stream_status` report `SESSION_CALENDAR_UNAVAILABLE`. These fields must not be replaced with a generic UTC-derived freshness estimate. Intraday subscriptions continue to report their fixed-UTC candle boundary, with exact provider timestamp matching.
