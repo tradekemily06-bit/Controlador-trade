@@ -19,7 +19,7 @@ O endpoint antigo `/api/bridge/mt5/candles` com token global permanece legado pa
 
 O backend oferece `POST /api/market-data/mt5-relay-connections` para a identidade autenticada. O corpo aceita somente `account_alias`; o servidor gera `connection_id`, `source_id` e um bearer token aleatório de alta entropia. O token é revelado uma única vez e somente seu SHA-256 é persistido no cofre SQLite local do runtime.
 
-A conexão nasce em `PENDING`. O primeiro lote recebido em `POST /api/bridge/mt5/connections/{connection_id}/candles` precisa passar pelas validações de origem, UUID, timestamp, candles e `account_mode=DEMO`. Só após esse primeiro lote válido o backend promove a conta para `CONNECTED`. Qualquer conta em outro modo permanece pendente e sem análise.
+A conexão nasce em `PENDING`. O primeiro lote recebido em `POST /api/bridge/mt5/connections/{connection_id}/candles` precisa passar pelas validações de origem, UUID, timestamp, candles, `account_mode=DEMO` e referência pseudônima derivada do login/servidor do terminal. O backend vincula essa referência à conexão no primeiro handshake e rejeita lotes posteriores se outro login/servidor for usado com o mesmo token. O login bruto não é armazenado. Só após esse primeiro lote válido o backend promove a conta para `CONNECTED`. Qualquer conta em outro modo permanece pendente e sem análise.
 
 A rota `DELETE /api/market-data/connections/{connection_id}` revoga também o token do relay. O token não deve ser copiado para o frontend Lovable nem enviado em logs ou tickets. Se o token de uso único for perdido, revogue a conexão e faça novo provisionamento.
 
