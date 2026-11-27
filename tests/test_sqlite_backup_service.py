@@ -174,5 +174,55 @@ class SQLiteBackupServiceTests(unittest.TestCase):
 
 
 
+    def test_tenant_market_data_database_is_included_in_allowlisted_backups(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "runtime"
+            backups = root / "backups"
+            runtime.mkdir()
+            source = runtime / "tenant-connection-timeframe-monitor.sqlite3"
+            with sqlite3.connect(source) as db:
+                db.execute(
+                    "CREATE TABLE tenant_connection_timeframe_results "
+                    "(tenant_id TEXT, subject_id TEXT, connection_id TEXT, result_json TEXT)"
+                )
+                db.execute(
+                    "INSERT INTO tenant_connection_timeframe_results VALUES (?, ?, ?, ?)",
+                    ("tenant-a", "user-a", "connection-1", '{"signal":"AGUARDAR"}'),
+                )
+                db.execute(
+                    "CREATE TABLE tenant_connection_timeframe_processing_lease "
+                    "(lease_key TEXT, owner_token TEXT, expires_at REAL)"
+                )
+                db.execute(
+                    "CREATE TABLE tenant_connection_notification_outbox "
+                    "(event_id TEXT, tenant_id TEXT, subject_id TEXT, lease_token TEXT)"
+                )
+            result = SQLiteBackupService(runtime, backups).backup(["tenant_market_data"])
+            item = result["results"][0]
+            self.assertEqual(item["status"], "BACKUP_CREATED")
+            with sqlite3.connect(backups / item["filename"]) as db:
+                self.assertEqual(
+                    db.execute(
+                        "SELECT tenant_id, subject_id, connection_id FROM "
+                        "tenant_connection_timeframe_results"
+                    ).fetchone(),
+                    ("tenant-a", "user-a", "connection-1"),
+                )
+                self.assertEqual(
+                    db.execute(
+                        "SELECT COUNT(*) FROM tenant_connection_timeframe_processing_lease"
+                    ).fetchone()[0],
+                    1,
+                )
+                self.assertEqual(
+                    db.execute(
+                        "SELECT COUNT(*) FROM tenant_connection_notification_outbox"
+                    ).fetchone()[0],
+                    1,
+                )
+
+
+
 if __name__ == "__main__":
     unittest.main()
