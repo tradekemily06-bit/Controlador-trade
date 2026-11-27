@@ -405,10 +405,10 @@ class StandaloneWSGIApplication:
                         request_id,
                     )
                 try:
-                    result = service.disconnect(context, connection_id=connection_id)
                     token_vault = getattr(self.runtime, "tenant_mt5_relay_token_vault", None)
                     if token_vault is not None:
                         token_vault.revoke(context, connection_id)
+                    result = service.disconnect(context, connection_id=connection_id)
                 except (ValueError, TypeError) as exc:
                     return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
                 except Exception:
