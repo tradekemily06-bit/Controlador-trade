@@ -194,10 +194,26 @@ class StandaloneRuntime:
             self.tenant_tradingview_webhook_onboarding = TenantTradingViewWebhookOnboardingService(
                 self.tenant_provider_connections, self.tenant_tradingview_webhook_vault
             )
+            def publish_tradingview_alert(context, event):
+                notification = EcosystemNotification(
+                    notification_id=f"tradingview:{event['connection_id']}:{event['event_id']}",
+                    kind=NotificationKind.MARKET,
+                    severity=NotificationSeverity.IMPORTANT,
+                    title=f"Alerta TradingView: {event['ticker']} — {event['action']}",
+                    message=(
+                        f"TradingView enviou um alerta {event['action']} para {event['ticker']} "
+                        f"no intervalo {event['interval']}. Evento recebido e armazenado; "
+                        "nenhuma ordem foi enviada."
+                    ),
+                    requires_attention=True,
+                )
+                self.tenant_notification_dispatcher.publish(context, notification)
+
             self.tenant_tradingview_alert_inbox = TenantTradingViewAlertInbox(
                 self.runtime_dir / "tenant-tradingview-alerts.sqlite3",
                 self.tenant_provider_connections,
                 self.tenant_tradingview_webhook_vault,
+                on_event=publish_tradingview_alert,
             )
             self.tenant_provider_connection_service = TenantProviderConnectionService(
                 self.tenant_provider_connections,
