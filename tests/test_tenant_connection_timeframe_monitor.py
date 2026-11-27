@@ -461,3 +461,49 @@ def test_status_live_stream_counters_are_isolated_by_tenant_and_subject(tmp_path
     assert bob_status["buffered_live_candles"] == 1
     assert operator_status["live_streams"] == 2
     assert operator_status["worker_error_class"] == "ProviderFailure"
+
+
+def test_subscription_diagnostics_distinguish_disconnected_waiting_and_fresh(tmp_path):
+    from types import SimpleNamespace
+
+    owner = TenantContext("tenant-a", "alice")
+    connection = _id("7")
+    now = datetime.now(timezone.utc)
+    class Adapter:
+        def __init__(self, connected=True):
+            self.connected = connected
+        def status(self):
+            return {"connected": self.connected}
+        def subscribe_live_candles(self, symbol, timeframe, callback):
+            self.callback = callback
+
+    adapter = Adapter()
+    session = Session("ctrader_open_api", "ctrader:700", adapter)
+    class Registry:
+        def get(self, context, *, connection_id):
+            return session if context == owner else None
+
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "freshness-diagnostics.sqlite3", Registry(),
+        lambda _session, _context: Analyzer(now.isoformat(), "AGUARDAR"),
+    )
+    monitor.subscribe(owner, connection, "EURUSD", "M5")
+    row = monitor.subscriptions(owner)[0]
+    assert row["adapter_status"] == "CONNECTED"
+    assert row["data_freshness_state"] == "WAITING_FOR_CANDLE"
+    assert row["expected_last_closed_candle_at"]
+
+    expected = monitor.expected_last_closed_candle("5m", datetime.now(timezone.utc))
+    candle = SimpleNamespace(timestamp=expected, is_valid=lambda: True)
+    adapter.callback({
+        "account_id": 700, "symbol": "EURUSD", "timeframe": "5m",
+        "candle": candle, "closed": True,
+    })
+    row = monitor.subscriptions(owner)[0]
+    assert row["data_freshness_state"] == "FRESH"
+    assert row["live_candle_age_seconds"] is not None
+
+    adapter.connected = False
+    row = monitor.subscriptions(owner)[0]
+    assert row["adapter_status"] == "DISCONNECTED"
+    assert row["data_freshness_state"] == "DISCONNECTED"
