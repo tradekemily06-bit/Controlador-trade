@@ -252,6 +252,67 @@ class StandaloneWSGIApplication:
                 request_id,
             )
 
+        if method == "POST" and path == "/api/market-data/connections":
+            try:
+                context = _tenant_context_for_request(environ, reason)
+            except Exception:
+                context = None
+            service = getattr(self.runtime, "tenant_provider_connection_service", None)
+            if context is None or service is None:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "identidade confiável ou cofre de credenciais do servidor indisponível", "execution_authorized": False},
+                    request_id,
+                )
+            try:
+                payload = _read_json(environ)
+                allowed = {"provider_id", "account_alias", "credential_ref"}
+                if set(payload) - allowed or not allowed.issubset(payload):
+                    raise ValueError("envie somente provider_id, account_alias e credential_ref; segredos não são aceitos pela API")
+                result = service.connect(
+                    context,
+                    provider_id=payload["provider_id"],
+                    account_alias=payload["account_alias"],
+                    credential_ref=payload["credential_ref"],
+                )
+            except PermissionError as exc:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "execution_authorized": False}, request_id)
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
+            except Exception:
+                return _json_response(
+                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": "não foi possível verificar a conexão com o provedor", "execution_authorized": False},
+                    request_id,
+                )
+            return _json_response(start_response, HTTPStatus.CREATED, result, request_id)
+
+        if method == "DELETE" and path.startswith("/api/market-data/connections/"):
+            connection_id = path[len("/api/market-data/connections/"):].strip("/")
+            if "/" not in connection_id and connection_id:
+                try:
+                    context = _tenant_context_for_request(environ, reason)
+                except Exception:
+                    context = None
+                service = getattr(self.runtime, "tenant_provider_connection_service", None)
+                if context is None or service is None:
+                    return _json_response(
+                        start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                        {"error": "identidade confiável ou serviço de conexões indisponível", "execution_authorized": False},
+                        request_id,
+                    )
+                try:
+                    result = service.disconnect(context, connection_id=connection_id)
+                except (ValueError, TypeError) as exc:
+                    return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
+                except Exception:
+                    return _json_response(
+                        start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                        {"error": "não foi possível encerrar a conexão", "execution_authorized": False},
+                        request_id,
+                    )
+                return _json_response(start_response, HTTPStatus.OK, result, request_id)
+
         if method == "GET" and path == "/api/market-data/providers":
             # User-owned connections are always resolved from trusted tenant
             # scope. Host-global adapters are reported separately to local
