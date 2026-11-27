@@ -17,3 +17,11 @@ The test cipher is reversible and test-only. It is not suitable for production.
 - The standalone runtime exposes this flow only when all four host dependencies are injected: authenticated-encryption KMS cipher, authorization-code exchange client, cTrader client ID, and HTTPS redirect URI. Partial configuration fails startup. Without these dependencies, routes fail closed with service unavailable.
 - The exchange client is responsible for calling Spotware's token endpoint over TLS, authenticating with the server-side client secret, enforcing timeouts, and redacting codes/tokens from logs. The runtime does not ship a fake or default exchange implementation.
 - The callback returns a pending status. A later provider transport must enumerate accounts, reject live accounts, authenticate the selected DEMO account, and bind verified read-only market data before the registry may mark the connection CONNECTED.
+
+## Token exchange and refresh
+
+`CTraderOAuthHttpClient` implements Spotware's documented HTTPS token endpoint for authorization-code exchange (GET) and refresh-token rotation (POST). The application client secret remains in memory, requests use the default certificate-verifying HTTPS stack, timeouts and response-size limits are enforced, and exceptions are redacted rather than echoing provider descriptions or request URLs.
+
+The runtime may receive either this HTTP client object or explicit `exchange_code` and `refresh_tokens` callbacks. Both callbacks are mandatory when OAuth is enabled. The encrypted token vault persists the new access and refresh token together after each rotation. Refreshes are serialized per connection within the single runtime process; a future multi-replica deployment must use a distributed lease or equivalent cross-process refresh lock before sharing the same cTrader connection across workers.
+
+The default OAuth scope remains `accounts`, which Spotware defines as view-only. The broader `trading` scope is not requested by this read-only application.
