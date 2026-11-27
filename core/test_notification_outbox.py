@@ -100,3 +100,36 @@ def test_invalid_inputs_are_rejected(tmp_path):
         outbox.claim_due(limit=0)
     with pytest.raises(ValueError):
         outbox.dispatch_due(object())
+
+
+
+def test_failure_diagnostics_redact_urls_and_credentials(tmp_path):
+    outbox = PersistentNotificationOutbox(
+        tmp_path / "outbox.sqlite3", max_attempts=1
+    )
+
+    class LeakyFailingSink:
+        def deliver(self, idempotency_key, payload):
+            raise RuntimeError(
+                "push failed https://push.example.test/send/private "
+                "Bearer super-secret authorization=top-secret "
+                "p256dh=private-key-value"
+            )
+
+    outbox.enqueue("event-secret", {"title": "Alert"}, now=10)
+    result = outbox.dispatch_due(LeakyFailingSink(), now=11)
+    assert result.dead_lettered == 1
+
+    import sqlite3
+    with sqlite3.connect(tmp_path / "outbox.sqlite3") as db:
+        error = db.execute(
+            "SELECT last_error FROM notification_outbox WHERE idempotency_key=?",
+            ("event-secret",),
+        ).fetchone()[0]
+
+    assert "push.example.test" not in error
+    assert "super-secret" not in error
+    assert "top-secret" not in error
+    assert "private-key-value" not in error
+    assert "[URL REDACTED]" in error
+    assert "Bearer [REDACTED]" in error
