@@ -133,3 +133,34 @@ def test_refresh_candidates_lists_only_owned_active_connections_near_expiry(tmp_
     assert [item["connection_id"] for item in result] == [due["connection_id"]]
     assert "access_token" not in result[0]
     assert "refresh_token" not in result[0]
+
+
+def test_list_refresh_owners_rehydrates_only_non_revoked_owned_ctrader_identities(tmp_path):
+    owner = TenantContext("tenant-a", "alice")
+    other = TenantContext("tenant-b", "bob")
+    connections = TenantProviderConnectionRegistry(SQLiteTenantStorage(tmp_path / "tenant.sqlite3"))
+    account_a = _account(connections, owner, "owner-a")
+    account_b = _account(connections, other, "owner-b")
+    vault = TenantOAuthTokenVault(tmp_path / "tokens.sqlite3", connections, TestOnlyCipher())
+    vault.store(owner, connection_id=account_a["connection_id"], provider_id="ctrader_open_api",
+                token_set={"access_token": "a-access", "refresh_token": "a-refresh"})
+    vault.store(other, connection_id=account_b["connection_id"], provider_id="ctrader_open_api",
+                token_set={"access_token": "b-access", "refresh_token": "b-refresh"})
+
+    assert vault.list_refresh_owners() == [owner, other]
+    assert vault.revoke(owner, account_a["connection_id"]) is True
+    assert vault.list_refresh_owners() == [other]
+
+
+def test_list_refresh_owners_rejects_partial_startup_when_capacity_is_exceeded(tmp_path):
+    import pytest
+
+    connections = TenantProviderConnectionRegistry(SQLiteTenantStorage(tmp_path / "tenant.sqlite3"))
+    vault = TenantOAuthTokenVault(tmp_path / "tokens.sqlite3", connections, TestOnlyCipher())
+    for index in range(2):
+        owner = TenantContext(f"tenant-{index}", f"user-{index}")
+        account = _account(connections, owner, f"account-{index}")
+        vault.store(owner, connection_id=account["connection_id"], provider_id="ctrader_open_api",
+                    token_set={"access_token": f"access-{index}", "refresh_token": f"refresh-{index}"})
+    with pytest.raises(RuntimeError, match="capacity exceeded"):
+        vault.list_refresh_owners(limit=1)
