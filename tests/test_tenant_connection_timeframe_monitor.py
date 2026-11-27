@@ -1424,3 +1424,49 @@ def test_notification_dispatch_validates_arguments_without_sink(tmp_path):
         monitor.dispatch_pending_notifications(limit=0)
     assert monitor.dispatch_pending_notifications() == 0
 
+def test_notification_expiry_is_scoped_to_its_own_timeframe(tmp_path):
+    import json
+    import uuid
+
+    owner = TenantContext("tenant-timeframe-notifications", "alice")
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "notification-timeframe-isolation.sqlite3",
+        Sessions(),
+        lambda _session, _context: None,
+        on_result=lambda _event: None,
+    )
+    now = datetime.now(timezone.utc)
+    expired_m1 = monitor.expected_last_closed_candle("M1", now) - timedelta(minutes=1)
+    current_m5 = monitor.expected_last_closed_candle("M5", now)
+    connection = _id("d")
+    with monitor._connect() as db:
+        for timeframe, candle_at in (("M1", expired_m1), ("M5", current_m5)):
+            db.execute(
+                """
+                INSERT INTO tenant_connection_notification_outbox (
+                    event_id, tenant_id, subject_id, connection_id, symbol,
+                    timeframe, candle_at, result_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(uuid.uuid4()), owner.tenant_id, owner.subject_id,
+                    connection, "EURUSD", timeframe, candle_at.isoformat(),
+                    json.dumps({
+                        "result": {"signal": "COMPRA", "status": "ANALYZED"},
+                        "provider_id": "test_provider",
+                        "source": "test",
+                    }),
+                    now.timestamp(),
+                ),
+            )
+
+    delivered = []
+    monitor.on_result = delivered.append
+    assert monitor.dispatch_pending_notifications() == 2
+    by_timeframe = {event["timeframe"]: event["result"] for event in delivered}
+    assert by_timeframe["M1"]["signal"] is None
+    assert by_timeframe["M1"]["original_signal"] == "COMPRA"
+    assert by_timeframe["M1"]["status"] == "SIGNAL_EXPIRED"
+    assert by_timeframe["M5"]["signal"] == "COMPRA"
+    assert by_timeframe["M5"]["status"] == "ANALYZED"
+
