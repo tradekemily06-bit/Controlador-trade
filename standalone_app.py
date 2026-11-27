@@ -501,7 +501,10 @@ class StandaloneWSGIApplication:
 
         if method == "GET" and path == "/api/market-monitor/status":
             monitor = getattr(self.runtime, "market_monitor", None)
-            tenant_context = _tenant_context_for_request(environ, reason)
+            try:
+                tenant_context = _tenant_context_for_request(environ, reason)
+            except Exception:
+                tenant_context = None
             if tenant_context is None:
                 return _json_response(
                     start_response, HTTPStatus.FORBIDDEN,
@@ -783,7 +786,10 @@ class StandaloneWSGIApplication:
             )
 
         if path.startswith("/api/market-data/connections/") and path.endswith("/subscriptions"):
-            context = _tenant_context_for_request(environ, reason)
+            try:
+                context = _tenant_context_for_request(environ, reason)
+            except Exception:
+                context = None
             monitor = getattr(self.runtime, "tenant_market_monitor", None)
             if context is None or monitor is None:
                 return _json_response(
@@ -815,7 +821,10 @@ class StandaloneWSGIApplication:
                 return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
 
         if method == "GET" and path == "/api/market-data/timeframe-results":
-            context = _tenant_context_for_request(environ, reason)
+            try:
+                context = _tenant_context_for_request(environ, reason)
+            except Exception:
+                context = None
             monitor = getattr(self.runtime, "tenant_market_monitor", None)
             if context is None or monitor is None:
                 return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": "identidade ou monitor indisponível", "execution_authorized": False}, request_id)
