@@ -436,6 +436,27 @@ class CTraderOpenApiReadOnlyTransport:
         request.clientSecret = self._client_secret
         self._send(request)
 
+    def list_accounts(self) -> tuple[dict[str, Any], ...]:
+        """Return only safe account identifiers and DEMO/REAL flags from OAuth."""
+        request = self._messages["account_list"]()
+        request.accessToken = self._access_token
+        response = self._send(request)
+        accounts = self._field(response, "ctidTraderAccount") or ()
+        output = []
+        for account in accounts:
+            raw_id = self._field(account, "ctidTraderAccountId")
+            is_live = self._field(account, "isLive")
+            if raw_id is None or isinstance(is_live, bool) is False:
+                raise PermissionError("Spotware retornou uma conta sem confirmação de ID/modo")
+            try:
+                account_id = int(raw_id)
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError("Spotware retornou um identificador de conta inválido") from exc
+            if account_id <= 0:
+                raise ValueError("Spotware retornou um identificador de conta inválido")
+            output.append({"account_id": account_id, "is_live": is_live})
+        return tuple(output)
+
     def account_details(self, account_id: int) -> dict[str, Any]:
         if isinstance(account_id, bool) or not isinstance(account_id, int) or account_id <= 0:
             raise ValueError("account_id cTrader inválido")
