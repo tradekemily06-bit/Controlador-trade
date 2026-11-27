@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from concurrent.futures import Future, TimeoutError as FutureTimeout
 from datetime import datetime, timezone
+import queue
 import threading
 import time
 from typing import Any
@@ -114,6 +115,8 @@ class CTraderOpenApiReadOnlyTransport:
                 ProtoOAAccountAuthReq,
                 ProtoOASymbolsListReq,
                 ProtoOAGetTrendbarsReq,
+                ProtoOASubscribeSpotsReq,
+                ProtoOAUnsubscribeSpotsReq,
             )
             from ctrader_open_api.messages.OpenApiModelMessages_pb2 import ProtoOATrendbarPeriod
         except ImportError as exc:
@@ -131,6 +134,8 @@ class CTraderOpenApiReadOnlyTransport:
             "account_auth": ProtoOAAccountAuthReq,
             "symbols": ProtoOASymbolsListReq,
             "trendbars": ProtoOAGetTrendbarsReq,
+            "subscribe_spots": ProtoOASubscribeSpotsReq,
+            "unsubscribe_spots": ProtoOAUnsubscribeSpotsReq,
         }
         self._period_enum = ProtoOATrendbarPeriod
         self._client_id = client_id.strip()
@@ -145,6 +150,11 @@ class CTraderOpenApiReadOnlyTransport:
         self._account_id: int | None = None
         self._account_authenticated = False
         self._symbols_cache: dict[str, dict[str, Any]] = {}
+        self._spot_callbacks: dict[int, Any] = {}
+        self._spot_queue: queue.Queue = queue.Queue(maxsize=2048)
+        self._spot_worker: threading.Thread | None = None
+        self._spot_worker_stop = threading.Event()
+        self._spot_overflow_count = 0
 
     @staticmethod
     def _field(obj: Any, *names: str):
@@ -175,6 +185,29 @@ class CTraderOpenApiReadOnlyTransport:
 
             def received(_client, _message):
                 self._last_seen = datetime.now(timezone.utc).isoformat()
+                symbol_id = self._field(_message, "symbolId")
+                if symbol_id is None:
+                    return
+                try:
+                    symbol_key = int(symbol_id)
+                except (TypeError, ValueError, OverflowError):
+                    return
+                with self._lock:
+                    callback = self._spot_callbacks.get(symbol_key)
+                if callback is None:
+                    return
+                event = {
+                    "account_id": self._field(_message, "ctidTraderAccountId"),
+                    "symbol_id": symbol_key,
+                    "bid": self._field(_message, "bid"),
+                    "ask": self._field(_message, "ask"),
+                    "timestamp": self._field(_message, "timestamp"),
+                }
+                try:
+                    self._spot_queue.put_nowait((callback, event))
+                except queue.Full:
+                    with self._lock:
+                        self._spot_overflow_count += 1
 
             self._client.setConnectedCallback(connected)
             self._client.setDisconnectedCallback(disconnected)
@@ -190,6 +223,64 @@ class CTraderOpenApiReadOnlyTransport:
         return _SharedTwistedReactor.call(
             lambda: self._client.send(request), self._timeout
         )
+
+    def _start_spot_worker(self) -> None:
+        if self._spot_worker is not None and self._spot_worker.is_alive():
+            return
+        self._spot_worker_stop.clear()
+
+        def dispatch():
+            while not self._spot_worker_stop.is_set() or not self._spot_queue.empty():
+                try:
+                    callback, event = self._spot_queue.get(timeout=0.25)
+                except queue.Empty:
+                    continue
+                try:
+                    callback(event)
+                except Exception:
+                    # Consumer failures must not interrupt the Twisted reactor
+                    # or prevent delivery of later market events.
+                    pass
+                finally:
+                    self._spot_queue.task_done()
+
+        self._spot_worker = threading.Thread(
+            target=dispatch, name="ctrader-spot-event-dispatch", daemon=True
+        )
+        self._spot_worker.start()
+
+    def subscribe_spots(self, account_id: int, symbol_id: int, callback) -> None:
+        self._require_account(account_id)
+        if isinstance(symbol_id, bool) or not isinstance(symbol_id, int) or symbol_id <= 0:
+            raise ValueError("symbol_id cTrader inválido")
+        if not callable(callback):
+            raise ValueError("callback de cotação deve ser executável")
+        with self._lock:
+            if symbol_id in self._spot_callbacks:
+                raise ValueError("já existe uma assinatura spot para este símbolo nesta conta")
+            self._spot_callbacks[symbol_id] = callback
+        self._start_spot_worker()
+        request = self._messages["subscribe_spots"]()
+        request.ctidTraderAccountId = account_id
+        request.symbolId.append(symbol_id)
+        request.subscribeToSpotTimestamp = True
+        try:
+            self._send(request)
+        except Exception:
+            with self._lock:
+                self._spot_callbacks.pop(symbol_id, None)
+            raise
+
+    def unsubscribe_spots(self, account_id: int, symbol_id: int) -> None:
+        self._require_account(account_id)
+        if isinstance(symbol_id, bool) or not isinstance(symbol_id, int) or symbol_id <= 0:
+            raise ValueError("symbol_id cTrader inválido")
+        request = self._messages["unsubscribe_spots"]()
+        request.ctidTraderAccountId = account_id
+        request.symbolId.append(symbol_id)
+        self._send(request)
+        with self._lock:
+            self._spot_callbacks.pop(symbol_id, None)
 
     def application_auth(self) -> None:
         request = self._messages["application_auth"]()
@@ -266,6 +357,9 @@ class CTraderOpenApiReadOnlyTransport:
             "account_authenticated": self._account_authenticated,
             "account_mode": "DEMO" if self._account_authenticated else None,
             "last_seen": self._last_seen,
+            "active_spot_symbols": len(self._spot_callbacks),
+            "spot_event_queue_depth": self._spot_queue.qsize(),
+            "spot_event_overflow_count": self._spot_overflow_count,
         }
 
     def disconnect(self) -> None:
@@ -274,6 +368,13 @@ class CTraderOpenApiReadOnlyTransport:
         self._account_authenticated = False
         self._account_id = None
         self._symbols_cache.clear()
+        with self._lock:
+            self._spot_callbacks.clear()
+        self._spot_worker_stop.set()
+        worker = self._spot_worker
+        if worker is not None and worker.is_alive():
+            worker.join(timeout=1.0)
+        self._spot_worker = None
         if client is not None:
             try:
                 _SharedTwistedReactor.call(client.stopService, self._timeout)
