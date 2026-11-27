@@ -96,6 +96,13 @@ The runtime provisions a tenant-and-subject-scoped decision-memory adapter on th
 #### `GET /api/memory/decisions?limit=100`
 Returns decision records only for the trusted tenant and subject resolved by the server. The limit is 1–2000. Local loopback uses the configured single-user identity; remote access requires verified server-injected identity.
 
+### Local read-only fiscal summary
+
+#### `GET /api/fiscal/summary?limit=100&offset=0`
+Returns the configured local single-user owner's fiscal reserve summary and paginated ledger history. `limit` is 1–500 and `offset` is 0–100000. The response is explicitly marked `scope: LOCAL_SINGLE_USER`, `tax_assessment: false`, `money_movement: false` and `execution_authorized: false`. The summary remains a planning estimate, not a tax assessment.
+
+Remote identities receive `FISCAL_REMOTE_STORAGE_NOT_READY`; this endpoint deliberately does not read the legacy single-owner fiscal database for remote users. The per-tenant fiscal repository factory exists as a local isolation primitive, but production-grade remote fiscal reads are not enabled until its storage lifecycle and trusted identity integration are validated.
+
 ### Tenant-scoped market analysis
 
 #### `POST /api/analysis/run`
