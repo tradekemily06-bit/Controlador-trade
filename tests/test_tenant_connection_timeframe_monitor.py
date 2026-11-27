@@ -918,13 +918,13 @@ def test_expired_notification_lease_is_not_counted_as_delivered(tmp_path):
     monitor = TenantConnectionTimeframeMonitor(
         tmp_path / "notification-expired-ack.sqlite3", sessions,
         lambda _session, _context: Analyzer(expected.isoformat(), "AGUARDAR"),
+        on_result=sink,
     )
     holder["monitor"] = monitor
     monitor.subscribe(owner, connection, "EURUSD", "5m")
-    assert len(monitor.run_once(now=now)) == 1
-    monitor.on_result = sink
 
     # The callback succeeds, but expires its lease before durable acknowledgement.
+    assert len(monitor.run_once(now=now)) == 1
     assert monitor.dispatch_pending_notifications() == 0
     with monitor._connect() as db:
         row = db.execute(
