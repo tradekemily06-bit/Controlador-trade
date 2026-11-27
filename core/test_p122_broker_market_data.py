@@ -131,3 +131,22 @@ def test_boundary_rejects_timeframe_not_confirmed_by_provider():
     with pytest.raises(ValueError, match="não confirma suporte"):
         boundary.fetch(BrokerMarketDataRequest("EURUSD", "1m", 2))
 
+def test_invalid_received_at_is_rejected_before_provider_access():
+    class TrackingProvider(FakeProvider):
+        called = False
+
+        def fetch_market_data(self, request):
+            self.called = True
+            return self.candles
+
+    provider = TrackingProvider([candle_at(0)])
+    boundary = BrokerMarketDataBoundary(provider, "demo-broker")
+
+    with pytest.raises(ValueError, match="received_at"):
+        boundary.fetch(
+            BrokerMarketDataRequest("EURUSD", "1m", 1),
+            received_at=datetime(2026, 9, 9, 12, 0),
+        )
+
+    assert provider.called is False
+
