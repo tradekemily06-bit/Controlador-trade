@@ -1350,6 +1350,14 @@ def test_old_callback_cannot_reenter_after_unsubscribe_and_resubscribe_same_adap
     new_callback({**event, "candle": current_candle})
     assert monitor._live_candles[key] is current_candle
 
+    # A late event from the old callback must not overwrite the current
+    # binding's accepted candle after the new subscription is active.
+    later_stale_candle = SimpleNamespace(
+        timestamp=expected + timedelta(minutes=5), is_valid=lambda: True
+    )
+    old_callback({**event, "candle": later_stale_candle})
+    assert monitor._live_candles[key] is current_candle
+
 
 def test_live_stream_rejects_boolean_account_id_that_equals_integer_one(tmp_path):
     from types import SimpleNamespace
