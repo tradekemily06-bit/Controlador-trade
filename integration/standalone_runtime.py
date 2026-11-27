@@ -30,6 +30,7 @@ from core.ecosystem_state_store import EcosystemStateStore
 from core.learning_state_store import LearningStateStore
 from core.notification_outbox import PersistentNotificationOutbox
 from core.sqlite_backup_service import SQLiteBackupService
+from core.tenant_fiscal_backup import TenantFiscalBackupService
 from core.sqlite_backup_scheduler import SQLiteBackupScheduler
 from core.ecosystem_notifications import EcosystemNotification, NotificationKind, NotificationSeverity
 from integration.market_timeframe_monitor import MarketTimeframeMonitor
@@ -129,8 +130,13 @@ class StandaloneRuntime:
                 backup_service = SQLiteBackupService(
                     self.runtime_dir, backup_dir_value
                 )
+                tenant_fiscal_backup_service = TenantFiscalBackupService(
+                    self.tenant_fiscal_store_factory, backup_dir_value
+                )
                 self.backup_scheduler = SQLiteBackupScheduler(
-                    backup_service, interval_seconds=backup_interval
+                    backup_service,
+                    additional_backup_services=(tenant_fiscal_backup_service,),
+                    interval_seconds=backup_interval,
                 )
                 self.backup_scheduler.start()
             self.ecosystem_service = EcosystemService(
