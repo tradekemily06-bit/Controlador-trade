@@ -110,3 +110,12 @@ def test_signal_evidence_rejects_tampered_noncanonical_tenant_context(tmp_path):
         _record(store, owner)
 
 
+
+
+def test_signal_evidence_rejects_non_finite_and_unrepresentable_scores(tmp_path):
+    store = TenantSignalEvidenceStore(tmp_path / "signals-score-bounds.sqlite3")
+    owner = TenantContext("tenant-a", "alice")
+    for index, score in enumerate((float("nan"), float("inf"), float("-inf"), 10**1000)):
+        with pytest.raises(ValueError):
+            _record(store, owner, f"invalid-score-{index}", evidence_score=score)
+
