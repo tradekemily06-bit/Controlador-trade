@@ -47,7 +47,7 @@ class FakeMT5:
     def initialize(self, path=None):
         self.initialized = True
         self.initialize_path = path
-        self.active_path = path
+        self.active_path = path or os.path.join(os.getcwd(), "terminal64.exe")
         return True
 
     def terminal_info(self):
