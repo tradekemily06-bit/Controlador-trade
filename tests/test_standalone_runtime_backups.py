@@ -13,6 +13,7 @@ def test_runtime_starts_opt_in_backup_scheduler_and_stops_it(tmp_path, monkeypat
     runtime = StandaloneRuntime(runtime_dir)
     try:
         assert runtime.backup_scheduler is not None
+        assert len(runtime.backup_scheduler.additional_backup_services) == 1
         status = runtime.backup_scheduler.status()
         assert status["enabled"] is True
         assert status["worker_running"] is True
