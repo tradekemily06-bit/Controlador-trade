@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hmac
 import json
+import math
 import re
 import sqlite3
 from datetime import datetime, timezone
@@ -141,9 +142,14 @@ class TenantTradingViewAlertInbox:
 
         price = payload.get("price")
         if price is not None:
-            if isinstance(price, bool) or not isinstance(price, (int, float)) or price <= 0:
-                raise TradingViewAlertError("price deve ser número positivo")
-            price = float(price)
+            if isinstance(price, bool) or not isinstance(price, (int, float)):
+                raise TradingViewAlertError("price deve ser número finito positivo")
+            try:
+                price = float(price)
+            except (OverflowError, ValueError) as exc:
+                raise TradingViewAlertError("price deve ser número finito positivo") from exc
+            if not math.isfinite(price) or price <= 0:
+                raise TradingViewAlertError("price deve ser número finito positivo")
 
         safe_payload = {
             "event_id": event_id,
