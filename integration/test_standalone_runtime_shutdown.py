@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from integration.standalone_runtime import StandaloneRuntime
+from integration.standalone_runtime import (
+    StandaloneRuntime,
+    _FAILED_STARTUP_LOCKS,
+    _cleanup_failed_startup,
+)
 
 
 class FakeWorker:
@@ -74,3 +78,48 @@ def test_runtime_close_is_idempotent_after_successful_shutdown() -> None:
 
     assert runtime.process_lock.released is True
     assert runtime.closed is True
+
+
+
+def test_failed_startup_retains_process_lock_when_worker_is_still_running() -> None:
+    lock = FakeLock()
+    worker = FakeWorker("worker_running")
+    before = len(_FAILED_STARTUP_LOCKS)
+
+    active = _cleanup_failed_startup(lock, ((worker, "worker_running"),))
+
+    assert active == ["FakeWorker"]
+    assert worker.stop_calls == 1
+    assert lock.released is False
+    assert len(_FAILED_STARTUP_LOCKS) == before + 1
+    retained_lock, retained_workers = _FAILED_STARTUP_LOCKS[-1]
+    assert retained_lock is lock
+    assert retained_workers == (worker,)
+
+
+def test_failed_startup_releases_lock_when_all_workers_stopped() -> None:
+    lock = FakeLock()
+    worker = FakeWorker("worker_running")
+    worker.running = False
+
+    active = _cleanup_failed_startup(lock, ((worker, "worker_running"),))
+
+    assert active == []
+    assert worker.stop_calls == 1
+    assert lock.released is True
+
+
+def test_failed_startup_retains_lock_when_worker_status_cannot_be_read() -> None:
+    class BrokenStatusWorker(FakeWorker):
+        def status(self) -> dict[str, bool]:
+            raise RuntimeError("status unavailable")
+
+    lock = FakeLock()
+    worker = BrokenStatusWorker("worker_running")
+    before = len(_FAILED_STARTUP_LOCKS)
+
+    active = _cleanup_failed_startup(lock, ((worker, "worker_running"),))
+
+    assert active == ["BrokenStatusWorker"]
+    assert lock.released is False
+    assert len(_FAILED_STARTUP_LOCKS) == before + 1
