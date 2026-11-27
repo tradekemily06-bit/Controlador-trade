@@ -2,7 +2,7 @@
 
 `integration.pywebpush_sender.PyWebPushSender` adapts the tenant-scoped sink to the maintained `pywebpush` API.
 
-- The VAPID private key is obtained from an injected host secret provider on each send; no key is committed, read from an arbitrary path, or logged.
+- The VAPID private key is obtained from an injected host secret provider on each send as base64-encoded DER material; no key is committed, read from an arbitrary path, or logged.
 - The VAPID subject must be an operational `mailto:` contact. The audience is derived by pywebpush from each push endpoint and the expiry is refreshed by the library.
 - Delivery uses the RFC 8188 `aes128gcm` default, a bounded TTL, and a bounded network timeout.
 - The sender is optional and lazily imports `pywebpush`, so importing the application does not require the dependency until the sender is actually used.
