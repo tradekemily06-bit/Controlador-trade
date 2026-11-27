@@ -360,6 +360,24 @@ class StandaloneWSGIApplication:
                 request_id,
             )
 
+        if method == "POST" and path == "/api/market-data/tradingview-webhook-connections":
+            context = _tenant_context_for_request(environ, reason)
+            onboarding = getattr(self.runtime, "tenant_tradingview_webhook_onboarding", None)
+            if context is None or onboarding is None:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "identidade ou provisionador TradingView indisponível", "execution_authorized": False}, request_id)
+            try:
+                payload = _read_json(environ)
+                if set(payload) != {"account_alias"}:
+                    raise ValueError("envie somente account_alias; segredo do webhook é gerado pelo servidor")
+                result = onboarding.provision(context, account_alias=payload["account_alias"])
+            except PermissionError as exc:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "execution_authorized": False}, request_id)
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
+            except Exception:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "não foi possível provisionar webhook TradingView", "execution_authorized": False}, request_id)
+            return _json_response(start_response, HTTPStatus.CREATED, result, request_id)
+
         if method == "POST" and path == "/api/market-data/mt5-relay-connections":
             context = _tenant_context_for_request(environ, reason)
             onboarding = getattr(self.runtime, "tenant_mt5_relay_onboarding", None)
@@ -439,6 +457,9 @@ class StandaloneWSGIApplication:
                     token_vault = getattr(self.runtime, "tenant_mt5_relay_token_vault", None)
                     if token_vault is not None:
                         token_vault.revoke(context, connection_id)
+                    tv_vault = getattr(self.runtime, "tenant_tradingview_webhook_vault", None)
+                    if tv_vault is not None:
+                        tv_vault.revoke(context, connection_id)
                     result = service.disconnect(context, connection_id=connection_id)
                 except (ValueError, TypeError) as exc:
                     return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "execution_authorized": False}, request_id)
