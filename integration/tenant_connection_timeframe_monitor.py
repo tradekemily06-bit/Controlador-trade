@@ -980,13 +980,28 @@ class TenantConnectionTimeframeMonitor:
                 if event_candle.tzinfo is None:
                     raise ValueError("timezone required")
                 event_timeframe = normalize_timeframe(row["timeframe"])
-                event_expected = self.expected_last_closed_candle(
-                    event_timeframe, datetime.now(timezone.utc)
+                event_now = datetime.now(timezone.utc)
+                event_owner = TenantContext(row["tenant_id"], row["subject_id"])
+                event_session = self.session_registry.get(
+                    event_owner, connection_id=self._connection(row["connection_id"])
                 )
-                event_valid = event_candle.astimezone(timezone.utc) == event_expected
+                event_expected = self._expected_for_session(
+                    event_session, row["symbol"], event_timeframe, event_now
+                )
+                event_valid = (
+                    event_expected is not None
+                    and event_candle.astimezone(timezone.utc) == event_expected
+                )
             except (TypeError, ValueError, OverflowError):
+                event_expected = None
                 event_valid = False
-            if not event_valid:
+            if event_expected is None:
+                result["original_signal"] = result.get("signal")
+                result["signal"] = None
+                result["status"] = "SESSION_CALENDAR_UNAVAILABLE"
+                result["signal_valid"] = False
+                result["signal_validity"] = "SESSION_CALENDAR_UNAVAILABLE"
+            elif not event_valid:
                 result["original_signal"] = result.get("signal")
                 result["signal"] = None
                 result["status"] = "SIGNAL_EXPIRED"
