@@ -24,7 +24,19 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
                 },
                 "ecosystem-state.sqlite3": {"ecosystem_state": "key TEXT, value_json TEXT"},
                 "tenant-state.sqlite3": {"tenant_state": "tenant_id TEXT, subject_id TEXT, key TEXT, value_json TEXT, updated_at TEXT"},
-                "notification-outbox.sqlite3": {"notification_outbox": "idempotency_key TEXT, payload_json TEXT, status TEXT, attempts INTEGER, available_at REAL, lease_until REAL, created_at REAL, delivered_at REAL, last_error TEXT"},
+                "tenant-connection-timeframe-monitor.sqlite3": {
+                    "tenant_connection_timeframe_watch": "tenant_id TEXT, subject_id TEXT, connection_id TEXT, symbol TEXT, timeframe TEXT, enabled INTEGER, created_at REAL, last_processed_candle TEXT, last_signal TEXT, last_status TEXT, last_error TEXT",
+                    "tenant_connection_timeframe_results": "tenant_id TEXT, subject_id TEXT, connection_id TEXT, symbol TEXT, timeframe TEXT, candle_at TEXT, result_json TEXT, recorded_at REAL",
+                    "tenant_connection_timeframe_processing_lease": "lease_key TEXT, owner_token TEXT, expires_at REAL",
+                    "tenant_connection_notification_outbox": "event_id TEXT, tenant_id TEXT, subject_id TEXT, connection_id TEXT, symbol TEXT, timeframe TEXT, candle_at TEXT, result_json TEXT, created_at REAL, attempts INTEGER, lease_until REAL, delivered_at REAL",
+                },
+                "tenant-mt5-relay-tokens.sqlite3": {
+                    "tenant_mt5_relay_tokens": "token_hash TEXT, tenant_id TEXT, subject_id TEXT, connection_id TEXT, source_id TEXT, created_at REAL, revoked INTEGER",
+                },
+                "tenant-tradingview-webhook-secrets.sqlite3": {
+                    "tenant_tradingview_webhook_secrets": "secret_hash TEXT, tenant_id TEXT, subject_id TEXT, connection_id TEXT, revoked INTEGER",
+                },
+                "notification-outbox.sqlite3": {"notification_outbox": "idempotency_key TEXT, payload_json TEXT, status TEXT, attempts INTEGER, available_at REAL, lease_until REAL, lease_token TEXT, created_at REAL, delivered_at REAL, last_error TEXT"},
                 "decision-memory.sqlite3": {"decisions": "decision_id TEXT, created_at TEXT, symbol TEXT, timeframe TEXT, signal TEXT, score REAL, confirmed INTEGER, reason TEXT, execution_allowed INTEGER, outcome TEXT, outcome_source TEXT"},
                 "assistant-conversations.sqlite3": {
                     "conversations": "id TEXT, owner TEXT, title TEXT, updated_at TEXT",
