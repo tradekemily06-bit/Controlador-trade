@@ -1854,7 +1854,11 @@ def test_daily_and_weekly_signals_wait_for_provider_session_calendar(
 
     assert results == []
     assert analyzer.calls == 0
-    assert monitor.subscriptions(owner)[0]["last_status"] == "WAITING_FOR_SESSION_CALENDAR"
+    subscription = monitor.subscriptions(owner)[0]
+    assert subscription["last_status"] == "WAITING_FOR_SESSION_CALENDAR"
+    assert subscription["expected_last_closed_candle_at"] is None
+    assert subscription["data_freshness_state"] == "SESSION_CALENDAR_UNAVAILABLE"
+    assert subscription["live_stream_status"] == "SESSION_CALENDAR_UNAVAILABLE"
     assert monitor.latest_results(owner, connection)[0:1] == []
 
 
