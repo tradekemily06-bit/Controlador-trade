@@ -13,7 +13,7 @@ def _subscription():
 def test_uses_secret_provider_vapid_claims_ttl_and_timeout():
     calls = []
     sender = PyWebPushSender(
-        lambda: "-----BEGIN PRIVATE KEY-----\nsecret\n-----END PRIVATE KEY-----",
+        lambda: "A" * 48,
         subject="mailto:push-ops@example.com",
         timeout_seconds=8,
         webpush_function=lambda **kwargs: calls.append(kwargs) or "accepted",
@@ -29,7 +29,7 @@ def test_uses_secret_provider_vapid_claims_ttl_and_timeout():
     assert calls[0]["ttl"] == 120
     assert calls[0]["timeout"] == 8
     assert calls[0]["verbose"] is False
-    assert calls[0]["vapid_private_key"].startswith("-----BEGIN")
+    assert calls[0]["vapid_private_key"] == "A" * 48
 
 
 def test_rejects_missing_key_without_exposing_secret():
@@ -38,10 +38,17 @@ def test_rejects_missing_key_without_exposing_secret():
         sender(_subscription(), "{}", ttl_seconds=30, idempotency_key="id")
 
 
-def test_rejects_file_path_as_private_key_source():
+def test_rejects_pem_text_and_file_path_as_private_key_source():
     sender = PyWebPushSender(lambda: "/etc/secrets/vapid.pem", subject="mailto:ops@example.com", webpush_function=lambda **kwargs: None)
-    with pytest.raises(VapidConfigurationError, match="unsupported format"):
+    with pytest.raises(VapidConfigurationError, match="base64-encoded DER"):
         sender(_subscription(), "{}", ttl_seconds=30, idempotency_key="id")
+    pem_sender = PyWebPushSender(
+        lambda: "-----BEGIN PRIVATE KEY-----",
+        subject="mailto:ops@example.com",
+        webpush_function=lambda **kwargs: None,
+    )
+    with pytest.raises(VapidConfigurationError, match="base64-encoded DER"):
+        pem_sender(_subscription(), "{}", ttl_seconds=30, idempotency_key="id")
 
 
 def test_validates_subject_ttl_and_endpoint():
