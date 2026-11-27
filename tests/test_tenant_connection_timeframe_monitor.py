@@ -968,7 +968,7 @@ def test_tenant_notification_outbox_dead_letters_after_bounded_attempts(tmp_path
         ).fetchone()
         assert row["attempts"] == 1
         assert row["dead_at"] is None
-        assert row["last_error"] is None
+        assert row["last_error"] == "RuntimeError"
         db.execute(
             "UPDATE tenant_connection_notification_outbox SET lease_until=0 WHERE event_id=?",
             (row["event_id"],),
