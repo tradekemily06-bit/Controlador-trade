@@ -58,7 +58,7 @@ class SQLiteBackupScheduler:
         self._run_backup()
         return self.status()
 
-    def stop(self, timeout: float = 5.0) -> None:
+    def stop(self, timeout: float | None = None) -> None:
         self._stop.set()
         thread = self._thread
         if thread is not None:
