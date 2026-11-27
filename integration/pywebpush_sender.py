@@ -71,12 +71,11 @@ class PyWebPushSender:
         private_key = self._private_key_provider()
         if not isinstance(private_key, str) or not private_key.strip():
             raise VapidConfigurationError("VAPID private key is unavailable")
-        # Reject filesystem paths: deployments must inject key material from
-        # secret management, not point the sender at arbitrary host files.
-        if not private_key.lstrip().startswith("-----BEGIN") and not re.fullmatch(
-            r"[A-Za-z0-9_+/=-]{40,}", private_key.strip()
-        ):
-            raise VapidConfigurationError("VAPID private key material has an unsupported format")
+        # pywebpush accepts a base64-encoded DER key string or a PEM file path.
+        # Paths are intentionally forbidden here; only secret-managed DER
+        # material is accepted, so the library cannot read arbitrary host files.
+        if not re.fullmatch(r"[A-Za-z0-9_+/=-]{40,}", private_key.strip()):
+            raise VapidConfigurationError("VAPID private key must be base64-encoded DER material")
 
         claims = {"sub": self.subject}
         # pywebpush derives aud from each endpoint and refreshes exp when absent.
