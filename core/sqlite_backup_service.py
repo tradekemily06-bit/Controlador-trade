@@ -7,6 +7,7 @@ must be configured separately.
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 import tempfile
 from datetime import datetime, timezone
@@ -102,3 +103,52 @@ class SQLiteBackupService:
             "restore_tested": False,
             "execution_authorized": False,
         }
+
+    def verify_restore(self, database_id: str, filename: str) -> dict[str, Any]:
+        """Validate a backup by restoring it to a temporary isolated SQLite DB.
+
+        The live runtime database is never opened for writing or replaced.
+        """
+        if database_id not in BACKUP_DATABASES:
+            raise ValueError("unsupported database selection")
+        if not isinstance(filename, str) or Path(filename).name != filename:
+            raise ValueError("invalid backup filename")
+        pattern = re.escape(database_id) + r"-\d{8}T\d{12}Z\.sqlite3"
+        if not re.fullmatch(pattern, filename):
+            raise ValueError("backup filename does not match the selected database")
+        backup_path = self.backup_dir / filename
+        if backup_path.is_symlink() or not backup_path.is_file():
+            raise ValueError("backup must be an existing regular file")
+        if backup_path.resolve().parent != self.backup_dir:
+            raise ValueError("backup path is outside the authorized directory")
+
+        temporary: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                prefix=f".{database_id}-restore-test-", suffix=".sqlite3",
+                dir=self.backup_dir, delete=False,
+            ) as handle:
+                temporary = Path(handle.name)
+            backup_uri = f"{backup_path.resolve().as_uri()}?mode=ro"
+            with sqlite3.connect(backup_uri, uri=True, timeout=10) as source:
+                with sqlite3.connect(temporary, timeout=10) as restored:
+                    source.backup(restored)
+            self._check(temporary)
+            return {
+                "status": "RESTORE_VALIDATED_IN_ISOLATION",
+                "database_id": database_id,
+                "backup_filename": filename,
+                "live_database_modified": False,
+                "execution_authorized": False,
+            }
+        except (OSError, sqlite3.Error) as exc:
+            return {
+                "status": "RESTORE_VALIDATION_FAILED",
+                "database_id": database_id,
+                "error_class": type(exc).__name__,
+                "live_database_modified": False,
+                "execution_authorized": False,
+            }
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
