@@ -3,8 +3,6 @@ from __future__ import annotations
 import math
 import re
 from typing import Any, Callable, Mapping
-from urllib.parse import urlsplit
-
 from security.push_subscription_registry import _validate_endpoint
 
 
