@@ -1069,15 +1069,6 @@ class StandaloneWSGIApplication:
                     {"error": "identidade confiável necessária para usar o Assistente", "execution_authorized": False},
                     request_id,
                 )
-            # The fiscal repositories used by the current Assistant still
-            # belong to the local single-user runtime. Do not expose them to
-            # remote tenants until fiscal storage itself is tenant-scoped.
-            if reason != "local":
-                return _json_response(
-                    start_response, HTTPStatus.SERVICE_UNAVAILABLE,
-                    {"error": "Assistente remoto aguardando isolamento individual da Reserva Fiscal", "state": "FISCAL_TENANT_ISOLATION_REQUIRED", "execution_authorized": False},
-                    request_id,
-                )
             assistant = getattr(self.runtime, "assistant", None)
             if assistant is None:
                 return _json_response(
@@ -1087,12 +1078,36 @@ class StandaloneWSGIApplication:
                 )
             try:
                 payload = _read_json(environ)
-                result = assistant.ask(
-                    identity=tenant_context.key,
-                    message=payload.get("message"),
-                    fiscal_owner_id=self.runtime.fiscal_owner_id,
-                    cid=payload.get("conversation_id"),
-                )
+                if reason == "trusted_identity":
+                    # Remote chat may use only the tenant-sharded fiscal
+                    # repositories. Never fall back to the local owner's data.
+                    fiscal_factory = getattr(
+                        self.runtime, "tenant_fiscal_store_factory", None
+                    )
+                    tenant_ask = getattr(assistant, "ask_tenant", None)
+                    if fiscal_factory is None or not callable(tenant_ask):
+                        return _json_response(
+                            start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                            {
+                                "error": "Assistente fiscal individual não configurado",
+                                "state": "FISCAL_TENANT_ISOLATION_REQUIRED",
+                                "execution_authorized": False,
+                            },
+                            request_id,
+                        )
+                    result = tenant_ask(
+                        tenant_context=tenant_context,
+                        fiscal_store_factory=fiscal_factory,
+                        message=payload.get("message"),
+                        cid=payload.get("conversation_id"),
+                    )
+                else:
+                    result = assistant.ask(
+                        identity=tenant_context.key,
+                        message=payload.get("message"),
+                        fiscal_owner_id=self.runtime.fiscal_owner_id,
+                        cid=payload.get("conversation_id"),
+                    )
             except PermissionError:
                 return _json_response(
                     start_response, HTTPStatus.NOT_FOUND,
