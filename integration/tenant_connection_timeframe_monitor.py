@@ -520,16 +520,29 @@ class TenantConnectionTimeframeMonitor:
             rows = self.subscriptions(context)
             enabled = sum(1 for item in rows if item["enabled"])
             total = len(rows)
+        with self._lock:
+            if context is None:
+                live_streams = len(self._live_streams)
+                buffered_live_candles = len(self._live_candles)
+                adapter_bindings = len(self._live_stream_adapters)
+                worker_error_class = self._worker_error
+            else:
+                prefix = (context.tenant_id, context.subject_id)
+                live_streams = sum(1 for key in self._live_streams if key[:2] == prefix)
+                buffered_live_candles = sum(1 for key in self._live_candles if key[:2] == prefix)
+                adapter_bindings = sum(1 for key in self._live_stream_adapters if key[:2] == prefix)
+                # A tenant must not infer another tenant's provider/worker failure.
+                worker_error_class = None
         return {
             "enabled": enabled, "total": total,
             "worker_running": bool(self._thread is not None and self._thread.is_alive()),
             "poll_interval_seconds": self.poll_interval_seconds,
             "close_grace_seconds": self.close_grace_seconds,
             "max_workers": self.max_workers,
-            "worker_error_class": self._worker_error,
-            "live_streams": len(self._live_streams),
-            "buffered_live_candles": len(self._live_candles),
-            "live_stream_adapter_bindings": len(self._live_stream_adapters),
-            "scope": "TENANT_SUBJECT_CONNECTION",
+            "worker_error_class": worker_error_class,
+            "live_streams": live_streams,
+            "buffered_live_candles": buffered_live_candles,
+            "live_stream_adapter_bindings": adapter_bindings,
+            "scope": "TENANT_SUBJECT_CONNECTION" if context is not None else "LOCAL_OPERATOR",
             "execution_authorized": False,
         }
