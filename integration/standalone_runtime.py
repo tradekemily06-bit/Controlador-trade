@@ -12,6 +12,7 @@ from assistant.chat_service import EcosystemAssistant
 from assistant.conversation_store import AssistantConversationStore
 from security.sqlite_tenant_storage import SQLiteTenantStorage
 from security.tenant_context import TenantContext
+from security.tenant_provider_connections import TenantProviderConnectionRegistry
 from security.tenant_scoped_ecosystem_state import TenantScopedEcosystemState
 from security.tenant_scoped_decision_memory import TenantScopedDecisionMemory
 from integration.tenant_notification_dispatcher import TenantNotificationDispatcher
@@ -159,6 +160,7 @@ class StandaloneRuntime:
                 self.runtime_dir / "tenant-state.sqlite3"
             )
             self.tenant_state = TenantScopedEcosystemState(tenant_storage)
+            self.tenant_provider_connections = TenantProviderConnectionRegistry(tenant_storage)
             self.tenant_decision_memory = TenantScopedDecisionMemory(tenant_storage)
             self.local_tenant_context = TenantContext(
                 tenant_id="local-single-user",
