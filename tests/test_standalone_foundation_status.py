@@ -139,6 +139,9 @@ class StandaloneFoundationStatusTests(unittest.TestCase):
         assistant = next(item for item in result["stores"] if item["id"] == "assistant_conversations")
         self.assertEqual(assistant["state"], "MISSING")
         self.assertTrue(assistant["required"])
+        tradingview_alerts = next(item for item in result["stores"] if item["id"] == "tenant_tradingview_alerts")
+        self.assertEqual(tradingview_alerts["state"], "MISSING")
+        self.assertTrue(tradingview_alerts["required"])
 
     def test_empty_but_valid_sqlite_is_schema_incomplete(self):
         with tempfile.TemporaryDirectory() as directory:
