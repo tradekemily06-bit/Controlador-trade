@@ -465,3 +465,41 @@ def test_startup_recovery_reports_missing_provider_configuration(tmp_path):
         "execution_authorized": False,
     }]
     assert sessions.get(owner, connection_id=account["connection_id"]) is not None
+
+
+
+def test_ctrader_startup_recovery_is_delegated_to_oauth_aware_account_service(tmp_path):
+    database = tmp_path / "tenant-provider-ctrader-delegated.sqlite3"
+    owner = TenantContext("tenant-a", "alice")
+    storage = SQLiteTenantStorage(database)
+    connections = TenantProviderConnectionRegistry(storage)
+    sessions = TenantMarketDataSessionRegistry(connections)
+    initial = TenantProviderConnectionService(
+        connections, sessions, secret_resolver=Vault(),
+        adapter_factories={"ctrader": lambda credentials: Adapter(
+            credentials, provider_id="ctrader"
+        )},
+    )
+    account = initial.connect(
+        owner, provider_id="ctrader", account_alias="cTrader DEMO",
+        credential_ref="vault://tenant-a/broker-a",
+    )
+    calls = []
+    restarted = TenantProviderConnectionService(
+        connections, sessions, secret_resolver=Vault(),
+        adapter_factories={"ctrader": lambda credentials: (
+            calls.append(credentials) or Adapter(credentials, provider_id="ctrader")
+        )},
+    )
+
+    outcomes = restarted.reconnect_available(owner)
+
+    assert outcomes == [{
+        "connection_id": account["connection_id"],
+        "provider_id": "ctrader",
+        "status": "RECOVERY_DELEGATED",
+        "recovery_owner": "TENANT_CTRADER_ACCOUNT_SERVICE",
+        "execution_authorized": False,
+    }]
+    assert calls == []
+    assert sessions.get(owner, connection_id=account["connection_id"]) is None
