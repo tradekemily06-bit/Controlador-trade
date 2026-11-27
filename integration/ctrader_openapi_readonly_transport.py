@@ -196,8 +196,14 @@ class CTraderOpenApiReadOnlyTransport:
                     callback = self._spot_callbacks.get(symbol_key)
                 if callback is None:
                     return
+                event_account_id = self._field(_message, "ctidTraderAccountId")
+                try:
+                    if int(event_account_id) != self._account_id:
+                        return
+                except (TypeError, ValueError, OverflowError):
+                    return
                 event = {
-                    "account_id": self._field(_message, "ctidTraderAccountId"),
+                    "account_id": int(event_account_id),
                     "symbol_id": symbol_key,
                     "bid": self._field(_message, "bid"),
                     "ask": self._field(_message, "ask"),
