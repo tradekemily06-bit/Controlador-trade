@@ -10,6 +10,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from typing import Any, Mapping
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from data.feed import MarketDataRequest
 from data.models import Candle
@@ -189,15 +190,50 @@ class CTraderReadOnlyMarketDataAdapter:
             ):
                 return None
             normalized_schedule.append({"start_second": start, "end_second": end})
-        if any(not isinstance(item, Mapping) for item in holidays):
+        try:
+            ZoneInfo(timezone_name.strip())
+        except (ZoneInfoNotFoundError, ValueError, TypeError):
             return None
+
+        normalized_holidays = []
+        for item in holidays:
+            if not isinstance(item, Mapping):
+                return None
+            holiday_timezone = item.get("schedule_time_zone")
+            holiday_date = item.get("holiday_date")
+            recurring = item.get("is_recurring")
+            start, end = item.get("start_second"), item.get("end_second")
+            if (
+                not isinstance(holiday_timezone, str)
+                or not holiday_timezone.strip()
+                or isinstance(holiday_date, bool)
+                or not isinstance(holiday_date, int)
+                or not isinstance(recurring, bool)
+            ):
+                return None
+            try:
+                ZoneInfo(holiday_timezone.strip())
+            except (ZoneInfoNotFoundError, ValueError, TypeError):
+                return None
+            for bound in (start, end):
+                if bound is not None and (
+                    isinstance(bound, bool) or not isinstance(bound, int)
+                    or not 0 <= bound <= 86400
+                ):
+                    return None
+            if start is not None and end is not None and start >= end:
+                return None
+            normalized_holidays.append({
+                **dict(item),
+                "schedule_time_zone": holiday_timezone.strip(),
+            })
         return {
             "provider_id": "ctrader_open_api",
             "account_id": self.account_id,
             "symbol": clean_symbol,
             "schedule_time_zone": timezone_name.strip(),
             "schedule": tuple(normalized_schedule),
-            "holidays": tuple(dict(item) for item in holidays),
+            "holidays": tuple(normalized_holidays),
             "status": "METADATA_AVAILABLE_NOT_CALENDAR_VALIDATED",
         }
 
