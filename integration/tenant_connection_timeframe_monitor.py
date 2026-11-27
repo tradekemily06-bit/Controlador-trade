@@ -483,6 +483,18 @@ class TenantConnectionTimeframeMonitor:
             db.commit()
         return (key, token) if claimed == 1 else None
 
+    def _renew_processing_lease(
+        self, lease: tuple[str, str], *, lease_seconds: float = 300.0,
+    ) -> bool:
+        key, token = lease
+        with self._connect() as db:
+            updated = db.execute("""
+                UPDATE tenant_connection_timeframe_processing_lease
+                SET expires_at=?
+                WHERE lease_key=? AND owner_token=? AND expires_at>?
+            """, (time.time() + lease_seconds, key, token, time.time())).rowcount
+        return updated == 1
+
     def _release_processing_lease(self, lease: tuple[str, str]) -> None:
         key, token = lease
         with self._connect() as db:
@@ -505,14 +517,40 @@ class TenantConnectionTimeframeMonitor:
             with self._lock:
                 self._processing.discard(owner_key)
             return None
+        heartbeat_stop = threading.Event()
+        lease_lost = threading.Event()
+
+        def renew_while_processing() -> None:
+            while not heartbeat_stop.wait(60.0):
+                try:
+                    if not self._renew_processing_lease(lease):
+                        lease_lost.set()
+                        return
+                except Exception:
+                    # Do not silently claim the lease is still owned after a
+                    # database failure; the result path checks this flag.
+                    lease_lost.set()
+                    return
+
+        heartbeat = threading.Thread(
+            target=renew_while_processing,
+            name="timeframe-processing-lease-heartbeat",
+            daemon=True,
+        )
+        heartbeat.start()
         try:
-            return self._process_claimed(row, now)
+            result = self._process_claimed(row, now, lease_lost=lease_lost)
+            return result
         finally:
+            heartbeat_stop.set()
+            heartbeat.join(timeout=2.0)
             self._release_processing_lease(lease)
             with self._lock:
                 self._processing.discard(owner_key)
 
-    def _process_claimed(self, row: dict[str, Any], now: datetime) -> dict[str, Any] | None:
+    def _process_claimed(
+        self, row: dict[str, Any], now: datetime, *, lease_lost: threading.Event | None = None,
+    ) -> dict[str, Any] | None:
         owner = TenantContext(row["tenant_id"], row["subject_id"])
         connection = row["connection_id"]
         symbol, timeframe = row["symbol"], row["timeframe"]
@@ -570,6 +608,8 @@ class TenantConnectionTimeframeMonitor:
                     """, (owner.tenant_id, owner.subject_id, connection, symbol, timeframe))
                 return None
             if not self._enabled(row):
+                return None
+            if lease_lost is not None and lease_lost.is_set():
                 return None
             signal = str(result.get("signal", "AGUARDAR"))
             enriched = {
