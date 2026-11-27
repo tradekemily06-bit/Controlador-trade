@@ -39,6 +39,13 @@ class FakeTransport:
             "volume": 125,
         }]
 
+    def subscribe_spots(self, account_id, symbol_id, callback):
+        self.calls.append(("subscribe_spots", account_id, symbol_id))
+        self.spot_callback = callback
+
+    def unsubscribe_spots(self, account_id, symbol_id):
+        self.calls.append(("unsubscribe_spots", account_id, symbol_id))
+
     def status(self):
         return {"connected": True, "last_seen": datetime.now(timezone.utc).isoformat()}
 
@@ -83,3 +90,43 @@ def test_ctrader_adapter_requires_handshake_before_market_data():
     adapter = CTraderReadOnlyMarketDataAdapter(FakeTransport(), account_id=123)
     with pytest.raises(RuntimeError, match="handshake"):
         adapter.fetch(MarketDataRequest("EURUSD", "1m", 10))
+
+
+
+def test_ctrader_adapter_streams_normalized_live_quotes_and_unsubscribes():
+    transport = FakeTransport()
+    adapter = CTraderReadOnlyMarketDataAdapter(transport, account_id=123)
+    adapter.connect()
+    adapter.handshake()
+    received = []
+
+    adapter.subscribe_live_quotes("EURUSD", received.append)
+    transport.spot_callback({
+        "symbol_id": 44,
+        "bid": 110123,
+        "ask": 110145,
+        "timestamp": 1_800_000_000_000,
+    })
+
+    assert received[0]["provider_id"] == "ctrader_open_api"
+    assert received[0]["account_id"] == 123
+    assert received[0]["symbol"] == "EURUSD"
+    assert received[0]["bid"] == 1.10123
+    assert received[0]["ask"] == 1.10145
+    assert received[0]["timestamp"].startswith("2027-")
+    assert received[0]["read_only"] is True
+    assert received[0]["execution_authorized"] is False
+
+    adapter.unsubscribe_live_quotes("EURUSD")
+    assert transport.calls[-1] == ("unsubscribe_spots", 123, 44)
+
+
+def test_ctrader_adapter_ignores_malformed_live_quote_without_crashing():
+    transport = FakeTransport()
+    adapter = CTraderReadOnlyMarketDataAdapter(transport, account_id=123)
+    adapter.connect()
+    adapter.handshake()
+    received = []
+    adapter.subscribe_live_quotes("EURUSD", received.append)
+    transport.spot_callback({"symbol_id": 44, "bid": "invalid", "ask": None})
+    assert received == []
