@@ -464,6 +464,7 @@ class StandaloneRuntime:
                         if selected.provider_id in {"mt5_relay", "mt5_demo", "ctrader"}
                         else None
                     ),
+                    signal_source_id=f"{selected.provider_id}:{selected.source}",
                 )
 
                 def publish_market_change(event: dict[str, Any]) -> None:
@@ -516,6 +517,7 @@ class StandaloneRuntime:
                         if session.provider_id in {"mt5_relay", "mt5_demo", "ctrader"}
                         else None
                     ),
+                    signal_source_id=session.connection_id,
                 )
 
             def publish_account_market_change(event: dict[str, Any]) -> None:
