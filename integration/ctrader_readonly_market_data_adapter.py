@@ -79,10 +79,13 @@ class CTraderReadOnlyMarketDataAdapter:
             raise PermissionError("este adaptador aceita somente conta cTrader DEMO confirmada")
         account_auth(self.account_id)
         self._authenticated = True
+        capabilities = ["candles:read", "account-mode:demo"]
+        if callable(getattr(self.transport, "subscribe_spots", None)):
+            capabilities.append("quotes:stream")
         return {
             "provider_id": "ctrader_open_api",
             "account_reference": str(self.account_id),
-            "capabilities": ["candles:read", "account-mode:demo"],
+            "capabilities": capabilities,
             "verified": True,
         }
 
@@ -228,6 +231,9 @@ class CTraderReadOnlyMarketDataAdapter:
             "connected": self._connected and self._authenticated and reported.get("connected", True) is True,
             "account_mode": "DEMO" if self._authenticated else None,
             "last_seen": reported.get("last_seen"),
+            "active_spot_symbols": reported.get("active_spot_symbols", 0),
+            "spot_event_queue_depth": reported.get("spot_event_queue_depth", 0),
+            "spot_event_overflow_count": reported.get("spot_event_overflow_count", 0),
             "source_id": f"ctrader:{self.account_id}",
             "stored_candles": reported.get("stored_candles", 0),
             "read_only": True,
