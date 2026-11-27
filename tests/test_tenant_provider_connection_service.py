@@ -332,3 +332,63 @@ def test_startup_recovery_isolates_provider_failures_and_recovers_healthy_accoun
     assert saved[first["connection_id"]]["status"] == "CONNECTED"
     assert saved[second["connection_id"]]["status"] == "DISCONNECTED"
     assert all(item["execution_authorized"] is False for item in outcomes)
+
+
+def test_startup_recovery_does_not_reconnect_explicitly_disconnected_account(tmp_path):
+    database = tmp_path / "tenant-provider-explicit-disconnect.sqlite3"
+    owner = TenantContext("tenant-a", "alice")
+    vault = Vault()
+    storage_one = SQLiteTenantStorage(database)
+    connections_one = TenantProviderConnectionRegistry(storage_one)
+    sessions_one = TenantMarketDataSessionRegistry(connections_one)
+    initial = TenantProviderConnectionService(
+        connections_one, sessions_one, secret_resolver=vault,
+        adapter_factories={"broker_a": lambda credentials: Adapter(credentials)},
+    )
+    account = initial.connect(
+        owner, provider_id="broker_a", account_alias="Conta principal",
+        credential_ref="vault://tenant-a/broker-a",
+    )
+    assert initial.disconnect(owner, connection_id=account["connection_id"])["status"] == "DISCONNECTED"
+
+    storage_two = SQLiteTenantStorage(database)
+    connections_two = TenantProviderConnectionRegistry(storage_two)
+    sessions_two = TenantMarketDataSessionRegistry(connections_two)
+    new_adapters = []
+    restarted = TenantProviderConnectionService(
+        connections_two, sessions_two, secret_resolver=vault,
+        adapter_factories={"broker_a": lambda credentials: (
+            new_adapters.append(Adapter(credentials)) or new_adapters[-1]
+        )},
+    )
+
+    assert restarted.reconnect_available(owner) == []
+    assert new_adapters == []
+    assert connections_two.list_connections(owner)[0]["status"] == "DISCONNECTED"
+
+
+def test_startup_recovery_reports_missing_provider_configuration(tmp_path):
+    database = tmp_path / "tenant-provider-unconfigured-recovery.sqlite3"
+    owner = TenantContext("tenant-a", "alice")
+    storage = SQLiteTenantStorage(database)
+    connections = TenantProviderConnectionRegistry(storage)
+    sessions = TenantMarketDataSessionRegistry(connections)
+    configured = TenantProviderConnectionService(
+        connections, sessions, secret_resolver=Vault(),
+        adapter_factories={"broker_a": lambda credentials: Adapter(credentials)},
+    )
+    account = configured.connect(
+        owner, provider_id="broker_a", account_alias="Conta principal",
+        credential_ref="vault://tenant-a/broker-a",
+    )
+
+    restarted = TenantProviderConnectionService(connections, sessions)
+    outcomes = restarted.reconnect_available(owner)
+
+    assert outcomes == [{
+        "connection_id": account["connection_id"],
+        "provider_id": "broker_a",
+        "status": "RECOVERY_NOT_CONFIGURED",
+        "execution_authorized": False,
+    }]
+    assert sessions.get(owner, connection_id=account["connection_id"]) is not None
