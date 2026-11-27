@@ -740,14 +740,21 @@ class TenantConnectionTimeframeMonitor:
             except Exception:
                 # Leave the event retryable after the lease expires.
                 continue
+            acknowledged_at = time.time()
             with self._lock, self._connect() as db:
-                db.execute("""
+                acknowledged = db.execute("""
                     UPDATE tenant_connection_notification_outbox
                     SET delivered_at=?, lease_until=NULL, lease_token=NULL
                     WHERE event_id=? AND delivered_at IS NULL
                       AND lease_token=? AND lease_until>?
-                """, (time.time(), row["event_id"], lease_token, time.time()))
-            delivered += 1
+                """, (
+                    acknowledged_at, row["event_id"], lease_token, acknowledged_at
+                )).rowcount
+            # A remote sink returning successfully is not enough: ownership may
+            # have expired while the callback was running. Count only a durable
+            # acknowledgement by the current lease owner.
+            if acknowledged == 1:
+                delivered += 1
         return delivered
 
     def run_once(self, *, now: datetime | None = None) -> list[dict[str, Any]]:
