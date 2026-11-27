@@ -86,3 +86,24 @@ def test_worker_status_does_not_expose_other_tenants_queue_counts(tmp_path):
     worker = TenantNotificationOutboxWorker(dispatcher.outbox, _Sink())
     assert worker.status(alice)["outbox"]["PENDING"] == 1
     assert worker.status(bob)["outbox"]["PENDING"] == 0
+
+
+
+import pytest
+
+
+@pytest.mark.parametrize("bad", [True, float("nan"), float("inf"), float("-inf"), 10**1000, "1"])
+def test_worker_rejects_invalid_poll_intervals(tmp_path, bad):
+    storage = SQLiteTenantStorage(tmp_path / "tenant.sqlite3")
+    dispatcher = TenantNotificationDispatcher(TenantScopedEcosystemState(storage))
+    with pytest.raises(ValueError):
+        TenantNotificationOutboxWorker(dispatcher.outbox, _Sink(), poll_interval_seconds=bad)
+
+
+@pytest.mark.parametrize("bad", [True, float("nan"), float("inf"), float("-inf"), 10**1000, "1"])
+def test_worker_rejects_invalid_stop_timeouts(tmp_path, bad):
+    storage = SQLiteTenantStorage(tmp_path / "tenant.sqlite3")
+    dispatcher = TenantNotificationDispatcher(TenantScopedEcosystemState(storage))
+    worker = TenantNotificationOutboxWorker(dispatcher.outbox, _Sink())
+    with pytest.raises(ValueError):
+        worker.stop(timeout=bad)
