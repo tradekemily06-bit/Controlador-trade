@@ -138,7 +138,7 @@ class FakeRuntime:
     market_monitor = MarketMonitor()
 
 
-def call_wsgi(app, path, method="GET", body=None, remote_addr="127.0.0.1", origin=None, include_headers=False, authorization=None, identity_verified=False, remote_user=None, tenant_id=None):
+def call_wsgi(app, path, method="GET", body=None, remote_addr="127.0.0.1", origin=None, include_headers=False, authorization=None, identity_verified=False, remote_user=None, tenant_id=None, scheme="http"):
     raw = json.dumps(body or {}).encode("utf-8")
     parsed_path = urlsplit(path)
     environ = {
@@ -148,6 +148,7 @@ def call_wsgi(app, path, method="GET", body=None, remote_addr="127.0.0.1", origi
         "REMOTE_ADDR": remote_addr,
         "CONTENT_LENGTH": str(len(raw)),
         "wsgi.input": io.BytesIO(raw),
+        "wsgi.url_scheme": scheme,
     }
     if origin is not None:
         environ["HTTP_ORIGIN"] = origin
@@ -1522,3 +1523,62 @@ class PublicBindSecurityTests(unittest.TestCase):
             with patch.dict("os.environ", incomplete, clear=True):
                 with self.assertRaisesRegex(RuntimeError, "bind público bloqueado"):
                     _validate_bind_security("0.0.0.0")
+
+    def test_ctrader_oauth_callback_requires_https_and_uses_one_time_state_service(self):
+        class OAuth:
+            def __init__(self):
+                self.calls = []
+
+            def complete_callback(self, *, state, code):
+                self.calls.append((state, code))
+                return {
+                    "status": "OAUTH_TOKEN_STORED_PENDING_DEMO_HANDSHAKE",
+                    "account_connected": False,
+                    "execution_authorized": False,
+                }
+
+        runtime = FakeRuntime()
+        runtime.tenant_ctrader_oauth_service = OAuth()
+        app = StandaloneWSGIApplication(runtime)
+        status, body = call_wsgi(
+            app, "/api/oauth/ctrader/callback?state=opaque-state&code=one-time-code",
+            scheme="http",
+        )
+        self.assertEqual(status, "401 Unauthorized")
+        self.assertEqual(runtime.tenant_ctrader_oauth_service.calls, [])
+        status, body = call_wsgi(
+            app, "/api/oauth/ctrader/callback?state=opaque-state&code=one-time-code",
+            scheme="https",
+        )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(runtime.tenant_ctrader_oauth_service.calls, [("opaque-state", "one-time-code")])
+        self.assertFalse(body["account_connected"])
+        self.assertFalse(body["execution_authorized"])
+
+    def test_ctrader_oauth_start_is_scoped_to_local_identity(self):
+        class OAuth:
+            def __init__(self):
+                self.calls = []
+
+            def begin(self, context, *, connection_id):
+                self.calls.append((context.tenant_id, context.subject_id, connection_id))
+                return {
+                    "authorization_url": "https://id.ctrader.com/consent?state=opaque",
+                    "state_reveal": "ONE_TIME",
+                    "execution_authorized": False,
+                }
+
+        runtime = FakeRuntime()
+        runtime.tenant_ctrader_oauth_service = OAuth()
+        app = StandaloneWSGIApplication(runtime)
+        with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
+            status, body = call_wsgi(
+                app, "/api/market-data/connections/" + "a" * 32 + "/ctrader-oauth",
+                method="POST",
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(runtime.tenant_ctrader_oauth_service.calls, [
+            ("local-single-user", "local-owner", "a" * 32)
+        ])
+        self.assertFalse(body["execution_authorized"])
+
