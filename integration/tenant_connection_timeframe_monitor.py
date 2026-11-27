@@ -842,8 +842,27 @@ class TenantConnectionTimeframeMonitor:
                 db.commit()
             if claimed != 1:
                 continue
-            payload = json.loads(row["result_json"])
-            result = payload["result"]
+            try:
+                payload = json.loads(row["result_json"])
+                if not isinstance(payload, dict):
+                    raise ValueError("notification payload must be an object")
+                result = payload.get("result")
+                if not isinstance(result, dict):
+                    raise ValueError("notification result must be an object")
+            except (TypeError, ValueError, json.JSONDecodeError):
+                # A malformed durable event must not abort the worker loop or
+                # poison the queue forever. Dead-letter only while this worker
+                # still owns the lease; never persist raw payload/error text.
+                invalid_at = time.time()
+                with self._lock, self._connect() as db:
+                    db.execute("""
+                        UPDATE tenant_connection_notification_outbox
+                        SET dead_at=?, last_error='InvalidPayload',
+                            lease_until=NULL, lease_token=NULL
+                        WHERE event_id=? AND delivered_at IS NULL AND dead_at IS NULL
+                          AND lease_token=? AND lease_until>?
+                    """, (invalid_at, row["event_id"], lease_token, invalid_at))
+                continue
             # Notifications can sit in the outbox during an outage. Re-check
             # candle validity at delivery time so a delayed opportunity is
             # never delivered as an active COMPRA/VENDA alert.
