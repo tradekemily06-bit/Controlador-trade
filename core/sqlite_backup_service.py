@@ -18,6 +18,7 @@ from typing import Any
 BACKUP_DATABASES = {
     "fiscal": "fiscal-reserve.sqlite3",
     "ecosystem_state": "ecosystem-state.sqlite3",
+    "tenant_state": "tenant-state.sqlite3",
     "notification_outbox": "notification-outbox.sqlite3",
     "decision_memory": "decision-memory.sqlite3",
     "assistant_conversations": "assistant-conversations.sqlite3",
@@ -59,7 +60,11 @@ class SQLiteBackupService:
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
         results = []
         for database_id in selected:
-            source = (self.runtime_dir / BACKUP_DATABASES[database_id]).resolve()
+            source_entry = self.runtime_dir / BACKUP_DATABASES[database_id]
+            if source_entry.is_symlink():
+                results.append({"id": database_id, "status": "SOURCE_UNSAFE"})
+                continue
+            source = source_entry.resolve()
             if source.parent != self.runtime_dir or not source.is_file():
                 results.append({"id": database_id, "status": "SOURCE_MISSING"})
                 continue
