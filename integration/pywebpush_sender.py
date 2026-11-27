@@ -5,6 +5,8 @@ import re
 from typing import Any, Callable, Mapping
 from urllib.parse import urlsplit
 
+from security.push_subscription_registry import _validate_endpoint
+
 
 class VapidConfigurationError(RuntimeError):
     """VAPID sender configuration is incomplete or unsafe."""
@@ -58,9 +60,9 @@ class PyWebPushSender:
         if not isinstance(subscription_info, Mapping):
             raise ValueError("subscription_info must be an object")
         endpoint = subscription_info.get("endpoint")
-        parsed = urlsplit(endpoint) if isinstance(endpoint, str) else None
-        if parsed is None or parsed.scheme != "https" or not parsed.hostname:
-            raise ValueError("subscription endpoint must be HTTPS")
+        if not isinstance(endpoint, str):
+            raise ValueError("subscription endpoint must be an approved HTTPS browser push service")
+        _validate_endpoint(endpoint)
         if not isinstance(payload_json, str) or not payload_json:
             raise ValueError("payload_json is required")
         if isinstance(ttl_seconds, bool) or not isinstance(ttl_seconds, int) or not 0 <= ttl_seconds <= 2419200:
