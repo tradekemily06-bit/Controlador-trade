@@ -568,10 +568,7 @@ class TenantConnectionTimeframeMonitor:
                 session = self.session_registry.get(
                     owner, connection_id=self._connection(item["connection_id"])
                 )
-                expected = (
-                    self._expected_for_session(session, timeframe, current)
-                    if session is not None else None
-                )
+                expected = self._expected_for_session(session, timeframe, current)
                 if expected is None:
                     item["signal_valid"] = False
                     item["signal_validity"] = "SESSION_CALENDAR_UNAVAILABLE"
