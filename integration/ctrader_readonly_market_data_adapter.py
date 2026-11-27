@@ -190,12 +190,17 @@ class CTraderReadOnlyMarketDataAdapter:
             ):
                 return None
             normalized_schedule.append({"start_second": start, "end_second": end})
+        # Some supported Windows runtimes do not ship an IANA timezone
+        # database. Preserve broker metadata, but explicitly mark whether this
+        # runtime could validate the zone; never treat a missing tzdb as proof.
         try:
             ZoneInfo(timezone_name.strip())
-        except (ZoneInfoNotFoundError, ValueError, TypeError):
-            return None
+            timezone_validation_status = "VALIDATED_BY_RUNTIME"
+        except (KeyError, ValueError, TypeError):
+            timezone_validation_status = "NOT_VALIDATED_BY_RUNTIME"
 
         normalized_holidays = []
+        holidays_timezone_validated = True
         for item in holidays:
             if not isinstance(item, Mapping):
                 return None
@@ -213,8 +218,8 @@ class CTraderReadOnlyMarketDataAdapter:
                 return None
             try:
                 ZoneInfo(holiday_timezone.strip())
-            except (ZoneInfoNotFoundError, ValueError, TypeError):
-                return None
+            except (KeyError, ValueError, TypeError):
+                holidays_timezone_validated = False
             for bound in (start, end):
                 if bound is not None and (
                     isinstance(bound, bool) or not isinstance(bound, int)
@@ -232,6 +237,8 @@ class CTraderReadOnlyMarketDataAdapter:
             "account_id": self.account_id,
             "symbol": clean_symbol,
             "schedule_time_zone": timezone_name.strip(),
+            "timezone_validation_status": timezone_validation_status,
+            "holiday_timezones_validated_by_runtime": holidays_timezone_validated,
             "schedule": tuple(normalized_schedule),
             "holidays": tuple(normalized_holidays),
             "status": "METADATA_AVAILABLE_NOT_CALENDAR_VALIDATED",
