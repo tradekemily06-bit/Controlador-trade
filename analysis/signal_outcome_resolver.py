@@ -96,6 +96,11 @@ def resolve_next_candle_direction(
     candle_open_at = _timestamp(candle.get("open_time"), "open_time")
     candle_close_at = candle_open_at + get_timeframe_interval(timeframe)
 
+    # Never score a bar that had already closed before the signal existed.
+    # Otherwise historical evaluation would leak future information.
+    if candle_close_at <= observed:
+        raise ValueError("outcome candle closed before signal was observed")
+
     if observed < boundary:
         raise ValueError("signal observation cannot precede its closed candle")
     if observed >= valid_until:
