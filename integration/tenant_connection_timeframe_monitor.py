@@ -103,6 +103,23 @@ class TenantConnectionTimeframeMonitor:
                     PRIMARY KEY(tenant_id, subject_id, connection_id, symbol, timeframe, candle_at)
                 )
             """)
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS tenant_connection_notification_outbox (
+                    event_id TEXT PRIMARY KEY,
+                    tenant_id TEXT NOT NULL,
+                    subject_id TEXT NOT NULL,
+                    connection_id TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    timeframe TEXT NOT NULL,
+                    candle_at TEXT NOT NULL,
+                    result_json TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    lease_until REAL,
+                    delivered_at REAL,
+                    UNIQUE(tenant_id, subject_id, connection_id, symbol, timeframe, candle_at)
+                )
+            """)
 
     @staticmethod
     def _owner(context: TenantContext | None) -> TenantContext:
@@ -507,6 +524,13 @@ class TenantConnectionTimeframeMonitor:
                     (tenant_id, subject_id, connection_id, symbol, timeframe, candle_at, result_json, recorded_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """, (owner.tenant_id, owner.subject_id, connection, symbol, timeframe, expected.isoformat(), serialized, time.time())).rowcount
+                if inserted == 1 and self.on_result is not None:
+                    event_id = ":".join((owner.tenant_id, owner.subject_id, connection, symbol, timeframe, expected.isoformat()))
+                    db.execute("""
+                        INSERT OR IGNORE INTO tenant_connection_notification_outbox
+                        (event_id, tenant_id, subject_id, connection_id, symbol, timeframe, candle_at, result_json, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (event_id, owner.tenant_id, owner.subject_id, connection, symbol, timeframe, expected.isoformat(), serialized, time.time()))
                 db.execute("""
                     UPDATE tenant_connection_timeframe_watch
                     SET last_processed_candle=?, last_signal=?, last_status=?, last_error=NULL
@@ -515,13 +539,11 @@ class TenantConnectionTimeframeMonitor:
             # A duplicate candle must not fan out duplicate notifications.
             if inserted != 1:
                 return None
-            # Durable analysis history must not depend on notification delivery.
-            # A failing push/webhook sink is isolated from market-data processing.
+            # Notification delivery is decoupled through a durable outbox.
+            # Failed sinks remain pending for a later cycle; consumers receive a
+            # stable event_id and should deduplicate retries.
             if self.on_result is not None:
-                try:
-                    self.on_result(enriched)
-                except Exception:
-                    pass
+                self.dispatch_pending_notifications(limit=100)
             return enriched
         except Exception as exc:
             with self._lock, self._connect() as db:
@@ -530,6 +552,58 @@ class TenantConnectionTimeframeMonitor:
                     WHERE tenant_id=? AND subject_id=? AND connection_id=? AND symbol=? AND timeframe=?
                 """, (str(exc)[:500], owner.tenant_id, owner.subject_id, connection, symbol, timeframe))
             return None
+
+    def dispatch_pending_notifications(self, *, limit: int = 100, lease_seconds: float = 30.0) -> int:
+        if self.on_result is None:
+            return 0
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
+            raise ValueError("limit deve ser inteiro entre 1 e 1000")
+        if lease_seconds <= 0:
+            raise ValueError("lease_seconds deve ser positivo")
+        delivered = 0
+        for _ in range(limit):
+            now = time.time()
+            with self._lock, self._connect() as db:
+                db.execute("BEGIN IMMEDIATE")
+                row = db.execute("""
+                    SELECT * FROM tenant_connection_notification_outbox
+                    WHERE delivered_at IS NULL AND (lease_until IS NULL OR lease_until <= ?)
+                    ORDER BY created_at, event_id LIMIT 1
+                """, (now,)).fetchone()
+                if row is None:
+                    db.commit()
+                    break
+                claimed = db.execute("""
+                    UPDATE tenant_connection_notification_outbox
+                    SET lease_until=?, attempts=attempts+1
+                    WHERE event_id=? AND delivered_at IS NULL
+                      AND (lease_until IS NULL OR lease_until <= ?)
+                """, (now + lease_seconds, row["event_id"], now)).rowcount
+                db.commit()
+            if claimed != 1:
+                continue
+            event = {
+                "event_id": row["event_id"],
+                "tenant_context": TenantContext(row["tenant_id"], row["subject_id"]),
+                "connection_id": row["connection_id"],
+                "symbol": row["symbol"],
+                "timeframe": row["timeframe"],
+                "candle_at": row["candle_at"],
+                "result": json.loads(row["result_json"]),
+            }
+            try:
+                self.on_result(event)
+            except Exception:
+                # Leave the event retryable after the lease expires.
+                continue
+            with self._lock, self._connect() as db:
+                db.execute("""
+                    UPDATE tenant_connection_notification_outbox
+                    SET delivered_at=?, lease_until=NULL
+                    WHERE event_id=? AND delivered_at IS NULL
+                """, (time.time(), row["event_id"]))
+            delivered += 1
+        return delivered
 
     def run_once(self, *, now: datetime | None = None) -> list[dict[str, Any]]:
         current = now or datetime.now(timezone.utc)
