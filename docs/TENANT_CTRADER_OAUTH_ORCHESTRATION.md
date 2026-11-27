@@ -25,3 +25,7 @@ The test cipher is reversible and test-only. It is not suitable for production.
 The runtime may receive either this HTTP client object or explicit `exchange_code` and `refresh_tokens` callbacks. Both callbacks are mandatory when OAuth is enabled. The encrypted token vault persists the new access and refresh token together after each rotation. Refreshes are serialized per connection within the single runtime process; a future multi-replica deployment must use a distributed lease or equivalent cross-process refresh lock before sharing the same cTrader connection across workers.
 
 The OAuth scope is hard-restricted to `accounts`, which Spotware defines as view-only. Construction fails if a caller attempts to request the broader `trading` scope; this application does not request broker trading permissions.
+
+## Callback log hygiene
+
+The authorization code is short-lived and arrives in the callback query string. Production reverse proxies, WSGI access logs, APM traces and analytics must redact query strings on `/api/oauth/ctrader/callback`; request/response bodies and OAuth token endpoint URLs must never be logged. This is a deployment requirement, not something the WSGI handler can guarantee by itself.
