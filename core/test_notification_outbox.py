@@ -1,0 +1,135 @@
+import pytest
+
+from core.notification_outbox import PersistentNotificationOutbox
+
+
+class RecordingSink:
+    def __init__(self):
+        self.messages = []
+
+    def deliver(self, idempotency_key, payload):
+        self.messages.append((idempotency_key, dict(payload)))
+
+
+def test_enqueue_is_durable_and_idempotent(tmp_path):
+    path = tmp_path / "outbox.sqlite3"
+    outbox = PersistentNotificationOutbox(path)
+
+    assert outbox.enqueue("event-1", {"title": "Market alert"}, now=10)
+    assert not outbox.enqueue("event-1", {"title": "duplicate"}, now=11)
+
+    restored = PersistentNotificationOutbox(path)
+    claimed = restored.claim_due(now=12)
+
+    assert len(claimed) == 1
+    assert claimed[0].payload == {"title": "Market alert"}
+    assert claimed[0].attempts == 1
+
+
+def test_dispatch_marks_success_and_keeps_payload(tmp_path):
+    outbox = PersistentNotificationOutbox(tmp_path / "outbox.sqlite3")
+    sink = RecordingSink()
+    outbox.enqueue("event-1", {"title": "System update"}, now=100)
+
+    result = outbox.dispatch_due(sink, now=101)
+
+    assert result.claimed == 1
+    assert result.delivered == 1
+    assert result.retried == 0
+    assert sink.messages == [("event-1", {"title": "System update"})]
+    assert outbox.status_counts() == {
+        "PENDING": 0, "IN_FLIGHT": 0, "DELIVERED": 1, "DEAD": 0
+    }
+
+
+def test_failed_delivery_is_retried_with_backoff(tmp_path):
+    outbox = PersistentNotificationOutbox(
+        tmp_path / "outbox.sqlite3", base_backoff_seconds=5, max_backoff_seconds=20
+    )
+
+    class FailingSink:
+        def deliver(self, idempotency_key, payload):
+            raise RuntimeError("temporary provider failure")
+
+    outbox.enqueue("event-1", {"title": "Alert"}, now=100)
+    first = outbox.dispatch_due(FailingSink(), now=101)
+
+    assert first.retried == 1
+    assert outbox.claim_due(now=105) == ()
+    second_claim = outbox.claim_due(now=106)
+    assert len(second_claim) == 1
+    assert second_claim[0].attempts == 2
+
+
+def test_delivery_moves_to_dead_letter_after_max_attempts(tmp_path):
+    outbox = PersistentNotificationOutbox(
+        tmp_path / "outbox.sqlite3", max_attempts=2, base_backoff_seconds=1
+    )
+
+    class FailingSink:
+        def deliver(self, idempotency_key, payload):
+            raise RuntimeError("provider unavailable")
+
+    outbox.enqueue("event-1", {"title": "Alert"}, now=0)
+    assert outbox.dispatch_due(FailingSink(), now=0).retried == 1
+    assert outbox.dispatch_due(FailingSink(), now=1).dead_lettered == 1
+    assert outbox.status_counts()["DEAD"] == 1
+
+
+def test_expired_lease_can_be_reclaimed_after_worker_crash(tmp_path):
+    outbox = PersistentNotificationOutbox(tmp_path / "outbox.sqlite3")
+    outbox.enqueue("event-1", {"title": "Alert"}, now=10)
+
+    first = outbox.claim_due(now=11, lease_seconds=5)
+    assert first[0].attempts == 1
+    assert outbox.claim_due(now=15) == ()
+
+    reclaimed = outbox.claim_due(now=16)
+    assert len(reclaimed) == 1
+    assert reclaimed[0].attempts == 2
+
+
+def test_invalid_inputs_are_rejected(tmp_path):
+    outbox = PersistentNotificationOutbox(tmp_path / "outbox.sqlite3")
+
+    with pytest.raises(ValueError):
+        outbox.enqueue("", {"title": "Alert"})
+    with pytest.raises(ValueError):
+        outbox.enqueue("event-1", [])
+    with pytest.raises(ValueError):
+        outbox.claim_due(limit=0)
+    with pytest.raises(ValueError):
+        outbox.dispatch_due(object())
+
+
+
+def test_failure_diagnostics_redact_urls_and_credentials(tmp_path):
+    outbox = PersistentNotificationOutbox(
+        tmp_path / "outbox.sqlite3", max_attempts=1
+    )
+
+    class LeakyFailingSink:
+        def deliver(self, idempotency_key, payload):
+            raise RuntimeError(
+                "push failed https://push.example.test/send/private "
+                "Bearer super-secret authorization=top-secret "
+                "p256dh=private-key-value"
+            )
+
+    outbox.enqueue("event-secret", {"title": "Alert"}, now=10)
+    result = outbox.dispatch_due(LeakyFailingSink(), now=11)
+    assert result.dead_lettered == 1
+
+    import sqlite3
+    with sqlite3.connect(tmp_path / "outbox.sqlite3") as db:
+        error = db.execute(
+            "SELECT last_error FROM notification_outbox WHERE idempotency_key=?",
+            ("event-secret",),
+        ).fetchone()[0]
+
+    assert "push.example.test" not in error
+    assert "super-secret" not in error
+    assert "top-secret" not in error
+    assert "private-key-value" not in error
+    assert "[URL REDACTED]" in error
+    assert "Bearer [REDACTED]" in error

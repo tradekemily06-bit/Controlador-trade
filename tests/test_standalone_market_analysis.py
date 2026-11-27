@@ -1,0 +1,181 @@
+from __future__ import annotations
+
+import unittest
+from datetime import datetime, timedelta
+
+from core.unified_intelligence import UnifiedIntelligence
+from data.models import Candle
+from data.timeframes import get_timeframe_interval
+from integration.standalone_market_analysis import StandaloneMarketAnalysisService
+
+
+class FakeMarketDataProvider:
+    def __init__(self, candles):
+        self.candles = tuple(candles)
+        self.requests = []
+
+    def fetch(self, request):
+        self.requests.append(request)
+        return self.candles[-request.limit:]
+
+
+def candle_series(timeframe="5m", count=8, age_intervals=1):
+    interval = get_timeframe_interval(timeframe)
+    now = datetime.now().astimezone()
+    last_open = now - interval * age_intervals
+    result = []
+    for index in range(count):
+        timestamp = last_open - interval * (count - index - 1)
+        base = 1.0 + index * 0.001
+        result.append(Candle(
+            timestamp=timestamp,
+            open=base,
+            high=base + 0.002,
+            low=base - 0.001,
+            close=base + 0.001,
+            volume=100 + index,
+        ))
+    return result
+
+
+class StandaloneMarketAnalysisTests(unittest.TestCase):
+    def test_provider_neutral_analysis_never_authorizes_execution(self):
+        provider = FakeMarketDataProvider(candle_series())
+        intelligence = UnifiedIntelligence()
+        service = StandaloneMarketAnalysisService(
+            provider=provider,
+            source="FAKE_TEST_FEED",
+            intelligence=intelligence,
+        )
+
+        result = service.analyze(
+            symbol="EURUSD",
+            timeframe="5m",
+            limit=8,
+            confirmed=True,
+            filters_ok=True,
+        )
+
+        self.assertEqual(result["decision"], "ANALYSIS_ONLY")
+        card = result["signal_card"]
+        self.assertEqual(card["symbol"], "EURUSD")
+        self.assertEqual(card["direction"], result["signal"])
+        expected_visual = {
+            "COMPRA": {"color": "GREEN", "arrow": "UP"},
+            "VENDA": {"color": "RED", "arrow": "DOWN"},
+            "AGUARDAR": {"color": "YELLOW", "arrow": "NONE"},
+        }[card["direction"]]
+        self.assertEqual(card["visual"]["color"], expected_visual["color"])
+        self.assertEqual(card["visual"]["arrow"], expected_visual["arrow"])
+        self.assertEqual(card["visual"]["score_color"], expected_visual["color"])
+        self.assertEqual(card["visual"]["profit_probability_color"], expected_visual["color"])
+        self.assertEqual(card["timeframe"], "5m")
+        self.assertEqual(card["score_type"], "EVIDENCE_STRENGTH")
+        self.assertIsNone(card["probability_of_profit"])
+        self.assertEqual(card["profit_probability"]["status"], "NOT_CALIBRATED")
+        self.assertIsNone(card["profit_probability"]["value"])
+        self.assertTrue(card["profit_probability"]["calibration_required"])
+        self.assertTrue(card["manual_entry_only"])
+        self.assertFalse(card["execution_authorized"])
+        self.assertFalse(card["order_submitted"])
+        self.assertFalse(result["execution_allowed"])
+        self.assertFalse(result["execution_authorized"])
+        self.assertFalse(result["order_submitted"])
+        self.assertEqual(result["market_data"]["source"], "FAKE_TEST_FEED")
+        self.assertIn(result["signal"], {"COMPRA", "VENDA", "AGUARDAR"})
+
+    def test_analysis_is_saved_to_decision_memory_with_stable_cycle_identity(self):
+        provider = FakeMarketDataProvider(candle_series())
+        saved = {}
+
+        def save_once(record):
+            if record.decision_id in saved:
+                return False
+            saved[record.decision_id] = record
+            return True
+
+        service = StandaloneMarketAnalysisService(
+            provider=provider,
+            source="MEMORY_TEST_FEED",
+            intelligence=UnifiedIntelligence(),
+            decision_sink=save_once,
+        )
+
+        first = service.analyze(symbol="EURUSD", timeframe="5m", limit=8)
+        second = service.analyze(symbol="EURUSD", timeframe="5m", limit=8)
+
+        self.assertEqual(len(saved), 1)
+        record = next(iter(saved.values()))
+        self.assertEqual(record.symbol, "EURUSD")
+        self.assertEqual(record.timeframe, "5m")
+        self.assertEqual(record.signal, first["signal"])
+        self.assertEqual(record.signal, second["signal"])
+        self.assertFalse(record.execution_allowed)
+        self.assertEqual(first["decision_memory"]["status"], "SAVED")
+        self.assertEqual(second["decision_memory"]["status"], "ALREADY_RECORDED")
+        self.assertEqual(first["decision_memory"]["decision_id"], record.decision_id)
+
+    def test_decision_memory_failure_is_reported_without_faking_persistence(self):
+        def fail_save(_record):
+            raise OSError("storage unavailable")
+
+        service = StandaloneMarketAnalysisService(
+            provider=FakeMarketDataProvider(candle_series()),
+            source="MEMORY_FAILURE_TEST_FEED",
+            intelligence=UnifiedIntelligence(),
+            decision_sink=fail_save,
+        )
+        result = service.analyze(symbol="EURUSD", timeframe="5m", limit=8)
+        self.assertEqual(result["decision_memory"]["status"], "PERSISTENCE_ERROR")
+        self.assertEqual(result["decision_memory"]["error_class"], "OSError")
+
+    def test_stale_market_data_forces_wait(self):
+        provider = FakeMarketDataProvider(candle_series(age_intervals=20))
+        service = StandaloneMarketAnalysisService(
+            provider=provider,
+            source="STALE_TEST_FEED",
+            intelligence=UnifiedIntelligence(),
+        )
+        result = service.analyze(symbol="EURUSD", timeframe="5m", limit=8)
+        self.assertEqual(result["signal"], "AGUARDAR")
+        self.assertEqual(result["status"], "REASSESS_REQUIRED")
+        self.assertFalse(result["execution_allowed"])
+
+    def test_ten_minute_timeframe_is_supported(self):
+        self.assertEqual(get_timeframe_interval("10m"), timedelta(minutes=10))
+        provider = FakeMarketDataProvider(candle_series(timeframe="10m"))
+        service = StandaloneMarketAnalysisService(
+            provider=provider,
+            source="TEN_MINUTE_TEST_FEED",
+            intelligence=UnifiedIntelligence(),
+        )
+        result = service.analyze(symbol="EURUSD", timeframe="10m", limit=8)
+        self.assertEqual(result["timeframe"], "10m")
+        self.assertFalse(result["execution_authorized"])
+
+    def test_platform_timeframe_alias_and_custom_interval_are_supported(self):
+        provider = FakeMarketDataProvider(candle_series(timeframe="2m"))
+        service = StandaloneMarketAnalysisService(
+            provider=provider,
+            source="CUSTOM_INTERVAL_TEST_FEED",
+            intelligence=UnifiedIntelligence(),
+        )
+        result = service.analyze(symbol="EURUSD", timeframe="M2", limit=8)
+        self.assertEqual(result["timeframe"], "2m")
+        self.assertEqual(provider.requests[0].timeframe, "2m")
+        self.assertFalse(result["execution_authorized"])
+
+    def test_unsupported_timeframe_and_unbounded_limit_are_rejected(self):
+        service = StandaloneMarketAnalysisService(
+            provider=FakeMarketDataProvider(candle_series()),
+            source="VALIDATION_TEST_FEED",
+            intelligence=UnifiedIntelligence(),
+        )
+        with self.assertRaises(ValueError):
+            service.analyze(symbol="EURUSD", timeframe="M0")
+        with self.assertRaises(ValueError):
+            service.analyze(symbol="EURUSD", timeframe="5m", limit=100000)
+
+
+if __name__ == "__main__":
+    unittest.main()

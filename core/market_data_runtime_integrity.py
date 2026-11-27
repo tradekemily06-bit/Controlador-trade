@@ -10,6 +10,7 @@ from core.p23_market_data_integrity import MarketDataHealth, MarketDataIntegrity
 _TIMEFRAME_SECONDS = {
     "1m": 60,
     "5m": 300,
+    "10m": 600,
     "15m": 900,
     "30m": 1800,
     "1h": 3600,

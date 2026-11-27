@@ -15,7 +15,9 @@ class DecisionStatistics:
     losses: int
     draws: int
     open: int
-    win_rate: float
+    closed: int
+    win_rate: float | None
+    win_rate_status: str
 
 
 def summarize(records: Iterable[DecisionRecord]) -> DecisionStatistics:
@@ -33,7 +35,9 @@ def summarize(records: Iterable[DecisionRecord]) -> DecisionStatistics:
         losses=losses,
         draws=draws,
         open=opened,
-        win_rate=(wins / closed * 100) if closed else 0.0,
+        closed=closed,
+        win_rate=(wins / closed * 100) if closed else None,
+        win_rate_status="AVAILABLE" if closed else "INSUFFICIENT_CLOSED_SAMPLE",
     )
 
 

@@ -6,10 +6,15 @@ from typing import Any, Iterable
 
 from analysis.decision_record import DecisionRecord
 from analysis.decision_store import DecisionStore
+from analysis.decision_report import build_decision_report, export_decision_report
 from analysis.statistics import summarize, summarize_breakdowns, summarize_periods
 from core.ecosystem_health import build_health_alerts
-from core.ecosystem_notifications import EcosystemNotification, NotificationKind, NotificationSeverity
+from core.operational_alerts import build_operational_incidents
+from core.ecosystem_notifications import EcosystemNotification, EcosystemNotificationCenter, NotificationKind, NotificationSeverity
+from core.ecosystem_state_store import EcosystemStateStore
+from core.notification_outbox import PersistentNotificationOutbox
 from core.learning_content import ContentType, LearningActivity, LearningAttempt, LearningObservation, LearningResource, LearningStatus, normalize_tags
+from core.learning_state_store import LearningStateStore
 from core.market_data_runtime_integrity import MarketDataRuntimeReport
 from core.operational_runtime import OperationalRuntime
 from core.p122_broker_market_data import BrokerMarketDataSnapshot
@@ -21,7 +26,7 @@ from core.senior_context_orchestrator import SeniorContextInput, SeniorContextOr
 from integration.controlled_automation_service import ControlledAutomationService
 from core.senior_risk_reasoning import RiskDomain, RiskObservation
 from data.models import Candle
-from integration.news_provider import UnconfiguredNewsProvider
+from integration.rss_news_provider import NewsProvider, UnconfiguredNewsProvider
 from security.identity_boundary import IdentityPolicy
 from security.production_operation_gate import ProductionOperationGate
 from security.request_context import ProductionRequestContext, require_production_context
@@ -31,27 +36,82 @@ from storage.production_boundary import ProductionStoragePolicy
 class EcosystemService:
     """Application orchestration; broker execution remains outside this layer."""
 
-    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None) -> None:
+    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None, learning_state_store: LearningStateStore | None = None, notification_state_store: EcosystemStateStore | None = None, notification_center: EcosystemNotificationCenter | None = None, notification_outbox: PersistentNotificationOutbox | None = None, news_provider: NewsProvider | None = None) -> None:
         self.engine = engine or SignalEngine()
         self.store = decision_store or DecisionStore()
         self.memory: list[DecisionRecord] = self.store.load()
         self.risk = RiskManager()
-        self.news = UnconfiguredNewsProvider()
+        self.news = news_provider or UnconfiguredNewsProvider()
         self.identity = IdentityPolicy()
         self.production_storage = production_storage or ProductionStoragePolicy()
         self.production_gate = ProductionOperationGate(self.production_storage)
         self.operational_runtime = operational_runtime
         self.learning_source_gate = LearningSourceGate()
         self.learning_professor = LearningProfessor()
-        self.learning_sources: dict[str, LearningSource] = {}
-        self.learning_resources: dict[str, LearningResource] = {}
-        self.learning_observations: list[LearningObservation] = []
-        self.learning_activities: dict[str, LearningActivity] = {}
-        self.learning_attempts: list[LearningAttempt] = []
+        self.learning_state_store = learning_state_store
+        learning_state = learning_state_store.load() if learning_state_store is not None else {}
+        self.learning_sources: dict[str, LearningSource] = learning_state.get('sources', {})
+        self.learning_resources: dict[str, LearningResource] = learning_state.get('resources', {})
+        self.learning_observations: list[LearningObservation] = learning_state.get('observations', [])
+        self.learning_activities: dict[str, LearningActivity] = learning_state.get('activities', {})
+        self.learning_attempts: list[LearningAttempt] = learning_state.get('attempts', [])
+        self.notification_state_store = notification_state_store
+        self.notification_outbox = notification_outbox
+        self.notifications = notification_center or EcosystemNotificationCenter()
+        if self.notification_state_store is not None:
+            self.notifications.restore(self.notification_state_store.load_notifications())
         self.senior_context = SeniorContextOrchestrator()
         self.automation = ControlledAutomationService(
             lifecycle_store=(operational_runtime.automation_lifecycle if operational_runtime is not None else None)
         )
+
+    def _notification_visible(self, item: EcosystemNotification) -> bool:
+        return isinstance(item, EcosystemNotification)
+
+    def _persist_notifications(self) -> None:
+        if self.notification_state_store is not None:
+            self.notification_state_store.save_notifications([
+                asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}
+                for item in self.notifications.all()
+            ])
+
+    def publish_notification(self, notification: EcosystemNotification) -> EcosystemNotification:
+        published = self.notifications.publish(notification)
+        self._persist_notifications()
+        if self.notification_outbox is not None:
+            self.notification_outbox.enqueue(
+                published.notification_id,
+                {
+                    "notification_id": published.notification_id,
+                    "kind": published.kind.value,
+                    "severity": published.severity.value,
+                    "title": published.title,
+                    "message": published.message,
+                    "requires_attention": published.requires_attention,
+                    "blocking": published.blocking,
+                },
+            )
+        return published
+
+    def notification_summary(self) -> dict[str, Any]:
+        counts = self.notifications.summarize(self.notifications.all())
+        return {
+            "total": len(self.notifications.all()),
+            "by_severity": counts,
+            "persistence": "SQLITE" if self.notification_state_store is not None else "IN_MEMORY",
+            "external_delivery": "OUTBOX_ONLY_NO_PROVIDER" if self.notification_outbox is not None else "NOT_CONFIGURED",
+            "outbox": self.notification_outbox.status_counts() if self.notification_outbox is not None else None,
+        }
+
+    def _persist_learning_state(self) -> None:
+        if self.learning_state_store is not None:
+            self.learning_state_store.save(
+                sources=self.learning_sources,
+                resources=self.learning_resources,
+                observations=self.learning_observations,
+                activities=self.learning_activities,
+                attempts=self.learning_attempts,
+            )
 
     def require_production_context(self, *, subject_id: str | None, tenant_id: str | None) -> ProductionRequestContext:
         return require_production_context(subject_id=subject_id, tenant_id=tenant_id)
@@ -126,6 +186,13 @@ class EcosystemService:
         breakdowns = summarize_breakdowns(self.memory)
         return {**asdict(summarize(self.memory)), "periods": summarize_periods(self.memory), "breakdowns": {**breakdowns, "by_symbol": breakdowns["symbols"], "by_timeframe": breakdowns["timeframes"], "by_signal": breakdowns["signals"], "by_score_band": breakdowns["score_bands"]}}
 
+    def decision_report(self, *, limit: int = 1000) -> dict[str, Any]:
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
+            raise ValueError("limit deve ser um inteiro de 1 a 1000")
+        records = self.memory[-limit:]
+        report = build_decision_report(records, self.statistics())
+        return {**report, "export_json": export_decision_report(report)}
+
     def memory_view(self, limit: int = 50) -> list[dict[str, Any]]:
         if limit < 1:
             raise ValueError("limit deve ser maior que zero")
@@ -137,16 +204,19 @@ class EcosystemService:
         if source.source_id in self.learning_sources:
             raise ValueError("source_id já cadastrado")
         self.learning_sources[source.source_id] = source
+        self._persist_learning_state()
         return source
 
     def validate_learning_source(self, source: LearningSource, *, content_verified: bool, security_checked: bool) -> LearningSource:
         updated = self.learning_source_gate.validate_content(source, content_verified=content_verified, security_checked=security_checked)
         self.learning_sources[updated.source_id] = updated
+        self._persist_learning_state()
         return updated
 
     def admit_learning_knowledge(self, source: LearningSource, *, knowledge_validated: bool) -> LearningSource:
         updated = self.learning_source_gate.admit_knowledge(source, knowledge_validated=knowledge_validated)
         self.learning_sources[updated.source_id] = updated
+        self._persist_learning_state()
         return updated
 
     def learning_sources_view(self) -> list[dict[str, Any]]:
@@ -160,6 +230,7 @@ class EcosystemService:
             source_type = {ContentType.VIDEO: LearningSourceType.VIDEO, ContentType.DOCUMENT: LearningSourceType.DOCUMENT}.get(resource.content_type, LearningSourceType.LINK)
             self.screen_learning_source({"source_id": resource.resource_id, "source_type": source_type.value, "uri": resource.source_url})
         self.learning_resources[resource.resource_id] = resource
+        self._persist_learning_state()
         return resource
 
     def learning_resources_view(self) -> list[dict[str, Any]]:
@@ -175,6 +246,7 @@ class EcosystemService:
             raise ValueError("external learning knowledge must pass source and knowledge validation first")
         observation = LearningObservation(resource_id=resource_id, statement=str(payload.get("statement", "")), concepts=normalize_tags(tuple(payload.get("concepts", ()) or ())), evidence=payload.get("evidence"), confidence=payload.get("confidence"), validated=validated)
         self.learning_observations.append(observation)
+        self._persist_learning_state()
         return observation
 
     def learning_observations_view(self) -> list[dict[str, Any]]:
@@ -185,6 +257,7 @@ class EcosystemService:
         if activity.activity_id in self.learning_activities:
             raise ValueError("activity_id já cadastrado")
         self.learning_activities[activity.activity_id] = activity
+        self._persist_learning_state()
         return activity
 
     def generate_professor_activity(self, payload: dict[str, Any]) -> LearningActivity:
@@ -192,6 +265,7 @@ class EcosystemService:
         if activity.activity_id in self.learning_activities:
             raise ValueError("activity_id já cadastrado")
         self.learning_activities[activity.activity_id] = activity
+        self._persist_learning_state()
         return activity
 
     def learning_activities_view(self) -> list[dict[str, Any]]:
@@ -203,6 +277,7 @@ class EcosystemService:
             raise ValueError("activity_id não encontrado")
         attempt = LearningAttempt(activity_id=activity_id, answer=str(payload.get("answer", "")), correct=payload.get("correct"), feedback=str(payload.get("feedback", "")))
         self.learning_attempts.append(attempt)
+        self._persist_learning_state()
         return attempt
 
     def learning_summary(self) -> dict[str, Any]:
@@ -210,10 +285,29 @@ class EcosystemService:
 
     def risk_status(self) -> dict[str, Any]:
         decision = self.risk.evaluate()
-        return {"allowed": decision.allowed, "reason": decision.reason, "configured_limits": {"daily_loss_limit": self.risk.daily_loss_limit, "max_operations": self.risk.max_operations, "max_consecutive_losses": self.risk.max_consecutive_losses}, "news_provider": "UNCONFIGURED"}
+        news_status = getattr(self.news, "status", None)
+        news = news_status() if callable(news_status) else {"configured": False}
+        return {"allowed": decision.allowed, "reason": decision.reason, "configured_limits": {"daily_loss_limit": self.risk.daily_loss_limit, "max_operations": self.risk.max_operations, "max_consecutive_losses": self.risk.max_consecutive_losses}, "news_provider": "RSS_ATOM" if news.get("configured") else "UNCONFIGURED"}
 
-    def news_status(self, limit: int = 10) -> dict[str, Any]:
-        return {"provider": "UNCONFIGURED", "live": False, "items": [asdict(item) for item in self.news.latest(limit=limit)]}
+    def news_status(self, limit: int = 10, symbol: str | None = None) -> dict[str, Any]:
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
+            raise ValueError("limit deve estar entre 1 e 50")
+        items = [asdict(item) for item in self.news.latest(symbol=symbol, limit=limit)]
+        status_method = getattr(self.news, "status", None)
+        provider_status = status_method() if callable(status_method) else {
+            "configured": not isinstance(self.news, UnconfiguredNewsProvider),
+            "live": False,
+        }
+        configured = bool(provider_status.get("configured", False))
+        return {
+            "provider": "RSS_ATOM" if configured else "UNCONFIGURED",
+            "configured": configured,
+            "live": bool(provider_status.get("live", False)),
+            "status": provider_status,
+            "item_count": len(items),
+            "items": items,
+            "execution_authorized": False,
+        }
 
     @staticmethod
     def _mt5_demo_status_from_observability(observability: dict[str, Any]) -> str:
@@ -268,10 +362,10 @@ class EcosystemService:
         identity = self.identity.status()
         observability = self.operational_observability()
         mt5_status = self._mt5_demo_status_from_observability(observability)
-        components = {"decision_engine": "ONLINE", "memory": "ONLINE", "replay": "ONLINE", "statistics": "ONLINE", "risk_gate": "ONLINE", "automation": "ONLINE", "learning": "ONLINE", "news": "AGUARDANDO_FONTE", "mt5_demo": mt5_status, "real": "DESABILITADO", "saas": "FOUNDATION", "production_storage": str(production_storage["state"]), "production_operation_gate": str(production_gate["storage_state"]), "trusted_identity_provider": str(identity["trusted_identity_provider"]), "tenant_isolation": str(identity["tenant_isolation"])}
+        components = {"decision_engine": "ONLINE", "memory": "ONLINE", "replay": "ONLINE", "statistics": "ONLINE", "risk_gate": "ONLINE", "automation": "ONLINE", "learning": "ONLINE", "learning_persistence": "SQLITE" if self.learning_state_store is not None else "IN_MEMORY", "notification_persistence": "SQLITE" if self.notification_state_store is not None else "IN_MEMORY", "news": "AGUARDANDO_FONTE", "mt5_demo": mt5_status, "real": "DESABILITADO", "saas": "FOUNDATION", "production_storage": str(production_storage["state"]), "production_operation_gate": str(production_gate["storage_state"]), "trusted_identity_provider": str(identity["trusted_identity_provider"]), "tenant_isolation": str(identity["tenant_isolation"])}
         alerts = build_health_alerts(components)
         health = "CRITICAL" if any(alert.severity == "CRITICAL" for alert in alerts) else ("WARNING" if alerts else "OK")
-        return {"mode": "SIMULACAO", "execution_allowed": False, "execution": "bloqueada_por_padrao", "decision_engine": components["decision_engine"], "memory": components["memory"], "replay": components["replay"], "statistics": components["statistics"], "risk_gate": components["risk_gate"], "learning": components["learning"], "news": components["news"], "mt5_demo": components["mt5_demo"], "real": components["real"], "saas": components["saas"], "components": components, "health": health, "alerts": [alert.to_dict() for alert in alerts], "memory_persistence": "SQLITE" if self.store.database_path else "IN_MEMORY", "production_storage": production_storage, "production_operation_gate": production_gate, "operational_observability": observability, **identity}
+        return {"mode": "SIMULACAO", "execution_allowed": False, "execution": "bloqueada_por_padrao", "decision_engine": components["decision_engine"], "memory": components["memory"], "replay": components["replay"], "statistics": components["statistics"], "risk_gate": components["risk_gate"], "learning": components["learning"], "news": components["news"], "mt5_demo": components["mt5_demo"], "real": components["real"], "saas": components["saas"], "components": components, "health": health, "alerts": [alert.to_dict() for alert in alerts], "memory_persistence": "SQLITE" if self.store.database_path else "IN_MEMORY", "learning_persistence": "SQLITE" if self.learning_state_store is not None else "IN_MEMORY", "notification_persistence": "SQLITE" if self.notification_state_store is not None else "IN_MEMORY", "production_storage": production_storage, "production_operation_gate": production_gate, "operational_observability": observability, **identity}
 
     def health_alerts(self) -> list[dict[str, Any]]:
         return [asdict(item) for item in build_health_alerts(self.operational_observability())]

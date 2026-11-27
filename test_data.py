@@ -116,3 +116,19 @@ def test_timeframe_e_series():
 
     assert len(series) == 3
     assert series.last == candles[-1]
+
+
+
+def test_timeframe_parser_accepts_platform_aliases_and_variable_intervals():
+    assert get_timeframe_interval("M1") == timedelta(minutes=1)
+    assert get_timeframe_interval("M2") == timedelta(minutes=2)
+    assert get_timeframe_interval("M10") == timedelta(minutes=10)
+    assert get_timeframe_interval("H2") == timedelta(hours=2)
+    assert get_timeframe_interval("D2") == timedelta(days=2)
+    assert get_timeframe_interval("W1") == timedelta(weeks=1)
+
+
+def test_timeframe_parser_rejects_zero_unknown_or_unbounded_units():
+    for value in ("M0", "M60", "H25", "D32", "W5", "1mo", "invalid"):
+        with pytest.raises(ValueError):
+            get_timeframe_interval(value)

@@ -22,22 +22,27 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
     """
 
     _TIMEFRAMES = {
-        "1m": "TIMEFRAME_M1",
-        "m1": "TIMEFRAME_M1",
-        "5m": "TIMEFRAME_M5",
-        "m5": "TIMEFRAME_M5",
-        "15m": "TIMEFRAME_M15",
-        "m15": "TIMEFRAME_M15",
-        "30m": "TIMEFRAME_M30",
-        "m30": "TIMEFRAME_M30",
-        "1h": "TIMEFRAME_H1",
-        "h1": "TIMEFRAME_H1",
-        "4h": "TIMEFRAME_H4",
-        "h4": "TIMEFRAME_H4",
-        "1d": "TIMEFRAME_D1",
-        "d1": "TIMEFRAME_D1",
+        "1m": "TIMEFRAME_M1", "m1": "TIMEFRAME_M1",
+        "2m": "TIMEFRAME_M2", "m2": "TIMEFRAME_M2",
+        "3m": "TIMEFRAME_M3", "m3": "TIMEFRAME_M3",
+        "4m": "TIMEFRAME_M4", "m4": "TIMEFRAME_M4",
+        "5m": "TIMEFRAME_M5", "m5": "TIMEFRAME_M5",
+        "6m": "TIMEFRAME_M6", "m6": "TIMEFRAME_M6",
+        "10m": "TIMEFRAME_M10", "m10": "TIMEFRAME_M10",
+        "12m": "TIMEFRAME_M12", "m12": "TIMEFRAME_M12",
+        "15m": "TIMEFRAME_M15", "m15": "TIMEFRAME_M15",
+        "20m": "TIMEFRAME_M20", "m20": "TIMEFRAME_M20",
+        "30m": "TIMEFRAME_M30", "m30": "TIMEFRAME_M30",
+        "1h": "TIMEFRAME_H1", "h1": "TIMEFRAME_H1",
+        "2h": "TIMEFRAME_H2", "h2": "TIMEFRAME_H2",
+        "3h": "TIMEFRAME_H3", "h3": "TIMEFRAME_H3",
+        "4h": "TIMEFRAME_H4", "h4": "TIMEFRAME_H4",
+        "6h": "TIMEFRAME_H6", "h6": "TIMEFRAME_H6",
+        "8h": "TIMEFRAME_H8", "h8": "TIMEFRAME_H8",
+        "12h": "TIMEFRAME_H12", "h12": "TIMEFRAME_H12",
+        "1d": "TIMEFRAME_D1", "d1": "TIMEFRAME_D1",
+        "1w": "TIMEFRAME_W1", "w1": "TIMEFRAME_W1",
     }
-
     def __init__(self, mt5_module: Any = None, terminal_path: str | None = None) -> None:
         self._mt5 = mt5_module
         self._terminal_path = terminal_path or os.environ.get("CONTROLADOR_MT5_TERMINAL_PATH") or None
@@ -76,6 +81,17 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
             self._mt5 = mt5
         return self._mt5
 
+    @classmethod
+    def supports_timeframe(cls, timeframe: str) -> bool:
+        """Check native interval support without initializing or probing MT5."""
+        from data.timeframes import normalize_timeframe
+
+        try:
+            normalized = normalize_timeframe(timeframe)
+        except (TypeError, ValueError):
+            return False
+        return normalized in {key for key in cls._TIMEFRAMES if key[0].isdigit()}
+
     def _timeframe(self, timeframe: str) -> Any:
         key = timeframe.strip().lower().removeprefix("period_")
         constant_name = self._TIMEFRAMES.get(key)
@@ -91,6 +107,26 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
     def _is_demo_account(account: Any, mt5: Any) -> bool:
         demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
         return demo_mode is not None and getattr(account, "trade_mode", None) == demo_mode
+
+    def get_account_mode(self) -> str:
+        """Return DEMO only after querying the currently connected terminal.
+
+        REAL mode is deliberately not asserted by this DEMO-only adapter.
+        Any missing terminal/account or unexpected mode fails closed.
+        """
+        mt5 = self._module()
+        if not self._initialize(mt5):
+            raise MT5MarketDataError(f"MT5 indisponível: {self._last_error(mt5)}")
+        try:
+            terminal = mt5.terminal_info()
+            if terminal is None or not bool(getattr(terminal, "connected", False)):
+                raise MT5MarketDataError("terminal MT5 não está conectado")
+            account = mt5.account_info()
+            if account is None or not self._is_demo_account(account, mt5):
+                raise MT5MarketDataError("conta MT5 não confirmada como DEMO")
+            return "DEMO"
+        finally:
+            mt5.shutdown()
 
     def fetch(self, request) -> tuple[Candle, ...]:
         """Adapt the generic core feed request to the broker-aware contract.

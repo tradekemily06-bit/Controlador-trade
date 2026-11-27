@@ -7,5 +7,15 @@
   "background_color": "#090b10",
   "theme_color": "#090b10",
   "description": "Ecossistema de análise, decisão, risco, memória e replay de trading.",
-  "icons": []
+  "icons": [
+    {
+      "src": "/pwa/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "scope": "/",
+  "orientation": "any",
+  "prefer_related_applications": false
 }

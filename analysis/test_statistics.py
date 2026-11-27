@@ -25,8 +25,20 @@ def test_summarize_counts_and_win_rate():
     assert stats.losses == 1
     assert stats.draws == 1
     assert stats.open == 1
+    assert stats.closed == 3
     assert stats.win_rate == 2 / 3 * 100
+    assert stats.win_rate_status == "AVAILABLE"
 
 
-def test_empty_history_has_zero_win_rate():
-    assert summarize([]).win_rate == 0.0
+def test_empty_history_has_unavailable_win_rate():
+    stats = summarize([])
+    assert stats.closed == 0
+    assert stats.win_rate is None
+    assert stats.win_rate_status == "INSUFFICIENT_CLOSED_SAMPLE"
+
+
+def test_open_and_draw_only_history_has_unavailable_win_rate():
+    stats = summarize([make("OPEN"), make("DRAW")])
+    assert stats.closed == 0
+    assert stats.win_rate is None
+    assert stats.win_rate_status == "INSUFFICIENT_CLOSED_SAMPLE"
