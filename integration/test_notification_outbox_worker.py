@@ -81,7 +81,8 @@ def test_worker_dispatch_persists_redacted_provider_error(tmp_path):
             error = row[0]
             break
         time.sleep(0.01)
-    assert worker.status()["state"] == "DEGRADED"
+    assert worker.status()["state"] == "RUNNING"
+    assert worker.status()["last_result"]["retried"] == 1
     assert worker.status()["last_cycle_at"] is not None
     worker.stop()
 
