@@ -121,3 +121,16 @@ def test_refresh_fails_closed_without_refresh_client(tmp_path):
     with pytest.raises(RuntimeError):
         service.refresh(owner, connection_id=account["connection_id"])
 
+def test_service_rejects_trading_scope_for_read_only_application(tmp_path):
+    owner, connections, account, tokens, service = _setup(tmp_path)
+    with pytest.raises(ValueError):
+        TenantCTraderOAuthService(
+            connections,
+            service.state_vault,
+            tokens,
+            client_id="client-id",
+            redirect_uri="https://app.example.com/ctrader/callback",
+            exchange_code=lambda code, redirect: {},
+            scope="trading",
+        )
+
