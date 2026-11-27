@@ -259,6 +259,16 @@ class StandaloneWSGIApplication:
                 if relay is not None
                 else {"connected": False, "status": "NOT_CONFIGURED", "execution_authorized": False}
             )
+            if reason == "trusted_identity":
+                # Do not expose global relay source IDs, candle counts or heartbeat
+                # metadata to a tenant. Those details belong to local operations.
+                payload = {
+                    "configured": relay is not None,
+                    "status": "STATUS_AVAILABLE_TO_LOCAL_OPERATOR",
+                    "scope": "INFRASTRUCTURE_ONLY",
+                    "read_only": True,
+                    "execution_authorized": False,
+                }
             return _json_response(start_response, HTTPStatus.OK, payload, request_id)
 
         if method == "GET" and path in {"/api/health", "/api/health/live"}:
@@ -290,6 +300,19 @@ class StandaloneWSGIApplication:
                     "execution_authorized": False,
                 }
             )
+            if reason == "trusted_identity":
+                # A tenant must not receive shared backup paths, per-database
+                # results, exception details or global backup history.
+                payload = {
+                    "provider": "LOCAL_SQLITE_SCHEDULED",
+                    "enabled": bool(payload.get("enabled", False)),
+                    "worker_running": bool(payload.get("worker_running", False)),
+                    "status": "STATUS_AVAILABLE_TO_LOCAL_OPERATOR",
+                    "off_host_replication": "NOT_CONFIGURED",
+                    "deployment_continuity": "PROCESS_LIFETIME_ONLY",
+                    "scope": "INFRASTRUCTURE_ONLY",
+                    "execution_authorized": False,
+                }
             return _json_response(start_response, HTTPStatus.OK, payload, request_id)
 
         if method == "GET" and path == "/api/readiness":
