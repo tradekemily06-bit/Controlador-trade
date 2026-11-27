@@ -275,6 +275,7 @@ class CTraderReadOnlyMarketDataAdapter:
         })
         local_patterns = []
         utc_offsets = []
+        zone = None
         timezone_name = metadata.get("schedule_time_zone") if metadata else None
         timezone_status = (
             metadata.get("timezone_validation_status") if metadata else None
@@ -295,8 +296,19 @@ class CTraderReadOnlyMarketDataAdapter:
                     if candle.timestamp.astimezone(zone).utcoffset() is not None
                 })
             except (KeyError, ValueError, TypeError, OverflowError):
+                zone = None
                 local_patterns = []
                 utc_offsets = []
+
+        observed_candle_opens = []
+        for candle in candles:
+            local_open = candle.timestamp.astimezone(zone) if zone is not None else None
+            offset = local_open.utcoffset() if local_open is not None else None
+            observed_candle_opens.append({
+                "open_at_utc": candle.timestamp.astimezone(timezone.utc).isoformat(),
+                "open_at_provider_local": local_open.isoformat() if local_open is not None else None,
+                "utc_offset_seconds": int(offset.total_seconds()) if offset is not None else None,
+            })
 
         return {
             "provider_id": "ctrader_open_api",
@@ -304,6 +316,7 @@ class CTraderReadOnlyMarketDataAdapter:
             "symbol": clean_symbol,
             "timeframe": normalized_timeframe,
             "sample_count": len(candles),
+            "observed_candle_opens": observed_candle_opens,
             "first_observed_open_at": candles[0].timestamp.isoformat() if candles else None,
             "last_observed_open_at": candles[-1].timestamp.isoformat() if candles else None,
             "observed_utc_open_patterns": [
