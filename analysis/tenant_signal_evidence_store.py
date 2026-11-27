@@ -48,6 +48,7 @@ class TenantSignalEvidenceStore:
                 CREATE TABLE IF NOT EXISTS tenant_signal_evidence (
                     tenant_id TEXT NOT NULL,
                     subject_id TEXT NOT NULL,
+                    source_id TEXT NOT NULL DEFAULT 'UNSCOPED',
                     signal_id TEXT NOT NULL,
                     symbol TEXT NOT NULL,
                     timeframe TEXT NOT NULL,
@@ -62,6 +63,9 @@ class TenantSignalEvidenceStore:
                     PRIMARY KEY (tenant_id, subject_id, signal_id)
                 )
             """)
+            existing_columns = {row[1] for row in db.execute("PRAGMA table_info(tenant_signal_evidence)").fetchall()}
+            if "source_id" not in existing_columns:
+                db.execute("ALTER TABLE tenant_signal_evidence ADD COLUMN source_id TEXT NOT NULL DEFAULT 'UNSCOPED'")
             db.execute("""
                 CREATE INDEX IF NOT EXISTS idx_tenant_signal_evidence_context
                 ON tenant_signal_evidence
@@ -88,6 +92,7 @@ class TenantSignalEvidenceStore:
         observed_at: str,
         valid_until: str,
         provenance: str,
+        source_id: str = "UNSCOPED",
     ) -> dict[str, Any]:
         owner = _owner(context)
         required = (signal_id, symbol, timeframe, direction, model_version, score_semantics)
@@ -104,6 +109,8 @@ class TenantSignalEvidenceStore:
             raise ValueError("technical score semantics must be explicit")
         if provenance not in _ALLOWED_PROVENANCE:
             raise ValueError("only verified real market data may be audited")
+        if not isinstance(source_id, str) or not source_id.strip() or len(source_id.strip()) > 160:
+            raise ValueError("source_id must identify the provider connection")
         canonical_timeframe = normalize_timeframe(timeframe)
         closed = _utc(candle_close_at, "candle_close_at")
         observed = _utc(observed_at, "observed_at")
@@ -115,12 +122,12 @@ class TenantSignalEvidenceStore:
         with self._connect() as db:
             db.execute(
                 """INSERT INTO tenant_signal_evidence
-                (tenant_id, subject_id, signal_id, symbol, timeframe, direction,
+                (tenant_id, subject_id, source_id, signal_id, symbol, timeframe, direction,
                  model_version, evidence_score, score_semantics, candle_close_at,
                  observed_at, valid_until, provenance)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    owner.tenant_id, owner.subject_id, signal_id.strip(),
+                    owner.tenant_id, owner.subject_id, source_id.strip(), signal_id.strip(),
                     symbol.strip().upper(), canonical_timeframe, canonical_direction,
                     model_version.strip(), float(evidence_score), score_semantics,
                     closed, observed, expiry, provenance,
@@ -155,7 +162,7 @@ class TenantSignalEvidenceStore:
             params.append(normalize_timeframe(timeframe))
         with self._connect() as db:
             rows = db.execute(
-                "SELECT signal_id, symbol, timeframe, direction, model_version, "
+                "SELECT signal_id, source_id, symbol, timeframe, direction, model_version, "
                 "evidence_score, score_semantics, candle_close_at, observed_at, "
                 "valid_until, provenance FROM tenant_signal_evidence WHERE "
                 + " AND ".join(clauses) + " ORDER BY observed_at ASC",
