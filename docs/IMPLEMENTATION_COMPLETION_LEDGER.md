@@ -304,3 +304,15 @@ Nothing is closed merely by being listed or implemented. Each checkbox needs a l
 - Latest implementation commits: `746cfaa3`, `36814182`, `3bffba48`, `93536576`, `1e574324`, `a630682d`, `fe7cde79`, `051f6752`.
 - CI status for this new increment has not yet been returned by GitHub; it is **not marked CI-validated**.
 - The cache is process-local and represents the most recent bounded poll batch, not a durable complete news archive. The evidence store remains SQLite/single-runtime; hosted continuous collection, cross-replica shared storage, full article retrieval/claim extraction and live external feed acceptance remain release gates.
+
+
+## High-impact news notifications — 28 Nov 2026
+
+- Added an optional evidence callback to `NewsPollingWorker`. It runs only after a new evidence record is persisted, only when the conservative headline classifier returns `HIGH_REVIEW`, and never for duplicate evidence.
+- Standalone runtime routes these alerts through the trusted local `TenantNotificationDispatcher`, with a deterministic notification ID derived from the evidence ID. The alert says the headline is unverified and is not a price forecast or trading instruction.
+- Notification callback errors are counted separately from feed/evidence ingestion errors; a failed notification does not rewrite a successfully persisted evidence cycle as an ingestion failure.
+- Worker now treats partial feed coverage as `PARTIAL`, not healthy. A successful response from only some configured feeds no longer advances the full-cycle success timestamp.
+- Added tests for high-impact alert emission, duplicate/low-impact suppression, notification error isolation and partial feed coverage.
+- Latest commits: `078f16ba`, `0ee2c0d7`, `f4c95b11`, `f48c1f5b`, `35a19bbf`, `59fd9aed`.
+- GitHub CI has not yet returned workflow runs or status checks for this increment; these changes remain **not CI-validated**. External push delivery and mobile/browser receipt are also untested.
+- Alerts are deliberately limited to `HIGH_REVIEW` headline triage to avoid flooding. They are not a confirmation of facts or a trade signal. User preferences, per-asset subscriptions and hosted multi-replica delivery remain separate work.
