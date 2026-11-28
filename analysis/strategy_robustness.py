@@ -458,12 +458,18 @@ def analyze_backtest_overfitting(
     global_means = [sum(row[column] for row in matrix) / periods for column in range(strategy_count)]
     block_centered_sums = [[0.0] * strategy_count for _ in range(n_blocks)]
     block_centered_squares = [[0.0] * strategy_count for _ in range(n_blocks)]
+    block_raw_sums = [[0.0] * strategy_count for _ in range(n_blocks)]
+    raw_values_by_block = [[[] for _ in range(strategy_count)] for _ in range(n_blocks)]
     for row_index, row in enumerate(matrix):
         block = row_index // block_length
         for column, value in enumerate(row):
             centered = value - global_means[column]
             block_centered_sums[block][column] += centered
             block_centered_squares[block][column] += centered * centered
+            raw_values_by_block[block][column].append(value)
+    for block in range(n_blocks):
+        for column in range(strategy_count):
+            block_raw_sums[block][column] = math.fsum(raw_values_by_block[block][column])
 
     def sharpe_for_blocks(blocks: tuple[int, ...], column: int) -> float:
         count = block_length * len(blocks)
@@ -492,7 +498,10 @@ def analyze_backtest_overfitting(
         omega = min(max(average_rank / (strategy_count + 1.0), epsilon), 1.0 - epsilon)
         logits.append(math.log(omega / (1.0 - omega)))
         selected_oos_sharpes.append(winner_sharpe)
-        selected_oos_means.append(global_means[winner] + sum(block_centered_sums[block][winner] for block in out_blocks) / (block_length * half))
+        selected_oos_means.append(
+            math.fsum(block_raw_sums[block][winner] for block in out_blocks)
+            / (block_length * half)
+        )
 
     pbo = sum(value <= 0.0 for value in logits) / split_count
     return {
