@@ -64,12 +64,19 @@ class NewsSourcePolicy:
     source_id: str
     source_tier: str
     allowed_hosts: tuple[str, ...]
+    publisher_group: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.source_id, str) or not self.source_id.strip() or len(self.source_id) > 128:
             raise ValueError("source_id is required")
         if self.source_tier not in _ALLOWED_TIERS:
             raise ValueError("unsupported trusted news source tier")
+        if self.publisher_group is not None and (
+            not isinstance(self.publisher_group, str)
+            or not self.publisher_group.strip()
+            or len(self.publisher_group) > 128
+        ):
+            raise ValueError("publisher_group must be a non-empty trusted identifier")
         if not isinstance(self.allowed_hosts, tuple) or not self.allowed_hosts:
             raise ValueError("allowed_hosts must be a non-empty tuple")
         for host in self.allowed_hosts:
@@ -303,7 +310,20 @@ class NewsEvidenceCorroborator:
         corroborating: set[str] = set()
         if published is not None:
             for record in self._records:
-                if record.published_at is None or record.source_id == source_id:
+                previous_policy = self._policies.get(record.source_id)
+                current_group = policy.publisher_group or policy.source_id
+                previous_group = (
+                    previous_policy.publisher_group or previous_policy.source_id
+                    if previous_policy is not None else None
+                )
+                # Different feed IDs or domains do not prove editorial independence.
+                # The host must assign aliases/syndicated feeds to the same group.
+                if (
+                    record.published_at is None
+                    or record.source_id == source_id
+                    or previous_group is None
+                    or previous_group == current_group
+                ):
                     continue
                 if abs((published - record.published_at).total_seconds()) > self._max_age.total_seconds():
                     continue
