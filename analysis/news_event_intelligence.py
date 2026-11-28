@@ -113,6 +113,7 @@ def classify_market_news(item: Any) -> dict[str, Any]:
         "limitations": [
             "headline_and_feed_summary_only_classification" if summary else "headline_only_classification",
             "not_verified_against_full_article",
+            "full_article_not_verified",  # Backward-compatible audit key.
             "not_a_price_forecast",
             "not_a_trading_instruction",
         ],
