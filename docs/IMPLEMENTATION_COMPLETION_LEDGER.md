@@ -119,3 +119,11 @@ The target is research-grade, ASI-inspired engineering, not a claim of actual AS
 ## Definition of done
 
 Nothing is closed merely by being listed or implemented. Each checkbox needs a linked code change, automated tests, integration evidence, operational evidence where relevant, and a clear status. Release requires the combined PR chain, no dropped #532 changes, all three fronts accepted, all six areas connected without visual changes, live data and notifications demonstrated, security/restore checks passed, and owner acceptance.
+
+
+## CI confirmation — exact PR tip, 28 November 2026
+
+- GitHub Actions run [46117623610](https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/46117623610) completed successfully for PR tip `1980b696b6e2780a27aa5be064cc34fbb88454c7`.
+- All four workflow jobs passed: P1.9 robustness + full test suite + dependency audit + Python compilation + production/analyst container builds and health smokes; Windows PowerShell validation; protected-branch compatibility; required commit-status publication.
+- This closes the previously pending CI confirmation for the current PR tip. It does not prove live broker sessions, official calendar adapters, shared production storage/KMS, hosted worker continuity, real-device push delivery, or Lovable end-to-end acceptance.
+- PR #534 remains draft, open and unmerged. No deployment, REAL activation, order route, or frontend change was performed.
