@@ -82,7 +82,7 @@ The current automated CI run is evidence of code/test/build behavior only. It do
 - Run automated tests, security scans, dependency checks and manual acceptance against the approved interface.
 - Publish known limitations and a rollback plan.
 
-**Exit evidence:** production deployment is reachable over HTTPS; all seven areas pass their acceptance scenarios; live data and notification tests are evidenced; security and restore checks pass; no unresolved critical/high findings; owner accepts the release.
+**Exit evidence:** production deployment is reachable over HTTPS; all six visible areas pass their acceptance scenarios; live data and notification tests are evidenced; security and restore checks pass; no unresolved critical/high findings; owner accepts the release.
 
 ## Explicit current limitations to close
 
