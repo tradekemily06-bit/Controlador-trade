@@ -45,6 +45,8 @@ Integration path: #529 -> #531 -> #533 -> #534. #532 is a sibling of #533, not a
 - [ ] Validate MT5 relay on an actual DEMO terminal, including local agent install, account binding, HTTPS secret, replay protection, freshness, candle continuity, reconnect and server receipt.
 - [ ] Validate cTrader OAuth with a real Spotware app and DEMO account, production KMS-backed token storage/refresh/revocation, real handshake, streaming quotes and closed trendbars.
 - [x] Add M10 signal lifecycle/expiry regression coverage alongside M1, M5 and M15.
+- [x] Add a provider-clock boundary calculator and an injectable account-scoped clock hook in the candle monitor. M1/M5/M10 boundaries use the provider timestamp; D1/W1 boundaries use provider-local calendar boundaries; stored/compared candle-open timestamps normalize to UTC. Regression tests cover a broker clock at UTC+3, M1/M5/M10 boundaries, D1/W1 and naive timestamp rejection.
+- [ ] Wire the actual MT5 relay and each other provider adapter to supply its authenticated server-time snapshot to that hook; verify DST/session changes and real candle timestamps against a DEMO account. Until this is done, the existing UTC fallback is not evidence that a live MT5 clock is synchronized.
 - [ ] Test M1, M5, M10 and every interval shown in the app against each provider's actual symbol catalogue and session rules; parser support alone is not evidence.
 - [ ] Verify cycle timing, candle-close boundaries, latency, expiry, provider outage, reconnect, process restart and notification deduplication against real provider sessions.
 - [ ] Keep D1/W1 fail-closed until verified provider session calendars and next-session boundaries are wired into analysis.
