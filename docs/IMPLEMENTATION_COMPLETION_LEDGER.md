@@ -63,7 +63,8 @@ Integration path: #529 -> #531 -> #533 -> #534. #532 is a sibling of #533, not a
 - [ ] Complete adversarial synthesis: supporting evidence, counterevidence, source conflicts, missing evidence, alternative explanations and explicit abstention.
 - [ ] Keep probability unavailable until representative out-of-sample outcomes, calibration diagnostics and drift gates pass; an evidence score is not a win probability.
 - [ ] Version rules/models and retain provenance, forecasts, corrections and outcomes; evaluate changes out of sample and make them reversible.
-- [ ] Finish persistent in-app inbox/outbox and external Web Push: production sender, encrypted durable subscriptions, VAPID secrets, device permission, delivery receipts, retries, dead-lettering, expiry, unsubscribe and physical-device tests while app/browser is closed.
+- [x] Implement Web Push building blocks in code: tenant-scoped registration/list/revocation routes with host callbacks, endpoint host allowlisting, AES-GCM subscription-store adapter over an injected durable tenant backend, injected VAPID sender, and tenant notification sink/outbox components.
+- [ ] Complete production Web Push activation: sender-side DNS/IP validation and pinning, redirect suppression, deployed durable backend/KMS and VAPID secrets, verified identity/CSRF callbacks, hosted worker wiring, delivery/retry/dead-letter telemetry, and Android/iOS tests with the app/browser closed.
 - [ ] Ensure background workers run under hosted supervision when the user's PC/app is closed; local process threads do not provide always-on operation.
 - [ ] Verify Reserva Fiscal Brazil and Exterior queues, persistence, identity/ownership, reconciliation and recovery; verify assistant remains strictly read-only.
 - [ ] Verify the minimal/secret mode shows only the intended signal and percentage without changing the main interface or inventing probabilities.
