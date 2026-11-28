@@ -676,6 +676,7 @@ class StandaloneRuntime:
                 economic_calendar_store=self.economic_calendar_store,
                 strategy_trial_ledger=self.strategy_trial_ledger,
                 strategy_trial_context=self.local_tenant_context,
+                market_snapshot_store=self.market_snapshot_store,
             )
             if self.economic_calendar_worker is not None:
                 self.economic_calendar_worker.start()
