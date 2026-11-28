@@ -49,7 +49,16 @@ _HIGH_IMPACT_TERMS = (
 
 
 def _normalise(value: str) -> str:
-    return re.sub(r"\s+", " ", value.casefold()).strip()
+    return re.sub(r"\\s+", " ", value.casefold()).strip()
+
+
+def _contains_term(text: str, term: str) -> bool:
+    """Match complete words/phrases so short tickers do not match inside words."""
+    normalized = _normalise(term)
+    if not normalized:
+        return False
+    pattern = r"(?<!\\w)" + re.escape(normalized) + r"(?!\\w)"
+    return re.search(pattern, text, flags=re.UNICODE) is not None
 
 
 def classify_market_news(item: Any) -> dict[str, Any]:
@@ -64,13 +73,13 @@ def classify_market_news(item: Any) -> dict[str, Any]:
     assets = sorted({
         asset
         for asset, terms in _ASSET_TERMS.items()
-        if any(_normalise(term) in text for term in terms)
+        if any(_contains_term(text, term) for term in terms)
     })
     categories = [
         category for category, terms in _EVENT_TERMS
-        if any(_normalise(term) in text for term in terms)
+        if any(_contains_term(text, term) for term in terms)
     ]
-    high_impact = any(_normalise(term) in text for term in _HIGH_IMPACT_TERMS)
+    high_impact = any(_contains_term(text, term) for term in _HIGH_IMPACT_TERMS)
     if high_impact:
         importance = "HIGH_REVIEW"
     elif categories or assets:
