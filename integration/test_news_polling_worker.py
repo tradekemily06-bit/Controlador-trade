@@ -51,6 +51,7 @@ class FakeCorrelator:
         if self.fail:
             raise RuntimeError("sensitive persistence details")
         self.calls.append((item.title, source_id, ingested_at))
+        return {"evidence_id": f"evidence-{len(self.calls)}"}
 
 
 def test_news_worker_persists_headline_evidence_from_trusted_provider_items():
@@ -184,3 +185,69 @@ def test_news_worker_marks_partial_feed_coverage_as_partial_not_healthy():
     assert status["last_success_at"] is None
     assert status["last_processed"] == 1
     assert worker.latest_items() == (item,)
+
+
+def test_news_worker_notifies_only_new_high_impact_persisted_evidence():
+    item = NewsItem(
+        "https://www.reuters.com/world/economy/story",
+        "Fed emergency rate decision surprises markets",
+    )
+    provider = FakeProvider([item])
+    correlator = FakeCorrelator()
+    alerts = []
+    worker = NewsPollingWorker(
+        provider, correlator, interval_seconds=30,
+        on_evidence=lambda news, evidence, classification: alerts.append(
+            (news.title, evidence["evidence_id"], classification["importance"])
+        ),
+    )
+
+    status = worker.run_once()
+
+    assert status["last_state"] == "POLL_SUCCEEDED"
+    assert alerts == [(item.title, "evidence-1", "HIGH_REVIEW")]
+    assert status["last_notification_errors"] == 0
+
+
+def test_news_worker_does_not_alert_on_duplicate_or_non_high_impact_headlines():
+    low_item = NewsItem("https://www.reuters.com/story", "Company reports quarterly revenue")
+    provider = FakeProvider([low_item])
+    correlator = FakeCorrelator()
+    alerts = []
+    worker = NewsPollingWorker(
+        provider, correlator, interval_seconds=30,
+        on_evidence=lambda *args: alerts.append(args),
+    )
+    worker.run_once()
+    assert alerts == []
+
+    class DuplicateCorrelator(FakeCorrelator):
+        def ingest(self, item, *, source_id, ingested_at):
+            self.calls.append((item.title, source_id, ingested_at))
+            return {"status": "DUPLICATE_SOURCE_ITEM"}
+
+    high_item = NewsItem("https://www.reuters.com/story", "Fed emergency rate decision")
+    duplicate_worker = NewsPollingWorker(
+        FakeProvider([high_item]),
+        DuplicateCorrelator(),
+        interval_seconds=30,
+        on_evidence=lambda *args: alerts.append(args),
+    )
+    duplicate_worker.run_once()
+    assert alerts == []
+
+
+def test_news_worker_separates_notification_failure_from_evidence_ingestion():
+    item = NewsItem("https://www.reuters.com/story", "Fed emergency rate decision")
+    worker = NewsPollingWorker(
+        FakeProvider([item]),
+        FakeCorrelator(),
+        interval_seconds=30,
+        on_evidence=lambda *args: (_ for _ in ()).throw(RuntimeError("private sink detail")),
+    )
+
+    status = worker.run_once()
+
+    assert status["last_state"] == "POLL_SUCCEEDED"
+    assert status["last_notification_errors"] == 1
+    assert "private sink detail" not in str(status)
