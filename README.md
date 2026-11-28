@@ -80,3 +80,23 @@ Para validação local, execute `python app.py` em um ambiente Python compatíve
 O software necessário para o núcleo, as fronteiras de execução DEMO, a integração IC Markets MT5 DEMO e a interface atual do ecossistema está implementado e coberto pela suíte de testes/CI. REAL permanece separado e condicionado às barreiras explícitas de produção e à confirmação humana.
 
 Novos trabalhos devem ser motivados por uma necessidade concreta, defeito encontrado na validação ou expansão funcional real; não devem criar P-steps artificiais apenas para prolongar o projeto.
+
+
+## Bootstrap confiável do runtime independente
+
+O container independente inicia por `standalone_app.py`. Para ativar integrações externas, o operador pode fornecer um módulo Python confiável dentro da imagem/ambiente e configurar:
+
+```text
+CONTROLADOR_STANDALONE_RUNTIME_FACTORY=meu_pacote.runtime_host:build_runtime
+```
+
+A função configurada deve receber zero argumentos e retornar uma instância ativa de `integration.standalone_runtime.StandaloneRuntime`. Nela, o host injeta os componentes provisionados fora do repositório, como cipher/KMS, cliente OAuth e transporte cTrader, resolvedor de segredos e factories de provedores, sinks de notificação e adaptadores confiáveis de calendário/notícias.
+
+Regras de segurança:
+- O nome do módulo é configuração privilegiada do operador; nunca pode vir de query, header ou corpo de requisição.
+- O módulo e suas dependências precisam estar instalados na imagem/ambiente de execução.
+- O bootstrap não deve gravar segredos no repositório, na imagem ou em logs; use o cofre/KMS do ambiente.
+- Se o módulo não puder ser importado, a função não existir, falhar ou retornar objeto diferente de um `StandaloneRuntime` ativo, o processo aborta a inicialização. Não há fallback silencioso para um runtime parcialmente configurado.
+- Sem essa variável, o container mantém o caminho padrão local e fail-closed; endpoints que dependem de integrações externas permanecem explicitamente não configurados.
+
+O bootstrap é um mecanismo de injeção, não uma integração pronta: cada adapter, credencial, política de fontes, worker e entrega externa ainda precisa de configuração e validação real.
