@@ -82,7 +82,8 @@ def _sample_excess_kurtosis(values: list[float], mean: float, std: float) -> flo
 
 
 def _sharpe_variance_numerator(sharpe: float, skew: float, excess_kurtosis: float) -> float:
-    value = 1.0 - skew * sharpe + (excess_kurtosis / 4.0) * sharpe**2
+    # PSR uses non-excess kurtosis gamma_4; this input is excess kurtosis.
+    value = 1.0 - skew * sharpe + ((excess_kurtosis + 2.0) / 4.0) * sharpe**2
     if not math.isfinite(value):
         return 0.0
     return max(value, 0.0)
@@ -98,9 +99,12 @@ def _psr(sharpe: float | None, benchmark: float, n: int, skew: float, excess_kur
     return _normal_cdf(z_score)
 
 
-def _deflated_benchmark(variance: float, trials: int) -> float:
+def _deflated_benchmark(trial_sharpes: list[float]) -> float:
+    trials = len(trial_sharpes)
     if trials <= 1:
         return 0.0
+    mean = sum(trial_sharpes) / trials
+    variance = sum((value - mean) ** 2 for value in trial_sharpes) / (trials - 1)
     p1 = 1.0 - 1.0 / trials
     p2 = 1.0 - 1.0 / (trials * math.e)
     expected_max = (1.0 - _EULER_GAMMA) * _normal_ppf(p1) + _EULER_GAMMA * _normal_ppf(p2)
@@ -161,6 +165,7 @@ def evaluate_strategy_robustness(
     *,
     benchmark_returns: Iterable[float] | None,
     stress_returns: Iterable[float] | None,
+    selection_trial_sharpes: Iterable[float] | None,
     trade_count: int,
     stress_cost_multiplier: float,
     num_trials: int,
@@ -198,6 +203,17 @@ def evaluate_strategy_robustness(
     n = len(values)
     benchmark: list[float] = []
     stress: list[float] = []
+    trial_sharpes: list[float] = []
+    if selection_trial_sharpes is not None:
+        for value in selection_trial_sharpes:
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError("selection_trial_sharpes must contain only finite numeric values")
+            numeric = float(value)
+            if not math.isfinite(numeric):
+                raise ValueError("selection_trial_sharpes must contain only finite numeric values")
+            trial_sharpes.append(numeric)
+        if len(trial_sharpes) != num_trials:
+            raise ValueError("selection_trial_sharpes length must equal num_trials")
     if stress_returns is not None:
         for value in stress_returns:
             if isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -221,6 +237,8 @@ def evaluate_strategy_robustness(
     base: dict[str, object] = {
         "sample_count": n,
         "num_trials": num_trials,
+        "selection_trial_count": len(trial_sharpes),
+        "selection_trial_sharpe_variance": (sum((x - sum(trial_sharpes) / len(trial_sharpes)) ** 2 for x in trial_sharpes) / (len(trial_sharpes) - 1) if len(trial_sharpes) > 1 else 0.0) if trial_sharpes else None,
         "periods_per_year": periods_per_year,
         "out_of_sample": out_of_sample,
         "costs_included": costs_included,
@@ -252,6 +270,9 @@ def evaluate_strategy_robustness(
     if not benchmark:
         base["reasons"] = ["An aligned untouched out-of-sample benchmark is required."]
         return base
+    if len(trial_sharpes) != num_trials:
+        base["reasons"] = ["Provide the selection-period Sharpe for every strategy trial; DSR cannot be inferred from the selected strategy alone."]
+        return base
     if not stress:
         base["reasons"] = ["A second out-of-sample run with at least 2x transaction costs is required."]
         return base
@@ -275,9 +296,7 @@ def evaluate_strategy_robustness(
         base["reasons"] = ["Benchmark needs at least two aligned out-of-sample returns."]
         return base
     psr = _psr(period_sharpe, benchmark_period_sharpe, n, skew, excess_kurtosis)
-    variance_numerator = _sharpe_variance_numerator(period_sharpe, skew, excess_kurtosis) if period_sharpe is not None else None
-    sharpe_variance = variance_numerator / (n - 1) if variance_numerator is not None else None
-    deflated_benchmark = _deflated_benchmark(sharpe_variance, num_trials) if sharpe_variance is not None else None
+    deflated_benchmark = _deflated_benchmark(trial_sharpes) if trial_sharpes else None
     dsr = _psr(period_sharpe, deflated_benchmark, n, skew, excess_kurtosis) if deflated_benchmark is not None else None
     bootstrap = _block_bootstrap_sharpe(
         values, paths=bootstrap_paths, block_size=block_size,
@@ -303,7 +322,7 @@ def evaluate_strategy_robustness(
         and positive_fraction is not None and positive_fraction >= 0.60
         and stress_annual_sharpe is not None
         and benchmark_period_sharpe is not None
-        and stress_annual_sharpe > benchmark_period_sharpe * math.sqrt(periods_per_year)
+        and stress_annual_sharpe > 0.0
     ):
         verdict = "ROBUST_REQUIRES_REVIEW"
         reasons.append("Statistical diagnostics passed; independent review and regime/cost checks are still required.")
@@ -317,8 +336,8 @@ def evaluate_strategy_robustness(
             reasons.append("Deflated Sharpe confidence is below 0.90 after accounting for trials.")
         if positive_fraction is None or positive_fraction < 0.60:
             reasons.append("Positive Sharpe stability is below 60% of rolling windows.")
-        if stress_annual_sharpe is None or stress_annual_sharpe <= benchmark_period_sharpe * math.sqrt(periods_per_year):
-            reasons.append("The strategy does not outperform the aligned benchmark after the 2x-cost stress run.")
+        if stress_annual_sharpe is None or stress_annual_sharpe <= 0.0:
+            reasons.append("The strategy does not retain a positive Sharpe ratio after the declared 2x-cost stress run.")
 
     base.update({
         "annualized_sharpe": annual_sharpe,
@@ -327,7 +346,7 @@ def evaluate_strategy_robustness(
         "stress_annualized_sharpe": stress_annual_sharpe,
         "probabilistic_sharpe_ratio": psr,
         "deflated_sharpe_ratio": dsr,
-        "sharpe_variance": sharpe_variance,
+        "deflated_sharpe_benchmark": deflated_benchmark,
         "bootstrap": bootstrap,
         "rolling_window": window,
         "rolling_window_count": len(rolling),
