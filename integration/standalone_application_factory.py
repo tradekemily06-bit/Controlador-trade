@@ -45,6 +45,7 @@ def build_standalone_application(
     market_analyzer: Any | None = None,
     market_data_registry: Any | None = None,
     economic_calendar_store: Any | None = None,
+    strategy_trial_ledger: Any | None = None,
 ) -> UnifiedEcosystemApplication:
     """Compose six visible areas and internal capabilities around one shared intelligence coordinator.
 
@@ -186,6 +187,38 @@ def build_standalone_application(
     def study(task: str, context: Mapping[str, Any], shared: UnifiedIntelligence):
         operation = str(context.get("operation", "overview")).strip().lower()
         learning = ecosystem_service.learning_summary()
+        if operation in {"strategy_trials", "strategy_trial_history"}:
+            if strategy_trial_ledger is None:
+                return {"status": "STRATEGY_TRIAL_LEDGER_NOT_CONFIGURED", "execution_authorized": False}
+            experiment_id = context.get("experiment_id")
+            if not isinstance(experiment_id, str) or not experiment_id.strip():
+                raise ValueError("experiment_id é obrigatório")
+            return _plain({
+                "strategy_trials": strategy_trial_ledger.list_experiment(
+                    context.get("tenant_context") or context.get("owner_context"),
+                    experiment_id,
+                ),
+                "execution_authorized": False,
+            })
+        if operation in {"record_selection_trial", "record_holdout_evaluation"}:
+            if strategy_trial_ledger is None:
+                return {"status": "STRATEGY_TRIAL_LEDGER_NOT_CONFIGURED", "execution_authorized": False}
+            owner = context.get("tenant_context") or context.get("owner_context")
+            if operation == "record_selection_trial":
+                result = strategy_trial_ledger.record_selection_trial(owner, **{
+                    key: context.get(key) for key in (
+                        "experiment_id", "trial_id", "strategy_version", "dataset_id",
+                        "dataset_fingerprint", "window_start", "window_end", "evaluated_at", "metrics",
+                    )
+                })
+            else:
+                result = strategy_trial_ledger.record_holdout_evaluation(owner, **{
+                    key: context.get(key) for key in (
+                        "experiment_id", "trial_id", "strategy_version", "dataset_id",
+                        "dataset_fingerprint", "window_start", "window_end", "evaluated_at", "metrics",
+                    )
+                })
+            return _plain({"strategy_trial": result, "execution_authorized": False})
         if operation in {"replay", "laboratory_replay"}:
             cases = context.get("cases")
             if not isinstance(cases, list) or not cases or len(cases) > 100:
