@@ -127,3 +127,11 @@ O documento dizia que P53 era o último marco confirmado e que P54+ não deveria
 - OperationLearningJournal.create_note cria um objeto em memória; ResultLearningBridge usa OperationLearningJournal por padrão e P139 cria ResultLearningBridge por padrão. Não foi encontrada persistência tenant-scoped durável para essas notas/handoffs no fluxo P138/P139.
 - A conclusão é específica: a cadeia antiga existe e é testada como composição de domínio, mas não está comprovada como memória operacional durável, tenant-isolated e consumida pela área Estudo no aplicativo standalone. Não ligar o endpoint legado diretamente: primeiro será necessário definir a origem confiável do outcome, persistência tenant-scoped, identidade do runtime, backup/restore, retenção, idempotência e API read-only.
 - Próxima implementação dessa fundação: criar/adaptar um store append-only tenant-scoped para snapshots/outcomes/handoffs e suas referências de proveniência; compor somente após resultado externo reconciliado; expor leitura e revisão na área Estudo; preservar hipóteses separadas de conhecimento validado; testes de isolamento, replay/idempotência, backup/restore e ausência de autoridade de execução. Se não houver outcome confiável, registrar NOT_AVAILABLE/UNVERIFIED e não aprender.
+
+
+## P1–P22 — recuperação parcial de artefatos — 28 de novembro de 2026
+
+- A busca histórica encontrou P10_PLAN.md, que define runtime limitado, ciclos explícitos, criação de plano somente quando a decisão é EXECUTAR, gateway/coordinator obrigatório, parada segura e DEMO-only. O plano declara explicitamente que polling contínuo e scheduling ficam fora do P10.
+- A busca encontrou referências de P12/P13 em core/trading_runtime.py e integration/ecosystem_configuration_runtime.py, mas não recuperou ainda os planos completos correspondentes.
+- As buscas por planos P01–P09, P11 e P14–P22 não localizaram documentos com os nomes pesquisados. Isso não prova que o trabalho não exista; significa que os artefatos ainda precisam ser recuperados por histórico de commits, nomes alternativos e testes.
+- Resultado: P1–P22 continua como auditoria histórica incompleta. Não preencher nomes/escopos ausentes por inferência e não considerar a faixa fechada.
