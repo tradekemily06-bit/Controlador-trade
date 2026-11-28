@@ -50,6 +50,7 @@ def build_standalone_application(
     economic_calendar_store: Any | None = None,
     strategy_trial_ledger: Any | None = None,
     strategy_trial_context: Any | None = None,
+    market_snapshot_store: Any | None = None,
 ) -> UnifiedEcosystemApplication:
     """Compose six visible areas and internal capabilities around one shared intelligence coordinator.
 
@@ -211,6 +212,54 @@ def build_standalone_application(
                 candles_payload=context.get("candles"),
                 take_profit_distance=context.get("take_profit_distance"),
                 stop_loss_distance=context.get("stop_loss_distance"),
+            )
+            return _plain(result)
+        if operation == "evaluate_registered_snapshot_trial":
+            if strategy_trial_ledger is None:
+                return {"status": "STRATEGY_TRIAL_LEDGER_NOT_CONFIGURED", "execution_authorized": False}
+            if strategy_trial_context is None:
+                return {"status": "TRUSTED_TENANT_CONTEXT_NOT_CONFIGURED", "execution_authorized": False}
+            if market_snapshot_store is None:
+                return {"status": "MARKET_SNAPSHOT_STORE_NOT_CONFIGURED", "execution_authorized": False}
+            snapshot_id = context.get("snapshot_id")
+            if not isinstance(snapshot_id, str) or not snapshot_id.strip():
+                raise ValueError("snapshot_id is required")
+            snapshot = market_snapshot_store.get(strategy_trial_context, snapshot_id)
+            if snapshot is None:
+                return {"status": "MARKET_SNAPSHOT_NOT_FOUND", "execution_authorized": False}
+            candles_payload = snapshot["payload"]["candles"]
+            if len(candles_payload) < 30:
+                return {
+                    "status": "INSUFFICIENT_SNAPSHOT_HISTORY",
+                    "required_candles": 30,
+                    "available_candles": len(candles_payload),
+                    "execution_authorized": False,
+                }
+            phase = str(context.get("phase", "")).strip().upper()
+            if phase not in {"SELECTION", "HOLDOUT"}:
+                raise ValueError("phase must be SELECTION or HOLDOUT")
+            result = evaluate_registered_strategy_trial(
+                ledger=strategy_trial_ledger,
+                tenant_context=strategy_trial_context,
+                phase=phase,
+                experiment_id=context.get("experiment_id"),
+                trial_id=context.get("trial_id"),
+                strategy_version=context.get("strategy_version"),
+                dataset_id=snapshot_id,
+                candles_payload=candles_payload,
+                take_profit_distance=context.get("take_profit_distance"),
+                stop_loss_distance=context.get("stop_loss_distance"),
+            )
+            result["data_provenance"]["persisted_market_snapshot"] = {
+                "snapshot_id": snapshot["snapshot_id"],
+                "source_id": snapshot["source_id"],
+                "symbol": snapshot["symbol"],
+                "timeframe": snapshot["timeframe"],
+                "payload_sha256": snapshot["payload_sha256"],
+                "provenance_status": snapshot["provenance_status"],
+            }
+            result["research_limitations"].append(
+                "The replay uses an immutable server-stored snapshot, but provider authenticity and independent candle verification are not established."
             )
             return _plain(result)
         if operation == "evaluate_historical_trial":
