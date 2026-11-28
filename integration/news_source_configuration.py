@@ -74,6 +74,23 @@ def build_news_evidence_from_environment(
             host_owners[normalized] = policy.source_id
         policies[policy.source_id] = policy
 
+    # Parent-domain policies also match subdomains. Reject overlapping trust
+    # scopes now, instead of letting a later headline become ambiguous.
+    for source_id, policy in policies.items():
+        for host in policy.allowed_hosts:
+            normalized = host.strip().lower().rstrip(".")
+            matches = [
+                candidate_id
+                for candidate_id, candidate in policies.items()
+                if any(
+                    normalized == allowed.strip().lower().rstrip(".")
+                    or normalized.endswith("." + allowed.strip().lower().rstrip("."))
+                    for allowed in candidate.allowed_hosts
+                )
+            ]
+            if matches != [source_id]:
+                raise ValueError("host de notícias atribuído a mais de uma fonte confiável")
+
     store = SQLiteNewsEvidenceStore(
         Path(runtime_dir) / "news-evidence.sqlite3",
         tenant_id=tenant_id,
