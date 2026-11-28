@@ -40,7 +40,7 @@ Remote clients must use `GET /api/notifications/status` for their own notificati
 A configured/registered provider is not proof of a live connection. The deployment marker is deliberately not a production deployment claim. All variants return `execution_authorized: false`.
 
 ### `GET /api/areas`
-Returns the seven visible application areas.
+Returns exactly six visible application areas, in the approved order: Cabine de Comando, Análise, Estudo, Reserva Fiscal, Assistente do Ecossistema and Central. Decision memory is an internal capability exposed through existing area workflows and dedicated memory APIs; it is not a navigation area.
 
 ### `GET /api/intelligence/architecture`
 Returns area descriptions, shared-intelligence architecture and handler status.
