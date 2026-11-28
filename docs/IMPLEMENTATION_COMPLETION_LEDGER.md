@@ -127,3 +127,26 @@ Nothing is closed merely by being listed or implemented. Each checkbox needs a l
 - All four workflow jobs passed: P1.9 robustness + full test suite + dependency audit + Python compilation + production/analyst container builds and health smokes; Windows PowerShell validation; protected-branch compatibility; required commit-status publication.
 - This closes the previously pending CI confirmation for the current PR tip. It does not prove live broker sessions, official calendar adapters, shared production storage/KMS, hosted worker continuity, real-device push delivery, or Lovable end-to-end acceptance.
 - PR #534 remains draft, open and unmerged. No deployment, REAL activation, order route, or frontend change was performed.
+
+
+## Three-front continuation — 28 November 2026
+
+### Analysis and intelligence
+- NewsPollingWorker no longer advances `last_success_at` when one or more returned items fail URL validation or evidence ingestion. A partially processed poll remains `PARTIAL` and does not mask a degraded evidence pipeline as fully successful.
+- Added regression coverage for partial rejection and for a valid empty live poll.
+
+### Connections and market data
+- MarketDataProviderRegistry now supports a host-configured provider heartbeat freshness window (1–3600 seconds) and future-clock tolerance (0–30 seconds), with finite-number and boolean rejection.
+- The default remains 30 seconds of heartbeat age and 5 seconds of future tolerance. Deployments can match the threshold to a provider's actual heartbeat cadence rather than falsely marking a slower but healthy adapter stale.
+- Added tests for a 45-second heartbeat under a 60-second configured threshold and invalid configuration values. This changes connection health classification only; it does not establish a broker handshake or market-data feed.
+
+### Notifications and infrastructure
+- NotificationOutboxWorker now rejects booleans, NaN, infinity and out-of-range poll intervals; accepted interval is 0.1–3600 seconds.
+- Stop timeout is now validated as a finite value from 0–60 seconds, preventing malformed runtime configuration from crashing the worker shutdown path.
+- Added regression tests for both timing boundaries.
+
+### Validation boundary
+- Code commits: `1dcb0693` (news success semantics), `8004fb29` (notification timing validation), `642cfa01` (provider heartbeat configuration), `112b219e` (provider tests), `4b6858d3` (worker hardening tests).
+- Current code head: `4b6858d3b2acacff4140a47c1167a426a0937156`.
+- At the time of this update, GitHub has not exposed a CI workflow run or commit status for this exact head. These changes are committed but must not be described as CI-validated until the full pipeline runs and passes.
+- No live provider test, production deployment, hosted worker continuity, push delivery, Lovable UI modification, merge, or REAL/order enablement was performed.
