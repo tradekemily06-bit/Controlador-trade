@@ -40,7 +40,8 @@ class SQLiteEconomicCalendarStore:
                     source_id TEXT NOT NULL,
                     source_event_id TEXT NOT NULL,
                     observed_at TEXT NOT NULL,
-                    scheduled_at TEXT NOT NULL,
+                    scheduled_at TEXT,
+                    scheduled_date TEXT,
                     status TEXT NOT NULL,
                     impact TEXT NOT NULL,
                     payload_json TEXT NOT NULL,
@@ -48,10 +49,18 @@ class SQLiteEconomicCalendarStore:
                 )
                 """
             )
+            columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(economic_calendar_observations)")
+            }
+            if "scheduled_date" not in columns:
+                connection.execute(
+                    "ALTER TABLE economic_calendar_observations ADD COLUMN scheduled_date TEXT"
+                )
             connection.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_economic_calendar_scheduled
-                ON economic_calendar_observations (scheduled_at, source_id)
+                ON economic_calendar_observations (scheduled_at, scheduled_date, source_id)
                 """
             )
 
@@ -65,7 +74,8 @@ class SQLiteEconomicCalendarStore:
                 event.source_id,
                 event.source_event_id,
                 event.observed_at.isoformat(),
-                event.scheduled_at.isoformat(),
+                event.scheduled_at.isoformat() if event.scheduled_at is not None else "",
+                event.scheduled_date.isoformat() if event.scheduled_date is not None else None,
                 event.status.value,
                 event.impact.value,
                 json.dumps(event.to_dict(), ensure_ascii=False, sort_keys=True, separators=(",", ":")),
@@ -76,8 +86,8 @@ class SQLiteEconomicCalendarStore:
             cursor = connection.executemany(
                 """
                 INSERT OR IGNORE INTO economic_calendar_observations
-                (source_id, source_event_id, observed_at, scheduled_at, status, impact, payload_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (source_id, source_event_id, observed_at, scheduled_at, scheduled_date, status, impact, payload_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 rows,
             )
@@ -104,17 +114,24 @@ class SQLiteEconomicCalendarStore:
                 """
                 SELECT payload_json
                 FROM economic_calendar_observations AS current
-                WHERE current.scheduled_at >= ? AND current.scheduled_at <= ?
+                WHERE (
+                    (current.scheduled_at IS NOT NULL AND current.scheduled_at != ''
+                     AND current.scheduled_at >= ? AND current.scheduled_at <= ?)
+                    OR
+                    (current.scheduled_date IS NOT NULL
+                     AND current.scheduled_date >= ? AND current.scheduled_date <= ?)
+                  )
                   AND current.observed_at = (
                     SELECT MAX(previous.observed_at)
                     FROM economic_calendar_observations AS previous
                     WHERE previous.source_id = current.source_id
                       AND previous.source_event_id = current.source_event_id
                   )
-                ORDER BY current.scheduled_at ASC, current.source_id ASC
+                ORDER BY COALESCE(NULLIF(current.scheduled_at, ''), current.scheduled_date) ASC,
+                         current.source_id ASC
                 LIMIT ?
                 """,
-                (start, end, limit),
+                (start, end, start[:10], end[:10], limit),
             ).fetchall()
         return [json.loads(row["payload_json"]) for row in rows]
 
