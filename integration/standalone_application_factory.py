@@ -12,6 +12,7 @@ from enum import Enum
 from typing import Any, Mapping
 
 from assistant.chat_service import EcosystemAssistant
+from analysis.historical_trial_evaluator import evaluate_and_record_trial
 from core.senior_context_orchestrator import SeniorContextInput
 from core.unified_intelligence import ApplicationArea, UnifiedIntelligence
 from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
@@ -188,6 +189,28 @@ def build_standalone_application(
     def study(task: str, context: Mapping[str, Any], shared: UnifiedIntelligence):
         operation = str(context.get("operation", "overview")).strip().lower()
         learning = ecosystem_service.learning_summary()
+        if operation == "evaluate_historical_trial":
+            if strategy_trial_ledger is None:
+                return {"status": "STRATEGY_TRIAL_LEDGER_NOT_CONFIGURED", "execution_authorized": False}
+            if strategy_trial_context is None:
+                return {"status": "TRUSTED_TENANT_CONTEXT_NOT_CONFIGURED", "execution_authorized": False}
+            phase = str(context.get("phase", "")).strip().upper()
+            if phase not in {"SELECTION", "HOLDOUT"}:
+                raise ValueError("phase must be SELECTION or HOLDOUT")
+            result = evaluate_and_record_trial(
+                ledger=strategy_trial_ledger,
+                tenant_context=strategy_trial_context,
+                phase=phase,
+                experiment_id=context.get("experiment_id"),
+                trial_id=context.get("trial_id"),
+                strategy_version=context.get("strategy_version"),
+                dataset_id=context.get("dataset_id"),
+                candles_payload=context.get("candles"),
+                decisions_payload=context.get("decisions"),
+                take_profit_distance=context.get("take_profit_distance"),
+                stop_loss_distance=context.get("stop_loss_distance"),
+            )
+            return _plain(result)
         if operation in {"strategy_trials", "strategy_trial_history"}:
             if strategy_trial_ledger is None:
                 return {"status": "STRATEGY_TRIAL_LEDGER_NOT_CONFIGURED", "execution_authorized": False}
