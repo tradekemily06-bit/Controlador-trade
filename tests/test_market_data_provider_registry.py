@@ -142,8 +142,6 @@ class MarketDataProviderRegistryTests(unittest.TestCase):
             registry.select("unknown")
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
     def test_provider_heartbeat_freshness_can_match_adapter_interval(self):
@@ -166,3 +164,7 @@ if __name__ == "__main__":
             with self.subTest(value=value):
                 with self.assertRaises(ValueError):
                     MarketDataProviderRegistry(heartbeat_max_age_seconds=value)
+
+
+if __name__ == "__main__":
+    unittest.main()
