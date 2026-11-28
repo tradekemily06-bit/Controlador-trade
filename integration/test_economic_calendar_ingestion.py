@@ -247,3 +247,29 @@ def test_calendar_polling_worker_starts_and_stops_cleanly(tmp_path):
 
     assert worker.status()["worker_running"] is False
     assert worker.status()["sources"]["bls"]["state"] == "INGESTED"
+
+
+@pytest.mark.parametrize("timeout", [True, float("nan"), float("inf"), -1, 61])
+def test_calendar_polling_worker_rejects_invalid_shutdown_timeout(tmp_path, timeout):
+    from integration.economic_calendar_ingestion import EconomicCalendarPollingWorker
+
+    _, service = _service(tmp_path / "calendar-worker-stop.sqlite3")
+    worker = EconomicCalendarPollingWorker(
+        service, {"bls": lambda: [_payload()]}, interval_seconds=30
+    )
+
+    with pytest.raises(ValueError, match="timeout"):
+        worker.stop(timeout=timeout)
+
+
+def test_calendar_polling_worker_accepts_zero_shutdown_timeout(tmp_path):
+    from integration.economic_calendar_ingestion import EconomicCalendarPollingWorker
+
+    _, service = _service(tmp_path / "calendar-worker-zero-stop.sqlite3")
+    worker = EconomicCalendarPollingWorker(
+        service, {"bls": lambda: [_payload()]}, interval_seconds=30
+    )
+
+    worker.stop(timeout=0)
+
+    assert worker.status()["worker_running"] is False
