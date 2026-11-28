@@ -110,9 +110,16 @@ class NewsPollingWorker:
                 errors += 1
                 continue
             try:
+                source_resolver = getattr(
+                    self.evidence_correlator, "source_id_for_url", None
+                )
+                # Production corroborators resolve publisher identity from
+                # trusted host policy. Generic test/adaptor doubles without
+                # that contract retain the host identifier behavior.
+                source_id = source_resolver(article_url) if callable(source_resolver) else host
                 self.evidence_correlator.ingest(
                     item,
-                    source_id=host,
+                    source_id=source_id,
                     ingested_at=ingested_at,
                 )
                 processed += 1
