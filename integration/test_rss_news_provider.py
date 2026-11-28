@@ -115,3 +115,41 @@ def test_atom_provider_parses_namespaced_article_link_and_publication():
     assert items[0].url == "https://www.cnbc.com/atom-story"
     assert items[0].source == "Market Wire"
     assert items[0].published_at == "2026-11-26T12:00:00+00:00"
+
+
+
+@pytest.mark.parametrize("url", [
+    "https://www.cnbc.com:8443/feed",
+    "https://www.cnbc.com:0/feed",
+    "https://www.cnbc.com/feed#fragment",
+    "https://user@www.cnbc.com/feed",
+])
+def test_rss_provider_rejects_nonstandard_or_ambiguous_urls(url):
+    with pytest.raises(ValueError):
+        RSSNewsProvider([url])
+
+
+@pytest.mark.parametrize("timeout", [float("nan"), float("inf"), -float("inf"), 0, -1, 31, True])
+def test_rss_provider_rejects_nonfinite_or_unbounded_timeout(timeout):
+    with pytest.raises(ValueError):
+        RSSNewsProvider(["https://www.cnbc.com/feed"], timeout_seconds=timeout)
+
+
+def test_default_http_client_rejects_redirects_before_following_them():
+    from urllib.error import HTTPError
+
+    from integration.rss_news_provider import _RejectRedirectHandler
+
+    handler = _RejectRedirectHandler()
+    request = __import__("urllib.request", fromlist=["Request"]).Request(
+        "https://www.cnbc.com/feed"
+    )
+    with pytest.raises(HTTPError, match="redirects are disabled"):
+        handler.redirect_request(
+            request,
+            object(),
+            302,
+            "Found",
+            {},
+            "https://attacker.example/collect",
+        )

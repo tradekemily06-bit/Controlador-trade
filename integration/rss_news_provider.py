@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ipaddress
+import math
 import os
 import socket
 import xml.etree.ElementTree as ET
@@ -9,7 +10,8 @@ from datetime import timezone
 from email.utils import parsedate_to_datetime
 from typing import Callable
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.error import HTTPError
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from analysis.news_event_intelligence import classify_market_news
 
@@ -42,6 +44,19 @@ class UnconfiguredNewsProvider(NewsProvider):
         return []
 
 
+class _RejectRedirectHandler(HTTPRedirectHandler):
+    """Reject redirects before urllib can issue a request to another host."""
+
+    def redirect_request(self, request, response, code, message, headers, new_url):
+        raise HTTPError(
+            request.full_url,
+            code,
+            "redirects are disabled for configured news feeds",
+            headers,
+            None,
+        )
+
+
 class RSSNewsProvider(NewsProvider):
     """Read-only RSS/Atom reader. Feed URLs are explicit server configuration."""
 
@@ -63,15 +78,21 @@ class RSSNewsProvider(NewsProvider):
         feed_urls: list[str],
         *,
         timeout_seconds: float = 8.0,
-        opener: Callable = urlopen,
+        opener: Callable | None = None,
     ) -> None:
         if not feed_urls:
             raise ValueError("ao menos uma URL de feed deve ser configurada")
-        if timeout_seconds <= 0:
-            raise ValueError("timeout_seconds deve ser positivo")
+        if (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, (int, float))
+            or not math.isfinite(timeout_seconds)
+            or timeout_seconds <= 0
+            or timeout_seconds > 30
+        ):
+            raise ValueError("timeout_seconds deve ser finito, positivo e no máximo 30")
         self.feed_urls = tuple(self._validate_url(url) for url in feed_urls)
-        self.timeout_seconds = timeout_seconds
-        self._opener = opener
+        self.timeout_seconds = float(timeout_seconds)
+        self._opener = opener or build_opener(_RejectRedirectHandler()).open
         self._last_status = {"configured": True, "live": False, "feed_count": len(self.feed_urls), "last_error": None}
 
     @classmethod
@@ -80,8 +101,19 @@ class RSSNewsProvider(NewsProvider):
             raise ValueError("URL de feed inválida")
         parsed = urlparse(value.strip())
         host = (parsed.hostname or "").lower().rstrip(".")
-        if parsed.scheme != "https" or not host or parsed.username or parsed.password:
-            raise ValueError("feeds devem usar HTTPS e não podem conter credenciais")
+        try:
+            port = parsed.port
+        except ValueError as exc:
+            raise ValueError("porta da URL de feed inválida") from exc
+        if (
+            parsed.scheme != "https"
+            or not host
+            or parsed.username
+            or parsed.password
+            or port not in (None, 443)
+            or parsed.fragment
+        ):
+            raise ValueError("feeds devem usar HTTPS na porta padrão e não podem conter credenciais ou fragmentos")
         try:
             address = ipaddress.ip_address(host)
         except ValueError:
