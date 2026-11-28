@@ -191,6 +191,7 @@ class StandaloneRuntime:
         ctrader_transport_factory=None,
         economic_calendar_worker=None,
         economic_calendar_store=None,
+        news_evidence_correlator=None,
     ) -> None:
         configured_identity = os.getenv("CONTROLADOR_SINGLE_USER_IDENTITY", "").strip()
         if not configured_identity:
@@ -442,12 +443,22 @@ class StandaloneRuntime:
                     interval_seconds=backup_interval,
                 )
                 self.backup_scheduler.start()
+            if news_evidence_correlator is not None:
+                evidence_store = getattr(news_evidence_correlator, "store", None)
+                if evidence_store is not None and (
+                    getattr(evidence_store, "tenant_id", None) != self.local_tenant_context.tenant_id
+                    or getattr(evidence_store, "subject_id", None) != self.local_tenant_context.subject_id
+                ):
+                    raise PermissionError(
+                        "news evidence store must be scoped to this runtime's trusted local identity"
+                    )
             self.ecosystem_service = EcosystemService(
                 decision_store=DecisionStore(str(self.runtime_dir / "decision-memory.sqlite3")),
                 learning_state_store=LearningStateStore(ecosystem_state_store),
                 notification_state_store=ecosystem_state_store,
                 notification_outbox=self.notification_outbox,
                 news_provider=RSSNewsProvider.from_environment(),
+                news_evidence_correlator=news_evidence_correlator,
             )
             self.intelligence = UnifiedIntelligence(
                 senior_context=self.ecosystem_service.senior_context

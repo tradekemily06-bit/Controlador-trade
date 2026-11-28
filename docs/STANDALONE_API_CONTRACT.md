@@ -62,6 +62,10 @@ The area and task are required strings; context must be an object. The selected 
 
 For the existing `analysis` area, `context.operation="economic_calendar"` or `"calendar"` accepts `start_at`, `end_at` (timezone-aware ISO-8601) and optional `limit` (1–5000). When an economic-calendar store is injected, the route returns the latest stored publisher-scoped observations in that range; it reports `live: false` and `source_refresh: NOT_REPORTED` because this query does not fetch or schedule source updates. Without a store it returns `CALENDAR_STORE_NOT_CONFIGURED`. Calendar ingestion remains a server-side adapter task; local SQLite storage is single-runtime only. For `context.operation="news"`, the same Análise handler returns RSS/Atom items and conservative headline classifications. When a trusted, owner-scoped news evidence correlator is injected, it also returns `evidence_processing` records; missing or unconfigured publisher policies are counted as partial processing, and storage failure does not suppress the news read. Cross-publisher matches remain review candidates marked `UNVERIFIED_REPORT`, never confirmed facts or directional signals.
 
+### News evidence integration
+
+The local runtime accepts an optional host-composed `news_evidence_correlator`. When its SQLite store is used, place it at `CONTROLADOR_RUNTIME_DIR/news-evidence.sqlite3` and bind it to the runtime's trusted local tenant/subject identity; startup rejects a mismatched owner. The existing Análise news response then persists source-aware evidence and exposes processing status. The store is included in local backup/readiness inventory. A correlator is not created from untrusted browser configuration, and no automatic fact confirmation or directional inference is performed.
+
 ## Market data and timeframe monitoring
 
 ### `GET /api/market-data/providers`
