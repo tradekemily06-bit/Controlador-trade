@@ -218,7 +218,7 @@ class SQLiteNewsEvidenceStore:
 
 
 class NewsEvidenceCorroborator:
-    """Candidate matcher; persistence is supplied by an owner-scoped store.
+    """Candidate matcher; persistence is supplied by an owner-scoped store."""
 
     def __init__(
         self,
