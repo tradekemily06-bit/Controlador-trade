@@ -11,10 +11,9 @@ import math
 from datetime import datetime, timezone
 from typing import Any, Mapping, Sequence
 
-from core.backtest_engine import TradeResult
 from core.decision_engine import DecisionResult, FinalDecision
 from core.historical_validation import HistoricalValidationEngine
-from core.market_data import Candle
+from data.models import Candle
 from core.models import Signal
 
 
