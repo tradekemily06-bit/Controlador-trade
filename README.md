@@ -1,5 +1,7 @@
 # Controlador Trading
 
+> **Nota sobre a arquitetura atual (28/11/2026):** este README preserva instruções do runtime/integração operacional histórica. A entrega em desenvolvimento é o aplicativo analista independente iniciado por `standalone_app.py`, sem dependência de EA e com a interface Lovable preservada. `app.py` e os fluxos MT5 anteriores não comprovam conexão do novo aplicativo standalone. Nesta fundação, SIMULAÇÃO é o modo ativo e REAL, envio de ordens e movimentação financeira permanecem desabilitados. Consulte `docs/STANDALONE_COMPLETION_ROADMAP.md` e `docs/FOUNDATION_RETROACTIVE_AUDIT.md` para o estado atual e as evidências pendentes.
+
 Sistema de análise, decisão, risco, execução e auditoria.
 
 ## Arquitetura
