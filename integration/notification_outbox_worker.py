@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import threading
 import time
 from typing import Any
@@ -27,8 +28,14 @@ class NotificationOutboxWorker:
             raise ValueError("outbox is required")
         if not callable(getattr(sink, "deliver", None)):
             raise ValueError("sink must implement deliver(idempotency_key, payload)")
-        if poll_interval_seconds <= 0:
-            raise ValueError("poll_interval_seconds must be positive")
+        if (
+            isinstance(poll_interval_seconds, bool)
+            or not isinstance(poll_interval_seconds, (int, float))
+            or not math.isfinite(float(poll_interval_seconds))
+            or poll_interval_seconds < 0.1
+            or poll_interval_seconds > 3600
+        ):
+            raise ValueError("poll_interval_seconds must be finite and between 0.1 and 3600")
         if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size < 1:
             raise ValueError("batch_size must be a positive integer")
         self.outbox = outbox
@@ -74,6 +81,14 @@ class NotificationOutboxWorker:
             self._stop.wait(self.poll_interval_seconds)
 
     def stop(self, timeout: float = 5.0) -> None:
+        if (
+            isinstance(timeout, bool)
+            or not isinstance(timeout, (int, float))
+            or not math.isfinite(float(timeout))
+            or timeout < 0
+            or timeout > 60
+        ):
+            raise ValueError("timeout must be finite and between 0 and 60 seconds")
         self._stop.set()
         with self._lock:
             thread = self._thread
