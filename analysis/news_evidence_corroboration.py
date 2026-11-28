@@ -247,6 +247,33 @@ class NewsEvidenceCorroborator:
         self._store = store
         self._records: list[NewsEvidenceRecord] = store.load() if store is not None else []
 
+    def source_id_for_url(self, url: str) -> str:
+        """Resolve an article URL to exactly one trusted configured source policy."""
+        if not isinstance(url, str) or len(url) > 2048:
+            raise ValueError("news URL is invalid")
+        parsed = urlparse(url.strip())
+        host = (parsed.hostname or "").lower().rstrip(".")
+        if parsed.scheme.lower() != "https" or not host or parsed.username or parsed.password:
+            raise ValueError("news URL is outside the trusted source host policy")
+        try:
+            port = parsed.port
+        except ValueError as exc:
+            raise ValueError("news URL has an invalid port") from exc
+        if port not in (None, 443):
+            raise ValueError("news URL is outside the trusted source host policy")
+        matches = [
+            source_id
+            for source_id, policy in self._policies.items()
+            if any(
+                host == allowed.strip().lower().rstrip(".")
+                or host.endswith("." + allowed.strip().lower().rstrip("."))
+                for allowed in policy.allowed_hosts
+            )
+        ]
+        if len(matches) != 1:
+            raise ValueError("news URL must resolve to exactly one configured trusted source")
+        return matches[0]
+
     @staticmethod
     def _validate_url(url: str, policy: NewsSourcePolicy) -> tuple[str, str]:
         if not isinstance(url, str) or len(url) > 2048:
