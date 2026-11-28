@@ -445,17 +445,36 @@ Os seguintes marcos foram confirmados no histórico do repositório e devem ser 
 
 ### P1–P22
 
-Os marcos anteriores existem no histórico do projeto, mas seus textos completos não estão reproduzidos aqui para evitar reconstrução incorreta. **Os artefatos existentes no repositório são a fonte de verdade para P1–P22.** Não inventar detalhes ausentes.
+Os marcos anteriores existem no histórico do projeto, mas seus textos completos não estão reproduzidos aqui. **Os artefatos existentes no repositório são a fonte de verdade para P1–P22.** A recuperação individual de todos os planos, commits e testes permanece pendente e está registrada em `docs/FOUNDATION_RETROACTIVE_AUDIT.md`. Não reconstruir detalhes ausentes.
 
-### P54 em diante
+### P54–P127 — addenda e planos históricos recuperados
 
-**Não preencher por inferência.** As definições exatas de P54, P55, P56 e posteriores devem ser adicionadas somente quando recuperadas de uma especificação anterior ou explicitamente definidas.
+A afirmação anterior de que P53 era o último marco confirmado ficou desatualizada. O repositório contém addenda e planos posteriores, que devem ser preservados:
 
-A ponte conceitual já estabelecida após P53 é:
+- P54–P60: `ROADMAP_P54_P60_ADDENDUM.md`.
+- P61–P70: módulos de avaliação/adaptação e testes correspondentes.
+- P71–P74: ciclo de fechamento/handoff e testes correspondentes.
+- P75–P79: `ROADMAP_P75_P79_ADDENDUM.md`.
+- P80–P85: especificação, execução, resultado, decisão e promoção controlada; teste `core/test_p80_p85_validation_promotion.py`.
+- P86–P89: `ROADMAP_P86_P89_ADDENDUM.md`.
+- P90–P95: `ROADMAP_P90_P95_ADDENDUM.md`.
+- P96–P99: `ROADMAP_P96_P99_ADDENDUM.md`.
+- P100–P105: `ROADMAP_P100_P105_ADDENDUM.md`.
+- P106–P110: `ROADMAP_P106_P110_ADDENDUM.md`.
+- P111–P119: `ROADMAP_P111_P119_ADDENDUM.md`.
+- P120–P127: planos individuais `P120_REAL_RESULT_CONTRACT_PLAN.md`, `P121_PLAN.md` a `P127_PLAN.md`.
+
+A existência desses documentos, classes e testes não declara a integração de todas as etapas com o runtime standalone, a API, persistência produtiva ou interface. A verificação individual e a reconciliação de ponta a ponta permanecem obrigatórias. A sequência não concede autorização REAL.
+
+### P128–P149 — inventário declarado, integração a verificar
+
+`PROJECT_COMPLETION_STATUS.md` declara que artefatos P128–P149 existem no código. Foram localizados, entre outros, `core/p128_learning_handoff.py`, `integration/p138_result_learning_bridge.py` e `integration/p139_post_demo_learning.py`. Não inferir o conteúdo dos demais marcos pelo número. Fazer inventário arquivo a arquivo, recuperar planos e testes, verificar dependências, runtime/API, persistência, isolamento e limites de segurança antes de declarar qualquer item concluído.
+
+A ponte conceitual permanece:
 
 **hipótese → teste/validação → conhecimento confiável → eventual uso controlado.**
 
-Essa ponte não autoriza inventar o conteúdo exato de P54+.
+Não inventar P150 ou qualquer marco posterior. A auditoria retroativa está em `docs/FOUNDATION_RETROACTIVE_AUDIT.md`.
 
 ---
 
