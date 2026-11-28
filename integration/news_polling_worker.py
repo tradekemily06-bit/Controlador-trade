@@ -127,7 +127,11 @@ class NewsPollingWorker:
         now = datetime.now(timezone.utc).isoformat()
         with self._lock:
             self._last_poll_at = now
-            if live:
+            # A successful provider fetch is not a successful evidence cycle
+            # when one or more returned items fail URL validation or ingestion.
+            # Keep the previous success timestamp so readiness can detect a
+            # persistently partial pipeline instead of masking it as healthy.
+            if live and errors == 0:
                 self._last_success_at = now
             self._last_state = state
             self._last_error_class = None
