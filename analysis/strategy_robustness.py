@@ -166,7 +166,9 @@ def evaluate_strategy_robustness(
     *,
     benchmark_returns: Iterable[float] | None,
     stress_returns: Iterable[float] | None,
+    selection_returns: Iterable[float] | None,
     selection_trial_sharpes: Iterable[float] | None,
+    selected_trial_index: int,
     trade_count: int,
     stress_cost_multiplier: float,
     num_trials: int,
@@ -192,6 +194,8 @@ def evaluate_strategy_robustness(
         raise ValueError("bootstrap_paths must be an integer from 0 to 10000")
     if isinstance(block_size, bool) or not isinstance(block_size, int) or block_size < 1:
         raise ValueError("block_size must be a positive integer")
+    if isinstance(selected_trial_index, bool) or not isinstance(selected_trial_index, int) or selected_trial_index < 0:
+        raise ValueError("selected_trial_index must be a non-negative integer")
     values: list[float] = []
     for value in returns:
         if isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -202,6 +206,15 @@ def evaluate_strategy_robustness(
         values.append(numeric)
 
     n = len(values)
+    selection_values: list[float] = []
+    if selection_returns is not None:
+        for value in selection_returns:
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError("selection_returns must contain only finite numeric values")
+            numeric = float(value)
+            if not math.isfinite(numeric) or numeric <= -1.0:
+                raise ValueError("selection_returns must be finite and greater than -100%")
+            selection_values.append(numeric)
     benchmark: list[float] = []
     stress: list[float] = []
     trial_sharpes: list[float] = []
@@ -238,6 +251,8 @@ def evaluate_strategy_robustness(
     base: dict[str, object] = {
         "sample_count": n,
         "num_trials": num_trials,
+        "selection_period_count": len(selection_values),
+        "selected_trial_index": selected_trial_index,
         "selection_trial_count": len(trial_sharpes),
         "selection_trial_sharpe_variance": (sum((x - sum(trial_sharpes) / len(trial_sharpes)) ** 2 for x in trial_sharpes) / (len(trial_sharpes) - 1) if len(trial_sharpes) > 1 else 0.0) if trial_sharpes else None,
         "periods_per_year": periods_per_year,
@@ -271,9 +286,26 @@ def evaluate_strategy_robustness(
     if not benchmark:
         base["reasons"] = ["An aligned untouched out-of-sample benchmark is required."]
         return base
+    if len(selection_values) < 60:
+        base["reasons"] = ["Fewer than 60 untouched selection-period observations are available for DSR."]
+        return base
     if len(trial_sharpes) != num_trials:
         base["reasons"] = ["Provide the selection-period Sharpe for every strategy trial; DSR cannot be inferred from the selected strategy alone."]
         return base
+    if selected_trial_index >= len(trial_sharpes):
+        raise ValueError("selected_trial_index is outside selection_trial_sharpes")
+    selection_mean = sum(selection_values) / len(selection_values)
+    selection_variance = sum((x - selection_mean) ** 2 for x in selection_values) / (len(selection_values) - 1)
+    selection_std = math.sqrt(selection_variance)
+    selection_period_sharpe = selection_mean / selection_std if selection_std > 0 else None
+    if selection_period_sharpe is None:
+        base["reasons"] = ["Selected strategy has zero selection-period variance; DSR is undefined."]
+        return base
+    if selected_trial_index != max(range(len(trial_sharpes)), key=lambda index: (trial_sharpes[index], -index)):
+        base["reasons"] = ["DSR requires the selected strategy to be the selection-period Sharpe winner."]
+        return base
+    if not math.isclose(selection_period_sharpe, trial_sharpes[selected_trial_index], rel_tol=1e-6, abs_tol=1e-8):
+        raise ValueError("selected trial Sharpe must match selection_returns at the same unannualized frequency")
     if not stress:
         base["reasons"] = ["A second out-of-sample run with at least 2x transaction costs is required."]
         return base
@@ -297,8 +329,10 @@ def evaluate_strategy_robustness(
         base["reasons"] = ["Benchmark needs at least two aligned out-of-sample returns."]
         return base
     psr = _psr(period_sharpe, benchmark_period_sharpe, n, skew, excess_kurtosis)
+    selection_skew = _sample_skew(selection_values, selection_mean, selection_std)
+    selection_excess_kurtosis = _sample_excess_kurtosis(selection_values, selection_mean, selection_std)
     deflated_benchmark = _deflated_benchmark(trial_sharpes) if trial_sharpes else None
-    dsr = _psr(period_sharpe, deflated_benchmark, n, skew, excess_kurtosis) if deflated_benchmark is not None else None
+    dsr = _psr(selection_period_sharpe, deflated_benchmark, len(selection_values), selection_skew, selection_excess_kurtosis) if deflated_benchmark is not None else None
     bootstrap = _block_bootstrap_sharpe(
         values, paths=bootstrap_paths, block_size=block_size,
         periods_per_year=periods_per_year, seed=seed,
@@ -342,6 +376,8 @@ def evaluate_strategy_robustness(
 
     base.update({
         "annualized_sharpe": annual_sharpe,
+        "selection_period_sharpe": selection_period_sharpe,
+        "selection_probabilistic_sharpe_ratio": _psr(selection_period_sharpe, 0.0, len(selection_values), selection_skew, selection_excess_kurtosis),
         "benchmark_period_sharpe": benchmark_period_sharpe,
         "benchmark_annualized_sharpe": benchmark_period_sharpe * math.sqrt(periods_per_year),
         "stress_annualized_sharpe": stress_annual_sharpe,
@@ -354,6 +390,8 @@ def evaluate_strategy_robustness(
         "rolling_positive_sharpe_fraction": positive_fraction,
         "skew": skew,
         "excess_kurtosis": excess_kurtosis,
+        "selection_skew": selection_skew,
+        "selection_excess_kurtosis": selection_excess_kurtosis,
         "verdict": verdict,
         "reasons": reasons,
     })
