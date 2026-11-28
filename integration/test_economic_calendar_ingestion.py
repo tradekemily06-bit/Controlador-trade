@@ -273,3 +273,63 @@ def test_calendar_polling_worker_accepts_zero_shutdown_timeout(tmp_path):
     worker.stop(timeout=0)
 
     assert worker.status()["worker_running"] is False
+
+
+def test_date_only_calendar_event_is_persisted_and_queryable_by_calendar_date(tmp_path):
+    store, service = _service(tmp_path / "calendar-date-only.sqlite3")
+    payload = _payload(
+        scheduled_time_precision="DATE_ONLY",
+        scheduled_date="2026-11-28",
+        scheduled_at=None,
+    )
+
+    result = service.ingest(source_id="bls", payloads=[payload])
+
+    assert result["inserted"] == 1
+    records = store.list_latest(
+        start_at="2026-11-28T00:00:00Z",
+        end_at="2026-11-28T23:59:59Z",
+    )
+    assert len(records) == 1
+    assert records[0]["scheduled_at"] is None
+    assert records[0]["scheduled_date"] == "2026-11-28"
+    assert records[0]["scheduled_time_precision"] == "DATE_ONLY"
+
+
+def test_calendar_store_migrates_legacy_table_for_date_only_events(tmp_path):
+    import sqlite3
+
+    database = tmp_path / "legacy-calendar.sqlite3"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            """
+            CREATE TABLE economic_calendar_observations (
+                source_id TEXT NOT NULL,
+                source_event_id TEXT NOT NULL,
+                observed_at TEXT NOT NULL,
+                scheduled_at TEXT NOT NULL,
+                status TEXT NOT NULL,
+                impact TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                PRIMARY KEY (source_id, source_event_id, observed_at)
+            )
+            """
+        )
+
+    store = SQLiteEconomicCalendarStore(database)
+    store.initialize_schema()
+    _, service = _service(database)
+    result = service.ingest(
+        source_id="bls",
+        payloads=[_payload(
+            scheduled_time_precision="DATE_ONLY",
+            scheduled_date="2026-11-28",
+            scheduled_at=None,
+        )],
+    )
+
+    assert result["inserted"] == 1
+    assert store.list_latest(
+        start_at="2026-11-28T00:00:00Z",
+        end_at="2026-11-28T23:59:59Z",
+    )[0]["scheduled_at"] is None
