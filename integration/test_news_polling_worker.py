@@ -51,7 +51,10 @@ class FakeCorrelator:
         if self.fail:
             raise RuntimeError("sensitive persistence details")
         self.calls.append((item.title, source_id, ingested_at))
-        return {"evidence_id": f"evidence-{len(self.calls)}"}
+        return {
+            "evidence_id": f"evidence-{len(self.calls)}",
+            "source_tier": "TRUSTED_MEDIA",
+        }
 
 
 def test_news_worker_persists_headline_evidence_from_trusted_provider_items():
@@ -251,3 +254,24 @@ def test_news_worker_separates_notification_failure_from_evidence_ingestion():
     assert status["last_state"] == "POLL_SUCCEEDED"
     assert status["last_notification_errors"] == 1
     assert "private sink detail" not in str(status)
+
+
+def test_commentary_source_cannot_trigger_high_impact_news_alert():
+    item = NewsItem("https://www.reuters.com/story", "Fed emergency rate decision")
+    class CommentaryCorrelator(FakeCorrelator):
+        def ingest(self, item, *, source_id, ingested_at):
+            result = super().ingest(item, source_id=source_id, ingested_at=ingested_at)
+            result["source_tier"] = "COMMENTARY"
+            return result
+
+    alerts = []
+    worker = NewsPollingWorker(
+        FakeProvider([item]),
+        CommentaryCorrelator(),
+        interval_seconds=30,
+        on_evidence=lambda *args: alerts.append(args),
+    )
+    status = worker.run_once()
+
+    assert status["last_state"] == "POLL_SUCCEEDED"
+    assert alerts == []
