@@ -18,41 +18,45 @@ This ledger is the continuity register for all work already started in the stand
 | PR | Branch | Base | Scope | Integration status |
 |---|---|---|---|---|
 | [#529](https://github.com/tradekemily06-bit/Controlador-trade/pull/529) | feat/unified-intelligence-standalone-app | main | Standalone application, shared intelligence, assistant, fiscal queues, decision/learning persistence, notifications, API/PWA foundation | Open draft; foundational parent |
-| [#531](https://github.com/tradekemily06-bit/Controlador-trade/pull/531) | work/multi-provider-foundation | #529 branch | Tenant-isolated provider sessions, MT5 relay, TradingView alerts, cTrader read-only/OAuth/live market streams, timeframe workers, outcome evidence, tenant notifications | Open draft; depends on #529 |
-| [#532](https://github.com/tradekemily06-bit/Controlador-trade/pull/532) | work/foundation-readiness-audit | #531 branch | Identity/storage readiness, SQLite backup/restore and multi-replica topology guard | Open draft; sibling of #533 and is NOT inherited by #533/#534; explicit integration blocker |
-| [#533](https://github.com/tradekemily06-bit/Controlador-trade/pull/533) | fix/webpush-encryption-key-readiness | #531 branch | Authenticated browser push routes, encrypted PostgreSQL subscription storage, pywebpush sender, browser client/service worker | Open draft; depends on #531 |
-| [#534](https://github.com/tradekemily06-bit/Controlador-trade/pull/534) | fix/six-visible-areas-memory-capability | #533 branch | Six-area contract, memory as internal capability, news event triage, official-source allowlist, advanced-intelligence acceptance target | Open draft; depends on #533; does not include #532 yet |
+| [#531](https://github.com/tradekemily06-bit/Controlador-trade/pull/531) | work/multi-provider-foundation | #529 branch | Tenant-isolated provider sessions, MT5 relay, TradingView alerts, cTrader read-only/OAuth/live market streams, timeframe workers, outcome evidence, tenant notifications | Open draft; inherited through #533 |
+| [#532](https://github.com/tradekemily06-bit/Controlador-trade/pull/532) | work/foundation-readiness-audit | #531 branch | Identity/storage readiness, SQLite backup/restore and multi-replica topology guard | Open draft; sibling source. Its relevant code, tests and deployment documentation have been reconciled into #534; do not merge this sibling independently |
+| [#533](https://github.com/tradekemily06-bit/Controlador-trade/pull/533) | fix/webpush-encryption-key-readiness | #531 branch | Authenticated browser push routes, encrypted PostgreSQL subscription storage, pywebpush sender, browser client/service worker | Open draft; direct base of #534 |
+| [#534](https://github.com/tradekemily06-bit/Controlador-trade/pull/534) | fix/six-visible-areas-memory-capability | #533 branch | Six-area contract, memory as internal capability, news event triage, foundation-readiness reconciliation, backup/restore hardening and advanced-intelligence acceptance target | Active integration candidate; open draft, unmerged |
 
-Required integration order: #529 -> #531 -> both #532 and #533 -> #534, with #532's foundation/readiness changes reconciled into the final integration branch before release. Do not merge drafts automatically; resolve conflicts and rerun the full pipeline on the combined candidate.
+Integration path: #529 -> #531 -> #533 -> #534. #532 is a sibling of #533, not an ancestor; its relevant foundation changes have been manually reconciled into #534 with tests and documentation. Do not merge drafts automatically or merge #532 separately without reconciling duplicate changes.
 
 ## Front 1 — Foundation, persistence, identity and runtime
 
-- [x] Reconcile the #532 readiness audit into the active #534 integration branch: tenant market-data and TradingView stores, MT5 relay tokens, TradingView webhook secrets, cTrader OAuth state/token stores, tenant signal evidence/outcomes, fenced notification outbox schema, scheduled-backup status, expanded read-only store/schema checks, trusted-identity status, and restore verification/regression tests are now present on the branch. The original #532 PR remains open as historical source; do not merge it separately without reconciling duplicate commits.
-- [ ] Verify one production-grade shared database, migrations, tenant isolation, durable audit, distributed leases and transaction boundaries; SQLite is only single-host/single-runtime.
-- [ ] Verify durable stores for decisions, outcomes, assistant conversations, learning, fiscal queues, notifications, subscriptions and monitor state. The SQLite backup allowlist now covers the tenant market monitor, TradingView alert history, MT5 relay secrets, TradingView webhook secrets, cTrader OAuth state/tokens and signal evidence/outcomes; automated coverage guards these entries. Production durability still requires a shared database and live deployment evidence.
-- [ ] Verify clean startup/shutdown, supervised workers, restart recovery, health/readiness distinction, backup retention and an actual restore drill. Backup restore verification now validates the isolated restored copy and rejects corrupt/symlink backups in tests; a real operational restore drill remains open.
+- [x] Reconcile the #532 readiness audit into the active #534 integration branch: tenant market-data and TradingView stores, MT5 relay tokens, TradingView webhook secrets, cTrader OAuth state/token stores, tenant signal evidence/outcomes, fenced notification outbox schema, scheduled-backup status, expanded read-only store/schema checks, trusted-identity status, and restore verification/regression tests are present on the branch.
+- [x] Expand the SQLite backup allowlist for tenant market monitor, TradingView alert history, MT5 relay tokens, TradingView webhook secret hashes, cTrader OAuth state/token stores and tenant signal evidence/outcomes. Optional cTrader/legacy stores report NOT_INITIALIZED when unused rather than false backup failures; scheduler treats that state as non-failure.
+- [x] Verify backup restore on an isolated temporary copy, without modifying the live database; reject corrupt and symlink backup inputs in automated tests.
+- [ ] Verify one production-grade shared database, migrations, tenant isolation, durable audit, distributed leases and transaction boundaries; SQLite remains single-host/single-runtime only.
+- [ ] Verify clean startup/shutdown, supervised hosted workers, restart recovery, backup retention, off-host copies and an actual operational restore drill.
 - [ ] Configure production identity, session/token policy, TLS, CORS/CSRF where applicable, rate limits, secret rotation and KMS/envelope encryption.
 - [ ] Verify no hidden order or money-movement route is exposed by the read-only assistant or analysis modules.
-- [ ] Publish a precise readiness report distinguishing implemented, configured, connected, live-tested and production-validated.
+- [ ] Publish a production readiness report distinguishing implemented, configured, connected, live-tested and production-validated.
 
 ## Front 2 — Broker/provider integrations and real-time cycles
 
+- [x] Implement tenant/subject/account-scoped provider sessions, per-account candle-close subscriptions, bounded concurrent analysis workers, result history, idempotency and signal expiry in code.
+- [x] Implement MT5 relay onboarding with hashed one-time token storage, per-connection routes, DEMO-only first-batch binding and account identity checks in code.
+- [x] Implement TradingView tenant-scoped webhook secrets, replay protection and alert history in code; TradingView remains an alert-event channel, not a continuous candle feed.
+- [x] Implement cTrader read-only OAuth orchestration, accounts-scope enforcement, encrypted-token vault contract, DEMO-account selection, live spot/trendbar stream handling, closed-candle analysis binding and fail-closed reconnect paths in code.
 - [ ] Validate MT5 relay on an actual DEMO terminal, including local agent install, account binding, HTTPS secret, replay protection, freshness, candle continuity, reconnect and server receipt.
-- [ ] Validate cTrader OAuth with a real Spotware app and DEMO account, least-privilege accounts scope, KMS-backed token storage/refresh/revocation, real handshake, streaming quotes and closed trendbars.
-- [ ] Validate TradingView webhook as an alert-event source only; it is not a substitute for a continuous candle feed.
+- [ ] Validate cTrader OAuth with a real Spotware app and DEMO account, production KMS-backed token storage/refresh/revocation, real handshake, streaming quotes and closed trendbars.
 - [ ] Test M1, M5, M10 and every interval shown in the app against each provider's actual symbol catalogue and session rules; parser support alone is not evidence.
-- [ ] Ensure only confirmed closed candles can create a current signal; reject stale, duplicate, out-of-order, gapped, wrong-account and wrong-timeframe data.
-- [ ] Verify cycle timing, candle-close boundaries, latency, expiry, provider outage, reconnect, process restart and notification deduplication.
+- [ ] Verify cycle timing, candle-close boundaries, latency, expiry, provider outage, reconnect, process restart and notification deduplication against real provider sessions.
 - [ ] Keep D1/W1 fail-closed until verified provider session calendars and next-session boundaries are wired into analysis.
 - [ ] Document provider-specific unsupported symbols/intervals instead of promising universal compatibility.
 
 ## Front 3 — Intelligence, news, modules, notifications and interface wiring
 
-- [ ] Keep all existing module inventory and map every item to one of the six approved areas or internal infrastructure; record owner-facing behavior and API route.
-- [ ] Connect existing Lovable controls to real API contracts without changing appearance; complete screen-by-screen network acceptance and error/empty/stale/loading states.
-- [ ] Expand news beyond headline triage: source provenance, official-vs-media tier, timestamps, article verification, duplicate clustering, corroboration and conflicting-report handling.
+- [x] Implement conservative news headline triage with source provenance, timestamps, source allowlisting, macro relevance matching and affected-asset mapping. Classification does not infer sentiment, direction or probability.
+- [ ] Expand news beyond headline triage: article verification, duplicate clustering, independent-source corroboration and conflicting-report handling.
 - [ ] Add a structured economic-calendar ingestion pipeline from official primary sources, with timezone, release time, actual/consensus/previous values, revisions, impact and source links. Do not invent missing consensus or release data.
 - [ ] Build event-to-asset context and cross-market relationships; do not infer price direction from keyword matches or a single headline.
+- [ ] Keep all existing module inventory and map every item to one of the six approved areas or internal infrastructure; record owner-facing behavior and API route.
+- [ ] Connect existing Lovable controls to real API contracts without changing appearance; complete screen-by-screen network acceptance and error/empty/stale/loading states.
 - [ ] Complete adversarial synthesis: supporting evidence, counterevidence, source conflicts, missing evidence, alternative explanations and explicit abstention.
 - [ ] Keep probability unavailable until representative out-of-sample outcomes, calibration diagnostics and drift gates pass; an evidence score is not a win probability.
 - [ ] Version rules/models and retain provenance, forecasts, corrections and outcomes; evaluate changes out of sample and make them reversible.
@@ -67,8 +71,9 @@ The target is research-grade, ASI-inspired engineering, not a claim of actual AS
 
 ## Current verification boundary
 
-- CI was green at earlier recorded commits, including the previous #534 head `b556f764fd7c46dc659279e57bb12e22dc55e2d3` and classifier hardening head `1cd6e845b88052c882d8a4fe6b7e9c1cc5b5b994`.
-- Intermediate CI runs exposed three integration mismatches (backup allowlist omitted signal-evidence storage; the readiness fixture did not create the newly required tenant stores; the WSGI fixture still represented seven visible areas and the old identity status). Each was corrected with regression coverage. The current head still requires a fresh full CI pass.
+- Latest combined #534 head: `314917f8c88e6284ff60f8d178c757cca4a38367`.
+- Full GitHub Actions run [46109961993](https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/46109961993) completed successfully: P1.9 robustness tests, full test suite, dependency security audit, Python compilation, production container build and health smoke, standalone analyst container build and health smoke, Windows PowerShell validation, and required commit-status publication.
+- The successful run was triggered for the preceding code head `314f393c040d77853b2b153d6f18073afb49d184`; the current PR head `314917f8...` adds only the deployment-documentation correction. CI success validates the combined code immediately before that docs-only commit; rerun CI on the exact latest head before merge.
 - Automated tests and container builds do not prove live broker connectivity, production credentials/KMS, browser-closed push delivery, hosted uptime or Lovable screen wiring.
 - No real broker credentials, production secrets, or user-side Lovable access are assumed or fabricated.
 
