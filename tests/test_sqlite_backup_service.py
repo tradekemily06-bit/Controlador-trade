@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from core.sqlite_backup_service import SQLiteBackupService
+from core.sqlite_backup_service import BACKUP_DATABASES, SQLiteBackupService
 
 
 class SQLiteBackupServiceTests(unittest.TestCase):
@@ -126,6 +126,20 @@ class SQLiteBackupServiceTests(unittest.TestCase):
             self.assertEqual(item["status"], "BACKUP_CREATED")
             with sqlite3.connect(backups / item["filename"]) as db:
                 self.assertEqual(db.execute("SELECT tenant_id, subject_id, key FROM tenant_state").fetchone(), ("tenant-a", "user-a", "prefs"))
+
+    def test_every_persistent_tenant_store_is_in_backup_allowlist(self):
+        expected = {
+            "tenant_market_data": "tenant-connection-timeframe-monitor.sqlite3",
+            "tenant_tradingview_alerts": "tenant-tradingview-alerts.sqlite3",
+            "mt5_relay_tokens": "tenant-mt5-relay-tokens.sqlite3",
+            "tradingview_webhook_secrets": "tenant-tradingview-webhook-secrets.sqlite3",
+            "ctrader_oauth_state": "tenant-ctrader-oauth-state.sqlite3",
+            "ctrader_oauth_tokens": "tenant-ctrader-oauth-tokens.sqlite3",
+            "tenant_signal_evidence": "tenant-signal-evidence.sqlite3",
+        }
+        for database_id, filename in expected.items():
+            with self.subTest(database_id=database_id):
+                self.assertEqual(BACKUP_DATABASES[database_id], filename)
 
     def test_backup_rejects_symlink_source(self):
         with tempfile.TemporaryDirectory() as directory:
