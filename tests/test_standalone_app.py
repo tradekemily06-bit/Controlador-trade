@@ -2175,14 +2175,41 @@ def test_local_readiness_exposes_calendar_worker_and_news_evidence_status():
     class FakeCorrelator:
         store = object()
 
-    runtime = SimpleNamespace(
-        economic_calendar_worker=FakeCalendarWorker(),
-        ecosystem_service=SimpleNamespace(news_evidence_correlator=FakeCorrelator()),
-    )
-    application = StandaloneWSGIApplication(runtime=runtime)
+    runtime = FakeRuntime()
+    runtime.economic_calendar_worker = FakeCalendarWorker()
+    runtime.ecosystem_service.news_evidence_correlator = FakeCorrelator()
+    app = StandaloneWSGIApplication(runtime)
 
-    payload = application._local_readiness_payload() if hasattr(application, "_local_readiness_payload") else None
-    if payload is not None:
-        assert payload["economic_calendar_ingestion"]["worker_running"] is True
-        assert payload["news_evidence"]["status"] == "CONFIGURED"
-        assert payload["news_evidence"]["persistent_store"] == "CONFIGURED"
+    with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
+        status, body = call_wsgi(app, "/api/readiness")
+
+    assert status == "200 OK"
+    assert body["economic_calendar_ingestion"]["worker_running"] is True
+    assert body["news_evidence"]["status"] == "CONFIGURED"
+    assert body["news_evidence"]["persistent_store"] == "CONFIGURED"
+
+
+def test_remote_readiness_does_not_expose_shared_calendar_or_news_evidence_state():
+    runtime = FakeRuntime()
+    runtime.economic_calendar_worker = object()
+    runtime.ecosystem_service.news_evidence_correlator = object()
+    app = StandaloneWSGIApplication(runtime)
+
+    with patch.dict("os.environ", {
+        "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "true",
+        "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "test-token",
+        "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "true",
+    }):
+        status, body = call_wsgi(
+            app,
+            "/api/readiness",
+            remote_addr="203.0.113.10",
+            authorization="Bearer test-token",
+            identity_verified=True,
+            remote_user="alice",
+            tenant_id="tenant-a",
+        )
+
+    assert status == "200 OK"
+    assert "economic_calendar_ingestion" not in body
+    assert "news_evidence" not in body
