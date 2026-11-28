@@ -1,6 +1,7 @@
 """Registry for broker-neutral, read-only market-data provider adapters."""
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -22,7 +23,26 @@ class MarketDataProviderRegistry:
     HEARTBEAT_MAX_AGE_SECONDS = 30
     HEARTBEAT_FUTURE_TOLERANCE_SECONDS = 5
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        heartbeat_max_age_seconds: float = HEARTBEAT_MAX_AGE_SECONDS,
+        heartbeat_future_tolerance_seconds: float = HEARTBEAT_FUTURE_TOLERANCE_SECONDS,
+    ) -> None:
+        for name, value, minimum, maximum in (
+            ("heartbeat_max_age_seconds", heartbeat_max_age_seconds, 1.0, 3600.0),
+            ("heartbeat_future_tolerance_seconds", heartbeat_future_tolerance_seconds, 0.0, 30.0),
+        ):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(float(value))
+                or value < minimum
+                or value > maximum
+            ):
+                raise ValueError(f"{name} must be finite and between {minimum:g} and {maximum:g}")
+        self.heartbeat_max_age_seconds = float(heartbeat_max_age_seconds)
+        self.heartbeat_future_tolerance_seconds = float(heartbeat_future_tolerance_seconds)
         self._providers: dict[str, RegisteredMarketDataProvider] = {}
         self._selected: str | None = None
 
@@ -32,8 +52,7 @@ class MarketDataProviderRegistry:
             raise ValueError("provider_id inválido")
         return value
 
-    @classmethod
-    def _heartbeat_is_fresh(cls, value: Any) -> bool:
+    def _heartbeat_is_fresh(self, value: Any) -> bool:
         if not isinstance(value, str) or not value.strip():
             return False
         try:
@@ -44,9 +63,9 @@ class MarketDataProviderRegistry:
         except (TypeError, ValueError, OverflowError):
             return False
         return (
-            -cls.HEARTBEAT_FUTURE_TOLERANCE_SECONDS
+            -self.heartbeat_future_tolerance_seconds
             <= age
-            <= cls.HEARTBEAT_MAX_AGE_SECONDS
+            <= self.heartbeat_max_age_seconds
         )
 
     def register(self, provider_id: str, provider: Any, source: str) -> None:
