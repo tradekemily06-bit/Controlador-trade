@@ -78,3 +78,18 @@ def test_scheduler_runs_additional_tenant_backup_service():
     assert status["last_status"] == "SUCCESS"
     assert status["last_result"]["provider"] == "COMPOSITE_LOCAL_SQLITE_BACKUP"
     assert len(status["last_result"]["components"]["additional_1"]["results"]) == 2
+
+
+
+def test_scheduler_accepts_uninitialized_optional_stores_when_required_backups_succeed():
+    service = FakeBackupService({
+        "results": [
+            {"id": "decision_memory", "status": "BACKUP_CREATED"},
+            {"id": "ctrader_oauth_tokens", "status": "NOT_INITIALIZED"},
+        ]
+    })
+    scheduler = SQLiteBackupScheduler(service, interval_seconds=3600)
+
+    status = scheduler.run_once()
+
+    assert status["last_status"] == "SUCCESS"

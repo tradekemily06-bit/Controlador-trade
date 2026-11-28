@@ -1,4 +1,4 @@
-"""One shared intelligence core for the seven application areas.
+"""One shared intelligence core for the six visible application areas.
 
 This is an integration/orchestration layer over verified ecosystem capabilities.
 It is not a claim of AGI/ASI and it does not provide execution authority.
@@ -18,6 +18,8 @@ from core.senior_module_expertise import SeniorModuleExpertiseRegistry
 
 
 class ApplicationArea(str, Enum):
+    """Visible routes plus the legacy internal memory capability."""
+
     COMMAND_CABIN = "command_cabin"
     ANALYSIS = "analysis"
     STUDY = "study"
@@ -25,6 +27,16 @@ class ApplicationArea(str, Enum):
     TAX_RESERVE = "tax_reserve"
     ECOSYSTEM_ASSISTANT = "ecosystem_assistant"
     CONTROL_CENTER = "control_center"
+
+
+VISIBLE_APPLICATION_AREAS = (
+    ApplicationArea.COMMAND_CABIN,
+    ApplicationArea.ANALYSIS,
+    ApplicationArea.STUDY,
+    ApplicationArea.TAX_RESERVE,
+    ApplicationArea.ECOSYSTEM_ASSISTANT,
+    ApplicationArea.CONTROL_CENTER,
+)
 
 
 @dataclass(frozen=True)
@@ -137,7 +149,7 @@ class UnifiedIntelligence:
 
     @property
     def areas(self) -> tuple[AreaContract, ...]:
-        return tuple(_AREA_CONTRACTS[area] for area in ApplicationArea)
+        return tuple(_AREA_CONTRACTS[area] for area in VISIBLE_APPLICATION_AREAS)
 
     def route(self, *, area: ApplicationArea | str, task: str) -> IntelligenceRoute:
         if isinstance(area, str):
@@ -189,6 +201,8 @@ class UnifiedIntelligence:
                 "curriculum_is_internal_knowledge": True,
                 "module_expertise_is_internal": True,
             },
+            "internal_capabilities": ["decision_memory", "audit_history", "validated_knowledge"],
+            "visible_area_count": len(self.areas),
             "shared_capabilities": [
                 "contextual_reasoning",
                 "evidence_and_counterevidence",

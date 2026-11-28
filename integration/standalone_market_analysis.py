@@ -40,6 +40,7 @@ class StandaloneMarketAnalysisService:
         signal_outcome_sink: Callable[..., list[dict[str, Any]]] | None = None,
         market_data_provenance: str | None = None,
         signal_source_id: str | None = None,
+        market_snapshot_sink: Callable[..., dict[str, Any]] | None = None,
     ) -> None:
         if provider is None:
             raise ValueError("market data provider is required")
@@ -63,6 +64,9 @@ class StandaloneMarketAnalysisService:
         if signal_source_id is not None and (not isinstance(signal_source_id, str) or not signal_source_id.strip()):
             raise ValueError("signal_source_id must be non-empty text")
         self.signal_source_id = signal_source_id.strip() if signal_source_id else self.source
+        if market_snapshot_sink is not None and not callable(market_snapshot_sink):
+            raise ValueError("market_snapshot_sink must be callable")
+        self.market_snapshot_sink = market_snapshot_sink
         self.feed = MarketDataFeed(provider, source=self.source)
         self.orchestrator = TradingOrchestrator(
             feed=self.feed,
@@ -154,6 +158,42 @@ class StandaloneMarketAnalysisService:
             now=datetime.now().astimezone(),
             expected_interval_seconds=interval,
         )
+        snapshot = BrokerMarketDataSnapshot(
+            symbol=symbol,
+            timeframe=timeframe,
+            candles=tuple(result.market_data.candles),
+            source=result.market_data.source,
+            received_at=result.market_data.received_at,
+        )
+        snapshot_audit = {"status": "NOT_RECORDED", "reason": "TRUSTED_PROVIDER_CONTEXT_REQUIRED"}
+        if (
+            self.market_snapshot_sink is not None
+            and self.market_data_provenance == "REAL_MARKET_DATA"
+            and isinstance(decision_context, TenantContext)
+        ):
+            snapshot_material = "|".join((
+                self.signal_source_id,
+                symbol.strip().upper(),
+                timeframe,
+                snapshot.received_at.astimezone(timezone.utc).isoformat(),
+                snapshot.candles[-1].timestamp.astimezone(timezone.utc).isoformat(),
+                repr(tuple((
+                    candle.timestamp.astimezone(timezone.utc).isoformat(),
+                    float(candle.open), float(candle.high), float(candle.low),
+                    float(candle.close), float(candle.volume),
+                ) for candle in snapshot.candles)),
+            ))
+            snapshot_id = "market-snapshot-" + sha256(snapshot_material.encode("utf-8")).hexdigest()
+            try:
+                snapshot_audit = self.market_snapshot_sink(
+                    snapshot, decision_context, snapshot_id, self.signal_source_id
+                )
+            except Exception as exc:
+                snapshot_audit = {
+                    "status": "PERSISTENCE_ERROR",
+                    "error_class": type(exc).__name__,
+                    "snapshot_id": snapshot_id,
+                }
 
         candidate_signal = result.analysis.signal.value
         senior = result.senior_context
@@ -321,6 +361,7 @@ class StandaloneMarketAnalysisService:
             "execution_authorized": False,
             "order_submitted": False,
         }
+        response["market_snapshot_audit"] = snapshot_audit
         response["signal_outcome_audit"] = {"status": "NOT_CONFIGURED", "resolved_count": 0}
         if (
             self.signal_outcome_sink is not None

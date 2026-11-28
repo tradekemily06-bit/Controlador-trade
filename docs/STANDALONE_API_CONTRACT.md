@@ -40,7 +40,7 @@ Remote clients must use `GET /api/notifications/status` for their own notificati
 A configured/registered provider is not proof of a live connection. The deployment marker is deliberately not a production deployment claim. All variants return `execution_authorized: false`.
 
 ### `GET /api/areas`
-Returns the seven visible application areas.
+Returns exactly six visible application areas, in the approved order: Cabine de Comando, Análise, Estudo, Reserva Fiscal, Assistente do Ecossistema and Central. Decision memory is an internal capability exposed through existing area workflows and dedicated memory APIs; it is not a navigation area.
 
 ### `GET /api/intelligence/architecture`
 Returns area descriptions, shared-intelligence architecture and handler status.
@@ -60,6 +60,20 @@ Body:
 ```
 The area and task are required strings; context must be an object. The selected area handler determines supported context fields. Market analysis remains manual-review only; no order is submitted.
 
+For the existing `analysis` area, `context.operation="economic_calendar"` or `"calendar"` accepts `start_at`, `end_at` (timezone-aware ISO-8601) and optional `limit` (1–5000). When an economic-calendar store is injected, the route returns the latest stored publisher-scoped observations in that range; it reports `live: false` and `source_refresh: NOT_REPORTED` because this query does not fetch or schedule source updates. Without a store it returns `CALENDAR_STORE_NOT_CONFIGURED`. Calendar ingestion remains a server-side adapter task; local SQLite storage is single-runtime only. For `context.operation="news"`, the same Análise handler returns RSS/Atom items and conservative headline classifications. When a trusted, owner-scoped news evidence correlator is injected, it also returns `evidence_processing` records; missing or unconfigured publisher policies are counted as partial processing, and storage failure does not suppress the news read. Cross-publisher matches remain review candidates marked `UNVERIFIED_REPORT`, never confirmed facts or directional signals.
+
+### News evidence integration
+
+The local runtime accepts an optional host-composed `news_evidence_correlator`. When its SQLite store is used, place it at `CONTROLADOR_RUNTIME_DIR/news-evidence.sqlite3` and bind it to the runtime's trusted local tenant/subject identity; startup rejects a mismatched owner. The existing Análise news response then persists source-aware evidence and exposes processing status. The store is included in local backup/readiness inventory. A correlator is not created from untrusted browser configuration, and no automatic fact confirmation or directional inference is performed.
+
+### News evidence integration
+
+The runtime accepts a trusted owner-scoped evidence correlator and, when RSS is configured, starts a `NewsPollingWorker` automatically. It polls up to 50 headlines at a bounded interval (`CONTROLADOR_NEWS_POLL_INTERVAL_SECONDS`, default 60 seconds; allowed 30–3600), persists headline evidence through the correlator and records only redacted status. It does not fetch full article bodies, infer direction or confirm facts. If the provider reports stale/unavailable, the worker skips ingestion and records the unavailable state instead of persisting stale headlines. It stops with StandaloneRuntime and remains process-lifetime only; hosted supervision is required for always-on operation.
+
+### Economic-calendar polling worker
+
+The host may inject an `EconomicCalendarPollingWorker` and its matching `SQLiteEconomicCalendarStore` into `StandaloneRuntime`. The worker accepts fetchers only for source IDs already present in trusted source configuration, starts/stops with the runtime, isolates per-source failures and exposes local readiness. For backup coverage, the SQLite file must be `CONTROLADOR_RUNTIME_DIR/economic-calendar.sqlite3`. The worker does not fetch arbitrary URLs or ship official publisher adapters; the host must supply verified official-source fetchers and run the process under hosted supervision for continuity.
+
 ## Market data and timeframe monitoring
 
 ### `GET /api/market-data/providers`
@@ -74,7 +88,7 @@ The registry is metadata-only: it is not an OAuth flow, credential vault, provid
 - `DELETE /api/market-data/connections/{connection_id}/subscriptions` — body `{"symbol":"EURUSD","timeframe":"M5"}`; disables that exact subscription.
 - `GET /api/market-data/timeframe-results?connection_id={connection_id}&limit=50` — reads recent analysis results, optionally restricted to one account.
 
-The provider status response also includes a per-account `health_status` and a bounded non-secret health snapshot; `BOUND` alone is not treated as a live connection. It also includes a tenant-scoped `timeframe_monitor` block with worker state and that owner's active subscriptions. The background worker resolves the adapter from the trusted tenant/account session for every cycle. Its idempotency key includes tenant, subject, connection, symbol, timeframe and candle close. A missing adapter or a candle that is not the expected closed candle cannot produce a current signal. Subscriptions are capped at 100 active symbol/timeframe pairs per account. The worker runs only while the standalone server process is alive; continuous operation after the user's computer is shut down still requires a continuously running hosted/VPS deployment.
+The provider status response also includes a per-account `health_status` and a bounded non-secret health snapshot; `BOUND` alone is not treated as a live connection. It also includes a tenant-scoped `timeframe_monitor` block with worker state and that owner's active subscriptions. The background worker resolves the adapter from the trusted tenant/account session for every cycle. Its idempotency key includes tenant, subject, connection, symbol, timeframe and candle close. A missing adapter or a candle that is not the expected closed candle cannot produce a current signal. Subscriptions are capped at 100 active symbol/timeframe pairs per account. The worker runs only while the standalone server process is alive; continuous operation after the user's computer is shut down still requires a continuously running hosted/VPS deployment. Intraday boundaries may use the configured provider clock; D1/W1 subscriptions fail closed unless the host injects a verified provider session-calendar callback that returns the exact last closed candle-open timestamp. A UTC midnight/Monday fallback is not accepted as broker session proof.
 
 ### Provider account onboarding
 

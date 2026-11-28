@@ -7,10 +7,13 @@ NOT_CONNECTED rather than being replaced by demo data.
 from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Mapping
 
 from assistant.chat_service import EcosystemAssistant
+from analysis.historical_trial_evaluator import evaluate_and_record_trial
+from analysis.versioned_strategy_replay import evaluate_registered_strategy_trial
 from core.senior_context_orchestrator import SeniorContextInput
 from core.unified_intelligence import ApplicationArea, UnifiedIntelligence
 from finance.fiscal_domestic_pending import FiscalDomesticPendingQueue
@@ -43,8 +46,13 @@ def build_standalone_application(
     intelligence: UnifiedIntelligence | None = None,
     market_analyzer: Any | None = None,
     market_data_registry: Any | None = None,
+    market_analysis_context: Any | None = None,
+    economic_calendar_store: Any | None = None,
+    strategy_trial_ledger: Any | None = None,
+    strategy_trial_context: Any | None = None,
+    market_snapshot_store: Any | None = None,
 ) -> UnifiedEcosystemApplication:
-    """Compose the seven areas around one shared intelligence coordinator.
+    """Compose six visible areas and internal capabilities around one shared intelligence coordinator.
 
     This factory is read-only with respect to trading and fiscal records.
     Fiscal write workflows require separate authenticated application actions.
@@ -113,6 +121,44 @@ def build_standalone_application(
                 "news": ecosystem_service.news_status(limit=limit),
                 "execution_authorized": False,
             })
+        if operation in {"economic_calendar", "calendar"}:
+            if economic_calendar_store is None:
+                return {
+                    "status": "CALENDAR_STORE_NOT_CONFIGURED",
+                    "live": False,
+                    "execution_authorized": False,
+                }
+            start_at = context.get("start_at")
+            end_at = context.get("end_at")
+            limit = context.get("limit", 500)
+            if not isinstance(start_at, str) or not isinstance(end_at, str):
+                raise ValueError("start_at and end_at must be ISO-8601 timestamps")
+            try:
+                start_time = datetime.fromisoformat(start_at.strip().replace("Z", "+00:00"))
+                end_time = datetime.fromisoformat(end_at.strip().replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise ValueError("calendar range must use ISO-8601 timestamps") from exc
+            if (
+                start_time.tzinfo is None or start_time.utcoffset() is None
+                or end_time.tzinfo is None or end_time.utcoffset() is None
+            ):
+                raise ValueError("calendar range timestamps must include a timezone")
+            if start_time.astimezone(timezone.utc) > end_time.astimezone(timezone.utc):
+                raise ValueError("calendar range start_at must not be after end_at")
+            if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 5000:
+                raise ValueError("limit must be an integer from 1 to 5000")
+            events = economic_calendar_store.list_latest(
+                start_at=start_at,
+                end_at=end_at,
+                limit=limit,
+            )
+            return _plain({
+                "status": "STORED_OBSERVATIONS",
+                "events": events,
+                "live": False,
+                "source_refresh": "NOT_REPORTED",
+                "execution_authorized": False,
+            })
         if market_analyzer is not None:
             symbol = context.get("symbol")
             timeframe = context.get("timeframe", "5m")
@@ -127,6 +173,7 @@ def build_standalone_application(
                 limit=limit,
                 confirmed=confirmed,
                 filters_ok=filters_ok,
+                decision_context=market_analysis_context,
             )
             return _plain(result)
         request = context.get("senior_context_input")
@@ -146,6 +193,131 @@ def build_standalone_application(
     def study(task: str, context: Mapping[str, Any], shared: UnifiedIntelligence):
         operation = str(context.get("operation", "overview")).strip().lower()
         learning = ecosystem_service.learning_summary()
+        if operation == "evaluate_registered_strategy_trial":
+            if strategy_trial_ledger is None:
+                return {"status": "STRATEGY_TRIAL_LEDGER_NOT_CONFIGURED", "execution_authorized": False}
+            if strategy_trial_context is None:
+                return {"status": "TRUSTED_TENANT_CONTEXT_NOT_CONFIGURED", "execution_authorized": False}
+            phase = str(context.get("phase", "")).strip().upper()
+            if phase not in {"SELECTION", "HOLDOUT"}:
+                raise ValueError("phase must be SELECTION or HOLDOUT")
+            result = evaluate_registered_strategy_trial(
+                ledger=strategy_trial_ledger,
+                tenant_context=strategy_trial_context,
+                phase=phase,
+                experiment_id=context.get("experiment_id"),
+                trial_id=context.get("trial_id"),
+                strategy_version=context.get("strategy_version"),
+                dataset_id=context.get("dataset_id"),
+                candles_payload=context.get("candles"),
+                take_profit_distance=context.get("take_profit_distance"),
+                stop_loss_distance=context.get("stop_loss_distance"),
+            )
+            return _plain(result)
+        if operation == "evaluate_registered_snapshot_trial":
+            if strategy_trial_ledger is None:
+                return {"status": "STRATEGY_TRIAL_LEDGER_NOT_CONFIGURED", "execution_authorized": False}
+            if strategy_trial_context is None:
+                return {"status": "TRUSTED_TENANT_CONTEXT_NOT_CONFIGURED", "execution_authorized": False}
+            if market_snapshot_store is None:
+                return {"status": "MARKET_SNAPSHOT_STORE_NOT_CONFIGURED", "execution_authorized": False}
+            snapshot_id = context.get("snapshot_id")
+            if not isinstance(snapshot_id, str) or not snapshot_id.strip():
+                raise ValueError("snapshot_id is required")
+            snapshot = market_snapshot_store.get(strategy_trial_context, snapshot_id)
+            if snapshot is None:
+                return {"status": "MARKET_SNAPSHOT_NOT_FOUND", "execution_authorized": False}
+            candles_payload = snapshot["payload"]["candles"]
+            if len(candles_payload) < 30:
+                return {
+                    "status": "INSUFFICIENT_SNAPSHOT_HISTORY",
+                    "required_candles": 30,
+                    "available_candles": len(candles_payload),
+                    "execution_authorized": False,
+                }
+            phase = str(context.get("phase", "")).strip().upper()
+            if phase not in {"SELECTION", "HOLDOUT"}:
+                raise ValueError("phase must be SELECTION or HOLDOUT")
+            result = evaluate_registered_strategy_trial(
+                ledger=strategy_trial_ledger,
+                tenant_context=strategy_trial_context,
+                phase=phase,
+                experiment_id=context.get("experiment_id"),
+                trial_id=context.get("trial_id"),
+                strategy_version=context.get("strategy_version"),
+                dataset_id=snapshot_id,
+                candles_payload=candles_payload,
+                take_profit_distance=context.get("take_profit_distance"),
+                stop_loss_distance=context.get("stop_loss_distance"),
+            )
+            result["data_provenance"]["persisted_market_snapshot"] = {
+                "snapshot_id": snapshot["snapshot_id"],
+                "source_id": snapshot["source_id"],
+                "symbol": snapshot["symbol"],
+                "timeframe": snapshot["timeframe"],
+                "payload_sha256": snapshot["payload_sha256"],
+                "provenance_status": snapshot["provenance_status"],
+            }
+            result["research_limitations"].append(
+                "The replay uses an immutable server-stored snapshot, but provider authenticity and independent candle verification are not established."
+            )
+            return _plain(result)
+        if operation == "evaluate_historical_trial":
+            if strategy_trial_ledger is None:
+                return {"status": "STRATEGY_TRIAL_LEDGER_NOT_CONFIGURED", "execution_authorized": False}
+            if strategy_trial_context is None:
+                return {"status": "TRUSTED_TENANT_CONTEXT_NOT_CONFIGURED", "execution_authorized": False}
+            phase = str(context.get("phase", "")).strip().upper()
+            if phase not in {"SELECTION", "HOLDOUT"}:
+                raise ValueError("phase must be SELECTION or HOLDOUT")
+            result = evaluate_and_record_trial(
+                ledger=strategy_trial_ledger,
+                tenant_context=strategy_trial_context,
+                phase=phase,
+                experiment_id=context.get("experiment_id"),
+                trial_id=context.get("trial_id"),
+                strategy_version=context.get("strategy_version"),
+                dataset_id=context.get("dataset_id"),
+                candles_payload=context.get("candles"),
+                decisions_payload=context.get("decisions"),
+                take_profit_distance=context.get("take_profit_distance"),
+                stop_loss_distance=context.get("stop_loss_distance"),
+            )
+            return _plain(result)
+        if operation in {"strategy_trials", "strategy_trial_history"}:
+            if strategy_trial_ledger is None:
+                return {"status": "STRATEGY_TRIAL_LEDGER_NOT_CONFIGURED", "execution_authorized": False}
+            experiment_id = context.get("experiment_id")
+            if not isinstance(experiment_id, str) or not experiment_id.strip():
+                raise ValueError("experiment_id é obrigatório")
+            if strategy_trial_context is None:
+                return {"status": "TRUSTED_TENANT_CONTEXT_NOT_CONFIGURED", "execution_authorized": False}
+            return _plain({
+                "strategy_trials": strategy_trial_ledger.list_experiment(
+                    strategy_trial_context, experiment_id
+                ),
+                "execution_authorized": False,
+            })
+        if operation in {"record_selection_trial", "record_holdout_evaluation"}:
+            if strategy_trial_ledger is None:
+                return {"status": "STRATEGY_TRIAL_LEDGER_NOT_CONFIGURED", "execution_authorized": False}
+            if strategy_trial_context is None:
+                return {"status": "TRUSTED_TENANT_CONTEXT_NOT_CONFIGURED", "execution_authorized": False}
+            if operation == "record_selection_trial":
+                result = strategy_trial_ledger.record_selection_trial(strategy_trial_context, **{
+                    key: context.get(key) for key in (
+                        "experiment_id", "trial_id", "strategy_version", "dataset_id",
+                        "dataset_fingerprint", "window_start", "window_end", "evaluated_at", "metrics",
+                    )
+                })
+            else:
+                result = strategy_trial_ledger.record_holdout_evaluation(strategy_trial_context, **{
+                    key: context.get(key) for key in (
+                        "experiment_id", "trial_id", "strategy_version", "dataset_id",
+                        "dataset_fingerprint", "window_start", "window_end", "evaluated_at", "metrics",
+                    )
+                })
+            return _plain({"strategy_trial": result, "execution_authorized": False})
         if operation in {"replay", "laboratory_replay"}:
             cases = context.get("cases")
             if not isinstance(cases, list) or not cases or len(cases) > 100:
@@ -269,6 +441,7 @@ def build_standalone_application(
     app.register_handler(ApplicationArea.COMMAND_CABIN, command_cabin)
     app.register_handler(ApplicationArea.ANALYSIS, analysis)
     app.register_handler(ApplicationArea.STUDY, study)
+    # Decision memory is an internal capability, not a seventh navigation area.
     app.register_handler(ApplicationArea.MEMORY, memory)
     # Register every visible area even when a dependency is absent. The handler
     # returns an explicit NOT_CONFIGURED state instead of making the area vanish

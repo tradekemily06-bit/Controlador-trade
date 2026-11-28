@@ -23,8 +23,32 @@ BACKUP_DATABASES = {
     "decision_memory": "decision-memory.sqlite3",
     "assistant_conversations": "assistant-conversations.sqlite3",
     "market_timeframe_monitor": "market-timeframe-monitor.sqlite3",
+    # Tenant-scoped cycles, analysis results, processing leases and notification outbox.
+    "tenant_market_data": "tenant-connection-timeframe-monitor.sqlite3",
+    "tenant_tradingview_alerts": "tenant-tradingview-alerts.sqlite3",
+    "mt5_relay_tokens": "tenant-mt5-relay-tokens.sqlite3",
+    "tradingview_webhook_secrets": "tenant-tradingview-webhook-secrets.sqlite3",
+    "ctrader_oauth_state": "tenant-ctrader-oauth-state.sqlite3",
+    "ctrader_oauth_tokens": "tenant-ctrader-oauth-tokens.sqlite3",
     "tenant_signal_evidence": "tenant-signal-evidence.sqlite3",
+    "tenant_forecast_audit": "tenant-forecast-audit.sqlite3",
+    "security_audit": "security-audit.sqlite3",
+    "news_evidence": "news-evidence.sqlite3",
+    "economic_calendar": "economic-calendar.sqlite3",
 }
+
+# These stores are created only after their optional provider/legacy feature is
+# first used. Their absence is not a failed backup; if present, they are backed up.
+OPTIONAL_BACKUP_DATABASES = frozenset({
+    "market_timeframe_monitor",
+    "tenant_signal_evidence",
+    "tenant_forecast_audit",
+    "security_audit",
+    "ctrader_oauth_state",
+    "ctrader_oauth_tokens",
+    "news_evidence",
+    "economic_calendar",
+})
 
 
 class SQLiteBackupService:
@@ -71,7 +95,14 @@ class SQLiteBackupService:
                 continue
             source = source_entry.resolve()
             if source.parent != self.runtime_dir or not source.is_file():
-                results.append({"id": database_id, "status": "SOURCE_MISSING"})
+                results.append({
+                    "id": database_id,
+                    "status": (
+                        "NOT_INITIALIZED"
+                        if database_id in OPTIONAL_BACKUP_DATABASES
+                        else "SOURCE_MISSING"
+                    ),
+                })
                 continue
             destination = self.backup_dir / f"{database_id}-{stamp}.sqlite3"
             temporary: Path | None = None

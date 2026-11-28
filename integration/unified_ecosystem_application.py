@@ -1,4 +1,4 @@
-"""Application facade exposing one intelligence to all seven areas.
+"""Application facade exposing one intelligence to six visible areas and internal capabilities.
 
 This facade is read-only by default. Area-specific handlers may be attached as
 integration work is completed. An unregistered handler is reported as
@@ -36,10 +36,10 @@ class UnifiedEcosystemApplication:
     def architecture(self) -> dict[str, Any]:
         status = self.intelligence.architecture_status()
         status["area_handler_status"] = {
-            area.value: ("CONNECTED" if area in self._handlers else "NOT_CONNECTED")
-            for area in ApplicationArea
+            contract.area.value: ("CONNECTED" if contract.area in self._handlers else "NOT_CONNECTED")
+            for contract in self.intelligence.areas
         }
-        status["all_area_handlers_connected"] = len(self._handlers) == len(ApplicationArea)
+        status["all_area_handlers_connected"] = all(contract.area in self._handlers for contract in self.intelligence.areas)
         status["market_data_provider_status"] = getattr(self, "market_data_provider_status", "NOT_CONFIGURED")
         registry = getattr(self, "market_data_registry", None)
         status["market_data_providers"] = registry.status() if registry is not None else {"status": "NOT_CONFIGURED", "count": 0}

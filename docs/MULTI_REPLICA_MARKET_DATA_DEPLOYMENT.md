@@ -8,17 +8,6 @@ The timeframe processing lease and notification outbox coordinate correctly only
 
 This is a single-host / single-runtime deployment boundary. Do not scale the application by starting multiple containers with separate local volumes and assume duplicate work or notification delivery is coordinated.
 
-The runtime now fails closed when `CONTROLADOR_EXPECTED_REPLICAS` is greater
-than `1`. The default is `1`; invalid or non-positive values also stop
-startup. This is an explicit operator declaration, not automatic replica
-discovery. The local readiness response exposes the enforced topology, while
-remote readiness reveals only the non-sensitive deployment boundary.
-
-This guard prevents a declared multi-replica deployment from silently running
-on local SQLite. It does not implement PostgreSQL or make the system
-multi-replica ready. Remove the guard only as part of a tested shared-storage
-migration that satisfies every release gate below.
-
 ## Required before multi-host / multi-replica production
 
 1. Move tenant metadata, watch subscriptions, results, processing leases and notification outbox to one shared transactional database (recommended: PostgreSQL).
@@ -42,31 +31,31 @@ A multi-replica release is blocked until automated integration tests prove:
 - OAuth refresh rotation is serialized across replicas;
 - health/readiness reports a missing shared backend as unavailable rather than silently falling back to local coordination.
 
+
+## Local backup coverage
+
+The allowlisted on-demand SQLite backup set includes
+`tenant-connection-timeframe-monitor.sqlite3`, which contains tenant-scoped
+candle watches, analysis results, processing leases and notification outbox
+records, and `tenant-tradingview-alerts.sqlite3`, which contains accepted
+TradingView alert history. These stores must be backed up together with tenant
+metadata; omitting them would lose active monitoring state, pending tenant
+notifications or accepted alert history during recovery.
+
+Backups remain local/on-demand unless an operator separately configures a
+scheduled job and off-host replication. The current allowlist also includes
+MT5 relay token hashes, TradingView webhook secret hashes, cTrader OAuth state
+and encrypted OAuth token ciphertext, plus tenant signal evidence/outcomes.
+This copies the stored records but does not back up or replace the external KMS
+key material; OAuth recovery still depends on the configured key identifier
+and KMS availability. Treat credential recovery as a separate tested
+procedure, and revoke/re-authenticate provider credentials if integrity or key
+availability cannot be established. A successful isolated restore check
+validates SQLite integrity only; it does not prove full application recovery
+or multi-host disaster recovery.
+
 ## Current product safety
 
 Provider adapters remain read-only. A connected account is not considered operational until its provider handshake and fresh market data are verified. TradingView webhooks are event alerts, not continuous price feeds. A local MT5 relay requires its host terminal and machine to remain online. Closing the app window is not equivalent to shutting down the always-on worker host.
 
 SIMULAÇÃO remains the default. Real order execution and money movement are outside this foundation and remain disabled.
-
-
-## Fundação técnica — oito gates de conclusão
-
-Este quadro é um contrato de aceite, não uma declaração de que os itens já estão concluídos. A classificação só muda quando houver evidência executável e verificável.
-
-| Gate | Critério para considerar concluído | Situação comprovada nesta revisão |
-|---|---|---|
-| 1. Persistência compartilhada | PostgreSQL ou banco transacional compartilhado adotado por todos os repositórios críticos; migrações, isolamento por tenant, leases e outbox testados entre processos independentes | **Bloqueado**: os repositórios operacionais ainda usam SQLite local. O guard impede réplicas declaradas acima de uma; não existe backend PostgreSQL integrado |
-| 2. Identidade e isolamento | Identidade autenticada emitida pelo servidor, tenant/subject derivados de claims verificados, autorização em todas as rotas e testes negativos entre tenants | **Parcial**: contratos de contexto confiável e escopo tenant/subject existem; configuração e validação de um provedor de identidade de produção ainda precisam ser feitas |
-| 3. Segredos e KMS | KMS/envelope encryption real, rotação, revogação, política de acesso e recuperação de chaves testadas | **Parcial**: vaults e interfaces de cipher existem; KMS real é injetado pelo host e ainda não está provisionado/validado |
-| 4. Notificações externas | Provedor real configurado, worker ativo, credenciais seguras, confirmação de entrega, retry/dead-letter e teste com cliente fechado | **Parcial**: outbox durável, worker e contratos de sink existem; o runtime padrão não configura provedor externo e não comprova push com o app fechado |
-| 5. Recuperação de provedores | OAuth/refresh, reconexão e rebind após reinício testados com contas DEMO reais, com isolamento e status de saúde | **Parcial**: caminhos automatizados e testes com doubles existem; falta handshake real com contas e credenciais de DEMO |
-| 6. Backup e restauração | Backup agendado e criptografado, cópia fora do host, retenção, alerta de falha e restauração integral ensaiada | **Parcial**: backup local/on-demand e agendamento configurável existem; cópia off-host, retenção operacional e restore drill ainda não foram comprovados |
-| 7. Operação contínua | Host cloud/VPS 24/7, monitoramento, alertas, logs, health checks, restart/failover e atualização segura validados | **Pendente**: os workers acompanham o processo; não há implantação contínua de produção validada |
-| 8. Provedores em DEMO | Cada conector aprovado faz handshake real, confirma conta DEMO, entrega candles/quotes atuais e passa teste de desconexão/retomada | **Parcial**: adaptadores e fluxos read-only foram implementados/testados automaticamente; não há evidência de sessão real DEMO neste ambiente |
-
-### Regra de encerramento
-
-- Nenhum gate será marcado como concluído apenas porque uma classe, endpoint, teste unitário ou variável de ambiente existe.
-- Um teste com mock comprova o comportamento do código sob aquele cenário; não comprova credenciais, conectividade, limites ou disponibilidade do fornecedor real.
-- A passagem de cada gate exige evidência no commit exato, e os gates 1, 3, 4, 6, 7 e 8 também exigem infraestrutura/contas externas configuradas.
-- A interface Lovable permanece fora do escopo destas alterações. Nenhum merge, deploy, ordem ou movimentação financeira é autorizado por este documento.

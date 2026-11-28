@@ -301,5 +301,77 @@ class StandaloneMarketAnalysisTests(unittest.TestCase):
         self.assertFalse(result["execution_allowed"])
 
 
+
+    def test_allowlisted_provider_snapshot_is_persisted_with_trusted_owner(self):
+        provider = FakeMarketDataProvider(candle_series())
+        calls = []
+        owner = TenantContext("tenant-a", "subject-a")
+
+        def persist(snapshot, context, snapshot_id, source_id):
+            calls.append((snapshot, context, snapshot_id, source_id))
+            return {"status": "RECORDED", "snapshot_id": snapshot_id}
+
+        service = StandaloneMarketAnalysisService(
+            provider=provider,
+            source="BROKER_FEED",
+            intelligence=UnifiedIntelligence(),
+            market_data_provenance="REAL_MARKET_DATA",
+            signal_source_id="ctrader:connection-a",
+            market_snapshot_sink=persist,
+        )
+        result = service.analyze(
+            symbol="EURUSD", timeframe="5m", limit=8, decision_context=owner
+        )
+
+        self.assertEqual(len(calls), 1)
+        snapshot, context, snapshot_id, source_id = calls[0]
+        self.assertIs(context, owner)
+        self.assertTrue(snapshot_id.startswith("market-snapshot-"))
+        self.assertEqual(source_id, "ctrader:connection-a")
+        self.assertEqual(snapshot.symbol, "EURUSD")
+        self.assertEqual(snapshot.timeframe, "5m")
+        self.assertEqual(len(snapshot.candles), 8)
+        self.assertEqual(result["market_snapshot_audit"]["status"], "RECORDED")
+
+    def test_snapshot_is_not_persisted_without_allowlisted_provider_and_owner(self):
+        calls = []
+        provider = FakeMarketDataProvider(candle_series())
+        service = StandaloneMarketAnalysisService(
+            provider=provider,
+            source="UNVERIFIED_FEED",
+            intelligence=UnifiedIntelligence(),
+            market_snapshot_sink=lambda *args: calls.append(args),
+        )
+        result = service.analyze(
+            symbol="EURUSD", timeframe="5m", limit=8,
+            decision_context=TenantContext("tenant-a", "subject-a"),
+        )
+        self.assertEqual(calls, [])
+        self.assertEqual(
+            result["market_snapshot_audit"]["reason"],
+            "TRUSTED_PROVIDER_CONTEXT_REQUIRED",
+        )
+
+
+    def test_snapshot_persistence_failure_is_explicit_and_does_not_fake_a_save(self):
+        def fail_persist(*_args):
+            raise OSError("database unavailable")
+
+        service = StandaloneMarketAnalysisService(
+            provider=FakeMarketDataProvider(candle_series()),
+            source="BROKER_FEED",
+            intelligence=UnifiedIntelligence(),
+            market_data_provenance="REAL_MARKET_DATA",
+            signal_source_id="mt5_relay:connection-a",
+            market_snapshot_sink=fail_persist,
+        )
+        result = service.analyze(
+            symbol="EURUSD", timeframe="5m", limit=8,
+            decision_context=TenantContext("tenant-a", "subject-a"),
+        )
+        self.assertEqual(result["market_snapshot_audit"]["status"], "PERSISTENCE_ERROR")
+        self.assertEqual(result["market_snapshot_audit"]["error_class"], "OSError")
+        self.assertNotIn("payload_sha256", result["market_snapshot_audit"])
+
 if __name__ == "__main__":
     unittest.main()

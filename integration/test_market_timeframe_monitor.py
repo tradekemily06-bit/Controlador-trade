@@ -265,3 +265,101 @@ def test_monitor_stop_timeout_keeps_worker_visible_until_it_exits(tmp_path):
     monitor.stop(timeout=1)
     assert monitor.status()["worker_running"] is False
     assert monitor._thread is None
+
+
+
+def test_monitor_uses_account_provider_clock_instead_of_device_clock(tmp_path):
+    broker_now = datetime(2026, 11, 28, 13, 5, 5, tzinfo=timezone(__import__("datetime").timedelta(hours=3)))
+    calls = []
+
+    def broker_clock(context, symbol):
+        calls.append((context, symbol))
+        return broker_now
+
+    analyzer = FakeAnalyzer()
+    monitor = MarketTimeframeMonitor(
+        tmp_path / "broker-clock.sqlite3",
+        analyzer,
+        default_context=OWNER,
+        provider_clock=broker_clock,
+    )
+    monitor.subscribe("EURUSD", "M1")
+
+    expected = monitor.expected_last_closed_candle(
+        "M1",
+        now=datetime(2035, 1, 1, tzinfo=timezone.utc),
+        context=OWNER,
+        symbol="EURUSD",
+    )
+
+    assert expected == datetime(2026, 11, 28, 10, 4, tzinfo=timezone.utc)
+    assert calls == [(OWNER, "EURUSD")]
+
+
+
+def test_daily_and_weekly_cycles_fail_closed_without_verified_session_calendar(tmp_path):
+    monitor = MarketTimeframeMonitor(
+        tmp_path / "session-required.sqlite3", FakeAnalyzer(), default_context=OWNER
+    )
+    for timeframe in ("D1", "W1"):
+        try:
+            monitor.expected_last_closed_candle(
+                timeframe,
+                now=datetime(2026, 11, 28, 12, 0, tzinfo=timezone.utc),
+                context=OWNER,
+                symbol="EURUSD",
+            )
+        except ValueError as exc:
+            assert "verified provider session calendar" in str(exc)
+        else:
+            raise AssertionError(f"{timeframe} unexpectedly used an unverified UTC boundary")
+
+
+def test_daily_cycle_uses_verified_provider_session_boundary(tmp_path):
+    expected = datetime(2026, 11, 27, 22, 0, tzinfo=timezone.utc)
+    calls = []
+
+    def session_boundary(context, symbol, timeframe):
+        calls.append((context, symbol, timeframe))
+        return expected
+
+    monitor = MarketTimeframeMonitor(
+        tmp_path / "session-calendar.sqlite3",
+        FakeAnalyzer(),
+        default_context=OWNER,
+        session_boundary_provider=session_boundary,
+    )
+
+    result = monitor.expected_last_closed_candle(
+        "D1",
+        now=datetime(2026, 11, 28, 12, 0, tzinfo=timezone.utc),
+        context=OWNER,
+        symbol="EURUSD",
+    )
+
+    assert result == expected
+    assert calls == [(OWNER, "EURUSD", "1d")]
+
+
+def test_daily_watch_without_session_calendar_is_marked_unavailable_not_crashing_worker(tmp_path):
+    analyzer = FakeAnalyzer()
+    monitor = MarketTimeframeMonitor(
+        tmp_path / "daily-fail-closed.sqlite3", analyzer, default_context=OWNER
+    )
+    monitor.subscribe("EURUSD", "D1")
+
+    assert monitor.run_once(
+        now=datetime(2026, 11, 28, 12, 0, tzinfo=timezone.utc)
+    ) == []
+    assert analyzer.calls == []
+    assert monitor.subscriptions()[0]["status"] == "DATA_UNAVAILABLE"
+    assert "verified provider session calendar" in monitor.subscriptions()[0]["last_error"]
+
+
+
+def test_monitor_status_discloses_daily_weekly_fail_closed_boundary(tmp_path):
+    monitor = MarketTimeframeMonitor(
+        tmp_path / "session-status.sqlite3", FakeAnalyzer(), default_context=OWNER
+    )
+    assert monitor.status()["session_calendar_status"] == "D1_W1_FAIL_CLOSED"
+    assert monitor.status()["provider_clock_configured"] is False

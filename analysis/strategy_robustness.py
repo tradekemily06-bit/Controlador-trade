@@ -1,0 +1,527 @@
+"""Out-of-sample strategy robustness diagnostics.
+
+Adapted from the research-validation approach in OpenTerminalUI's
+robustness scorecard (MIT; Copyright 2026 OpenTerminalUI Contributors).
+This implementation is independent and uses only the Python standard library.
+
+This is a diagnostic, not a profitability guarantee, forecast, or execution gate.
+Returns supplied to this function must already be out-of-sample and net of
+realistic transaction costs. The function cannot verify those claims itself.
+"""
+from __future__ import annotations
+
+import math
+import random
+from itertools import combinations
+from typing import Iterable
+
+
+_EULER_GAMMA = 0.5772156649
+
+
+def _normal_cdf(value: float) -> float:
+    return 0.5 * (1.0 + math.erf(value / math.sqrt(2.0)))
+
+
+def _normal_ppf(probability: float) -> float:
+    """Acklam rational approximation to the inverse standard normal CDF."""
+    p = min(max(float(probability), 1e-12), 1.0 - 1e-12)
+    a = (-39.69683028665376, 220.9460984245205, -275.9285104469687,
+         138.3577518672690, -30.66479806614716, 2.506628277459239)
+    b = (-54.47609879822406, 161.5858368580409, -155.6989798598866,
+         66.80131188771972, -13.28068155288572)
+    c = (-0.007784894002430293, -0.3223964580411365, -2.400758277161838,
+         -2.549732539343734, 4.374664141464968, 2.938163982698783)
+    d = (0.007784695709041462, 0.3224671290700398, 2.445134137142996,
+         3.754408661907416)
+    if p < 0.02425:
+        q = math.sqrt(-2.0 * math.log(p))
+        return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / (
+            (((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1.0
+        )
+    if p <= 0.97575:
+        q = p - 0.5
+        r = q * q
+        return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (
+            (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1.0)
+        )
+    q = math.sqrt(-2.0 * math.log(1.0 - p))
+    return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / (
+        (((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1.0
+    )
+
+
+def _percentile(values: list[float], percentile: float) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    position = (len(ordered) - 1) * percentile
+    lower = int(math.floor(position))
+    upper = int(math.ceil(position))
+    if lower == upper:
+        return ordered[lower]
+    fraction = position - lower
+    return ordered[lower] * (1.0 - fraction) + ordered[upper] * fraction
+
+
+def _sample_skew(values: list[float], mean: float, std: float) -> float:
+    n = len(values)
+    if n < 3 or std <= 0:
+        return 0.0
+    return (n / ((n - 1) * (n - 2))) * sum(((x - mean) / std) ** 3 for x in values)
+
+
+def _sample_excess_kurtosis(values: list[float], mean: float, std: float) -> float:
+    n = len(values)
+    if n < 4 or std <= 0:
+        return 0.0
+    z4_sum = sum(((x - mean) / std) ** 4 for x in values)
+    return (
+        (n * (n + 1) / ((n - 1) * (n - 2) * (n - 3))) * z4_sum
+        - (3 * (n - 1) ** 2 / ((n - 2) * (n - 3)))
+    )
+
+
+def _sharpe_variance_numerator(sharpe: float, skew: float, excess_kurtosis: float) -> float:
+    # PSR uses non-excess kurtosis gamma_4; this input is excess kurtosis.
+    value = 1.0 - skew * sharpe + ((excess_kurtosis + 2.0) / 4.0) * sharpe**2
+    if not math.isfinite(value):
+        return 0.0
+    return max(value, 0.0)
+
+
+def _psr(sharpe: float | None, benchmark: float, n: int, skew: float, excess_kurtosis: float) -> float | None:
+    if sharpe is None or n < 2:
+        return None
+    variance_numerator = _sharpe_variance_numerator(sharpe, skew, excess_kurtosis)
+    if variance_numerator <= 0:
+        return None
+    z_score = (sharpe - benchmark) * math.sqrt(n - 1) / math.sqrt(variance_numerator)
+    return _normal_cdf(z_score)
+
+
+def _deflated_benchmark(trial_sharpes: list[float], effective_trials: int) -> float:
+    trials = len(trial_sharpes)
+    if effective_trials <= 1:
+        return 0.0
+    mean = sum(trial_sharpes) / trials
+    variance = sum((value - mean) ** 2 for value in trial_sharpes) / (trials - 1)
+    p1 = 1.0 - 1.0 / effective_trials
+    p2 = 1.0 - 1.0 / (effective_trials * math.e)
+    expected_max = (1.0 - _EULER_GAMMA) * _normal_ppf(p1) + _EULER_GAMMA * _normal_ppf(p2)
+    return math.sqrt(max(variance, 0.0)) * expected_max
+
+
+def _annual_sharpe(values: list[float], periods_per_year: int) -> float | None:
+    if len(values) < 2:
+        return None
+    mean = sum(values) / len(values)
+    variance = sum((x - mean) ** 2 for x in values) / (len(values) - 1)
+    std = math.sqrt(variance)
+    return mean / std * math.sqrt(periods_per_year) if std > 0 else None
+
+
+def _max_drawdown(values: list[float]) -> float | None:
+    equity = 1.0
+    peak = 1.0
+    worst = 0.0
+    for value in values:
+        equity *= 1.0 + value
+        if equity <= 0:
+            return -1.0
+        peak = max(peak, equity)
+        worst = min(worst, equity / peak - 1.0)
+    return worst
+
+
+def _block_bootstrap_sharpe(
+    values: list[float], *, paths: int, block_size: int, periods_per_year: int, seed: int
+) -> dict[str, float | int | None]:
+    if paths == 0 or len(values) < 2:
+        return {"paths": 0, "ci_low": None, "ci_high": None, "p_positive": None}
+    rng = random.Random(seed)
+    n = len(values)
+    sharpes: list[float] = []
+    for _ in range(paths):
+        sample: list[float] = []
+        while len(sample) < n:
+            start = rng.randrange(n)
+            for offset in range(block_size):
+                sample.append(values[(start + offset) % n])
+                if len(sample) == n:
+                    break
+        sharpe = _annual_sharpe(sample, periods_per_year)
+        if sharpe is not None and math.isfinite(sharpe):
+            sharpes.append(sharpe)
+    return {
+        "paths": len(sharpes),
+        "ci_low": _percentile(sharpes, 0.025),
+        "ci_high": _percentile(sharpes, 0.975),
+        "p_positive": sum(value > 0 for value in sharpes) / len(sharpes) if sharpes else None,
+    }
+
+
+def evaluate_strategy_robustness(
+    returns: Iterable[float],
+    *,
+    benchmark_returns: Iterable[float] | None,
+    stress_returns: Iterable[float] | None,
+    selection_returns: Iterable[float] | None,
+    selection_trial_sharpes: Iterable[float] | None,
+    selected_trial_index: int,
+    effective_num_trials: int,
+    trade_count: int,
+    stress_cost_multiplier: float,
+    num_trials: int,
+    periods_per_year: int,
+    out_of_sample: bool,
+    costs_included: bool,
+    bootstrap_paths: int = 500,
+    block_size: int = 10,
+    seed: int = 42,
+) -> dict[str, object]:
+    """Evaluate one strategy's OOS net returns; never promotes it automatically."""
+    if isinstance(trade_count, bool) or not isinstance(trade_count, int) or trade_count < 0:
+        raise ValueError("trade_count must be a non-negative integer")
+    if isinstance(stress_cost_multiplier, bool) or not isinstance(stress_cost_multiplier, (int, float)) or not math.isfinite(float(stress_cost_multiplier)) or float(stress_cost_multiplier) < 2.0:
+        raise ValueError("stress_cost_multiplier must be finite and at least 2.0")
+    if isinstance(num_trials, bool) or not isinstance(num_trials, int) or num_trials < 1:
+        raise ValueError("num_trials must be an integer >= 1")
+    if isinstance(effective_num_trials, bool) or not isinstance(effective_num_trials, int) or not 1 <= effective_num_trials <= num_trials:
+        raise ValueError("effective_num_trials must be an integer from 1 through num_trials")
+    if isinstance(periods_per_year, bool) or not isinstance(periods_per_year, int) or periods_per_year < 1:
+        raise ValueError("periods_per_year must be an integer >= 1")
+    if not isinstance(out_of_sample, bool) or not isinstance(costs_included, bool):
+        raise ValueError("out_of_sample and costs_included must be booleans")
+    if isinstance(bootstrap_paths, bool) or not isinstance(bootstrap_paths, int) or not 0 <= bootstrap_paths <= 10000:
+        raise ValueError("bootstrap_paths must be an integer from 0 to 10000")
+    if isinstance(block_size, bool) or not isinstance(block_size, int) or block_size < 1:
+        raise ValueError("block_size must be a positive integer")
+    if isinstance(selected_trial_index, bool) or not isinstance(selected_trial_index, int) or selected_trial_index < 0:
+        raise ValueError("selected_trial_index must be a non-negative integer")
+    values: list[float] = []
+    for value in returns:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("returns must contain only finite numeric values")
+        numeric = float(value)
+        if not math.isfinite(numeric) or numeric <= -1.0:
+            raise ValueError("returns must be finite and greater than -100%")
+        values.append(numeric)
+
+    n = len(values)
+    selection_values: list[float] = []
+    if selection_returns is not None:
+        for value in selection_returns:
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError("selection_returns must contain only finite numeric values")
+            numeric = float(value)
+            if not math.isfinite(numeric) or numeric <= -1.0:
+                raise ValueError("selection_returns must be finite and greater than -100%")
+            selection_values.append(numeric)
+    benchmark: list[float] = []
+    stress: list[float] = []
+    trial_sharpes: list[float] = []
+    if selection_trial_sharpes is not None:
+        for value in selection_trial_sharpes:
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError("selection_trial_sharpes must contain only finite numeric values")
+            numeric = float(value)
+            if not math.isfinite(numeric):
+                raise ValueError("selection_trial_sharpes must contain only finite numeric values")
+            trial_sharpes.append(numeric)
+        if len(trial_sharpes) != num_trials:
+            raise ValueError("selection_trial_sharpes length must equal num_trials")
+    if stress_returns is not None:
+        for value in stress_returns:
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError("stress_returns must contain only finite numeric values")
+            numeric = float(value)
+            if not math.isfinite(numeric) or numeric <= -1.0:
+                raise ValueError("stress_returns must be finite and greater than -100%")
+            stress.append(numeric)
+        if len(stress) != n:
+            raise ValueError("stress_returns must align one-to-one with strategy returns")
+    if benchmark_returns is not None:
+        for value in benchmark_returns:
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError("benchmark_returns must contain only finite numeric values")
+            numeric = float(value)
+            if not math.isfinite(numeric) or numeric <= -1.0:
+                raise ValueError("benchmark_returns must be finite and greater than -100%")
+            benchmark.append(numeric)
+        if len(benchmark) != n:
+            raise ValueError("benchmark_returns must align one-to-one with strategy returns")
+    base: dict[str, object] = {
+        "sample_count": n,
+        "num_trials": num_trials,
+        "effective_num_trials": effective_num_trials,
+        "selection_period_count": len(selection_values),
+        "selected_trial_index": selected_trial_index,
+        "selection_trial_count": len(trial_sharpes),
+        "selection_trial_sharpe_variance": (sum((x - sum(trial_sharpes) / len(trial_sharpes)) ** 2 for x in trial_sharpes) / (len(trial_sharpes) - 1) if len(trial_sharpes) > 1 else 0.0) if trial_sharpes else None,
+        "periods_per_year": periods_per_year,
+        "out_of_sample": out_of_sample,
+        "costs_included": costs_included,
+        "bootstrap": {"paths": 0, "ci_low": None, "ci_high": None, "p_positive": None},
+        "probabilistic_sharpe_ratio": None,
+        "deflated_sharpe_ratio": None,
+        "annualized_sharpe": None,
+        "rolling_positive_sharpe_fraction": None,
+        "max_drawdown": _max_drawdown(values) if values else None,
+        "trade_count": trade_count,
+        "stress_cost_multiplier": float(stress_cost_multiplier),
+        "stress_sample_count": len(stress),
+        "stress_total_return": math.prod(1.0 + x for x in stress) - 1.0 if stress else None,
+        "stress_annualized_sharpe": _annual_sharpe(stress, periods_per_year) if stress else None,
+        "benchmark_sample_count": len(benchmark),
+        "benchmark_total_return": math.prod(1.0 + x for x in benchmark) - 1.0 if benchmark else None,
+        "strategy_total_return": math.prod(1.0 + x for x in values) - 1.0 if values else None,
+        "benchmark_annualized_sharpe": _annual_sharpe(benchmark, periods_per_year) if benchmark else None,
+        "verdict": "INSUFFICIENT",
+        "reasons": [],
+        "promotion_allowed": False,
+    }
+    if not out_of_sample:
+        base["reasons"] = ["Only untouched out-of-sample returns are eligible."]
+        return base
+    if not costs_included:
+        base["reasons"] = ["Transaction costs, spread and slippage must be included before robustness can be assessed."]
+        return base
+    if not benchmark:
+        base["reasons"] = ["An aligned untouched out-of-sample benchmark is required."]
+        return base
+    if len(selection_values) < 60:
+        base["reasons"] = ["Fewer than 60 untouched selection-period observations are available for DSR."]
+        return base
+    if len(trial_sharpes) != num_trials:
+        base["reasons"] = ["Provide the selection-period Sharpe for every strategy trial; DSR cannot be inferred from the selected strategy alone."]
+        return base
+    if selected_trial_index >= len(trial_sharpes):
+        raise ValueError("selected_trial_index is outside selection_trial_sharpes")
+    selection_mean = sum(selection_values) / len(selection_values)
+    selection_variance = sum((x - selection_mean) ** 2 for x in selection_values) / (len(selection_values) - 1)
+    selection_std = math.sqrt(selection_variance)
+    selection_period_sharpe = selection_mean / selection_std if selection_std > 0 else None
+    if selection_period_sharpe is None:
+        base["reasons"] = ["Selected strategy has zero selection-period variance; DSR is undefined."]
+        return base
+    if trial_sharpes[selected_trial_index] < max(trial_sharpes):
+        base["reasons"] = ["DSR requires the selected strategy to be the selection-period Sharpe winner."]
+        return base
+    if not math.isclose(selection_period_sharpe, trial_sharpes[selected_trial_index], rel_tol=1e-6, abs_tol=1e-8):
+        raise ValueError("selected trial Sharpe must match selection_returns at the same unannualized frequency")
+    if not stress:
+        base["reasons"] = ["A second out-of-sample run with at least 2x transaction costs is required."]
+        return base
+    if trade_count < 30:
+        base["reasons"] = ["Fewer than 30 completed trades; the strategy test is underpowered."]
+        return base
+    if n < 60:
+        base["reasons"] = ["Fewer than 60 out-of-sample periods; statistical estimates are unstable."]
+        return base
+
+    mean = sum(values) / n
+    variance = sum((x - mean) ** 2 for x in values) / (n - 1)
+    std = math.sqrt(variance)
+    period_sharpe = mean / std if std > 0 else None
+    annual_sharpe = period_sharpe * math.sqrt(periods_per_year) if period_sharpe is not None else None
+    skew = _sample_skew(values, mean, std)
+    excess_kurtosis = _sample_excess_kurtosis(values, mean, std)
+    benchmark_period_sharpe = _annual_sharpe(benchmark, 1) if len(benchmark) > 1 else None
+    stress_annual_sharpe = _annual_sharpe(stress, periods_per_year)
+    if benchmark_period_sharpe is None:
+        base["reasons"] = ["Benchmark needs at least two aligned out-of-sample returns."]
+        return base
+    psr = _psr(period_sharpe, benchmark_period_sharpe, n, skew, excess_kurtosis)
+    selection_skew = _sample_skew(selection_values, selection_mean, selection_std)
+    selection_excess_kurtosis = _sample_excess_kurtosis(selection_values, selection_mean, selection_std)
+    deflated_benchmark = _deflated_benchmark(trial_sharpes, effective_num_trials) if trial_sharpes else None
+    dsr = _psr(selection_period_sharpe, deflated_benchmark, len(selection_values), selection_skew, selection_excess_kurtosis) if deflated_benchmark is not None else None
+    bootstrap = _block_bootstrap_sharpe(
+        values, paths=bootstrap_paths, block_size=block_size,
+        periods_per_year=periods_per_year, seed=seed,
+    )
+
+    window = max(2, min(63, n // 4))
+    rolling = [
+        _annual_sharpe(values[start:start + window], periods_per_year)
+        for start in range(0, n - window + 1)
+    ]
+    rolling = [value for value in rolling if value is not None and math.isfinite(value)]
+    positive_fraction = sum(value > 0 for value in rolling) / len(rolling) if rolling else None
+
+    reasons: list[str] = []
+    if annual_sharpe is not None and annual_sharpe > 1.0 and dsr is not None and dsr < 0.5:
+        verdict = "OVERFIT"
+        reasons.append("High annualized Sharpe but weak deflated Sharpe confidence after accounting for strategy trials.")
+    elif (
+        psr is not None and psr >= 0.95
+        and bootstrap["ci_low"] is not None and bootstrap["ci_low"] > 0.0
+        and (effective_num_trials == 1 or (dsr is not None and dsr >= 0.90))
+        and positive_fraction is not None and positive_fraction >= 0.60
+        and stress_annual_sharpe is not None
+        and benchmark_period_sharpe is not None
+        and stress_annual_sharpe > 0.0
+    ):
+        verdict = "ROBUST_REQUIRES_REVIEW"
+        reasons.append("Statistical diagnostics passed; independent review and regime/cost checks are still required.")
+    else:
+        verdict = "FRAGILE"
+        if psr is None or psr < 0.95:
+            reasons.append("Probabilistic Sharpe confidence is below 0.95.")
+        if bootstrap["ci_low"] is None or bootstrap["ci_low"] <= 0:
+            reasons.append("Block-bootstrap Sharpe interval includes or falls below zero.")
+        if effective_num_trials > 1 and (dsr is None or dsr < 0.90):
+            reasons.append("Deflated Sharpe confidence is below 0.90 after accounting for trials.")
+        if positive_fraction is None or positive_fraction < 0.60:
+            reasons.append("Positive Sharpe stability is below 60% of rolling windows.")
+        if stress_annual_sharpe is None or stress_annual_sharpe <= 0.0:
+            reasons.append("The strategy does not retain a positive Sharpe ratio after the declared 2x-cost stress run.")
+
+    base.update({
+        "annualized_sharpe": annual_sharpe,
+        "selection_period_sharpe": selection_period_sharpe,
+        "selection_probabilistic_sharpe_ratio": _psr(selection_period_sharpe, 0.0, len(selection_values), selection_skew, selection_excess_kurtosis),
+        "benchmark_period_sharpe": benchmark_period_sharpe,
+        "benchmark_annualized_sharpe": benchmark_period_sharpe * math.sqrt(periods_per_year),
+        "stress_annualized_sharpe": stress_annual_sharpe,
+        "probabilistic_sharpe_ratio": psr,
+        "deflated_sharpe_ratio": dsr,
+        "deflated_sharpe_benchmark": deflated_benchmark,
+        "bootstrap": bootstrap,
+        "rolling_window": window,
+        "rolling_window_count": len(rolling),
+        "rolling_positive_sharpe_fraction": positive_fraction,
+        "skew": skew,
+        "excess_kurtosis": excess_kurtosis,
+        "selection_skew": selection_skew,
+        "selection_excess_kurtosis": selection_excess_kurtosis,
+        "verdict": verdict,
+        "reasons": reasons,
+    })
+    return base
+
+
+
+def analyze_backtest_overfitting(
+    strategy_returns_by_period: Iterable[Iterable[float]],
+    *,
+    n_blocks: int = 8,
+) -> dict[str, object]:
+    """Estimate CSCV Probability of Backtest Overfitting from a period x strategy matrix.
+
+    Rows must be chronological periods; columns must be the same strategy variants
+    across the full sample. This is a selection-bias diagnostic, not a forecast of
+    future loss. CSCV assumes sufficiently exchangeable blocks; regime changes and
+    serial dependence can invalidate its interpretation.
+    """
+    if isinstance(n_blocks, bool) or not isinstance(n_blocks, int) or n_blocks < 8 or n_blocks > 16 or n_blocks % 2:
+        raise ValueError("n_blocks must be an even integer from 8 to 16")
+
+    matrix: list[list[float]] = []
+    width: int | None = None
+    for row in strategy_returns_by_period:
+        values: list[float] = []
+        for value in row:
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError("strategy return matrix must contain only finite numeric values")
+            numeric = float(value)
+            if not math.isfinite(numeric) or numeric <= -1.0:
+                raise ValueError("strategy returns must be finite and greater than -100%")
+            values.append(numeric)
+        if width is None:
+            width = len(values)
+            if width < 2:
+                raise ValueError("at least two strategy variants are required")
+        elif len(values) != width:
+            raise ValueError("strategy return matrix must be rectangular")
+        matrix.append(values)
+
+    if len(matrix) < n_blocks or len(matrix) % n_blocks:
+        raise ValueError("period count must be divisible by n_blocks and contain at least one period per block")
+
+    strategy_count = width or 0
+    periods = len(matrix)
+    if periods * strategy_count > 2_000_000:
+        raise ValueError("strategy return matrix exceeds the 2,000,000-cell safety limit")
+    block_length = periods // n_blocks
+    all_blocks = tuple(range(n_blocks))
+    half = n_blocks // 2
+    split_count = math.comb(n_blocks, half)
+    selection_frequency = [0] * strategy_count
+    logits: list[float] = []
+    selected_oos_sharpes: list[float] = []
+    selected_oos_means: list[float] = []
+
+    # Center each strategy once, then aggregate per-block moments. This keeps
+    # each CSCV split bounded by O(blocks * strategies), not O(periods * strategies).
+    global_means = [sum(row[column] for row in matrix) / periods for column in range(strategy_count)]
+    block_centered_sums = [[0.0] * strategy_count for _ in range(n_blocks)]
+    block_centered_squares = [[0.0] * strategy_count for _ in range(n_blocks)]
+    block_raw_sums = [
+        [
+            math.fsum(matrix[row_index][column] for row_index in range(block * block_length, (block + 1) * block_length))
+            for column in range(strategy_count)
+        ]
+        for block in range(n_blocks)
+    ]
+    for row_index, row in enumerate(matrix):
+        block = row_index // block_length
+        for column, value in enumerate(row):
+            centered = value - global_means[column]
+            block_centered_sums[block][column] += centered
+            block_centered_squares[block][column] += centered * centered
+
+    def sharpe_for_blocks(blocks: tuple[int, ...], column: int) -> float:
+        count = block_length * len(blocks)
+        centered_sum = sum(block_centered_sums[block][column] for block in blocks)
+        centered_squares = sum(block_centered_squares[block][column] for block in blocks)
+        mean = global_means[column] + centered_sum / count
+        variance_numerator = centered_squares - centered_sum * centered_sum / count
+        variance = max(variance_numerator, 0.0) / (count - 1) if count > 1 else 0.0
+        std = math.sqrt(variance)
+        # A zero-variance series receives zero rather than infinite Sharpe.
+        return mean / std if std > 0 else 0.0
+
+    epsilon = 1e-12
+    for in_blocks in combinations(all_blocks, half):
+        in_set = set(in_blocks)
+        out_blocks = tuple(block for block in all_blocks if block not in in_set)
+        in_sharpes = [sharpe_for_blocks(in_blocks, column) for column in range(strategy_count)]
+        winner = max(range(strategy_count), key=lambda column: (in_sharpes[column], -column))
+        selection_frequency[winner] += 1
+
+        out_sharpes = [sharpe_for_blocks(out_blocks, column) for column in range(strategy_count)]
+        winner_sharpe = out_sharpes[winner]
+        less = sum(value < winner_sharpe for value in out_sharpes)
+        equal = sum(value == winner_sharpe for value in out_sharpes)
+        average_rank = less + (equal + 1) / 2.0
+        omega = min(max(average_rank / (strategy_count + 1.0), epsilon), 1.0 - epsilon)
+        logits.append(math.log(omega / (1.0 - omega)))
+        selected_oos_sharpes.append(winner_sharpe)
+        selected_oos_means.append(
+            math.fsum(block_raw_sums[block][winner] for block in out_blocks)
+            / (block_length * half)
+        )
+
+    pbo = sum(value <= 0.0 for value in logits) / split_count
+    return {
+        "method": "CSCV",
+        "period_count": periods,
+        "strategy_count": strategy_count,
+        "n_blocks": n_blocks,
+        "block_length": block_length,
+        "split_count": split_count,
+        "pbo": pbo,
+        "probability_oos_loss": sum(value < 0.0 for value in selected_oos_means) / split_count,
+        "mean_selected_oos_sharpe": sum(selected_oos_sharpes) / split_count,
+        "median_selected_oos_sharpe": _percentile(selected_oos_sharpes, 0.5),
+        "selection_frequency": selection_frequency,
+        "interpretation": "PBO estimates how often the in-sample winner ranks at or below the out-of-sample median across CSCV splits; it is not a probability of future loss.",
+        "limitations": [
+            "The matrix must include every strategy variant considered in the selection process.",
+            "The number of independent trials and correlation between variants affect interpretation.",
+            "CSCV assumes blocks are sufficiently exchangeable; strong serial dependence or regime shifts can invalidate the estimate.",
+            "This analysis does not detect look-ahead bias, bad fills, missing data or unmodeled transaction costs.",
+        ],
+    }

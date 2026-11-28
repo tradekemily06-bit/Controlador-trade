@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from data.timeframes import get_timeframe_interval, normalize_timeframe
+from data.provider_clock import expected_last_closed_candle as provider_expected_last_closed_candle
 from security.tenant_context import TenantContext
 
 
@@ -33,6 +34,8 @@ class MarketTimeframeMonitor:
         poll_interval_seconds: float = 2.0,
         close_grace_seconds: float = 3.0,
         default_context: TenantContext | None = None,
+        provider_clock: Callable[[TenantContext, str], datetime] | None = None,
+        session_boundary_provider: Callable[[TenantContext, str, str], datetime] | None = None,
     ) -> None:
         if analyzer is None or not callable(getattr(analyzer, "analyze", None)):
             raise ValueError("analyzer must implement analyze")
@@ -45,6 +48,12 @@ class MarketTimeframeMonitor:
         if default_context is not None and not isinstance(default_context, TenantContext):
             raise TypeError("default_context must be a trusted TenantContext")
         self.default_context = default_context
+        if provider_clock is not None and not callable(provider_clock):
+            raise TypeError("provider_clock must be callable")
+        self.provider_clock = provider_clock
+        if session_boundary_provider is not None and not callable(session_boundary_provider):
+            raise TypeError("session_boundary_provider must be callable")
+        self.session_boundary_provider = session_boundary_provider
         self.poll_interval_seconds = float(poll_interval_seconds)
         self.close_grace_seconds = float(close_grace_seconds)
         self._lock = threading.RLock()
@@ -249,9 +258,36 @@ class MarketTimeframeMonitor:
             bucket = (epoch // interval_seconds) * interval_seconds
         return datetime.fromtimestamp(bucket, tz=timezone.utc)
 
-    def expected_last_closed_candle(self, timeframe: str, *, now: datetime | None = None) -> datetime:
+    def expected_last_closed_candle(
+        self,
+        timeframe: str,
+        *,
+        now: datetime | None = None,
+        context: TenantContext | None = None,
+        symbol: str | None = None,
+    ) -> datetime:
         normalized = normalize_timeframe(timeframe)
         interval = int(get_timeframe_interval(normalized).total_seconds())
+        if normalized.endswith(("d", "w")):
+            if context is None or not symbol or self.session_boundary_provider is None:
+                raise ValueError(
+                    "D1/W1 require a verified provider session calendar; UTC fallback is disabled"
+                )
+            expected = self.session_boundary_provider(
+                context, self._validate_symbol(symbol), normalized
+            )
+            if not isinstance(expected, datetime) or expected.tzinfo is None or expected.utcoffset() is None:
+                raise ValueError("provider session calendar must return an aware candle-open timestamp")
+            return expected.astimezone(timezone.utc)
+        if self.provider_clock is not None:
+            if context is None or not symbol:
+                raise ValueError("provider clock requires tenant context and symbol")
+            provider_now = self.provider_clock(context, self._validate_symbol(symbol))
+            return provider_expected_last_closed_candle(
+                normalized,
+                provider_now=provider_now,
+                close_grace_seconds=self.close_grace_seconds,
+            )
         current = now or datetime.now(timezone.utc)
         if current.tzinfo is None:
             raise ValueError("now must be timezone-aware")
@@ -283,11 +319,13 @@ class MarketTimeframeMonitor:
         context = TenantContext(tenant_id=subscription["tenant_id"], subject_id=subscription["subject_id"])
         symbol = subscription["symbol"]
         timeframe = subscription["timeframe"]
-        expected = self.expected_last_closed_candle(timeframe, now=now)
-        previous = subscription.get("last_processed_candle")
-        if previous == expected.isoformat() or not self._is_enabled(context, symbol, timeframe):
-            return None
         try:
+            expected = self.expected_last_closed_candle(
+                timeframe, now=now, context=context, symbol=symbol
+            )
+            previous = subscription.get("last_processed_candle")
+            if previous == expected.isoformat() or not self._is_enabled(context, symbol, timeframe):
+                return None
             result = self.analyzer.analyze(
                 symbol=symbol,
                 timeframe=timeframe,
@@ -423,6 +461,12 @@ class MarketTimeframeMonitor:
             "worker_running": bool(self._thread is not None and self._thread.is_alive()),
             "poll_interval_seconds": self.poll_interval_seconds,
             "close_grace_seconds": self.close_grace_seconds,
+            "provider_clock_configured": self.provider_clock is not None,
+            "session_calendar_status": (
+                "VERIFIED_PROVIDER_CALLBACK_CONFIGURED"
+                if self.session_boundary_provider is not None
+                else "D1_W1_FAIL_CLOSED"
+            ),
             "worker_error_class": self._worker_error,
             "scope": "TENANT_AND_SUBJECT",
             "execution_authorized": False,

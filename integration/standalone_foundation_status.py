@@ -35,8 +35,61 @@ _DATABASES = (
     ("tenant_state", "tenant-state.sqlite3", True, {
         "tenant_state": {"tenant_id", "subject_id", "key", "value_json", "updated_at"},
     }),
+    ("tenant_market_data", "tenant-connection-timeframe-monitor.sqlite3", True, {
+        "tenant_connection_timeframe_watch": {
+            "tenant_id", "subject_id", "connection_id", "symbol", "timeframe",
+            "enabled", "created_at", "last_processed_candle", "last_signal",
+            "last_status", "last_error",
+        },
+        "tenant_connection_timeframe_results": {
+            "tenant_id", "subject_id", "connection_id", "symbol", "timeframe",
+            "candle_at", "result_json", "recorded_at",
+        },
+        "tenant_connection_timeframe_processing_lease": {
+            "lease_key", "owner_token", "expires_at",
+        },
+        "tenant_connection_notification_outbox": {
+            "event_id", "tenant_id", "subject_id", "connection_id", "symbol",
+            "timeframe", "candle_at", "result_json", "created_at", "attempts",
+            "lease_until", "lease_token", "delivered_at", "dead_at", "last_error",
+        },
+    }),
+    ("mt5_relay_tokens", "tenant-mt5-relay-tokens.sqlite3", True, {
+        "tenant_mt5_relay_tokens": {
+            "token_hash", "tenant_id", "subject_id", "connection_id",
+            "source_id", "created_at", "revoked",
+        },
+    }),
+    ("tradingview_webhook_secrets", "tenant-tradingview-webhook-secrets.sqlite3", True, {
+        "tenant_tradingview_webhook_secrets": {
+            "secret_hash", "tenant_id", "subject_id", "connection_id", "revoked",
+        },
+    }),
+    ("tenant_tradingview_alerts", "tenant-tradingview-alerts.sqlite3", True, {
+        "tenant_tradingview_alert_events": {
+            "tenant_id", "subject_id", "connection_id", "event_id", "ticker",
+            "interval", "action", "price", "fired_at", "received_at", "payload_json",
+        },
+    }),
+    ("ctrader_oauth_state", "tenant-ctrader-oauth-state.sqlite3", False, {
+        "tenant_oauth_states": {
+            "state_hash", "tenant_id", "subject_id", "connection_id",
+            "provider_id", "expires_at", "consumed_at",
+        },
+    }),
+    ("ctrader_oauth_tokens", "tenant-ctrader-oauth-tokens.sqlite3", False, {
+        "tenant_oauth_tokens": {
+            "tenant_id", "subject_id", "connection_id", "provider_id",
+            "key_id", "ciphertext_b64", "expires_at", "scopes_json",
+            "updated_at", "revoked_at",
+        },
+    }),
     ("notification_outbox", "notification-outbox.sqlite3", True, {
-        "notification_outbox": {"idempotency_key", "payload_json", "status", "attempts", "available_at", "lease_until", "created_at", "delivered_at", "last_error"},
+        "notification_outbox": {
+            "idempotency_key", "payload_json", "status", "attempts",
+            "available_at", "lease_until", "lease_token", "created_at",
+            "delivered_at", "last_error",
+        },
     }),
     ("decision_memory", "decision-memory.sqlite3", True, {
         "decisions": {"decision_id", "created_at", "symbol", "timeframe", "signal", "score", "confirmed", "reason", "execution_allowed", "outcome", "outcome_source"},
@@ -48,6 +101,38 @@ _DATABASES = (
     ("market_timeframe_monitor", "market-timeframe-monitor.sqlite3", False, {
         "market_timeframe_watch_v2": {"tenant_id", "subject_id", "symbol", "timeframe", "enabled", "created_at", "last_processed_candle", "last_signal", "last_status", "last_error"},
         "market_timeframe_results_v2": {"tenant_id", "subject_id", "symbol", "timeframe", "candle_at", "result_json", "recorded_at"},
+    }),
+    ("tenant_signal_evidence", "tenant-signal-evidence.sqlite3", False, {
+        "tenant_signal_evidence": {
+            "tenant_id", "subject_id", "source_id", "signal_id", "symbol",
+            "timeframe", "direction", "model_version", "evidence_score",
+            "score_semantics", "candle_close_at", "observed_at", "valid_until",
+            "provenance",
+        },
+    }),
+    ("tenant_forecast_audit", "tenant-forecast-audit.sqlite3", False, {
+        "tenant_probability_forecasts": {
+            "tenant_id", "subject_id", "forecast_id", "symbol", "timeframe",
+            "direction", "model_version", "probability", "forecast_at",
+            "resolved_at", "outcome", "provenance", "out_of_sample",
+        },
+    }),
+    ("security_audit", "security-audit.sqlite3", False, {
+        "security_events": {
+            "id", "timestamp", "request_id", "method", "path", "status", "client_hash",
+        },
+    }),
+    ("news_evidence", "news-evidence.sqlite3", False, {
+        "tenant_news_evidence": {
+            "tenant_id", "subject_id", "evidence_id", "source_id", "fingerprint",
+            "published_at", "ingested_at", "payload_json",
+        },
+    }),
+    ("economic_calendar", "economic-calendar.sqlite3", False, {
+        "economic_calendar_observations": {
+            "source_id", "source_event_id", "observed_at", "scheduled_at",
+            "status", "impact", "payload_json",
+        },
     }),
 )
 
@@ -81,9 +166,26 @@ def _integrity(path: Path, expected_schema: dict[str, set[str]]) -> tuple[str, d
     return "ok", missing
 
 
+def _backup_status(runtime: Any) -> dict[str, Any]:
+    if getattr(runtime, "runtime_dir", None) is None:
+        return {"state": "NOT_AVAILABLE", "scheduler": None}
+    scheduler = getattr(runtime, "backup_scheduler", None)
+    if scheduler is None:
+        return {"state": "ON_DEMAND_LOCAL_ONLY", "scheduler": None}
+    try:
+        status = scheduler.status()
+    except Exception as exc:
+        return {"state": "STATUS_UNAVAILABLE", "scheduler": None, "error_class": type(exc).__name__}
+    return {
+        "state": "SCHEDULED_LOCAL_ONLY",
+        "scheduler": status,
+    }
+
+
 def standalone_storage_status(runtime: Any) -> dict[str, Any]:
     """Report actual local SQLite presence/integrity without overstating production readiness."""
     runtime_dir = getattr(runtime, "runtime_dir", None)
+    backup = _backup_status(runtime)
     if runtime_dir is None:
         return {
             "provider": "LOCAL_SQLITE",
@@ -91,8 +193,20 @@ def standalone_storage_status(runtime: Any) -> dict[str, Any]:
             "stores": [],
             "tenant_isolation": "UNKNOWN",
             "multi_tenant_isolation": "NOT_IMPLEMENTED",
-            "backup_restore": "NOT_CONFIGURED",
+            "backup_restore": backup["state"],
+            "backup_scheduler": backup["scheduler"],
             "production_storage": "NOT_PROVEN_BY_LOCAL_SQLITE_HEALTH",
+            "deployment_topology": "UNKNOWN_NO_RUNTIME_DIRECTORY",
+            "multi_replica_readiness": "BLOCKED_RUNTIME_NOT_AVAILABLE",
+            "production_release_blockers": [
+                "RUNTIME_STORAGE_NOT_AVAILABLE",
+                "POSTGRESQL_OR_EQUIVALENT_SHARED_TRANSACTIONAL_DATABASE",
+                "DISTRIBUTED_PROCESSING_AND_OUTBOX_LEASES",
+                "DURABLE_SHARED_OAUTH_STORAGE_WITH_KMS",
+                "EXTERNAL_NOTIFICATION_DELIVERY_PROVIDER",
+                "TRUSTED_IDENTITY_PROVIDER_RUNTIME_VERIFICATION",
+                "BACKUP_RESTORE_AND_RECOVERY_VALIDATION",
+            ],
             "execution_authorized": False,
         }
     root = Path(runtime_dir)
@@ -101,7 +215,12 @@ def standalone_storage_status(runtime: Any) -> dict[str, Any]:
     for store_id, filename, required, expected_schema in _DATABASES:
         path = root / filename
         missing_schema: dict[str, list[str]] = {}
-        if not path.is_file():
+        if path.is_symlink():
+            # A database path must remain inside the configured runtime directory.
+            # Following a symlink here could make readiness inspect an unrelated file.
+            state = "UNSAFE_PATH"
+            detail = "SYMLINK_NOT_ALLOWED"
+        elif not path.is_file():
             state = "MISSING"
             detail = None
         else:
@@ -131,7 +250,18 @@ def standalone_storage_status(runtime: Any) -> dict[str, Any]:
         "stores": stores,
         "tenant_isolation": "SINGLE_CONFIGURED_RUNTIME_IDENTITY",
         "multi_tenant_isolation": "NOT_IMPLEMENTED",
-        "backup_restore": "NOT_CONFIGURED",
+        "backup_restore": backup["state"],
+        "backup_scheduler": backup["scheduler"],
         "production_storage": "NOT_PROVEN_BY_LOCAL_SQLITE_HEALTH",
+        "deployment_topology": "SINGLE_HOST_ONLY",
+        "multi_replica_readiness": "BLOCKED_SHARED_TRANSACTIONAL_DATABASE_REQUIRED",
+        "production_release_blockers": [
+            "POSTGRESQL_OR_EQUIVALENT_SHARED_TRANSACTIONAL_DATABASE",
+            "DISTRIBUTED_PROCESSING_AND_OUTBOX_LEASES",
+            "DURABLE_SHARED_OAUTH_STORAGE_WITH_KMS",
+            "EXTERNAL_NOTIFICATION_DELIVERY_PROVIDER",
+            "TRUSTED_IDENTITY_PROVIDER_RUNTIME_VERIFICATION",
+            "BACKUP_RESTORE_AND_RECOVERY_VALIDATION",
+        ],
         "execution_authorized": False,
     }

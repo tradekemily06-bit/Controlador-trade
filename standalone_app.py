@@ -1,4 +1,4 @@
-"""Read-only HTTP API for the independent seven-area analyst application.
+"""Read-only HTTP API for the independent six-area analyst application.
 
 The approved Lovable UI can consume this API without changing its design.
 No broker-order or money-movement endpoint is defined here.
@@ -6,6 +6,7 @@ No broker-order or money-movement endpoint is defined here.
 from __future__ import annotations
 
 import hmac
+import importlib
 import json
 import os
 import re
@@ -858,6 +859,9 @@ class StandaloneWSGIApplication:
             worker = getattr(self.runtime, "notification_worker", None)
             assistant = getattr(self.runtime, "assistant", None)
             news_status = getattr(ecosystem, "news_status", None)
+            calendar_worker = getattr(self.runtime, "economic_calendar_worker", None)
+            news_polling_worker = getattr(self.runtime, "news_polling_worker", None)
+            news_evidence_correlator = getattr(ecosystem, "news_evidence_correlator", None)
             identity_middleware = os.getenv(
                 "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE", ""
             ).strip().lower() in {"1", "true", "yes"}
@@ -960,6 +964,35 @@ class StandaloneWSGIApplication:
                     }
                 ),
                 "storage_foundation": standalone_storage_status(self.runtime),
+                "economic_calendar_ingestion": (
+                    calendar_worker.status()
+                    if callable(getattr(calendar_worker, "status", None))
+                    else {
+                        "configured": False,
+                        "worker_running": False,
+                        "status": "NOT_CONFIGURED",
+                        "execution_authorized": False,
+                    }
+                ),
+                "news_polling": (
+                    news_polling_worker.status()
+                    if callable(getattr(news_polling_worker, "status", None))
+                    else {
+                        "configured": False,
+                        "worker_running": False,
+                        "last_state": "NOT_CONFIGURED",
+                        "execution_authorized": False,
+                    }
+                ),
+                "news_evidence": {
+                    "status": "CONFIGURED" if news_evidence_correlator is not None else "NOT_CONFIGURED",
+                    "persistent_store": (
+                        "CONFIGURED"
+                        if getattr(news_evidence_correlator, "store", None) is not None
+                        else "NOT_CONFIGURED"
+                    ),
+                    "execution_authorized": False,
+                },
                 "tenant_state": (
                     self.runtime.tenant_state.readiness()
                     if callable(getattr(getattr(self.runtime, "tenant_state", None), "readiness", None))
@@ -2019,18 +2052,62 @@ def _validate_bind_security(host: str) -> None:
         )
 
 
+def _runtime_from_environment() -> StandaloneRuntime:
+    """Load a trusted deployment factory, or use the intentionally unconfigured local runtime.
+
+    The module path is operator-controlled deployment configuration, never a
+    request parameter. A configured factory must return an active StandaloneRuntime;
+    import/factory/type failures abort startup instead of silently falling back.
+    """
+    factory_spec = os.getenv("CONTROLADOR_STANDALONE_RUNTIME_FACTORY", "").strip()
+    if not factory_spec:
+        return StandaloneRuntime.from_environment()
+    if not re.fullmatch(
+        r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*:[A-Za-z_][A-Za-z0-9_]*",
+        factory_spec,
+    ):
+        raise RuntimeError(
+            "CONTROLADOR_STANDALONE_RUNTIME_FACTORY deve usar o formato modulo:funcao"
+        )
+    module_name, factory_name = factory_spec.split(":", 1)
+    try:
+        module = importlib.import_module(module_name)
+    except Exception as exc:
+        raise RuntimeError("não foi possível carregar o módulo de bootstrap confiável") from exc
+    factory = getattr(module, factory_name, None)
+    if not callable(factory):
+        raise RuntimeError("a factory de runtime configurada não é executável")
+    try:
+        runtime = factory()
+    except Exception as exc:
+        raise RuntimeError("a factory de runtime confiável falhou") from exc
+    if not isinstance(runtime, StandaloneRuntime) or runtime.closed:
+        close = getattr(runtime, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception:
+                pass
+        raise RuntimeError("a factory deve retornar um StandaloneRuntime ativo")
+    return runtime
+
+
 def main() -> None:
     host = os.getenv("CONTROLADOR_BIND_HOST", "127.0.0.1")
     _validate_bind_security(host)
-    runtime = StandaloneRuntime.from_environment()
-    application = StandaloneWSGIApplication(runtime)
-    port = int(os.getenv("CONTROLADOR_BIND_PORT", "8765"))
-    server = make_server(host, port, application, server_class=ThreadingWSGIServer)
+    runtime = _runtime_from_environment()
+    server = None
     try:
+        application = StandaloneWSGIApplication(runtime)
+        port = int(os.getenv("CONTROLADOR_BIND_PORT", "8765"))
+        server = make_server(host, port, application, server_class=ThreadingWSGIServer)
         server.serve_forever()
     finally:
-        server.server_close()
-        runtime.close()
+        try:
+            if server is not None:
+                server.server_close()
+        finally:
+            runtime.close()
 
 
 if __name__ == "__main__":

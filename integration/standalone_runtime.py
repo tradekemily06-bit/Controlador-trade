@@ -10,6 +10,8 @@ from typing import Any, Mapping
 from analysis.decision_store import DecisionStore
 from analysis.tenant_signal_evidence_store import TenantSignalEvidenceStore
 from analysis.tenant_signal_outcome_store import TenantSignalOutcomeStore
+from analysis.tenant_market_snapshot_store import TenantMarketSnapshotStore
+from analysis.tenant_strategy_trial_ledger import TenantStrategyTrialLedger
 from assistant.chat_service import EcosystemAssistant
 from assistant.conversation_store import AssistantConversationStore
 from security.sqlite_tenant_storage import SQLiteTenantStorage
@@ -55,6 +57,8 @@ from integration.market_timeframe_monitor import MarketTimeframeMonitor
 from integration.notification_outbox_worker import NotificationOutboxWorker
 from integration.tenant_notification_outbox_worker import TenantNotificationOutboxWorker
 from integration.rss_news_provider import RSSNewsProvider
+from integration.news_polling_worker import NewsPollingWorker
+from integration.news_source_configuration import build_news_evidence_from_environment
 
 
 _REAL_MARKET_DATA_PROVIDER_IDS = frozenset({
@@ -71,6 +75,25 @@ def _market_data_provenance_for_provider(provider_id: str | None) -> str | None:
         if isinstance(provider_id, str) and provider_id.strip() in _REAL_MARKET_DATA_PROVIDER_IDS
         else None
     )
+
+
+def _validate_runtime_store_location(store: Any, runtime_dir: Path, filename: str) -> None:
+    """Keep SQLite evidence stores inside the directory covered by local backups."""
+    if store is None:
+        return
+    database_path = getattr(store, "database_path", None)
+    if database_path is None:
+        return  # Non-SQLite shared stores are governed by their deployment adapter.
+    expected_entry = runtime_dir / filename
+    actual_entry = Path(database_path)
+    if expected_entry.is_symlink() or actual_entry.is_symlink():
+        raise ValueError(f"{filename} must not be a symlink")
+    expected = expected_entry.resolve()
+    actual = actual_entry.resolve()
+    if actual != expected:
+        raise ValueError(
+            f"{filename} must be stored inside CONTROLADOR_RUNTIME_DIR for backup coverage"
+        )
 
 
 # Failed startup workers may be blocked in an external provider/sink. Retain
@@ -189,6 +212,9 @@ class StandaloneRuntime:
         ctrader_oauth_redirect_uri: str | None = None,
         ctrader_refresh_lease_provider=None,
         ctrader_transport_factory=None,
+        economic_calendar_worker=None,
+        economic_calendar_store=None,
+        news_evidence_correlator=None,
     ) -> None:
         configured_identity = os.getenv("CONTROLADOR_SINGLE_USER_IDENTITY", "").strip()
         if not configured_identity:
@@ -207,8 +233,23 @@ class StandaloneRuntime:
         self.process_lock.acquire()
         self.closed = False
         self.tenant_push_subscription_registry = tenant_push_subscription_registry
-
+        self.economic_calendar_worker = economic_calendar_worker
+        self.news_polling_worker = None
+        if economic_calendar_worker is not None and not all(
+            callable(getattr(economic_calendar_worker, name, None))
+            for name in ("start", "stop", "status")
+        ):
+            self.process_lock.release()
+            raise TypeError("economic_calendar_worker must implement start, stop and status")
+        self.economic_calendar_store = (
+            economic_calendar_store
+            if economic_calendar_store is not None
+            else getattr(getattr(economic_calendar_worker, "service", None), "store", None)
+        )
         try:
+            _validate_runtime_store_location(
+                self.economic_calendar_store, self.runtime_dir, "economic-calendar.sqlite3"
+            )
             fiscal_database = self.runtime_dir / "fiscal-reserve.sqlite3"
 
             # The process lock must be held before migrations or repositories
@@ -358,6 +399,20 @@ class StandaloneRuntime:
             self.signal_outcome_store = TenantSignalOutcomeStore(
                 self.signal_evidence_store
             )
+            # Share the already allowlisted and backed-up signal-evidence database.
+            self.strategy_trial_ledger = TenantStrategyTrialLedger(
+                self.runtime_dir / "tenant-signal-evidence.sqlite3"
+            )
+            self.market_snapshot_store = TenantMarketSnapshotStore(
+                self.runtime_dir / "tenant-signal-evidence.sqlite3"
+            )
+            _validate_runtime_store_location(
+                self.market_snapshot_store, self.runtime_dir, "tenant-signal-evidence.sqlite3"
+            )
+            def persist_market_snapshot(snapshot, owner, snapshot_id, source_id):
+                return self.market_snapshot_store.record(
+                    owner, snapshot_id=snapshot_id, source_id=source_id, snapshot=snapshot
+                )
             # Rebuild configured generic provider sessions only after a fresh
             # tenant-scoped vault resolution and provider handshake.
             self.provider_recovery_status = self.tenant_provider_connection_service.reconnect_available(
@@ -428,13 +483,33 @@ class StandaloneRuntime:
                     interval_seconds=backup_interval,
                 )
                 self.backup_scheduler.start()
+            if news_evidence_correlator is None:
+                news_evidence_correlator = build_news_evidence_from_environment(
+                    runtime_dir=self.runtime_dir,
+                    tenant_id=self.local_tenant_context.tenant_id,
+                    subject_id=self.local_tenant_context.subject_id,
+                )
+            if news_evidence_correlator is not None:
+                evidence_store = getattr(news_evidence_correlator, "store", None)
+                if evidence_store is not None and (
+                    getattr(evidence_store, "tenant_id", None) != self.local_tenant_context.tenant_id
+                    or getattr(evidence_store, "subject_id", None) != self.local_tenant_context.subject_id
+                ):
+                    raise PermissionError(
+                        "news evidence store must be scoped to this runtime's trusted local identity"
+                    )
+                _validate_runtime_store_location(
+                    evidence_store, self.runtime_dir, "news-evidence.sqlite3"
+                )
             self.ecosystem_service = EcosystemService(
                 decision_store=DecisionStore(str(self.runtime_dir / "decision-memory.sqlite3")),
                 learning_state_store=LearningStateStore(ecosystem_state_store),
                 notification_state_store=ecosystem_state_store,
                 notification_outbox=self.notification_outbox,
                 news_provider=RSSNewsProvider.from_environment(),
+                news_evidence_correlator=news_evidence_correlator,
             )
+            self.news_provider = self.ecosystem_service.news
             self.intelligence = UnifiedIntelligence(
                 senior_context=self.ecosystem_service.senior_context
             )
@@ -488,6 +563,7 @@ class StandaloneRuntime:
                     signal_outcome_sink=self.signal_outcome_store.resolve_pending_for_candle,
                     market_data_provenance=_market_data_provenance_for_provider(selected.provider_id),
                     signal_source_id=f"{selected.provider_id}:{selected.source}",
+                    market_snapshot_sink=persist_market_snapshot,
                 )
 
                 def publish_market_change(event: dict[str, Any]) -> None:
@@ -538,6 +614,7 @@ class StandaloneRuntime:
                     signal_outcome_sink=self.signal_outcome_store.resolve_pending_for_candle,
                     market_data_provenance=_market_data_provenance_for_provider(session.provider_id),
                     signal_source_id=session.connection_id,
+                    market_snapshot_sink=persist_market_snapshot,
                 )
 
             def publish_account_market_change(event: dict[str, Any]) -> None:
@@ -595,7 +672,59 @@ class StandaloneRuntime:
                 intelligence=self.intelligence,
                 market_analyzer=self.market_analysis_service,
                 market_data_registry=self.market_data_registry,
+                market_analysis_context=self.local_tenant_context,
+                economic_calendar_store=self.economic_calendar_store,
+                strategy_trial_ledger=self.strategy_trial_ledger,
+                strategy_trial_context=self.local_tenant_context,
+                market_snapshot_store=self.market_snapshot_store,
             )
+            if self.economic_calendar_worker is not None:
+                self.economic_calendar_worker.start()
+            provider_status = self.news_provider.status()
+            if news_evidence_correlator is not None and bool(provider_status.get("configured")):
+                try:
+                    news_interval = float(
+                        os.getenv("CONTROLADOR_NEWS_POLL_INTERVAL_SECONDS", "60")
+                    )
+                except ValueError as exc:
+                    raise RuntimeError(
+                        "CONTROLADOR_NEWS_POLL_INTERVAL_SECONDS deve ser numérico"
+                    ) from exc
+                def publish_high_impact_news(item, evidence, classification) -> None:
+                    assets = ", ".join(classification.get("affected_assets", [])) or "ativos não determinados"
+                    published_at = getattr(item, "published_at", None) or "horário não informado"
+                    source = getattr(item, "source", None) or evidence.get("source_host", "fonte não identificada")
+                    article_url = getattr(item, "url", None) or ""
+                    notification = EcosystemNotification(
+                        notification_id=f"news:{evidence['evidence_id']}",
+                        kind=NotificationKind.MARKET,
+                        severity=NotificationSeverity.IMPORTANT,
+                        title=f"Notícia de alto impacto: {str(getattr(item, 'title', ''))[:120]}",
+                        message=(
+                            "Triagem automática de manchete — ainda não é fato verificado nem previsão de preço. "
+                            f"Possíveis ativos relacionados: {assets}. Fonte: {source}. "
+                            f"Publicação: {published_at}. Link: {article_url}"
+                        ),
+                        requires_attention=True,
+                    )
+                    # Persist in the existing single-user notification center
+                    # consumed by the current app/API, and in the tenant inbox/
+                    # outbox used by the owner-scoped delivery boundary.
+                    self.tenant_notification_dispatcher.publish(
+                        self.local_tenant_context, notification
+                    )
+                    self.ecosystem_service.publish_notification(notification)
+
+                self.news_polling_worker = NewsPollingWorker(
+                    self.news_provider,
+                    news_evidence_correlator,
+                    interval_seconds=news_interval,
+                    limit=50,
+                    on_evidence=publish_high_impact_news,
+                )
+                self.news_polling_worker.start()
+            self.ecosystem_service.news_polling_worker = self.news_polling_worker
+            self.ecosystem_service.news_polling_managed = True
         except Exception:
             workers = (
                 (getattr(self, "market_monitor", None), "worker_running"),
@@ -604,6 +733,8 @@ class StandaloneRuntime:
                 (getattr(self, "tenant_notification_worker", None), "running"),
                 (getattr(self, "notification_worker", None), "running"),
                 (getattr(self, "backup_scheduler", None), "worker_running"),
+                (getattr(self, "economic_calendar_worker", None), "worker_running"),
+                (getattr(self, "news_polling_worker", None), "worker_running"),
             )
             still_running = _cleanup_failed_startup(self.process_lock, workers)
             if not still_running:
@@ -628,6 +759,8 @@ class StandaloneRuntime:
             (getattr(self, "tenant_notification_worker", None), "running"),
             (self.notification_worker, "running"),
             (self.backup_scheduler, "worker_running"),
+            (getattr(self, "economic_calendar_worker", None), "worker_running"),
+            (getattr(self, "news_polling_worker", None), "worker_running"),
         )
         still_running = _stop_workers_and_report_active(workers)
 

@@ -1,15 +1,15 @@
 # Standalone Controlador-trade — completion roadmap
 
-This roadmap defines the evidence required to call the independent application complete. It does not change the approved Lovable interface, enable broker orders, or replace the existing implementation with a new app.
+This roadmap defines the evidence required to call the independent application complete. It preserves the approved Lovable interface and existing implementation. SIMULAÇÃO remains the active operating mode; REAL dispatch, order submission and money movement remain disabled in this foundation. Historical REAL authorization contracts (P111–P119 and P120–P126) are architecture and safety artifacts, not a current production activation. Any future REAL activation requires a separate explicit owner decision, security review, verified deployment prerequisites and the app's existing fresh human confirmation for each order.
 
 ## Delivery boundaries
 
-- One standalone application, backed by the existing seven visible areas: Cabine de Comando, Análise, Estudo, Memória, Reserva Fiscal, Assistente do Ecossistema and Central.
+- One standalone application, backed by the six approved visible areas: Cabine de Comando, Análise, Estudo, Reserva Fiscal, Assistente do Ecossistema and Central. Decision memory remains an internal capability, not a seventh area.
 - Preserve the approved Lovable UI. Backend work must connect to its existing screens and controls; visual redesign is out of scope.
-- No EA and no broker order submission. Market analysis and notifications are informational and require human review.
-- DEMO-first. REAL remains unavailable until separately reviewed, explicitly authorized, and validated; this roadmap does not authorize REAL execution.
+- No EA. The app is standalone and provider-neutral; broker adapters are connected through the backend.
+- REAL technical activation is authorized by the owner. Do not treat the owner's authorization as missing. Keep dispatch blocked only by concrete unmet deployment prerequisites (broker credentials/availability, trusted identity, risk approval, verified audit/admission, healthy feed and recovery), and report each blocker precisely. Each REAL order requires a fresh, short-lived human confirmation.
 
-## Evidence status — 27 November 2026
+## Evidence status — 28 November 2026
 
 This is the current implementation boundary, not a release declaration:
 
@@ -21,7 +21,7 @@ This is the current implementation boundary, not a release declaration:
 | Production foundation | Fail-closed identity/storage/security contracts, local SQLite topology guard, backup/restore primitives and container smoke tests | Deploy trusted identity, shared transactional database, distributed leases, KMS, TLS, durable audit, centralized rate limits, off-host backup and restore drill |
 | Lovable integration | Existing API and notification endpoints are available; backend work preserves the frontend as the visual source of truth | Complete screen-by-screen integration and browser network acceptance in the owner-managed Lovable environment; this repository work does not claim that frontend integration has been verified |
 
-The current automated CI run is evidence of code/test/build behavior only. It does not prove real-account connectivity, production provisioning, physical-device delivery or user acceptance. SQLite remains single-host/single-runtime, external push remains disabled by default, and REAL execution remains disabled.
+The current automated CI run is evidence of code/test/build behavior only. It does not prove real-account connectivity, production provisioning, physical-device delivery or user acceptance. SQLite remains single-host/single-runtime and external push remains disabled by default. The user's authorization is recorded; REAL dispatch status must be derived from the actual configured prerequisites, not from asking the user to authorize again.
 
 ## Phase A — Foundation and reuse
 
@@ -32,7 +32,7 @@ The current automated CI run is evidence of code/test/build behavior only. It do
 - Provider-neutral market-data contracts, provider registry and timeframe normalization.
 - API contract, identity boundary, process lifecycle and fail-closed safety defaults.
 
-**Exit evidence:** migrations and persistence tests pass; API schemas are documented; all seven areas are represented; no hidden order/money-movement route exists; a clean startup and shutdown succeeds.
+**Exit evidence:** migrations and persistence tests pass; API schemas are documented; all six visible areas are represented; no hidden order/money-movement route exists; a clean startup and shutdown succeeds.
 
 ## Phase B — Frontend/API integration
 
@@ -78,11 +78,11 @@ The current automated CI run is evidence of code/test/build behavior only. It do
 - Configure production HTTPS, identity, access token/session policy, secret rotation, CORS/CSRF policy where applicable, rate limits and audit logging.
 - Verify tenant/owner isolation, least privilege, backup encryption/retention and incident response.
 - Deploy backend and frontend integration to the intended environment; verify DNS/TLS, persistent volumes, environment variables and migrations.
-- Run end-to-end scenarios across all seven areas, including unavailable provider, lost bridge, stale feed, server restart, notification failure, unauthorized access and recovery.
+- Run end-to-end scenarios across all six visible areas, including unavailable provider, lost bridge, stale feed, server restart, notification failure, unauthorized access and recovery.
 - Run automated tests, security scans, dependency checks and manual acceptance against the approved interface.
 - Publish known limitations and a rollback plan.
 
-**Exit evidence:** production deployment is reachable over HTTPS; all seven areas pass their acceptance scenarios; live data and notification tests are evidenced; security and restore checks pass; no unresolved critical/high findings; owner accepts the release.
+**Exit evidence:** production deployment is reachable over HTTPS; all six visible areas pass their acceptance scenarios; live data and notification tests are evidenced; security and restore checks pass; no unresolved critical/high findings; owner accepts the release.
 
 ## Explicit current limitations to close
 
@@ -93,6 +93,10 @@ The current automated CI run is evidence of code/test/build behavior only. It do
 - A process responding to health checks is not proof of production deployment or end-to-end readiness.
 - Signal evidence score is not calibrated profit probability. Do not display a fabricated percentage.
 
+## Cross-front continuity register
+
+The full repository audit, PR dependency graph, retained-scope inventory and open completion checklists are maintained in [IMPLEMENTATION_COMPLETION_LEDGER.md](IMPLEMENTATION_COMPLETION_LEDGER.md). The ledger is additive to this roadmap and explicitly tracks the separate #532 readiness branch so its work is not lost during integration.
+
 ## Release definition
 
-The application is complete only when Phases A–E have their exit evidence, the existing Lovable UI is connected without visual changes, all seven areas pass end-to-end acceptance, live data and claimed notification channels are demonstrated, and the release is deployed with security, monitoring, backup and rollback in place.
+The application is complete only when Phases A–E have their exit evidence, the existing Lovable UI is connected without visual changes, all six visible areas pass end-to-end acceptance, live data and claimed notification channels are demonstrated, and the release is deployed with security, monitoring, backup and rollback in place.

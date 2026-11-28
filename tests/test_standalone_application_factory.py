@@ -1,7 +1,15 @@
 from __future__ import annotations
 
 import unittest
+import tempfile
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
+from analysis.tenant_market_snapshot_store import TenantMarketSnapshotStore
+from analysis.tenant_strategy_trial_ledger import TenantStrategyTrialLedger
+from core.p122_broker_market_data import BrokerMarketDataSnapshot
+from data.models import Candle
+from security.tenant_context import TenantContext
 from core.unified_intelligence import ApplicationArea
 from integration.standalone_application_factory import build_standalone_application
 
@@ -73,10 +81,11 @@ class StandaloneApplicationFactoryTests(unittest.TestCase):
         self.assertEqual(architecture["area_handler_status"]["command_cabin"], "CONNECTED")
         self.assertEqual(architecture["area_handler_status"]["analysis"], "CONNECTED")
         self.assertEqual(architecture["area_handler_status"]["study"], "CONNECTED")
-        self.assertEqual(architecture["area_handler_status"]["memory"], "CONNECTED")
         self.assertEqual(architecture["area_handler_status"]["control_center"], "CONNECTED")
         self.assertEqual(architecture["area_handler_status"]["tax_reserve"], "CONNECTED")
         self.assertEqual(architecture["area_handler_status"]["ecosystem_assistant"], "CONNECTED")
+        self.assertEqual(len(architecture["area_handler_status"]), 6)
+        self.assertTrue(architecture["all_area_handlers_connected"])
 
     def test_fiscal_and_assistant_areas_remain_routable_when_unconfigured(self):
         app = build_standalone_application(ecosystem_service=FakeService())
@@ -218,6 +227,139 @@ class StandaloneApplicationFactoryTests(unittest.TestCase):
         self.assertEqual(stats["result"]["reporting_status"], "STATISTICS_AVAILABLE")
         self.assertEqual(news["result"]["news"]["live"], False)
 
+    def test_analysis_exposes_calendar_store_without_claiming_live_refresh(self):
+        class FakeCalendarStore:
+            def __init__(self):
+                self.received = None
+
+            def list_latest(self, **kwargs):
+                self.received = kwargs
+                return [{"source_id": "bls", "title": "US CPI", "actual": None}]
+
+        store = FakeCalendarStore()
+        app = build_standalone_application(
+            ecosystem_service=FakeService(),
+            economic_calendar_store=store,
+        )
+        result = app.handle(
+            area=ApplicationArea.ANALYSIS,
+            task="consultar calendário",
+            context={
+                "operation": "economic_calendar",
+                "start_at": "2026-11-28T00:00:00Z",
+                "end_at": "2026-11-29T00:00:00Z",
+                "limit": 100,
+            },
+        )
+
+        assert result["result"]["status"] == "STORED_OBSERVATIONS"
+        assert result["result"]["events"][0]["actual"] is None
+        assert result["result"]["live"] is False
+        assert result["result"]["source_refresh"] == "NOT_REPORTED"
+        assert store.received["limit"] == 100
+        assert result["execution_authorized"] is False
+
+    def test_analysis_reports_calendar_not_configured_without_store(self):
+        app = build_standalone_application(ecosystem_service=FakeService())
+        result = app.handle(
+            area=ApplicationArea.ANALYSIS,
+            task="consultar calendário",
+            context={"operation": "economic_calendar"},
+        )
+        assert result["result"]["status"] == "CALENDAR_STORE_NOT_CONFIGURED"
+        assert result["result"]["live"] is False
+
+    def test_analysis_calendar_rejects_invalid_query_window_and_limit(self):
+        class FakeCalendarStore:
+            def list_latest(self, **kwargs):
+                return []
+
+        app = build_standalone_application(
+            ecosystem_service=FakeService(),
+            economic_calendar_store=FakeCalendarStore(),
+        )
+        with self.assertRaises(ValueError):
+            app.handle(
+                area=ApplicationArea.ANALYSIS,
+                task="consultar calendário",
+                context={"operation": "calendar", "start_at": "today", "end_at": "tomorrow"},
+            )
+        with self.assertRaises(ValueError):
+            app.handle(
+                area=ApplicationArea.ANALYSIS,
+                task="consultar calendário",
+                context={
+                    "operation": "calendar",
+                    "start_at": "2026-11-28T00:00:00Z",
+                    "end_at": "2026-11-29T00:00:00Z",
+                    "limit": True,
+                },
+            )
+
+
+
+    def test_study_registered_replay_uses_only_persisted_tenant_snapshot(self):
+        with tempfile.TemporaryDirectory() as temp:
+            database = Path(temp) / "tenant-signal-evidence.sqlite3"
+            owner = TenantContext("tenant-a", "subject-a")
+            snapshot_store = TenantMarketSnapshotStore(database)
+            ledger = TenantStrategyTrialLedger(database)
+            start = datetime(2026, 11, 28, 0, 0, tzinfo=timezone.utc)
+            candles = []
+            for index in range(40):
+                base = 1.1 + index * 0.0001
+                candles.append(Candle(
+                    timestamp=start + timedelta(minutes=5 * index),
+                    open=base,
+                    high=base + 0.0005,
+                    low=base - 0.0003,
+                    close=base + 0.0002,
+                    volume=100 + index,
+                ))
+            market_snapshot = BrokerMarketDataSnapshot(
+                symbol="EURUSD", timeframe="5m", candles=tuple(candles),
+                source="test-provider",
+                received_at=start + timedelta(minutes=5 * 40),
+            )
+            snapshot_store.record(
+                owner, snapshot_id="persisted-snapshot-1",
+                source_id="ctrader:connection-a", snapshot=market_snapshot,
+            )
+            app = build_standalone_application(
+                ecosystem_service=FakeService(),
+                strategy_trial_ledger=ledger,
+                strategy_trial_context=owner,
+                market_snapshot_store=snapshot_store,
+            )
+
+            result = app.handle(
+                area=ApplicationArea.STUDY,
+                task="reproduzir snapshot",
+                context={
+                    "operation": "evaluate_registered_snapshot_trial",
+                    "snapshot_id": "persisted-snapshot-1",
+                    "phase": "SELECTION",
+                    "experiment_id": "snapshot-replay-test",
+                    "trial_id": "trial-1",
+                    "strategy_version": "technical-pipeline-v1",
+                    "take_profit_distance": 0.002,
+                    "stop_loss_distance": 0.002,
+                },
+            )
+
+            self.assertEqual(result["status"], "CONNECTED")
+            replay = result["result"]
+            self.assertEqual(
+                replay["data_provenance"]["persisted_market_snapshot"]["snapshot_id"],
+                "persisted-snapshot-1",
+            )
+            self.assertEqual(
+                replay["data_provenance"]["persisted_market_snapshot"]["source_id"],
+                "ctrader:connection-a",
+            )
+            self.assertFalse(replay["execution_authorized"])
+            self.assertFalse(replay["orders_submitted"])
+            self.assertFalse(replay["promotion_allowed"])
 
 if __name__ == "__main__":
     unittest.main()

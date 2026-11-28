@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta, timezone
 
 from integration.ecosystem_service import EcosystemService
+from analysis.news_evidence_corroboration import NewsEvidenceCorroborator, NewsSourcePolicy, SQLiteNewsEvidenceStore
+from integration.rss_news_provider import NewsItem
 import pytest
 
 from core.senior_risk_reasoning import RiskDomain, RiskObservation
@@ -161,3 +163,105 @@ def test_production_operation_accepts_explicit_ready_storage():
     assert context.subject_id == "user-a"
     assert context.tenant_id == "tenant-a"
     assert service.system_status()["real"] == "DESABILITADO"
+
+
+
+def test_news_status_wires_persistent_source_aware_evidence(tmp_path):
+    class FakeNewsProvider:
+        def status(self):
+            return {"configured": True, "live": True, "feed_count": 2}
+
+        def latest(self, *, symbol=None, limit=10):
+            published = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
+            return [
+                NewsItem(
+                    "Federal Reserve announces interest rate decision",
+                    "untrusted label one",
+                    published,
+                    "https://www.reuters.com/markets/fed",
+                ),
+                NewsItem(
+                    "Federal Reserve announces interest rate decision",
+                    "untrusted label two",
+                    published,
+                    "https://www.apnews.com/article/fed",
+                ),
+            ][:limit]
+
+    store = SQLiteNewsEvidenceStore(
+        tmp_path / "news.sqlite3",
+        tenant_id="tenant-a",
+        subject_id="owner-a",
+    )
+    store.initialize_schema()
+    corroborator = NewsEvidenceCorroborator({
+        "www.reuters.com": NewsSourcePolicy(
+            "www.reuters.com", "TRUSTED_MEDIA", ("reuters.com",)
+        ),
+        "www.apnews.com": NewsSourcePolicy(
+            "www.apnews.com", "TRUSTED_MEDIA", ("apnews.com",)
+        ),
+    }, store=store)
+    service = EcosystemService(
+        news_provider=FakeNewsProvider(),
+        news_evidence_correlator=corroborator,
+    )
+
+    result = service.news_status(limit=10)
+
+    assert result["live"] is True
+    assert result["evidence_processing"]["status"] == "CONNECTED"
+    assert result["evidence_processing"]["processed"] == 2
+    assert result["evidence_processing"]["records"][1]["corroboration_status"] == "MULTI_SOURCE_CANDIDATE"
+    assert result["evidence_processing"]["records"][1]["fact_status"] == "UNVERIFIED_REPORT"
+    assert result["evidence_processing"]["fact_confirmation"] == "NEVER_AUTOMATIC"
+    assert len(store.load()) == 2
+
+
+def test_news_status_reports_evidence_not_configured_without_correlator():
+    class FakeNewsProvider:
+        def status(self):
+            return {"configured": True, "live": False}
+
+        def latest(self, *, symbol=None, limit=10):
+            return [NewsItem("A headline", "Wire", None, "https://www.reuters.com/story")]
+
+    result = EcosystemService(news_provider=FakeNewsProvider()).news_status()
+
+    assert result["evidence_processing"]["status"] == "NOT_CONFIGURED"
+    assert result["evidence_processing"]["processed"] == 0
+    assert result["items"][0]["title"] == "A headline"
+
+
+def test_news_status_keeps_unconfigured_source_out_of_corroboration(tmp_path):
+    class FakeNewsProvider:
+        def status(self):
+            return {"configured": True, "live": True}
+
+        def latest(self, *, symbol=None, limit=10):
+            return [NewsItem(
+                "Federal Reserve announces interest rate decision",
+                "untrusted label",
+                "2026-11-28T11:55:00Z",
+                "https://unknown.example/story",
+            )]
+
+    store = SQLiteNewsEvidenceStore(
+        tmp_path / "news.sqlite3",
+        tenant_id="tenant-a",
+        subject_id="owner-a",
+    )
+    store.initialize_schema()
+    corroborator = NewsEvidenceCorroborator({
+        "www.reuters.com": NewsSourcePolicy(
+            "www.reuters.com", "TRUSTED_MEDIA", ("reuters.com",)
+        ),
+    }, store=store)
+    result = EcosystemService(
+        news_provider=FakeNewsProvider(),
+        news_evidence_correlator=corroborator,
+    ).news_status()
+
+    assert result["evidence_processing"]["status"] == "PARTIAL"
+    assert result["evidence_processing"]["errors"] == 1
+    assert result["evidence_processing"]["records"] == []

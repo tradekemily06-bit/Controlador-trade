@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Iterable
+from urllib.parse import urlparse
 
 from analysis.decision_record import DecisionRecord
 from analysis.decision_store import DecisionStore
@@ -26,7 +27,9 @@ from core.senior_context_orchestrator import SeniorContextInput, SeniorContextOr
 from integration.controlled_automation_service import ControlledAutomationService
 from core.senior_risk_reasoning import RiskDomain, RiskObservation
 from data.models import Candle
-from integration.rss_news_provider import NewsProvider, UnconfiguredNewsProvider
+from integration.rss_news_provider import NewsProvider, RSSNewsProvider, UnconfiguredNewsProvider
+from analysis.news_event_intelligence import classify_news_batch
+from analysis.news_evidence_corroboration import NewsEvidenceCorroborator
 from security.identity_boundary import IdentityPolicy
 from security.production_operation_gate import ProductionOperationGate
 from security.request_context import ProductionRequestContext, require_production_context
@@ -36,12 +39,15 @@ from storage.production_boundary import ProductionStoragePolicy
 class EcosystemService:
     """Application orchestration; broker execution remains outside this layer."""
 
-    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None, learning_state_store: LearningStateStore | None = None, notification_state_store: EcosystemStateStore | None = None, notification_center: EcosystemNotificationCenter | None = None, notification_outbox: PersistentNotificationOutbox | None = None, news_provider: NewsProvider | None = None) -> None:
+    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None, learning_state_store: LearningStateStore | None = None, notification_state_store: EcosystemStateStore | None = None, notification_center: EcosystemNotificationCenter | None = None, notification_outbox: PersistentNotificationOutbox | None = None, news_provider: NewsProvider | None = None, news_evidence_correlator: NewsEvidenceCorroborator | None = None) -> None:
         self.engine = engine or SignalEngine()
         self.store = decision_store or DecisionStore()
         self.memory: list[DecisionRecord] = self.store.load()
         self.risk = RiskManager()
-        self.news = news_provider or UnconfiguredNewsProvider()
+        self.news = news_provider if news_provider is not None else RSSNewsProvider.from_environment()
+        self.news_evidence_correlator = news_evidence_correlator
+        self.news_polling_worker = None
+        self.news_polling_managed = False
         self.identity = IdentityPolicy()
         self.production_storage = production_storage or ProductionStoragePolicy()
         self.production_gate = ProductionOperationGate(self.production_storage)
@@ -289,23 +295,153 @@ class EcosystemService:
         news = news_status() if callable(news_status) else {"configured": False}
         return {"allowed": decision.allowed, "reason": decision.reason, "configured_limits": {"daily_loss_limit": self.risk.daily_loss_limit, "max_operations": self.risk.max_operations, "max_consecutive_losses": self.risk.max_consecutive_losses}, "news_provider": "RSS_ATOM" if news.get("configured") else "UNCONFIGURED"}
 
+    @staticmethod
+    def _news_symbol_matches(
+        symbol: str | None, assets: Iterable[str], title: str | None = None
+    ) -> bool:
+        if not symbol:
+            return True
+        query = symbol.strip().upper().replace("/", "").replace("-", "").replace("_", "")
+        if not query:
+            return True
+        normalized_title = (
+            title.upper().replace("/", "").replace("-", "").replace("_", "")
+            if isinstance(title, str) else ""
+        )
+        if query in normalized_title:
+            return True
+        aliases = {"XAU": "GOLD", "XAG": "SILVER"}
+        requested = {aliases.get(query, query)}
+        if len(query) == 6 and query.isalpha():
+            requested.update(aliases.get(query[index:index + 3], query[index:index + 3]) for index in (0, 3))
+        normalized_assets = {str(asset).upper() for asset in assets}
+        return bool(requested.intersection(normalized_assets))
+
     def news_status(self, limit: int = 10, symbol: str | None = None) -> dict[str, Any]:
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
             raise ValueError("limit deve estar entre 1 e 50")
-        items = [asdict(item) for item in self.news.latest(symbol=symbol, limit=limit)]
+
+        polling_worker = self.news_polling_worker
+        polling_status = (
+            polling_worker.status()
+            if polling_worker is not None and callable(getattr(polling_worker, "status", None))
+            else None
+        )
+        if polling_worker is not None and callable(getattr(polling_worker, "latest_items", None)):
+            raw_items = list(polling_worker.latest_items())
+            raw_items = [
+                item for item in raw_items
+                if self._news_symbol_matches(
+                    symbol,
+                    classify_news_batch([item])[0].get("affected_assets", []),
+                    getattr(item, "title", None),
+                )
+            ]
+        elif self.news_polling_managed:
+            # The standalone runtime owns collection. If its worker is not
+            # configured, reads must not silently become ad-hoc network polls.
+            raw_items = []
+        else:
+            # Compatibility for direct service integrations outside the
+            # managed standalone runtime.
+            raw_items = self.news.latest(symbol=symbol, limit=limit)
+
+        raw_items = raw_items[:limit]
+        items = [asdict(item) for item in raw_items]
         status_method = getattr(self.news, "status", None)
         provider_status = status_method() if callable(status_method) else {
             "configured": not isinstance(self.news, UnconfiguredNewsProvider),
             "live": False,
         }
         configured = bool(provider_status.get("configured", False))
+
+        evidence_errors = 0
+        if (
+            polling_worker is None
+            and not self.news_polling_managed
+            and self.news_evidence_correlator is not None
+        ):
+            # Direct, non-managed service use remains compatible, but source
+            # identity still must resolve through the explicit trusted policy.
+            ingested_at = datetime.now(timezone.utc)
+            source_resolver = getattr(
+                self.news_evidence_correlator, "source_id_for_url", None
+            )
+            for item in raw_items:
+                try:
+                    article_url = getattr(item, "url", None)
+                    if not isinstance(article_url, str) or not callable(source_resolver):
+                        raise ValueError("trusted news source resolver is required")
+                    source_id = source_resolver(article_url)
+                    self.news_evidence_correlator.ingest(
+                        item, source_id=source_id, ingested_at=ingested_at
+                    )
+                except Exception:
+                    evidence_errors += 1
+
+        persisted_records = []
+        if self.news_evidence_correlator is not None:
+            records_method = getattr(self.news_evidence_correlator, "records", None)
+            if callable(records_method):
+                for record in records_method():
+                    payload = record.to_dict() if callable(getattr(record, "to_dict", None)) else record
+                    if not isinstance(payload, dict):
+                        continue
+                    if self._news_symbol_matches(
+                        symbol, payload.get("affected_assets", ()), payload.get("title")
+                    ):
+                        persisted_records.append(payload)
+
+        collection_state = "DIRECT_PROVIDER_READ" if polling_status is None else polling_status.get("last_state", "NOT_RUN")
+        collection_live = bool(provider_status.get("live", False))
+        if polling_status is not None:
+            collection_live = (
+                collection_state == "POLL_SUCCEEDED"
+                and polling_status.get("last_success_at") is not None
+            )
+        elif self.news_polling_managed:
+            collection_state = "WORKER_NOT_CONFIGURED"
+            collection_live = False
+        if (
+            evidence_errors > 0
+            or collection_state == "PARTIAL"
+            or (polling_status is not None and polling_status.get("last_errors", 0) > 0)
+        ):
+            evidence_state = "PARTIAL"
+        elif collection_live and self.news_evidence_correlator is not None:
+            evidence_state = "CONNECTED"
+        elif self.news_evidence_correlator is None:
+            evidence_state = "NOT_CONFIGURED"
+        else:
+            evidence_state = "WAITING_FOR_FIRST_SUCCESS" if collection_state in {"NOT_RUN", "NOT_YET_POLLED"} else "STALE_OR_UNAVAILABLE"
+
         return {
             "provider": "RSS_ATOM" if configured else "UNCONFIGURED",
             "configured": configured,
-            "live": bool(provider_status.get("live", False)),
+            "live": collection_live,
             "status": provider_status,
+            "collection": polling_status or {
+                "state": collection_state,
+                "mode": "DIRECT_PROVIDER_READ",
+                "note": "No background news poller is attached to this service instance.",
+            },
             "item_count": len(items),
             "items": items,
+            "items_freshness": (
+                "CURRENT" if collection_live else ("STALE" if items else "NO_DATA")
+            ),
+            "classified_items": classify_news_batch(raw_items),
+            "evidence_processing": {
+                "status": evidence_state,
+                "processed": len(persisted_records),
+                "errors": evidence_errors + (
+                    int(polling_status.get("last_errors", 0))
+                    if polling_status is not None else 0
+                ),
+                "records": persisted_records,
+                "fact_confirmation": "NEVER_AUTOMATIC",
+            },
+            "classification": "CONSERVATIVE_HEADLINE_RULES",
             "execution_authorized": False,
         }
 
@@ -362,7 +498,10 @@ class EcosystemService:
         identity = self.identity.status()
         observability = self.operational_observability()
         mt5_status = self._mt5_demo_status_from_observability(observability)
-        components = {"decision_engine": "ONLINE", "memory": "ONLINE", "replay": "ONLINE", "statistics": "ONLINE", "risk_gate": "ONLINE", "automation": "ONLINE", "learning": "ONLINE", "learning_persistence": "SQLITE" if self.learning_state_store is not None else "IN_MEMORY", "notification_persistence": "SQLITE" if self.notification_state_store is not None else "IN_MEMORY", "news": "AGUARDANDO_FONTE", "mt5_demo": mt5_status, "real": "DESABILITADO", "saas": "FOUNDATION", "production_storage": str(production_storage["state"]), "production_operation_gate": str(production_gate["storage_state"]), "trusted_identity_provider": str(identity["trusted_identity_provider"]), "tenant_isolation": str(identity["tenant_isolation"])}
+        news_status_method = getattr(self.news, "status", None)
+        news_provider_status = news_status_method() if callable(news_status_method) else {"configured": False, "live": False}
+        news_component = "ONLINE" if news_provider_status.get("live") else ("FONTE_CONFIGURADA_SEM_DADOS" if news_provider_status.get("configured") else "AGUARDANDO_FONTE")
+        components = {"decision_engine": "ONLINE", "memory": "ONLINE", "replay": "ONLINE", "statistics": "ONLINE", "risk_gate": "ONLINE", "automation": "ONLINE", "learning": "ONLINE", "learning_persistence": "SQLITE" if self.learning_state_store is not None else "IN_MEMORY", "notification_persistence": "SQLITE" if self.notification_state_store is not None else "IN_MEMORY", "news": news_component, "mt5_demo": mt5_status, "real": "DESABILITADO", "saas": "FOUNDATION", "production_storage": str(production_storage["state"]), "production_operation_gate": str(production_gate["storage_state"]), "trusted_identity_provider": str(identity["trusted_identity_provider"]), "tenant_isolation": str(identity["tenant_isolation"])}
         alerts = build_health_alerts(components)
         health = "CRITICAL" if any(alert.severity == "CRITICAL" for alert in alerts) else ("WARNING" if alerts else "OK")
         return {"mode": "SIMULACAO", "execution_allowed": False, "execution": "bloqueada_por_padrao", "decision_engine": components["decision_engine"], "memory": components["memory"], "replay": components["replay"], "statistics": components["statistics"], "risk_gate": components["risk_gate"], "learning": components["learning"], "news": components["news"], "mt5_demo": components["mt5_demo"], "real": components["real"], "saas": components["saas"], "components": components, "health": health, "alerts": [alert.to_dict() for alert in alerts], "memory_persistence": "SQLITE" if self.store.database_path else "IN_MEMORY", "learning_persistence": "SQLITE" if self.learning_state_store is not None else "IN_MEMORY", "notification_persistence": "SQLITE" if self.notification_state_store is not None else "IN_MEMORY", "production_storage": production_storage, "production_operation_gate": production_gate, "operational_observability": observability, **identity}

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import io
+import types
 import json
 import tempfile
 import unittest
@@ -9,7 +10,8 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import urlsplit
 
-from standalone_app import StandaloneWSGIApplication, _validate_bind_security
+from standalone_app import StandaloneWSGIApplication, _runtime_from_environment, _validate_bind_security, main
+from integration.standalone_runtime import StandaloneRuntime
 from analysis.decision_record import DecisionRecord
 from security.push_subscription_registry import TenantPushSubscriptionRegistry
 
@@ -21,7 +23,7 @@ class FakeRuntime:
         def architecture(self):
             return {
                 "architecture": "ONE_SHARED_INTELLIGENCE",
-                "application_areas": [{"name": str(i)} for i in range(7)],
+                "application_areas": [{"name": str(i)} for i in range(6)],
                 "area_handler_status": {},
             }
 
@@ -468,19 +470,19 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(status, "400 Bad Request")
         self.assertFalse(body["execution_authorized"])
 
-    def test_health_exposes_one_intelligence_and_seven_areas(self):
+    def test_health_exposes_one_intelligence_and_six_visible_areas(self):
         app = StandaloneWSGIApplication(FakeRuntime())
         status, body = call_wsgi(app, "/api/health")
         self.assertEqual(status, "200 OK")
         self.assertEqual(body["architecture"], "ONE_SHARED_INTELLIGENCE")
-        self.assertEqual(body["areas"], 7)
+        self.assertEqual(body["areas"], 6)
         self.assertFalse(body["execution_authorized"])
 
     def test_readiness_endpoint_reports_unconfigured_services_without_claiming_live(self):
         app = StandaloneWSGIApplication(FakeRuntime())
         status, body = call_wsgi(app, "/api/readiness")
         self.assertEqual(status, "200 OK")
-        self.assertEqual(body["areas"], 7)
+        self.assertEqual(body["areas"], 6)
         self.assertEqual(body["market_data"]["status"], "NOT_CONFIGURED")
         self.assertEqual(body["news"]["status"], "NOT_CONFIGURED")
         self.assertEqual(body["decision_memory"]["state"], "STATUS_NOT_EXPOSED")
@@ -498,7 +500,7 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertFalse(body["tenant_decision_memory"]["production_ready"])
         self.assertEqual(body["tenant_fiscal_storage"]["status"], "NOT_CONFIGURED")
         self.assertFalse(body["tenant_fiscal_storage"]["production_ready"])
-        self.assertEqual(body["identity"]["multi_tenant_isolation"], "NOT_IMPLEMENTED")
+        self.assertEqual(body["identity"]["multi_tenant_isolation"], "SINGLE_USER_RUNTIME_ONLY")
         self.assertFalse(body["identity"]["shared_bearer_token_is_user_identity"])
         self.assertFalse(body["backup_scheduler"]["enabled"])
         self.assertEqual(body["backup_scheduler"]["status"], "NOT_CONFIGURED")
@@ -599,7 +601,7 @@ class StandaloneWSGITests(unittest.TestCase):
         app = StandaloneWSGIApplication(FakeRuntime())
         status, body = call_wsgi(app, "/api/intelligence/architecture")
         self.assertEqual(status, "200 OK")
-        self.assertEqual(len(body["application_areas"]), 7)
+        self.assertEqual(len(body["application_areas"]), 6)
 
     def test_unknown_order_endpoint_does_not_exist(self):
         app = StandaloneWSGIApplication(FakeRuntime())
@@ -2159,3 +2161,168 @@ class PushSubscriptionStandaloneRouteTests(unittest.TestCase):
         assert bob_body["tenant_delivery_worker"]["outbox"]["PENDING"] == 1
         assert alice_body["scope"] == "TENANT_SCOPED"
         assert bob_body["scope"] == "TENANT_SCOPED"
+
+
+
+def test_local_readiness_exposes_calendar_worker_and_news_evidence_status():
+    class FakeCalendarWorker:
+        def status(self):
+            return {
+                "configured": True,
+                "worker_running": True,
+                "source_count": 2,
+                "execution_authorized": False,
+            }
+
+    class FakeCorrelator:
+        store = object()
+
+    runtime = FakeRuntime()
+    runtime.economic_calendar_worker = FakeCalendarWorker()
+    runtime.ecosystem_service.news_evidence_correlator = FakeCorrelator()
+    app = StandaloneWSGIApplication(runtime)
+
+    with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
+        status, body = call_wsgi(app, "/api/readiness")
+
+    assert status == "200 OK"
+    assert body["economic_calendar_ingestion"]["worker_running"] is True
+    assert body["news_evidence"]["status"] == "CONFIGURED"
+    assert body["news_evidence"]["persistent_store"] == "CONFIGURED"
+
+
+def test_remote_readiness_does_not_expose_shared_calendar_or_news_evidence_state():
+    runtime = FakeRuntime()
+    runtime.economic_calendar_worker = object()
+    runtime.ecosystem_service.news_evidence_correlator = object()
+    app = StandaloneWSGIApplication(runtime)
+
+    with patch.dict("os.environ", {
+        "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "true",
+        "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "test-token",
+        "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "true",
+    }):
+        status, body = call_wsgi(
+            app,
+            "/api/readiness",
+            remote_addr="203.0.113.10",
+            authorization="Bearer test-token",
+            identity_verified=True,
+            remote_user="alice",
+            tenant_id="tenant-a",
+        )
+
+    assert status == "200 OK"
+    assert "economic_calendar_ingestion" not in body
+    assert "news_evidence" not in body
+
+
+
+def test_local_readiness_exposes_news_polling_worker_but_remote_does_not():
+    class FakeNewsWorker:
+        def status(self):
+            return {
+                "configured": True,
+                "worker_running": True,
+                "last_state": "POLL_SUCCEEDED",
+                "execution_authorized": False,
+            }
+
+    runtime = FakeRuntime()
+    runtime.news_polling_worker = FakeNewsWorker()
+    app = StandaloneWSGIApplication(runtime)
+    with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
+        status, body = call_wsgi(app, "/api/readiness")
+    assert status == "200 OK"
+    assert body["news_polling"]["worker_running"] is True
+    assert body["news_polling"]["last_state"] == "POLL_SUCCEEDED"
+
+
+
+def test_runtime_factory_uses_default_when_no_host_factory_is_configured():
+    expected = object.__new__(StandaloneRuntime)
+    expected.closed = False
+    with patch.dict("os.environ", {"CONTROLADOR_STANDALONE_RUNTIME_FACTORY": ""}):
+        with patch.object(StandaloneRuntime, "from_environment", return_value=expected):
+            assert _runtime_from_environment() is expected
+
+
+def test_runtime_factory_loads_trusted_operator_module():
+    expected = object.__new__(StandaloneRuntime)
+    expected.closed = False
+    module = types.SimpleNamespace(build_runtime=lambda: expected)
+    with patch.dict("os.environ", {
+        "CONTROLADOR_STANDALONE_RUNTIME_FACTORY": "deployment.runtime:build_runtime",
+    }):
+        with patch("standalone_app.importlib.import_module", return_value=module) as importer:
+            assert _runtime_from_environment() is expected
+    importer.assert_called_once_with("deployment.runtime")
+
+
+def test_runtime_factory_rejects_invalid_spec_without_fallback():
+    with patch.dict("os.environ", {
+        "CONTROLADOR_STANDALONE_RUNTIME_FACTORY": "../deployment:build_runtime",
+    }):
+        with patch.object(StandaloneRuntime, "from_environment") as fallback:
+            try:
+                _runtime_from_environment()
+            except RuntimeError as exc:
+                assert "formato modulo:funcao" in str(exc)
+            else:
+                raise AssertionError("invalid factory spec must fail startup")
+    fallback.assert_not_called()
+
+
+def test_runtime_factory_rejects_non_runtime_result():
+    module = types.SimpleNamespace(build_runtime=lambda: object())
+    with patch.dict("os.environ", {
+        "CONTROLADOR_STANDALONE_RUNTIME_FACTORY": "deployment.runtime:build_runtime",
+    }):
+        with patch("standalone_app.importlib.import_module", return_value=module):
+            try:
+                _runtime_from_environment()
+            except RuntimeError as exc:
+                assert "StandaloneRuntime ativo" in str(exc)
+            else:
+                raise AssertionError("factory returning the wrong type must fail startup")
+
+
+
+def test_main_closes_runtime_when_http_bind_fails():
+    closed = []
+    runtime = types.SimpleNamespace(closed=False, close=lambda: closed.append(True))
+    with patch.dict("os.environ", {
+        "CONTROLADOR_BIND_HOST": "127.0.0.1",
+        "CONTROLADOR_BIND_PORT": "8765",
+    }):
+        with patch("standalone_app._validate_bind_security"):
+            with patch("standalone_app._runtime_from_environment", return_value=runtime):
+                with patch("standalone_app.StandaloneWSGIApplication", return_value=object()):
+                    with patch("standalone_app.make_server", side_effect=OSError("port already in use")):
+                        try:
+                            main()
+                        except OSError as exc:
+                            assert "port already in use" in str(exc)
+                        else:
+                            raise AssertionError("bind failure must be propagated")
+    assert closed == [True]
+
+
+
+def test_main_closes_runtime_when_application_construction_fails():
+    closed = []
+    runtime = types.SimpleNamespace(closed=False, close=lambda: closed.append(True))
+    with patch.dict("os.environ", {
+        "CONTROLADOR_BIND_HOST": "127.0.0.1",
+        "CONTROLADOR_BIND_PORT": "8765",
+    }):
+        with patch("standalone_app._validate_bind_security"):
+            with patch("standalone_app._runtime_from_environment", return_value=runtime):
+                with patch("standalone_app.StandaloneWSGIApplication", side_effect=RuntimeError("invalid runtime wiring")):
+                    try:
+                        main()
+                    except RuntimeError as exc:
+                        assert "invalid runtime wiring" in str(exc)
+                    else:
+                        raise AssertionError("application initialization failure must be propagated")
+    assert closed == [True]

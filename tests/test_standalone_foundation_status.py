@@ -6,39 +6,24 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from integration.standalone_foundation_status import _integrity, standalone_storage_status
+from integration.standalone_foundation_status import _DATABASES, _integrity, standalone_storage_status
 
 
 class StandaloneFoundationStatusTests(unittest.TestCase):
     def test_reports_required_sqlite_stores_as_healthy(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            schemas = {
-                "fiscal-reserve.sqlite3": {
-                    "fiscal_reserve_entries": "entry_id TEXT, owner_id TEXT, category TEXT, entry_type TEXT, realized_result_brl REAL, reserve_rate REAL, reserve_amount_brl REAL, reference TEXT, occurred_on TEXT, created_at TEXT, notes TEXT",
-                    "fiscal_reserve_settings": "owner_id TEXT, category TEXT, rate REAL, rate_source TEXT",
-                    "fiscal_reserve_pending_foreign": "pending_id TEXT, owner_id TEXT, reference TEXT, original_amount REAL, original_currency TEXT, instrument TEXT, jurisdiction TEXT, occurred_on TEXT, status TEXT, created_at TEXT",
-                    "fiscal_pending_reviews": "review_id TEXT, owner_id TEXT, pending_id TEXT, candidate_classification TEXT, confirmed_jurisdiction TEXT, reviewer_name TEXT, reviewer_role TEXT, professional_registration TEXT, evidence_reference TEXT, reviewed_on TEXT, created_at TEXT",
-                    "fiscal_reserve_pending_domestic": "pending_id TEXT, owner_id TEXT, reference TEXT, instrument TEXT, occurred_on TEXT, status TEXT, created_at TEXT",
-                    "fiscal_domestic_pending_reviews": "review_id TEXT, owner_id TEXT, pending_id TEXT, candidate_classification TEXT, confirmed_jurisdiction TEXT, reviewer_name TEXT, reviewer_role TEXT, professional_registration TEXT, evidence_reference TEXT, reviewed_on TEXT, created_at TEXT",
-                },
-                "ecosystem-state.sqlite3": {"ecosystem_state": "key TEXT, value_json TEXT"},
-                "tenant-state.sqlite3": {"tenant_state": "tenant_id TEXT, subject_id TEXT, key TEXT, value_json TEXT, updated_at TEXT"},
-                "notification-outbox.sqlite3": {"notification_outbox": "idempotency_key TEXT, payload_json TEXT, status TEXT, attempts INTEGER, available_at REAL, lease_until REAL, created_at REAL, delivered_at REAL, last_error TEXT"},
-                "decision-memory.sqlite3": {"decisions": "decision_id TEXT, created_at TEXT, symbol TEXT, timeframe TEXT, signal TEXT, score REAL, confirmed INTEGER, reason TEXT, execution_allowed INTEGER, outcome TEXT, outcome_source TEXT"},
-                "assistant-conversations.sqlite3": {
-                    "conversations": "id TEXT, owner TEXT, title TEXT, updated_at TEXT",
-                    "messages": "id INTEGER, conversation_id TEXT, role TEXT, content TEXT, created_at TEXT",
-                },
-            }
-            for filename, tables in schemas.items():
+            for _store_id, filename, required, expected_schema in _DATABASES:
+                if not required:
+                    continue
                 with sqlite3.connect(root / filename) as connection:
-                    for table, columns in tables.items():
-                        connection.execute(f"CREATE TABLE {table} ({columns})")
+                    for table, columns in expected_schema.items():
+                        definitions = ", ".join(f'"{column}" TEXT' for column in sorted(columns))
+                        connection.execute(f'CREATE TABLE "{table}" ({definitions})')
             result = standalone_storage_status(SimpleNamespace(runtime_dir=root))
         self.assertEqual(result["required_stores"], "HEALTHY")
         self.assertEqual(result["multi_tenant_isolation"], "NOT_IMPLEMENTED")
-        self.assertEqual(result["backup_restore"], "NOT_CONFIGURED")
+        self.assertEqual(result["backup_restore"], "ON_DEMAND_LOCAL_ONLY")
         self.assertFalse(result["execution_authorized"])
 
     def test_missing_fiscal_pending_queue_degrades_fiscal_store(self):
