@@ -237,11 +237,10 @@ class StandaloneRuntime:
             if economic_calendar_store is not None
             else getattr(getattr(economic_calendar_worker, "service", None), "store", None)
         )
-        _validate_runtime_store_location(
-            self.economic_calendar_store, self.runtime_dir, "economic-calendar.sqlite3"
-        )
-
         try:
+            _validate_runtime_store_location(
+                self.economic_calendar_store, self.runtime_dir, "economic-calendar.sqlite3"
+            )
             fiscal_database = self.runtime_dir / "fiscal-reserve.sqlite3"
 
             # The process lock must be held before migrations or repositories

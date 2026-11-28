@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from integration.standalone_runtime import _stop_workers_and_report_active
 
 
