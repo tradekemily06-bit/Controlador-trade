@@ -86,3 +86,16 @@ def test_batch_rejects_duplicate_publisher_event_ids_without_cross_source_merge(
 def test_calendar_batch_rejects_non_list_input():
     with pytest.raises(ValueError):
         normalize_calendar_batch("not-a-batch")
+
+
+@pytest.mark.parametrize(("field", "value"), [
+    ("source_id", None),
+    ("source_event_id", None),
+    ("source_url", None),
+    ("title", None),
+    ("country_code", None),
+    ("currency", 978),
+])
+def test_rejects_coercion_of_invalid_source_metadata(field, value):
+    with pytest.raises(ValueError):
+        normalize_calendar_event(_event(**{field: value}))
