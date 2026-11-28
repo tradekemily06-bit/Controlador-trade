@@ -33,8 +33,8 @@ def _timestamp(value: str, field: str) -> str:
 
 
 def _metrics(value: Mapping[str, Any]) -> str:
-    if not isinstance(value, Mapping) or not value:
-        raise ValueError("metrics must be a non-empty mapping")
+    if not isinstance(value, Mapping) or not value or len(value) > 100:
+        raise ValueError("metrics must be a non-empty mapping with at most 100 entries")
     normalized: dict[str, float | int | bool | str | None] = {}
     for key, item in value.items():
         if not isinstance(key, str) or not key.strip() or len(key) > 80:
