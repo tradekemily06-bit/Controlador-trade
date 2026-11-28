@@ -25,7 +25,12 @@ BACKUP_DATABASES = {
     "market_timeframe_monitor": "market-timeframe-monitor.sqlite3",
     # Tenant-scoped cycles, analysis results, processing leases and notification outbox.
     "tenant_market_data": "tenant-connection-timeframe-monitor.sqlite3",
-    "tenant_tradingview_alerts": "tenant-tradingview-alerts.sqlite3",
+        "tenant_tradingview_alerts": "tenant-tradingview-alerts.sqlite3",
+    "mt5_relay_tokens": "tenant-mt5-relay-tokens.sqlite3",
+    "tradingview_webhook_secrets": "tenant-tradingview-webhook-secrets.sqlite3",
+    "ctrader_oauth_state": "tenant-ctrader-oauth-state.sqlite3",
+    "ctrader_oauth_tokens": "tenant-ctrader-oauth-tokens.sqlite3",
+    "tenant_signal_evidence": "tenant-signal-evidence.sqlite3",
 }
 
 
