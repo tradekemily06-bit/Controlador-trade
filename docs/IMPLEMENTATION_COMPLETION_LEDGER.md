@@ -75,19 +75,35 @@ Integration path: #529 -> #531 -> #533 -> #534. #532 is a sibling of #533, not a
 - [ ] Verify Reserva Fiscal Brazil and Exterior queues, persistence, identity/ownership, reconciliation and recovery; verify assistant remains strictly read-only.
 - [ ] Verify the minimal/secret mode shows only the intended signal and percentage without changing the main interface or inventing probabilities.
 
+## Modules explicitly retained and integrated in this continuation
+
+The following recently added modules are part of the same application foundation; none is a new visible navigation area:
+
+- `analysis/news_event_intelligence.py` — conservative headline event/category and affected-asset triage only; no sentiment, direction or probability.
+- `analysis/news_evidence_corroboration.py` — trusted publisher provenance, duplicate suppression and cross-publisher review candidates; candidate matches remain unverified.
+- `integration/rss_news_provider.py` — configured RSS/Atom ingestion; feed and article destinations are allowlisted, redirects are rejected by the default HTTP client, HTTPS ports/timeouts are bounded. DNS/IP pinning is not yet implemented.
+- `analysis/economic_calendar.py` and `integration/economic_calendar_ingestion.py` — strict publisher-scoped event normalization, revision history and append-only local observations; official feed adapters and hosted scheduling are still pending.
+- `data/provider_clock.py` — provider-time candle boundary calculations for supported intervals; actual authenticated provider clock wiring remains pending.
+- `core/unified_intelligence.py` — one shared intelligence coordinator across the six areas; the eight research-grade intelligence layers remain an acceptance target, not a claim of ASI/AGI.
+- `core/sqlite_backup_service.py` and `core/sqlite_backup_scheduler.py` — local backup/isolated restore primitives; off-host backup and hosted scheduling remain release gates.
+- Web Push components — tenant registry/routes, encrypted PostgreSQL adapter contract, VAPID sender and tenant outbox/sink. They remain disabled until sender DNS/IP pinning, redirect suppression, real KMS/secrets, hosted worker and device acceptance are proven.
+
 ## Advanced intelligence acceptance
 
 The target is research-grade, ASI-inspired engineering, not a claim of actual ASI/AGI or infallibility. Completion requires measurable source integrity, independent evidence channels, temporal context, cross-asset context, adversarial synthesis, calibrated forecast evaluation, persistent versioned learning, drift monitoring, explanations and safe abstention. Intelligence must never grant itself execution authority.
 
 ## Current verification boundary
 
-- PR #534 remains open, draft and unmerged. Its active branch is `fix/six-visible-areas-memory-capability`, based on #533; #532 remains a historical sibling whose relevant code has been reconciled into #534.
-- The latest fully successful CI run before the runtime news-evidence wiring is [46114435425](https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/46114435425) on predecessor commit `624321c7b0e8dc5712236f81991b719b5d04d00f`. All four jobs passed: robustness suite, full tests, dependency audit, Python compilation, production and analyst container builds/health checks, Windows PowerShell validation, protected-branch compatibility, and required commit-status publication.
-- The subsequent commits add source-aware news evidence clustering (`9433b7c1`, `cf3d856e`), the local economic-calendar ingestion/store boundary (`2ce4af21`, `dddd627f`), ingestion regression tests (`e4c3627e`), owner-scoped persistent news evidence (`08c76710`, `7a5a80ca`) and tenant/restart tests (`4274510a`), plus analysis-area calendar retrieval wiring and tests (`1eb39070`, `c643a902`) and API contract documentation (`b75379e5`), plus strict timezone-aware and ordered calendar-window validation at the analysis API boundary (`3b09e3dc`), runtime news evidence wiring and fail-soft read behavior (`3c4c76d8`, `9cc29767`, `3801a818`), and updated news API documentation (`4947d70a`). The calendar API and news evidence foundations through the analysis-area calendar route passed in full CI run [46114435425](https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/46114435425) on predecessor `624321c7`. Runtime news-service wiring and its tests were added after that pass. CI run [46114589344](https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/46114589344) failed on predecessor `77b5445a6af2bbdbb0f47a2f6878e2f7f18ca926` because the test fixture supplied future-dated news. The fixture was corrected in `8dc4bb04` to use a timestamp relative to the test clock. That fix has not yet been validated by CI; exact current head requires a fresh full run.
-- News corroboration now persists owner-scoped evidence locally and restores it after restart, but remains a candidate matcher, not proof of independent sources or confirmed facts. Full article verification, shared multi-replica persistence, automatic runtime provisioning, scheduler wiring and frontend acceptance remain open.
-- Economic-calendar persistence is append-only SQLite for one runtime only. Official primary-source adapters, scheduled ingestion, shared production database integration and multi-source event review remain open.
-- Live broker connections, real provider-clock synchronization, official calendar adapters and scheduled ingestion, durable cross-source evidence, production shared database/KMS/identity, hosted worker continuity, external push delivery with the app closed, and Lovable screen-by-screen wiring remain unverified.
-- No deployment, merge, production activation, or change to the Lovable frontend was performed.
+- Active integration PR: [#534](https://github.com/tradekemily06-bit/Controlador-trade/pull/534), branch `fix/six-visible-areas-memory-capability`, base #533. PR is open, draft and unmerged. The #532 sibling's relevant readiness changes are reconciled here; do not merge #532 separately.
+- Exact code head before this ledger refresh: `44c5dc5627087f8ca3371a8ab6e91b3a5c126ccc`.
+- Full CI run [46114674372](https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/46114674372) passed all four jobs on predecessor `0ed8448a9f77f126876f547a14497e9be9317a02`.
+- The latest RSS security increment adds rejection of HTTP redirects in the default urllib client, rejects non-standard HTTPS ports and URL fragments/credentials, bounds timeout to finite values up to 30 seconds, and suppresses article links outside the trusted publisher allowlist. Regression tests were added for these cases.
+- CI run [46115026881](https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/46115026881) is running on code head `44c5dc5627087f8ca3371a8ab6e91b3a5c126ccc`. The P1.9 robustness tests and full test suite have passed; dependency audit is in progress and compilation/container checks are pending. Do not call this exact head fully validated until every required job completes.
+- RSS redirect suppression applies to the default HTTP client. Injected custom openers are a test/host extension point and must enforce equivalent transport policy. Sender-side DNS/IP pinning and DNS-rebinding defense remain open for RSS and Web Push.
+- No official economic-calendar feed is fetched yet: the calendar module normalizes trusted adapter payloads and stores them, but official publisher adapters and hosted polling are still required.
+- News evidence persistence and calendar observations currently use local SQLite. They are single-host/single-runtime stores, not production shared multi-tenant storage.
+- Real MT5/cTrader account handshakes, provider clock synchronization, each provider's symbol/timeframe catalogue, production shared DB/KMS/identity, hosted worker continuity, external push delivery with the app/browser closed, and Lovable screen-by-screen API acceptance remain unverified.
+- No merge, deployment, production activation or Lovable UI modification was performed. REAL dispatch remains fail-closed until concrete deployment prerequisites and per-order human confirmation are satisfied.
 
 ## Definition of done
 
