@@ -357,3 +357,103 @@ def evaluate_strategy_robustness(
         "reasons": reasons,
     })
     return base
+
+
+
+def analyze_backtest_overfitting(
+    strategy_returns_by_period: Iterable[Iterable[float]],
+    *,
+    n_blocks: int = 8,
+) -> dict[str, object]:
+    """Estimate CSCV Probability of Backtest Overfitting from a period x strategy matrix.
+
+    Rows must be chronological periods; columns must be the same strategy variants
+    across the full sample. This is a selection-bias diagnostic, not a forecast of
+    future loss. CSCV assumes sufficiently exchangeable blocks; regime changes and
+    serial dependence can invalidate its interpretation.
+    """
+    if isinstance(n_blocks, bool) or not isinstance(n_blocks, int) or n_blocks < 8 or n_blocks > 16 or n_blocks % 2:
+        raise ValueError("n_blocks must be an even integer from 8 to 16")
+
+    matrix: list[list[float]] = []
+    width: int | None = None
+    for row in strategy_returns_by_period:
+        values: list[float] = []
+        for value in row:
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError("strategy return matrix must contain only finite numeric values")
+            numeric = float(value)
+            if not math.isfinite(numeric) or numeric <= -1.0:
+                raise ValueError("strategy returns must be finite and greater than -100%")
+            values.append(numeric)
+        if width is None:
+            width = len(values)
+            if width < 2:
+                raise ValueError("at least two strategy variants are required")
+        elif len(values) != width:
+            raise ValueError("strategy return matrix must be rectangular")
+        matrix.append(values)
+
+    if len(matrix) < n_blocks or len(matrix) % n_blocks:
+        raise ValueError("period count must be divisible by n_blocks and contain at least one period per block")
+
+    strategy_count = width or 0
+    periods = len(matrix)
+    block_length = periods // n_blocks
+    all_blocks = tuple(range(n_blocks))
+    half = n_blocks // 2
+    split_count = math.comb(n_blocks, half)
+    selection_frequency = [0] * strategy_count
+    logits: list[float] = []
+    selected_oos_sharpes: list[float] = []
+    selected_oos_means: list[float] = []
+
+    def sharpe(indices: list[int], column: int) -> float:
+        sample = [matrix[index][column] for index in indices]
+        mean = sum(sample) / len(sample)
+        variance = sum((value - mean) ** 2 for value in sample) / (len(sample) - 1) if len(sample) > 1 else 0.0
+        std = math.sqrt(variance)
+        # A zero-variance series receives zero rather than infinite Sharpe.
+        return mean / std if std > 0 else 0.0
+
+    epsilon = 1e-12
+    for in_blocks in combinations(all_blocks, half):
+        in_set = set(in_blocks)
+        out_blocks = tuple(block for block in all_blocks if block not in in_set)
+        in_indices = [block * block_length + offset for block in in_blocks for offset in range(block_length)]
+        out_indices = [block * block_length + offset for block in out_blocks for offset in range(block_length)]
+        in_sharpes = [sharpe(in_indices, column) for column in range(strategy_count)]
+        winner = max(range(strategy_count), key=lambda column: (in_sharpes[column], -column))
+        selection_frequency[winner] += 1
+
+        out_sharpes = [sharpe(out_indices, column) for column in range(strategy_count)]
+        winner_sharpe = out_sharpes[winner]
+        less = sum(value < winner_sharpe for value in out_sharpes)
+        equal = sum(value == winner_sharpe for value in out_sharpes)
+        average_rank = less + (equal + 1) / 2.0
+        omega = min(max(average_rank / (strategy_count + 1.0), epsilon), 1.0 - epsilon)
+        logits.append(math.log(omega / (1.0 - omega)))
+        selected_oos_sharpes.append(winner_sharpe)
+        selected_oos_means.append(sum(matrix[index][winner] for index in out_indices) / len(out_indices))
+
+    pbo = sum(value <= 0.0 for value in logits) / split_count
+    return {
+        "method": "CSCV",
+        "period_count": periods,
+        "strategy_count": strategy_count,
+        "n_blocks": n_blocks,
+        "block_length": block_length,
+        "split_count": split_count,
+        "pbo": pbo,
+        "probability_oos_loss": sum(value < 0.0 for value in selected_oos_means) / split_count,
+        "mean_selected_oos_sharpe": sum(selected_oos_sharpes) / split_count,
+        "median_selected_oos_sharpe": _percentile(selected_oos_sharpes, 0.5),
+        "selection_frequency": selection_frequency,
+        "interpretation": "PBO estimates how often the in-sample winner ranks at or below the out-of-sample median across CSCV splits; it is not a probability of future loss.",
+        "limitations": [
+            "The matrix must include every strategy variant considered in the selection process.",
+            "The number of independent trials and correlation between variants affect interpretation.",
+            "CSCV assumes blocks are sufficiently exchangeable; strong serial dependence or regime shifts can invalidate the estimate.",
+            "This analysis does not detect look-ahead bias, bad fills, missing data or unmodeled transaction costs.",
+        ],
+    }
