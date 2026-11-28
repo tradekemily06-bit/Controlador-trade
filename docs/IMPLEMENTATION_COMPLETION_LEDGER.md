@@ -437,3 +437,7 @@ Nothing is closed merely by being listed or implemented. Each checkbox needs a l
 - Added regression coverage for provider snapshot capture from `StandaloneMarketAnalysisService`: allowlisted provider + trusted tenant context persists; untrusted provider context does not persist.
 - Added an integration test that creates a tenant-scoped persisted snapshot, invokes the Study registered-snapshot replay operation, and verifies the result carries snapshot/source provenance while keeping promotion and execution disabled.
 - These tests are committed in `55fa0a8b` and `2eccc587`; execution by GitHub Actions is still pending and must not be represented as passed until the exact head reports a successful run.
+
+
+- Snapshot persistence errors are now returned explicitly as `PERSISTENCE_ERROR` with an error class, rather than falsely reporting a save or aborting the entire market-analysis response. Added a regression test for this fail-soft behavior. A signal response without a persisted snapshot remains distinguishable and cannot be replayed from the snapshot store.
+- Commits: `d1437943` (fail-soft audit status), `c8a7f512` (regression test). Exact-head CI remains pending.
