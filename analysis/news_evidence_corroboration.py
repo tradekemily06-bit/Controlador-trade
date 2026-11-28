@@ -104,6 +104,7 @@ class NewsEvidenceRecord:
     corroboration_status: str
     corroborating_source_ids: tuple[str, ...]
     limitations: tuple[str, ...]
+    summary: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -112,6 +113,7 @@ class NewsEvidenceRecord:
             "source_tier": self.source_tier,
             "source_host": self.source_host,
             "title": self.title,
+            "summary": self.summary,
             "url": self.url,
             "published_at": self.published_at.isoformat() if self.published_at else None,
             "ingested_at": self.ingested_at.isoformat(),
@@ -237,6 +239,7 @@ class SQLiteNewsEvidenceStore:
                 corroboration_status=payload["corroboration_status"],
                 corroborating_source_ids=tuple(payload["corroborating_source_ids"]),
                 limitations=tuple(payload["limitations"]),
+                summary=payload.get("summary"),
             ))
         return records
 
@@ -408,6 +411,7 @@ class NewsEvidenceCorroborator:
             source_host=host,
             title=item.title.strip(),
             url=url,
+            summary=(item.summary[:4000] if isinstance(item.summary, str) and item.summary else None),
             published_at=published,
             ingested_at=observed,
             event_categories=tuple(classified["event_categories"]),
@@ -417,7 +421,7 @@ class NewsEvidenceCorroborator:
             corroboration_status=status,
             corroborating_source_ids=tuple(sorted(corroborating)),
             limitations=(
-                "headline_only",
+                "publisher_feed_summary_only" if isinstance(item.summary, str) and item.summary else "headline_only",
                 "full_article_not_verified",
                 "source_independence_not_proven",
                 "candidate_match_is_not_fact_confirmation",
