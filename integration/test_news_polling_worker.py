@@ -68,7 +68,8 @@ def test_news_worker_reports_partial_evidence_failures_without_leaking_details()
 
 def test_news_worker_does_not_claim_live_when_provider_is_stale_or_unavailable():
     provider = FakeProvider([NewsItem("https://www.reuters.com/story", "Headline")], live=False)
-    worker = NewsPollingWorker(provider, FakeCorrelator(), interval_seconds=30)
+    correlator = FakeCorrelator()
+    worker = NewsPollingWorker(provider, correlator, interval_seconds=30)
 
     status = worker.run_once()
 
