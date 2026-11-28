@@ -52,3 +52,33 @@ def test_shutdown_does_not_report_worker_stopped_when_status_is_malformed():
     assert _stop_workers_and_report_active(((worker, "running"),)) == [
         "MalformedStatusWorker"
     ]
+
+
+
+def test_runtime_evidence_store_location_must_be_covered_by_backup_directory(tmp_path):
+    from integration.standalone_runtime import _validate_runtime_store_location
+
+    class Store:
+        def __init__(self, database_path):
+            self.database_path = str(database_path)
+
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir()
+    expected = runtime_dir / "news-evidence.sqlite3"
+    _validate_runtime_store_location(Store(expected), runtime_dir, "news-evidence.sqlite3")
+
+    with pytest.raises(ValueError, match="backup coverage"):
+        _validate_runtime_store_location(
+            Store(tmp_path / "outside.sqlite3"), runtime_dir, "news-evidence.sqlite3"
+        )
+
+    with pytest.raises(ValueError, match="backup coverage"):
+        _validate_runtime_store_location(
+            Store(":memory:"), runtime_dir, "news-evidence.sqlite3"
+        )
+
+
+def test_non_sqlite_shared_store_is_not_forced_into_local_backup_path(tmp_path):
+    from integration.standalone_runtime import _validate_runtime_store_location
+
+    _validate_runtime_store_location(object(), tmp_path, "economic-calendar.sqlite3")

@@ -73,6 +73,21 @@ def _market_data_provenance_for_provider(provider_id: str | None) -> str | None:
     )
 
 
+def _validate_runtime_store_location(store: Any, runtime_dir: Path, filename: str) -> None:
+    """Keep SQLite evidence stores inside the directory covered by local backups."""
+    if store is None:
+        return
+    database_path = getattr(store, "database_path", None)
+    if database_path is None:
+        return  # Non-SQLite shared stores are governed by their deployment adapter.
+    expected = (runtime_dir / filename).resolve()
+    actual = Path(database_path).resolve()
+    if actual != expected:
+        raise ValueError(
+            f"{filename} must be stored inside CONTROLADOR_RUNTIME_DIR for backup coverage"
+        )
+
+
 # Failed startup workers may be blocked in an external provider/sink. Retain
 # their references and the process lock until process exit rather than allowing
 # a second runtime to open the same SQLite files concurrently.
@@ -221,6 +236,9 @@ class StandaloneRuntime:
             economic_calendar_store
             if economic_calendar_store is not None
             else getattr(getattr(economic_calendar_worker, "service", None), "store", None)
+        )
+        _validate_runtime_store_location(
+            self.economic_calendar_store, self.runtime_dir, "economic-calendar.sqlite3"
         )
 
         try:
@@ -452,6 +470,9 @@ class StandaloneRuntime:
                     raise PermissionError(
                         "news evidence store must be scoped to this runtime's trusted local identity"
                     )
+                _validate_runtime_store_location(
+                    evidence_store, self.runtime_dir, "news-evidence.sqlite3"
+                )
             self.ecosystem_service = EcosystemService(
                 decision_store=DecisionStore(str(self.runtime_dir / "decision-memory.sqlite3")),
                 learning_state_store=LearningStateStore(ecosystem_state_store),
