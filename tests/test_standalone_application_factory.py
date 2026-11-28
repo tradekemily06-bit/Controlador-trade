@@ -1,7 +1,15 @@
 from __future__ import annotations
 
 import unittest
+import tempfile
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
+from analysis.tenant_market_snapshot_store import TenantMarketSnapshotStore
+from analysis.tenant_strategy_trial_ledger import TenantStrategyTrialLedger
+from core.p122_broker_market_data import BrokerMarketDataSnapshot
+from data.models import Candle
+from security.tenant_context import TenantContext
 from core.unified_intelligence import ApplicationArea
 from integration.standalone_application_factory import build_standalone_application
 
@@ -288,6 +296,70 @@ class StandaloneApplicationFactoryTests(unittest.TestCase):
                 },
             )
 
+
+
+    def test_study_registered_replay_uses_only_persisted_tenant_snapshot(self):
+        with tempfile.TemporaryDirectory() as temp:
+            database = Path(temp) / "tenant-signal-evidence.sqlite3"
+            owner = TenantContext("tenant-a", "subject-a")
+            snapshot_store = TenantMarketSnapshotStore(database)
+            ledger = TenantStrategyTrialLedger(database)
+            start = datetime(2026, 11, 28, 0, 0, tzinfo=timezone.utc)
+            candles = []
+            for index in range(40):
+                base = 1.1 + index * 0.0001
+                candles.append(Candle(
+                    timestamp=start + timedelta(minutes=5 * index),
+                    open=base,
+                    high=base + 0.0005,
+                    low=base - 0.0003,
+                    close=base + 0.0002,
+                    volume=100 + index,
+                ))
+            market_snapshot = BrokerMarketDataSnapshot(
+                symbol="EURUSD", timeframe="5m", candles=tuple(candles),
+                source="test-provider",
+                received_at=start + timedelta(minutes=5 * 40),
+            )
+            snapshot_store.record(
+                owner, snapshot_id="persisted-snapshot-1",
+                source_id="ctrader:connection-a", snapshot=market_snapshot,
+            )
+            app = build_standalone_application(
+                ecosystem_service=FakeService(),
+                strategy_trial_ledger=ledger,
+                strategy_trial_context=owner,
+                market_snapshot_store=snapshot_store,
+            )
+
+            result = app.handle(
+                area=ApplicationArea.STUDY,
+                task="reproduzir snapshot",
+                context={
+                    "operation": "evaluate_registered_snapshot_trial",
+                    "snapshot_id": "persisted-snapshot-1",
+                    "phase": "SELECTION",
+                    "experiment_id": "snapshot-replay-test",
+                    "trial_id": "trial-1",
+                    "strategy_version": "technical-pipeline-v1",
+                    "take_profit_distance": 0.002,
+                    "stop_loss_distance": 0.002,
+                },
+            )
+
+            self.assertEqual(result["status"], "CONNECTED")
+            replay = result["result"]
+            self.assertEqual(
+                replay["data_provenance"]["persisted_market_snapshot"]["snapshot_id"],
+                "persisted-snapshot-1",
+            )
+            self.assertEqual(
+                replay["data_provenance"]["persisted_market_snapshot"]["source_id"],
+                "ctrader:connection-a",
+            )
+            self.assertFalse(replay["execution_authorized"])
+            self.assertFalse(replay["orders_submitted"])
+            self.assertFalse(replay["promotion_allowed"])
 
 if __name__ == "__main__":
     unittest.main()
