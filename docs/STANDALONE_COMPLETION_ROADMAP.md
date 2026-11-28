@@ -4,7 +4,7 @@ This roadmap defines the evidence required to call the independent application c
 
 ## Delivery boundaries
 
-- One standalone application, backed by the existing seven visible areas: Cabine de Comando, Análise, Estudo, Memória, Reserva Fiscal, Assistente do Ecossistema and Central.
+- One standalone application, backed by the six approved visible areas: Cabine de Comando, Análise, Estudo, Reserva Fiscal, Assistente do Ecossistema and Central. Decision memory remains an internal capability, not a seventh area.
 - Preserve the approved Lovable UI. Backend work must connect to its existing screens and controls; visual redesign is out of scope.
 - No EA and no broker order submission. Market analysis and notifications are informational and require human review.
 - DEMO-first. REAL remains unavailable until separately reviewed, explicitly authorized, and validated; this roadmap does not authorize REAL execution.
@@ -32,7 +32,7 @@ The current automated CI run is evidence of code/test/build behavior only. It do
 - Provider-neutral market-data contracts, provider registry and timeframe normalization.
 - API contract, identity boundary, process lifecycle and fail-closed safety defaults.
 
-**Exit evidence:** migrations and persistence tests pass; API schemas are documented; all seven areas are represented; no hidden order/money-movement route exists; a clean startup and shutdown succeeds.
+**Exit evidence:** migrations and persistence tests pass; API schemas are documented; all six visible areas are represented; no hidden order/money-movement route exists; a clean startup and shutdown succeeds.
 
 ## Phase B — Frontend/API integration
 
@@ -78,7 +78,7 @@ The current automated CI run is evidence of code/test/build behavior only. It do
 - Configure production HTTPS, identity, access token/session policy, secret rotation, CORS/CSRF policy where applicable, rate limits and audit logging.
 - Verify tenant/owner isolation, least privilege, backup encryption/retention and incident response.
 - Deploy backend and frontend integration to the intended environment; verify DNS/TLS, persistent volumes, environment variables and migrations.
-- Run end-to-end scenarios across all seven areas, including unavailable provider, lost bridge, stale feed, server restart, notification failure, unauthorized access and recovery.
+- Run end-to-end scenarios across all six visible areas, including unavailable provider, lost bridge, stale feed, server restart, notification failure, unauthorized access and recovery.
 - Run automated tests, security scans, dependency checks and manual acceptance against the approved interface.
 - Publish known limitations and a rollback plan.
 
