@@ -36,8 +36,8 @@ class UnifiedEcosystemApplication:
     def architecture(self) -> dict[str, Any]:
         status = self.intelligence.architecture_status()
         status["area_handler_status"] = {
-            area.value: ("CONNECTED" if area in self._handlers else "NOT_CONNECTED")
-            for area in self.intelligence.areas
+            contract.area.value: ("CONNECTED" if contract.area in self._handlers else "NOT_CONNECTED")
+            for contract in self.intelligence.areas
         }
         status["all_area_handlers_connected"] = all(contract.area in self._handlers for contract in self.intelligence.areas)
         status["market_data_provider_status"] = getattr(self, "market_data_provider_status", "NOT_CONFIGURED")
