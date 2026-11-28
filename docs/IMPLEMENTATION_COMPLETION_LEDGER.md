@@ -316,3 +316,15 @@ Nothing is closed merely by being listed or implemented. Each checkbox needs a l
 - Latest commits: `078f16ba`, `0ee2c0d7`, `f4c95b11`, `f48c1f5b`, `35a19bbf`, `59fd9aed`.
 - GitHub CI has not yet returned workflow runs or status checks for this increment; these changes remain **not CI-validated**. External push delivery and mobile/browser receipt are also untested.
 - Alerts are deliberately limited to `HIGH_REVIEW` headline triage to avoid flooding. They are not a confirmation of facts or a trade signal. User preferences, per-asset subscriptions and hosted multi-replica delivery remain separate work.
+
+
+## News alert and evidence-memory hardening — 28 Nov 2026
+
+- News alerting is now connected to the tenant-scoped notification dispatcher. Only newly persisted `HIGH_REVIEW` headline evidence can trigger an `IMPORTANT` market notification; evidence IDs make the notification deterministic, and duplicate/lower-review headlines are suppressed.
+- Notification callback failures are reported separately from evidence ingestion state.
+- Worker health now accounts for configured-feed coverage. A partial response from a multi-feed configuration remains `PARTIAL` and does not advance the full-success timestamp.
+- Active evidence matching now loads only the most recent 72 hours and at most 5,000 records into memory. Older published headlines remain in the append-only tenant SQLite audit store but do not participate in recent corroboration or inflate the active matching set.
+- Added regression coverage for high-impact alert gating, deduplication, callback error isolation, partial feed coverage, bounded evidence loading and stale headline exclusion from active memory.
+- Latest commits: `b42e1b4f`, `dd2b1efd`, `cfa04b52`, `41639b51` (plus alert/coverage commits `078f16ba`, `0ee2c0d7`, `f4c95b11`, `f48c1f5b`, `35a19bbf`, `59fd9aed`).
+- CI is still not confirmed for the final head. The earlier CI run was observed in progress before the latest hardening commits; no success is claimed for the current head.
+- Disk retention/compaction for the append-only SQLite archive, shared production database, hosted worker continuity, full article analysis, source/calendar coverage and live browser/push delivery remain incomplete.
