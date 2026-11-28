@@ -27,9 +27,9 @@ Required integration order: #529 -> #531 -> both #532 and #533 -> #534, with #53
 
 ## Front 1 — Foundation, persistence, identity and runtime
 
-- [x] Reconcile the #532 readiness audit into the active #534 integration branch: tenant market-data and TradingView stores, cTrader OAuth state/token stores, fenced notification outbox schema, scheduled-backup status, expanded read-only store/schema checks, trusted-identity status, and restore verification/regression tests are now present on the branch. The original #532 PR remains open as historical source; do not merge it separately without reconciling duplicate commits.
+- [x] Reconcile the #532 readiness audit into the active #534 integration branch: tenant market-data and TradingView stores, MT5 relay tokens, TradingView webhook secrets, cTrader OAuth state/token stores, tenant signal evidence/outcomes, fenced notification outbox schema, scheduled-backup status, expanded read-only store/schema checks, trusted-identity status, and restore verification/regression tests are now present on the branch. The original #532 PR remains open as historical source; do not merge it separately without reconciling duplicate commits.
 - [ ] Verify one production-grade shared database, migrations, tenant isolation, durable audit, distributed leases and transaction boundaries; SQLite is only single-host/single-runtime.
-- [ ] Verify durable stores for decisions, outcomes, assistant conversations, learning, fiscal queues, notifications, subscriptions and monitor state. Readiness now checks additional stores and schema columns, but production durability still requires a shared database and live deployment evidence.
+- [ ] Verify durable stores for decisions, outcomes, assistant conversations, learning, fiscal queues, notifications, subscriptions and monitor state. The SQLite backup allowlist now covers the tenant market monitor, TradingView alert history, MT5 relay secrets, TradingView webhook secrets, cTrader OAuth state/tokens and signal evidence/outcomes; automated coverage guards these entries. Production durability still requires a shared database and live deployment evidence.
 - [ ] Verify clean startup/shutdown, supervised workers, restart recovery, health/readiness distinction, backup retention and an actual restore drill. Backup restore verification now validates the isolated restored copy and rejects corrupt/symlink backups in tests; a real operational restore drill remains open.
 - [ ] Configure production identity, session/token policy, TLS, CORS/CSRF where applicable, rate limits, secret rotation and KMS/envelope encryption.
 - [ ] Verify no hidden order or money-movement route is exposed by the read-only assistant or analysis modules.
@@ -68,7 +68,7 @@ The target is research-grade, ASI-inspired engineering, not a claim of actual AS
 ## Current verification boundary
 
 - CI was green at earlier recorded commits, including the previous #534 head `b556f764fd7c46dc659279e57bb12e22dc55e2d3` and classifier hardening head `1cd6e845b88052c882d8a4fe6b7e9c1cc5b5b994`.
-- The foundation audit integration has triggered fresh CI runs on the new commits; these runs were still in progress at the time of this update. A final CI result for the current head must be obtained before treating the integrated foundation as validated.
+- Intermediate CI runs exposed three integration mismatches (backup allowlist omitted signal-evidence storage; the readiness fixture did not create the newly required tenant stores; the WSGI fixture still represented seven visible areas and the old identity status). Each was corrected with regression coverage. The current head still requires a fresh full CI pass.
 - Automated tests and container builds do not prove live broker connectivity, production credentials/KMS, browser-closed push delivery, hosted uptime or Lovable screen wiring.
 - No real broker credentials, production secrets, or user-side Lovable access are assumed or fabricated.
 
