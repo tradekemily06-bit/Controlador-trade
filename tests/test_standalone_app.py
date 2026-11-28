@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import urlsplit
 
-from standalone_app import StandaloneWSGIApplication, _runtime_from_environment, _validate_bind_security
+from standalone_app import StandaloneWSGIApplication, _runtime_from_environment, _validate_bind_security, main
 from integration.standalone_runtime import StandaloneRuntime
 from analysis.decision_record import DecisionRecord
 from security.push_subscription_registry import TenantPushSubscriptionRegistry
@@ -2285,3 +2285,24 @@ def test_runtime_factory_rejects_non_runtime_result():
                 assert "StandaloneRuntime ativo" in str(exc)
             else:
                 raise AssertionError("factory returning the wrong type must fail startup")
+
+
+
+def test_main_closes_runtime_when_http_bind_fails():
+    closed = []
+    runtime = types.SimpleNamespace(closed=False, close=lambda: closed.append(True))
+    with patch.dict("os.environ", {
+        "CONTROLADOR_BIND_HOST": "127.0.0.1",
+        "CONTROLADOR_BIND_PORT": "8765",
+    }):
+        with patch("standalone_app._validate_bind_security"):
+            with patch("standalone_app._runtime_from_environment", return_value=runtime):
+                with patch("standalone_app.StandaloneWSGIApplication", return_value=object()):
+                    with patch("standalone_app.make_server", side_effect=OSError("port already in use")):
+                        try:
+                            main()
+                        except OSError as exc:
+                            assert "port already in use" in str(exc)
+                        else:
+                            raise AssertionError("bind failure must be propagated")
+    assert closed == [True]
