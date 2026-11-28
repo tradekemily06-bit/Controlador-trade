@@ -53,7 +53,7 @@ def _evaluate(**overrides):
         "seed": 7,
     }
     args.update(overrides)
-    if "selection_trial_sharpes" not in overrides:
+    if "selection_trial_sharpes" not in overrides and args["selection_returns"] is not None:
         selected_sr = _period_sharpe(args["selection_returns"])
         args["selection_trial_sharpes"] = [selected_sr - 0.01 * (args["num_trials"] - 1 - i) for i in range(args["num_trials"])]
     if "selected_trial_index" not in overrides:
@@ -225,8 +225,9 @@ def test_dsr_uses_selection_period_not_the_untouched_oos_sample():
 
 
 def test_dsr_requires_selected_strategy_to_be_selection_sharpe_winner():
-    with pytest.raises(ValueError):
-        _evaluate(selected_trial_index=0, num_trials=3)
+    result = _evaluate(selected_trial_index=0, num_trials=3)
+    assert result["verdict"] == "INSUFFICIENT"
+    assert "selection-period Sharpe winner" in result["reasons"][0]
 
 
 def test_dsr_rejects_trial_sharpe_that_does_not_match_selected_selection_returns():
