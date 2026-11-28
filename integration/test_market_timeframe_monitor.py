@@ -294,3 +294,63 @@ def test_monitor_uses_account_provider_clock_instead_of_device_clock(tmp_path):
 
     assert expected == datetime(2026, 11, 28, 10, 4, tzinfo=timezone.utc)
     assert calls == [(OWNER, "EURUSD")]
+
+
+
+def test_daily_and_weekly_cycles_fail_closed_without_verified_session_calendar(tmp_path):
+    monitor = MarketTimeframeMonitor(
+        tmp_path / "session-required.sqlite3", FakeAnalyzer(), default_context=OWNER
+    )
+    for timeframe in ("D1", "W1"):
+        try:
+            monitor.expected_last_closed_candle(
+                timeframe,
+                now=datetime(2026, 11, 28, 12, 0, tzinfo=timezone.utc),
+                context=OWNER,
+                symbol="EURUSD",
+            )
+        except ValueError as exc:
+            assert "verified provider session calendar" in str(exc)
+        else:
+            raise AssertionError(f"{timeframe} unexpectedly used an unverified UTC boundary")
+
+
+def test_daily_cycle_uses_verified_provider_session_boundary(tmp_path):
+    expected = datetime(2026, 11, 27, 22, 0, tzinfo=timezone.utc)
+    calls = []
+
+    def session_boundary(context, symbol, timeframe):
+        calls.append((context, symbol, timeframe))
+        return expected
+
+    monitor = MarketTimeframeMonitor(
+        tmp_path / "session-calendar.sqlite3",
+        FakeAnalyzer(),
+        default_context=OWNER,
+        session_boundary_provider=session_boundary,
+    )
+
+    result = monitor.expected_last_closed_candle(
+        "D1",
+        now=datetime(2026, 11, 28, 12, 0, tzinfo=timezone.utc),
+        context=OWNER,
+        symbol="EURUSD",
+    )
+
+    assert result == expected
+    assert calls == [(OWNER, "EURUSD", "1d")]
+
+
+def test_daily_watch_without_session_calendar_is_marked_unavailable_not_crashing_worker(tmp_path):
+    analyzer = FakeAnalyzer()
+    monitor = MarketTimeframeMonitor(
+        tmp_path / "daily-fail-closed.sqlite3", analyzer, default_context=OWNER
+    )
+    monitor.subscribe("EURUSD", "D1")
+
+    assert monitor.run_once(
+        now=datetime(2026, 11, 28, 12, 0, tzinfo=timezone.utc)
+    ) == []
+    assert analyzer.calls == []
+    assert monitor.subscriptions()[0]["status"] == "DATA_UNAVAILABLE"
+    assert "verified provider session calendar" in monitor.subscriptions()[0]["last_error"]

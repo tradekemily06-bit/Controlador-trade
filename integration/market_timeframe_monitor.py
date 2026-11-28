@@ -35,6 +35,7 @@ class MarketTimeframeMonitor:
         close_grace_seconds: float = 3.0,
         default_context: TenantContext | None = None,
         provider_clock: Callable[[TenantContext, str], datetime] | None = None,
+        session_boundary_provider: Callable[[TenantContext, str, str], datetime] | None = None,
     ) -> None:
         if analyzer is None or not callable(getattr(analyzer, "analyze", None)):
             raise ValueError("analyzer must implement analyze")
@@ -50,6 +51,9 @@ class MarketTimeframeMonitor:
         if provider_clock is not None and not callable(provider_clock):
             raise TypeError("provider_clock must be callable")
         self.provider_clock = provider_clock
+        if session_boundary_provider is not None and not callable(session_boundary_provider):
+            raise TypeError("session_boundary_provider must be callable")
+        self.session_boundary_provider = session_boundary_provider
         self.poll_interval_seconds = float(poll_interval_seconds)
         self.close_grace_seconds = float(close_grace_seconds)
         self._lock = threading.RLock()
@@ -264,6 +268,17 @@ class MarketTimeframeMonitor:
     ) -> datetime:
         normalized = normalize_timeframe(timeframe)
         interval = int(get_timeframe_interval(normalized).total_seconds())
+        if normalized.endswith(("d", "w")):
+            if context is None or not symbol or self.session_boundary_provider is None:
+                raise ValueError(
+                    "D1/W1 require a verified provider session calendar; UTC fallback is disabled"
+                )
+            expected = self.session_boundary_provider(
+                context, self._validate_symbol(symbol), normalized
+            )
+            if not isinstance(expected, datetime) or expected.tzinfo is None or expected.utcoffset() is None:
+                raise ValueError("provider session calendar must return an aware candle-open timestamp")
+            return expected.astimezone(timezone.utc)
         if self.provider_clock is not None:
             if context is None or not symbol:
                 raise ValueError("provider clock requires tenant context and symbol")
@@ -304,13 +319,13 @@ class MarketTimeframeMonitor:
         context = TenantContext(tenant_id=subscription["tenant_id"], subject_id=subscription["subject_id"])
         symbol = subscription["symbol"]
         timeframe = subscription["timeframe"]
-        expected = self.expected_last_closed_candle(
-            timeframe, now=now, context=context, symbol=symbol
-        )
-        previous = subscription.get("last_processed_candle")
-        if previous == expected.isoformat() or not self._is_enabled(context, symbol, timeframe):
-            return None
         try:
+            expected = self.expected_last_closed_candle(
+                timeframe, now=now, context=context, symbol=symbol
+            )
+            previous = subscription.get("last_processed_candle")
+            if previous == expected.isoformat() or not self._is_enabled(context, symbol, timeframe):
+                return None
             result = self.analyzer.analyze(
                 symbol=symbol,
                 timeframe=timeframe,
