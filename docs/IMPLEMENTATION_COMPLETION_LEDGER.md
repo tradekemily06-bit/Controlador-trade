@@ -401,3 +401,13 @@ Nothing is closed merely by being listed or implemented. Each checkbox needs a l
 - This is an integration/persistence gap, not a reason to duplicate the P128–P139 domain logic. The remaining work is a tenant-scoped append-only operational learning store, trusted outcome source, durable provenance, idempotency, backup/restore, read-only Study API and tests proving no unverified outcome enters learning.
 - The gap and evidence are documented in docs/FOUNDATION_RETROACTIVE_AUDIT.md and PROJECT_COMPLETION_STATUS.md. Do not expose the legacy app.py learning endpoints as proof of standalone integration.
 - No new runtime behavior was changed in this audit. No false learning, fake outcomes or untrusted client-supplied outcomes were added.
+
+
+## Immutable market snapshot primitive — 28 Nov 2026
+
+- Added `analysis/tenant_market_snapshot_store.py`: tenant/subject-scoped SQLite storage for complete normalized broker snapshots, including source connection ID, canonical symbol/timeframe, provider-reported receive time, candle range/count, canonical payload and SHA-256 checksum.
+- Snapshot IDs are immutable: identical retries are idempotent; reuse with changed source or payload is rejected. Reads re-compute and verify the payload checksum. Queries are tenant/subject scoped.
+- Added regression tests for persistence/checksum, idempotency and conflict rejection, tenant isolation, chronology validation and tamper detection.
+- Important boundary: the store records a snapshot passed by the server-side provider boundary. Its provenance is explicitly labeled `PROVIDER_BOUNDARY_ASSERTED_NOT_INDEPENDENTLY_VERIFIED`; this is not proof of broker authenticity, candle closure, provider liveness, or clock synchronization.
+- This is a **new foundation primitive only**. It is not yet instantiated by `StandaloneRuntime`, connected to the analysis/replay path, or included in the runtime backup/readiness inventory. Do not treat provider snapshot capture or Estudo replay as end-to-end complete until those integrations and tests are done.
+- Latest commits: `ac8ab525` (store), `d5fe74b2` (tests), `aabe15b8` (timeframe canonicalization and bounded snapshot size). No workflow run or commit status was visible for the new head at the time of this update; CI validation is pending.
