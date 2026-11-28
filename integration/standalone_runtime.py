@@ -675,6 +675,7 @@ class StandaloneRuntime:
                     limit=50,
                 )
                 self.news_polling_worker.start()
+            self.ecosystem_service.news_polling_worker = self.news_polling_worker
         except Exception:
             workers = (
                 (getattr(self, "market_monitor", None), "worker_running"),
