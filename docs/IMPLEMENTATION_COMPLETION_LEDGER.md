@@ -451,3 +451,14 @@ Nothing is closed merely by being listed or implemented. Each checkbox needs a l
 - Deliberate boundary: amounts must already be converted into the same account currency. This primitive does not infer broker tariffs, convert currencies, estimate fills, or claim that a source is independently authentic. A caller must provide evidence-backed values.
 - **Not yet integrated** into historical replay, the strategy robustness evaluator, or the full selection/holdout matrix. Existing backtests therefore remain gross and must not be described as net-of-costs or eligible for robustness promotion.
 - Commits: `425a9549` (cost accounting primitive), `5c4dadb0` (tests). Test execution on the exact PR head is pending.
+
+
+## Recommendation intelligence evidence gate — 28 Nov 2026
+
+- Added `analysis/recommendation_evidence_gate.py` as a fail-closed internal contract for the evidence required before a directional recommendation can be published.
+- The gate checks canonical symbol/timeframe, closed candle, provider verification, market-data freshness, versioned strategy, evidence both for and against, explicit risk invalidation, net-cost verification and news-review state.
+- Stale/future market timestamps, gross-only or incomplete costs, unchecked/unverified news and missing evidence block directional publication and force `AGUARDAR`.
+- It deliberately emits no probability-of-profit or confidence percentage. A directional result is labelled `EVIDENCE_READY_REQUIRES_HUMAN_REVIEW`, not an automatic trading instruction; execution remains unauthorized.
+- Added regression tests for complete evidence, stale data, incomplete costs, unverified news, missing counter-evidence and AGUARDAR.
+- **Important limitation:** this is a new internal contract and test suite, not yet wired into the live Análise/recommendation response path. Existing signal scores must not be interpreted as calibrated probabilities. It also depends on upstream provider verification, timestamp integrity, news verification and cost-source policy being correctly configured.
+- Commits: `da45732a` (gate), `2b44f0e5` (tests). No test pass is claimed until GitHub Actions runs on the exact head.
