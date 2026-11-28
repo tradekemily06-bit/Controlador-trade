@@ -77,7 +77,7 @@ Integration path: #529 -> #531 -> #533 -> #534. #532 is a sibling of #533, not a
 - [ ] Keep probability unavailable until representative out-of-sample outcomes, calibration diagnostics and drift gates pass; an evidence score is not a win probability.
 - [ ] Version rules/models and retain provenance, forecasts, corrections and outcomes; evaluate changes out of sample and make them reversible.
 - [x] Implement Web Push building blocks in code: tenant-scoped registration/list/revocation routes with host callbacks, endpoint host allowlisting, AES-GCM subscription-store adapter over an injected durable tenant backend, injected VAPID sender, and tenant notification sink/outbox components.
-- [ ] Complete production Web Push activation: sender-side DNS/IP validation and pinning, redirect suppression, deployed durable backend/KMS and VAPID secrets, verified identity/CSRF callbacks, hosted worker wiring, delivery/retry/dead-letter telemetry, and Android/iOS tests with the app/browser closed. RSS redirect suppression does not satisfy the Web Push sender requirement.
+- [ ] Complete production Web Push activation: sender-side DNS/IP validation and pinning, redirect suppression, deployed durable backend/KMS and VAPID secrets, verified identity/CSRF callbacks, hosted worker wiring, delivery/retry/dead-letter telemetry, and Android/iOS tests with the app/browser closed. RSS feed DNS/IP pinning and redirect suppression are implemented separately; they do not satisfy the Web Push sender requirement.
 - [ ] Ensure market, calendar, notification and backup workers run under hosted supervision when the user's PC/app is closed; local process threads do not provide always-on operation.
 - [ ] Verify Reserva Fiscal Brazil and Exterior queues, persistence, identity/ownership, reconciliation and recovery; verify assistant remains strictly read-only.
 - [ ] Verify the minimal/secret mode shows only the intended signal and evidence score without changing the main interface or inventing probabilities.
@@ -88,7 +88,7 @@ The following recently added modules are part of the same application foundation
 
 - `analysis/news_event_intelligence.py` — conservative headline event/category and affected-asset triage only; no sentiment, direction or probability.
 - `analysis/news_evidence_corroboration.py` — trusted publisher provenance, duplicate suppression and cross-publisher review candidates; candidate matches remain unverified.
-- `integration/rss_news_provider.py` — configured RSS/Atom ingestion; feed and article destinations are allowlisted, redirects are rejected by the default HTTP client, HTTPS ports/timeouts are bounded. DNS/IP pinning is not yet implemented.
+- `integration/rss_news_provider.py` — configured RSS/Atom ingestion; feed and article destinations are allowlisted, redirects are rejected, HTTPS ports/timeouts are bounded, DNS answers are checked for public routability and the HTTPS socket is pinned to the validated IP while TLS SNI/hostname verification retains the configured publisher host.
 - `EconomicCalendarPollingWorker` — host-injected trusted-source polling with per-source status, failure isolation, and StandaloneRuntime lifecycle integration; official publisher adapters remain host-supplied.
 - `NewsPollingWorker` — bounded RSS headline polling and owner-scoped evidence ingestion, started/stopped by StandaloneRuntime when both trusted correlator and configured RSS provider exist; hosted supervision and source policies remain deployment requirements.
 - `SQLiteNewsEvidenceStore` and `SQLiteEconomicCalendarStore` — owner-scoped news evidence and publisher-scoped calendar observations, both covered by local backup/readiness checks when stored at the documented runtime paths.
@@ -175,3 +175,11 @@ Nothing is closed merely by being listed or implemented. Each checkbox needs a l
 - The corrected head `613a9c06bee085fe4c4bf2105665c8c906e2af4c` completed GitHub Actions run [46159301464](https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/46159301464) with conclusion SUCCESS.
 - Confirmed successful steps: P1.9 robustness tests, full test suite, dependency security audit, Python surface compilation, production container build and health smoke test, standalone analyst container build and health smoke test, Windows PowerShell validation, protected-branch compatibility check, and required commit-status publication.
 - This supersedes the earlier statement that CI was still pending for this head. It validates repository tests/builds only; it does not replace live-provider, production infrastructure, hosted-worker, push-device, or Lovable end-to-end acceptance.
+
+
+### RSS transport SSRF hardening — 28 November 2026
+- The default RSS/Atom HTTP transport now resolves each configured publisher hostname, rejects empty, invalid, private, loopback, link-local, reserved, or mixed public/private DNS answer sets, and connects to one of the validated public IPs without performing a second DNS lookup in the HTTPS connection.
+- TLS certificate validation and SNI continue to use the original configured hostname while the TCP socket is pinned to the validated IP. Redirects remain rejected; response size, status, content length, timeout and HTTPS port remain bounded.
+- Added tests for public IPv4/IPv6 answers, duplicate address normalization, private/mixed DNS rejection, DNS failures, and verifying that the TCP connection uses the pinned IP while TLS uses the original hostname.
+- The injectable opener remains a test seam; production default transport uses the pinned HTTPS implementation. This does not provide article-body retrieval, publisher fact verification, or Web Push sender DNS pinning.
+- Latest code changes require the full CI workflow to pass before this hardening is marked validated.
