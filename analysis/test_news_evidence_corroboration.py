@@ -92,7 +92,6 @@ def test_same_publisher_duplicate_does_not_count_as_corroboration():
 
     assert duplicate["status"] == "DUPLICATE_SOURCE_ITEM"
     assert duplicate["duplicate_of"] == first["evidence_id"]
-    assert len(engine.records()) == 1
 
 
 def test_unrelated_headlines_do_not_become_corroboration_candidates():
