@@ -2096,10 +2096,10 @@ def main() -> None:
     host = os.getenv("CONTROLADOR_BIND_HOST", "127.0.0.1")
     _validate_bind_security(host)
     runtime = _runtime_from_environment()
-    application = StandaloneWSGIApplication(runtime)
-    port = int(os.getenv("CONTROLADOR_BIND_PORT", "8765"))
     server = None
     try:
+        application = StandaloneWSGIApplication(runtime)
+        port = int(os.getenv("CONTROLADOR_BIND_PORT", "8765"))
         server = make_server(host, port, application, server_class=ThreadingWSGIServer)
         server.serve_forever()
     finally:
