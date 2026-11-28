@@ -52,6 +52,22 @@ def test_rss_provider_parses_feed_filters_symbol_and_reports_live():
     assert provider.status()["live"] is True
 
 
+def test_rss_provider_matches_currency_pair_news_through_underlying_asset():
+    macro_rss = b"""<?xml version="1.0"?>
+    <rss version="2.0"><channel><title>Financial News</title>
+    <item><title>Federal Reserve signals a rate decision</title><link>https://www.cnbc.com/fed-story</link></item>
+    </channel></rss>"""
+    provider = RSSNewsProvider(
+        ["https://www.cnbc.com/feed"],
+        opener=lambda request, timeout: FakeResponse(macro_rss, "https://www.cnbc.com/feed"),
+    )
+
+    items = provider.latest(symbol="EURUSD")
+
+    assert len(items) == 1
+    assert "Federal Reserve" in items[0].title
+
+
 def test_rss_provider_rejects_non_https_and_unapproved_domains():
     with pytest.raises(ValueError):
         RSSNewsProvider(["http://www.cnbc.com/feed"])
