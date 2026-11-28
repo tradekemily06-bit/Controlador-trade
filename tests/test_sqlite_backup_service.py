@@ -356,10 +356,6 @@ class SQLiteBackupServiceTests(unittest.TestCase):
 
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 
 def test_missing_news_and_calendar_stores_are_optional_until_configured():
     with tempfile.TemporaryDirectory() as directory:
@@ -399,3 +395,6 @@ def test_news_and_calendar_stores_are_backed_up_when_present():
         ]
         for item in result["results"]:
             assert (backups / item["filename"]).is_file()
+
+if __name__ == "__main__":
+    unittest.main()
