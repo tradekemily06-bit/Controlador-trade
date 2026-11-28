@@ -11,6 +11,8 @@ from typing import Callable
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
+from analysis.news_event_intelligence import classify_market_news
+
 
 @dataclass(frozen=True)
 class NewsItem:
@@ -170,7 +172,14 @@ class RSSNewsProvider(NewsProvider):
             successful_feeds += 1
             for item in items:
                 if query and query not in item.title.upper():
-                    continue
+                    classified_assets = set(classify_market_news(item)["affected_assets"])
+                    components = {query}
+                    if len(query) == 6 and query.isalpha():
+                        components.update((query[:3], query[3:]))
+                    aliases = {"XAU": "GOLD", "XAG": "SILVER"}
+                    relevant_assets = {aliases.get(code, code) for code in components}
+                    if not relevant_assets.intersection(classified_assets):
+                        continue
                 collected.append(item)
         unique: dict[tuple[str, str | None], NewsItem] = {}
         for item in collected:
