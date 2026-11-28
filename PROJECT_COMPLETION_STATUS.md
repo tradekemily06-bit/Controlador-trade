@@ -77,3 +77,12 @@ A interface de software está implementada e coberta por testes de contrato. A a
 ## Regra de encerramento
 
 Não criar novas etapas apenas para prolongar o projeto. Novas alterações devem ser motivadas por defeito concreto, necessidade funcional real, evidência externa de validação ou expansão funcional real.
+
+
+## Reconciliation with the independent standalone application — 28 November 2026
+
+This document also preserves historical operational work. Its statements about a 2026-10-01 IC Markets MT5 DEMO round-trip describe that specific terminal/account/environment and must not be read as proof that the new independent standalone application is currently connected to a broker or hosted market-data source. The standalone runtime deliberately does not instantiate the legacy MT5 operational runtime; provider sessions and market-data adapters are injected at its boundary and require fresh hosted/DEMO evidence.
+
+P128–P149 were previously described as present in code. The retroactive audit has located P128, P138 and P139 artifacts, but the complete P128–P149 inventory, API exposure, runtime composition, tenant-scoped persistence and backup/restore acceptance are not yet verified. In particular, P138/P139 currently compose the legacy post-DEMO learning flow; the standalone application factory does not yet expose that operational handoff, and OperationLearningJournal is not a durable tenant-scoped store. The standalone LearningStateStore stores learning materials, observations, activities and attempts; it is not the same as reconciled operational-outcome memory.
+
+The current standalone foundation keeps SIMULAÇÃO active and REAL/order/money-movement disabled. Historical P111–P119 and P120–P126 authorization/safety contracts are not current authorization to activate REAL. The current owner-facing release state is governed by PROJECT_MASTER_SPEC.md, docs/STANDALONE_COMPLETION_ROADMAP.md and docs/FOUNDATION_RETROACTIVE_AUDIT.md.
