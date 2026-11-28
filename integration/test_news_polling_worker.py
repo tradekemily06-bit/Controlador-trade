@@ -74,6 +74,8 @@ def test_news_worker_does_not_claim_live_when_provider_is_stale_or_unavailable()
 
     assert status["last_state"] == "SOURCE_UNAVAILABLE"
     assert status["last_success_at"] is None
+    assert status["last_processed"] == 0
+    assert correlator.calls == []
 
 
 def test_news_worker_redacts_provider_exceptions():

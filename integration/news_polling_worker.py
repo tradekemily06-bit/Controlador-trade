@@ -74,6 +74,18 @@ class NewsPollingWorker:
                 self._last_errors = 1
                 return self.status()
 
+        configured = bool(provider_status.get("configured", False))
+        live = bool(provider_status.get("live", False))
+        if not configured or not live:
+            with self._lock:
+                self._last_poll_at = datetime.now(timezone.utc).isoformat()
+                self._last_state = "NOT_CONFIGURED" if not configured else "SOURCE_UNAVAILABLE"
+                self._last_error_class = None
+                self._last_item_count = len(items)
+                self._last_processed = 0
+                self._last_errors = 0
+                return self.status()
+
         processed = 0
         errors = 0
         ingested_at = datetime.now(timezone.utc)
@@ -107,13 +119,7 @@ class NewsPollingWorker:
             except Exception:
                 errors += 1
 
-        configured = bool(provider_status.get("configured", False))
-        live = bool(provider_status.get("live", False))
-        if not configured:
-            state = "NOT_CONFIGURED"
-        elif not live:
-            state = "SOURCE_UNAVAILABLE"
-        elif errors:
+        if errors:
             state = "PARTIAL"
         else:
             state = "POLL_SUCCEEDED"
