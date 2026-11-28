@@ -257,12 +257,22 @@ class EconomicCalendarPollingWorker:
             self._stop.wait(self.interval_seconds)
 
     def stop(self, timeout: float = 5.0) -> None:
+        if (
+            isinstance(timeout, bool)
+            or not isinstance(timeout, (int, float))
+            or not math.isfinite(float(timeout))
+            or timeout < 0
+            or timeout > 60
+        ):
+            raise ValueError("timeout must be finite and between 0 and 60 seconds")
         self._stop.set()
-        thread = self._thread
+        with self._lock:
+            thread = self._thread
         if thread is not None:
-            thread.join(timeout=max(0.0, timeout))
-            if not thread.is_alive():
-                self._thread = None
+            thread.join(timeout=float(timeout))
+            with self._lock:
+                if self._thread is thread and not thread.is_alive():
+                    self._thread = None
 
     def status(self) -> dict[str, Any]:
         with self._lock:
