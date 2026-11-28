@@ -278,3 +278,16 @@ Nothing is closed merely by being listed or implemented. Each checkbox needs a l
 - [ ] The robustness diagnostics remain research components, not a live Estudo feature. The current `BacktestEngine` emits individual backtest results but does not persist every attempted parameter/strategy variant as a complete, time-aligned return matrix, nor immutable selection/holdout partitions and trial-count provenance. Do not claim an integrated anti-overfitting workflow until that data contract, durable tenant-scoped trial ledger, API exposure and Estudo consumption are implemented and tested.
 - [ ] Effective-trial count is still supplied by the caller; correlation-aware estimation from the recorded strategy search space is not yet implemented. Keep the DSR limitation visible.
 - [ ] No production database, real provider feed, live backtest execution, or Lovable end-to-end test is implied by CI success. PR #534 remains draft/open/unmerged; no deployment or REAL execution authorization.
+
+
+
+## Trusted global news source bootstrap — 28 Nov 2026
+
+- Added `integration/news_source_configuration.py` to build the news evidence correlator from explicit host-controlled `CONTROLADOR_NEWS_SOURCE_POLICIES` JSON. Publisher identity and trust tier are never accepted from RSS payloads.
+- Wired this builder into `StandaloneRuntime` when a trusted correlator was not injected. When configured, the runtime creates/initializes the owner-scoped `news-evidence.sqlite3` store inside the runtime backup directory; the existing RSS polling worker can then start when feed URLs are configured too.
+- Rejects malformed policy JSON, unsupported fields/tiers, duplicate source IDs, duplicate hosts and overlapping parent/subdomain trust scopes. Missing policy keeps evidence polling disabled; no implicit trust fallback.
+- Added regression tests for disabled-by-default behavior, owner-scoped persistence, trusted host resolution and malformed/ambiguous policy rejection.
+- Added `docs/NEWS_SOURCE_CONFIGURATION.md` with configuration schema, starter official Federal Reserve/ECB feed URLs, polling limits, source-trust rules and explicit limitations.
+- Latest implementation commits: `292254c1` (builder), `abe79e15` (runtime wiring), `618f6df5` (tests), `1ff8e7c9` (overlap rejection), `0711fb33` (configuration guide).
+- At ledger update time GitHub had not yet exposed a workflow run or commit status for exact latest head `0711fb3319c5312df66263c80221c8f331026c05`; this increment is **not yet CI-validated**.
+- This does not mean news is live by default: operators must configure approved RSS feed URLs and the matching trusted publisher policies. Current ingestion remains headline-level; full-article retrieval/claim extraction, official global calendar adapters, hosted worker continuity, shared production DB/KMS and Lovable end-to-end acceptance remain open. No live feed, real device or hosted deployment was tested.
