@@ -141,7 +141,8 @@ class EconomicCalendarEvent:
 
 
 def normalize_calendar_event(
-    payload: Mapping[str, Any], *, trusted_source_id: str, trusted_source_tier: str
+    payload: Mapping[str, Any], *, trusted_source_id: str, trusted_source_tier: str,
+    trusted_source_hosts: tuple[str, ...] | list[str],
 ) -> EconomicCalendarEvent:
     """Normalize one event using source identity/tier supplied by trusted host config."""
     if not isinstance(payload, Mapping):
@@ -151,6 +152,30 @@ def normalize_calendar_event(
         status = CalendarStatus(str(payload.get("status", "SCHEDULED")).upper())
     except ValueError as exc:
         raise ValueError("unsupported calendar impact or status") from exc
+
+    if not isinstance(trusted_source_hosts, (tuple, list)) or not trusted_source_hosts:
+        raise ValueError("trusted_source_hosts must be a non-empty allowlist")
+    allowed_hosts = []
+    for host in trusted_source_hosts:
+        if not isinstance(host, str) or not host.strip():
+            raise ValueError("trusted source host allowlist contains an invalid host")
+        normalized_host = host.strip().lower().rstrip(".")
+        if "/" in normalized_host or ":" in normalized_host or "@" in normalized_host:
+            raise ValueError("trusted source host must be a hostname only")
+        allowed_hosts.append(normalized_host)
+
+    source_url = _required_text(payload.get("source_url"), "source_url", max_length=2048)
+    parsed_source_url = urlparse(source_url)
+    source_host = (parsed_source_url.hostname or "").lower().rstrip(".")
+    if (
+        parsed_source_url.scheme.lower() != "https"
+        or not source_host
+        or parsed_source_url.username
+        or parsed_source_url.password
+        or parsed_source_url.port not in (None, 443)
+        or not any(source_host == host or source_host.endswith("." + host) for host in allowed_hosts)
+    ):
+        raise ValueError("source_url host is not allowed for this trusted source")
 
     currency_value = payload.get("currency")
     if currency_value is not None and not isinstance(currency_value, str):
@@ -163,7 +188,7 @@ def normalize_calendar_event(
     return EconomicCalendarEvent(
         source_id=_required_text(trusted_source_id, "trusted_source_id", max_length=128),
         source_event_id=_required_text(payload.get("source_event_id"), "source_event_id", max_length=128),
-        source_url=_required_text(payload.get("source_url"), "source_url", max_length=2048),
+        source_url=source_url,
         source_tier=_required_text(trusted_source_tier, "trusted_source_tier", max_length=32).upper(),
         title=_required_text(payload.get("title"), "title", max_length=240),
         country_code=_required_text(payload.get("country_code"), "country_code", max_length=2).upper(),
@@ -181,7 +206,8 @@ def normalize_calendar_event(
 
 
 def normalize_calendar_batch(
-    payloads: Any, *, trusted_source_id: str, trusted_source_tier: str
+    payloads: Any, *, trusted_source_id: str, trusted_source_tier: str,
+    trusted_source_hosts: tuple[str, ...] | list[str],
 ) -> list[EconomicCalendarEvent]:
     """Normalize a batch under one trusted source identity; reject duplicate IDs."""
     if isinstance(payloads, (str, bytes)) or not isinstance(payloads, (list, tuple)):
@@ -190,6 +216,7 @@ def normalize_calendar_batch(
         normalize_calendar_event(
             item, trusted_source_id=trusted_source_id,
             trusted_source_tier=trusted_source_tier,
+            trusted_source_hosts=trusted_source_hosts,
         )
         for item in payloads
     ]
