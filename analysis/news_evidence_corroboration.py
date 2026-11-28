@@ -247,6 +247,11 @@ class NewsEvidenceCorroborator:
         self._store = store
         self._records: list[NewsEvidenceRecord] = store.load() if store is not None else []
 
+    @property
+    def store(self) -> SQLiteNewsEvidenceStore | None:
+        """Expose the configured persistence adapter for runtime boundary checks."""
+        return self._store
+
     def source_id_for_url(self, url: str) -> str:
         """Resolve an article URL to exactly one trusted configured source policy."""
         if not isinstance(url, str) or len(url) > 2048:
