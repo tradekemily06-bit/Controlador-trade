@@ -206,3 +206,10 @@ Nothing is closed merely by being listed or implemented. Each checkbox needs a l
 - Added tests for fail-closed behavior without the host factory and type-checked adapter registration when the host supplies it.
 - This is a registration seam only. The production OAuth/KMS configuration, official Open API transport, DEMO account handshake, provider session validation, and live candle/quote tests remain separate release gates.
 - CI for the provider-factory commit is running; no pass is claimed until the exact final head completes.
+
+
+### CI confirmation — cTrader provider registration seam (28 November 2026)
+- GitHub Actions run [46160647350](https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/46160647350) completed with overall SUCCESS on code head `593af4f4fa00846afa11b0ba4972ade5d5cc995d`.
+- All four workflow jobs passed: P1.9 robustness tests (17 passed), full test suite (2,567 passed and 44 subtests passed), dependency security audit, Python compilation, production and analyst container builds/health checks, Windows PowerShell validation, protected-branch compatibility and required commit-status publication.
+- This validates the date-only economic-calendar precision work, worker lifecycle hardening, RSS pinned-transport hardening, cTrader provider-factory seam and associated regression tests present in that code head. It does not validate a real cTrader OAuth login, DEMO account handshake, live quotes/candles, official calendar publisher adapters, hosted scheduling, shared PostgreSQL/KMS, Web Push closed-app delivery, or Lovable end-to-end wiring.
+- PR #534 remains open, draft and unmerged. No deployment, frontend modification, REAL activation, order submission or money movement was performed.
