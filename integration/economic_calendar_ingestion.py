@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import closing
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -29,7 +31,7 @@ class SQLiteEconomicCalendarStore:
         return connection
 
     def initialize_schema(self) -> None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS economic_calendar_observations (
@@ -68,7 +70,7 @@ class SQLiteEconomicCalendarStore:
             )
             for event in events
         ]
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             cursor = connection.executemany(
                 """
                 INSERT OR IGNORE INTO economic_calendar_observations
@@ -82,11 +84,20 @@ class SQLiteEconomicCalendarStore:
     def list_latest(self, *, start_at: str, end_at: str, limit: int = 500) -> list[dict[str, Any]]:
         if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 5000:
             raise ValueError("limit must be between 1 and 5000")
-        start = start_at.strip() if isinstance(start_at, str) else ""
-        end = end_at.strip() if isinstance(end_at, str) else ""
+        def utc_iso(value: str) -> str:
+            try:
+                parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+            except (AttributeError, TypeError, ValueError) as exc:
+                raise ValueError("time range must use ISO-8601 timestamps") from exc
+            if parsed.tzinfo is None or parsed.utcoffset() is None:
+                raise ValueError("time range timestamps must include a timezone")
+            return parsed.astimezone(timezone.utc).isoformat()
+
+        start = utc_iso(start_at) if isinstance(start_at, str) else ""
+        end = utc_iso(end_at) if isinstance(end_at, str) else ""
         if not start or not end or start > end:
             raise ValueError("a valid inclusive time range is required")
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             rows = connection.execute(
                 """
                 SELECT payload_json
