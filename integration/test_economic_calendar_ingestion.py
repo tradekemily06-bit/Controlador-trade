@@ -173,10 +173,7 @@ def test_calendar_polling_worker_is_idempotent_and_isolates_source_failure(tmp_p
     _, service = _service(tmp_path / "calendar-worker.sqlite3")
     worker = EconomicCalendarPollingWorker(
         service,
-        {
-            "bls": lambda: [_payload()],
-            "unknown": lambda: [],
-        } if False else {"bls": lambda: [_payload()]},
+        {"bls": lambda: [_payload()]},
         interval_seconds=30,
     )
 
@@ -225,3 +222,28 @@ def test_calendar_polling_worker_rejects_untrusted_fetcher_and_interval(tmp_path
         EconomicCalendarPollingWorker(service, {"unconfigured": lambda: []})
     with pytest.raises(ValueError):
         EconomicCalendarPollingWorker(service, {"bls": lambda: []}, interval_seconds=1)
+
+
+
+def test_calendar_polling_worker_starts_and_stops_cleanly(tmp_path):
+    from threading import Event
+
+    from integration.economic_calendar_ingestion import EconomicCalendarPollingWorker
+
+    _, service = _service(tmp_path / "calendar-worker.sqlite3")
+    fetched = Event()
+
+    def fetch():
+        fetched.set()
+        return [_payload()]
+
+    worker = EconomicCalendarPollingWorker(
+        service, {"bls": fetch}, interval_seconds=30
+    )
+    worker.start()
+
+    assert fetched.wait(timeout=2)
+    worker.stop(timeout=2)
+
+    assert worker.status()["worker_running"] is False
+    assert worker.status()["sources"]["bls"]["state"] == "INGESTED"
