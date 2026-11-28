@@ -140,8 +140,10 @@ class EconomicCalendarEvent:
         return result
 
 
-def normalize_calendar_event(payload: Mapping[str, Any]) -> EconomicCalendarEvent:
-    """Normalize one provider event without filling absent economic values."""
+def normalize_calendar_event(
+    payload: Mapping[str, Any], *, trusted_source_id: str, trusted_source_tier: str
+) -> EconomicCalendarEvent:
+    """Normalize one event using source identity/tier supplied by trusted host config."""
     if not isinstance(payload, Mapping):
         raise ValueError("calendar event must be an object")
     try:
@@ -159,10 +161,10 @@ def normalize_calendar_event(payload: Mapping[str, Any]) -> EconomicCalendarEven
         revision_note = str(revision_note).strip()[:500] or None
 
     return EconomicCalendarEvent(
-        source_id=_required_text(payload.get("source_id"), "source_id", max_length=128),
+        source_id=_required_text(trusted_source_id, "trusted_source_id", max_length=128),
         source_event_id=_required_text(payload.get("source_event_id"), "source_event_id", max_length=128),
         source_url=_required_text(payload.get("source_url"), "source_url", max_length=2048),
-        source_tier=_required_text(payload.get("source_tier", "PROVIDER"), "source_tier", max_length=32).upper(),
+        source_tier=_required_text(trusted_source_tier, "trusted_source_tier", max_length=32).upper(),
         title=_required_text(payload.get("title"), "title", max_length=240),
         country_code=_required_text(payload.get("country_code"), "country_code", max_length=2).upper(),
         currency=currency,
@@ -178,11 +180,19 @@ def normalize_calendar_event(payload: Mapping[str, Any]) -> EconomicCalendarEven
     )
 
 
-def normalize_calendar_batch(payloads: Any) -> list[EconomicCalendarEvent]:
-    """Normalize a batch and reject duplicate publisher event IDs atomically."""
+def normalize_calendar_batch(
+    payloads: Any, *, trusted_source_id: str, trusted_source_tier: str
+) -> list[EconomicCalendarEvent]:
+    """Normalize a batch under one trusted source identity; reject duplicate IDs."""
     if isinstance(payloads, (str, bytes)) or not isinstance(payloads, (list, tuple)):
         raise ValueError("calendar batch must be a list or tuple")
-    events = [normalize_calendar_event(item) for item in payloads]
+    events = [
+        normalize_calendar_event(
+            item, trusted_source_id=trusted_source_id,
+            trusted_source_tier=trusted_source_tier,
+        )
+        for item in payloads
+    ]
     keys = [event.source_key for event in events]
     if len(keys) != len(set(keys)):
         raise ValueError("duplicate source event ID in calendar batch")
