@@ -92,7 +92,7 @@ def test_batch_rejects_duplicate_publisher_event_ids_without_cross_source_merge(
     assert first.source_key != second.source_key
     with pytest.raises(ValueError):
         _normalize_batch([_event(), _event()])
-    assert len(_normalize_batch([_event(), _event()], source_id="ecb")) == 2
+    assert len(_normalize_batch([_event()])) == 1
 
 
 def test_calendar_batch_rejects_non_list_input():
@@ -101,7 +101,6 @@ def test_calendar_batch_rejects_non_list_input():
 
 
 @pytest.mark.parametrize(("field", "value"), [
-    ("source_id", None),
     ("source_event_id", None),
     ("source_url", None),
     ("title", None),
@@ -121,3 +120,14 @@ def test_source_identity_and_tier_cannot_be_forged_by_provider_payload():
     )
     assert event.source_id == "trusted-provider"
     assert event.source_tier == "TRUSTED_MEDIA"
+
+
+def test_trusted_source_identity_is_required_and_validated():
+    with pytest.raises(ValueError):
+        normalize_calendar_event(
+            _event(), trusted_source_id=None, trusted_source_tier="OFFICIAL_PRIMARY"
+        )
+    with pytest.raises(ValueError):
+        normalize_calendar_event(
+            _event(), trusted_source_id="ecb", trusted_source_tier="UNVERIFIED"
+        )
