@@ -375,3 +375,20 @@ Nothing is closed merely by being listed or implemented. Each checkbox needs a l
 - Restored the legacy audit key as an additional backward-compatible limitation while retaining the more explicit current key. No classification behavior or trust level was weakened.
 - Correction commit: `1b472d1a03b87dc1226ca4e2d6a6de4c5f13f358`.
 - GitHub had not yet exposed a workflow run for the correction commit at the time of this ledger update. The corrected code is therefore **not yet CI-validated**. Do not treat the prior failed run as a pass or the correction as validated until a fresh full run succeeds.
+
+
+## Auditoria retroativa da fundação — 28 de novembro de 2026
+
+- Criado docs/FOUNDATION_RETROACTIVE_AUDIT.md para recuperar pendências anteriores e impedir perda de trabalho entre o Project Master Specification, addenda, planos, testes, status de conclusão e PRs.
+- Descoberta: o master spec dizia que P53 era o último marco confirmado, mas o repositório contém addenda/planos P54–P127 e o status de conclusão declara artefatos P128–P149. O master spec foi corrigido para apontar os artefatos recuperados, sem inventar conteúdo de marcos ausentes.
+- P54–P110: addenda e famílias de módulos/testes localizadas para validação de hipóteses, conhecimento confiável, memória, auditoria, laboratório, adaptação, governança, uso controlado, feedback e validação.
+- P111–P119: addendum de pré-REAL/liberação controlada localizado. Contratos de autorização não constituem autorização operacional.
+- P120–P127: planos individuais recuperados para resultado, reconciliação externa, dados de mercado, ordem, sessão, sandbox/DEMO, segurança pré-REAL e integração IC Markets MT5 DEMO.
+- P128–P149: PROJECT_COMPLETION_STATUS.md declara essa faixa; arquivos P128, P138 e P139 foram localizados. A auditoria individual de todos os artefatos e da integração runtime/API permanece aberta.
+- P1–P22: a recuperação individual continua pendente; o master spec mantém os artefatos históricos como fonte de verdade e proíbe reconstrução por suposição.
+- Contradição de autorização REAL corrigida em docs/STANDALONE_COMPLETION_ROADMAP.md: a abertura agora mantém SIMULAÇÃO como modo ativo e REAL/ordens/movimentação financeira desabilitados nesta fundação. P111–P119 e P120–P126 são contratos históricos de segurança, não ativação atual.
+- Evidência de round-trip MT5 DEMO em PROJECT_COMPLETION_STATUS.md (01/10/2026) permanece evidência histórica daquele ambiente; não comprova conexão do novo aplicativo standalone hospedado.
+- O relatório inclui pendências transversais antigas: snapshots imutáveis de provider no Estudo, custos reais de backtest, trials/retornos completos para DSR/CSCV, calendário oficial, artigo integral e conflitos de notícias, vídeo-análise ponta a ponta, contexto cross-market, síntese adversarial, persistência/identidade/KMS, workers hospedados, push com app fechado, Reserva Fiscal, Assistente read-only e aceitação tela a tela do Lovable.
+- GitHub Actions run 46181167812 passou nos quatro jobs para o head anterior 11c5ccddb4fa39a88dedff0464e3b55cc8865e20: CI completo, validação Windows PowerShell, compatibilidade da branch protegida e publicação dos status obrigatórios.
+- As alterações desta auditoria são documentação. O PR #534 continua draft, aberto e não mesclado; sem deploy, sem alteração do Lovable, sem REAL, sem envio de ordens e sem movimentação de dinheiro.
+- Estado: auditoria documental inicial registrada; P1–P22 e P128–P149 precisam de recuperação/verificação individual, e P54–P127 precisam de aceitação integrada, não apenas presença de código/testes.
