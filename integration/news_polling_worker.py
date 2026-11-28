@@ -1,117 +1,165 @@
+"""Process-lifetime RSS news polling and owner-scoped evidence ingestion."""
+
 from __future__ import annotations
 
-from dataclasses import dataclass
-from threading import Event
-
-import pytest
-
-from integration.news_polling_worker import NewsPollingWorker
-
-
-@dataclass
-class NewsItem:
-    url: str
-    title: str
+import math
+import threading
+from datetime import datetime, timezone
+from typing import Any
+from urllib.parse import urlparse
 
 
-class FakeProvider:
-    def __init__(self, items=None, *, live=True, error=None):
-        self.items = list(items or [])
-        self.live = live
-        self.error = error
+class NewsPollingWorker:
+    """Poll a configured RSS provider and persist evidence through a trusted correlator.
 
-    def latest(self, *, limit=10):
-        if self.error:
-            raise self.error
-        return self.items[:limit]
+    The worker never fetches article bodies or confirms facts. It only stores
+    provider-returned headline evidence; source policies and owner-scoped
+    persistence are configured by the host.
+    """
 
-    def status(self):
-        return {"configured": True, "live": self.live}
+    def __init__(
+        self,
+        provider: Any,
+        evidence_correlator: Any,
+        *,
+        interval_seconds: float = 60.0,
+        limit: int = 50,
+    ) -> None:
+        if not callable(getattr(provider, "latest", None)) or not callable(
+            getattr(provider, "status", None)
+        ):
+            raise TypeError("news provider must implement latest and status")
+        if not callable(getattr(evidence_correlator, "ingest", None)):
+            raise TypeError("trusted news evidence correlator is required")
+        if (
+            isinstance(interval_seconds, bool)
+            or not isinstance(interval_seconds, (int, float))
+            or not math.isfinite(float(interval_seconds))
+            or interval_seconds < 30
+            or interval_seconds > 3600
+        ):
+            raise ValueError("news polling interval must be between 30 and 3600 seconds")
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
+            raise ValueError("news polling limit must be between 1 and 50")
+        self.provider = provider
+        self.evidence_correlator = evidence_correlator
+        self.interval_seconds = float(interval_seconds)
+        self.limit = limit
+        self._lock = threading.RLock()
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._last_poll_at: str | None = None
+        self._last_success_at: str | None = None
+        self._last_error_class: str | None = None
+        self._last_state = "NOT_RUN"
+        self._last_item_count = 0
+        self._last_processed = 0
+        self._last_errors = 0
 
+    def run_once(self) -> dict[str, Any]:
+        try:
+            items = self.provider.latest(limit=self.limit)
+            provider_status = self.provider.status()
+            if not isinstance(items, (list, tuple)):
+                raise ValueError("news provider returned an invalid collection")
+            if not isinstance(provider_status, dict):
+                raise ValueError("news provider returned invalid status")
+        except Exception as exc:
+            with self._lock:
+                self._last_poll_at = datetime.now(timezone.utc).isoformat()
+                self._last_state = "POLL_FAILED"
+                self._last_error_class = type(exc).__name__
+                self._last_item_count = 0
+                self._last_processed = 0
+                self._last_errors = 1
+                return self.status()
 
-class FakeCorrelator:
-    def __init__(self, *, fail=False):
-        self.fail = fail
-        self.calls = []
+        processed = 0
+        errors = 0
+        ingested_at = datetime.now(timezone.utc)
+        for item in items:
+            article_url = getattr(item, "url", None)
+            host = urlparse(article_url).hostname.lower().rstrip(".") if isinstance(article_url, str) else ""
+            if not host:
+                errors += 1
+                continue
+            try:
+                self.evidence_correlator.ingest(
+                    item,
+                    source_id=host,
+                    ingested_at=ingested_at,
+                )
+                processed += 1
+            except Exception:
+                errors += 1
 
-    def ingest(self, item, *, source_id, ingested_at):
-        if self.fail:
-            raise RuntimeError("sensitive persistence details")
-        self.calls.append((item.title, source_id, ingested_at))
+        configured = bool(provider_status.get("configured", False))
+        live = bool(provider_status.get("live", False))
+        if not configured:
+            state = "NOT_CONFIGURED"
+        elif not live:
+            state = "SOURCE_UNAVAILABLE"
+        elif errors:
+            state = "PARTIAL"
+        else:
+            state = "POLL_SUCCEEDED"
 
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            self._last_poll_at = now
+            if live:
+                self._last_success_at = now
+            self._last_state = state
+            self._last_error_class = None
+            self._last_item_count = len(items)
+            self._last_processed = processed
+            self._last_errors = errors
+            return self.status()
 
-def test_news_worker_persists_headline_evidence_from_trusted_provider_items():
-    item = NewsItem("https://www.reuters.com/world/economy/story", "Inflation data")
-    provider = FakeProvider([item])
-    correlator = FakeCorrelator()
-    worker = NewsPollingWorker(provider, correlator, interval_seconds=30)
+    def start(self) -> None:
+        with self._lock:
+            if self._thread is not None and self._thread.is_alive():
+                return
+            self._stop.clear()
+            self._thread = threading.Thread(
+                target=self._run,
+                name="controlador-news-evidence-poller",
+                daemon=True,
+            )
+            self._thread.start()
 
-    status = worker.run_once()
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            try:
+                self.run_once()
+            except Exception as exc:
+                with self._lock:
+                    self._last_state = "POLL_FAILED"
+                    self._last_error_class = type(exc).__name__
+            self._stop.wait(self.interval_seconds)
 
-    assert status["last_state"] == "POLL_SUCCEEDED"
-    assert status["last_item_count"] == 1
-    assert status["last_processed"] == 1
-    assert correlator.calls[0][1] == "www.reuters.com"
-    assert status["fact_confirmation"] == "NEVER_AUTOMATIC"
+    def stop(self, timeout: float = 5.0) -> None:
+        self._stop.set()
+        thread = self._thread
+        if thread is not None:
+            thread.join(timeout=max(0.0, timeout))
+            if not thread.is_alive():
+                self._thread = None
 
-
-def test_news_worker_reports_partial_evidence_failures_without_leaking_details():
-    provider = FakeProvider([NewsItem("https://www.reuters.com/story", "Headline")])
-    worker = NewsPollingWorker(provider, FakeCorrelator(fail=True), interval_seconds=30)
-
-    status = worker.run_once()
-
-    assert status["last_state"] == "PARTIAL"
-    assert status["last_errors"] == 1
-    assert "sensitive persistence details" not in str(status)
-
-
-def test_news_worker_does_not_claim_live_when_provider_is_stale_or_unavailable():
-    provider = FakeProvider([NewsItem("https://www.reuters.com/story", "Headline")], live=False)
-    worker = NewsPollingWorker(provider, FakeCorrelator(), interval_seconds=30)
-
-    status = worker.run_once()
-
-    assert status["last_state"] == "SOURCE_UNAVAILABLE"
-    assert status["last_success_at"] is None
-
-
-def test_news_worker_redacts_provider_exceptions():
-    provider = FakeProvider(error=TimeoutError("secret URL and token"))
-    worker = NewsPollingWorker(provider, FakeCorrelator(), interval_seconds=30)
-
-    status = worker.run_once()
-
-    assert status["last_state"] == "POLL_FAILED"
-    assert status["last_error_class"] == "TimeoutError"
-    assert "secret URL" not in str(status)
-
-
-def test_news_worker_rejects_invalid_interval_and_limit():
-    provider = FakeProvider()
-    correlator = FakeCorrelator()
-    for interval in (float("nan"), float("inf"), 1, 3601, True):
-        with pytest.raises(ValueError):
-            NewsPollingWorker(provider, correlator, interval_seconds=interval)
-    with pytest.raises(ValueError):
-        NewsPollingWorker(provider, correlator, limit=51)
-
-
-def test_news_worker_starts_and_stops_cleanly():
-    called = Event()
-    provider = FakeProvider([NewsItem("https://www.reuters.com/story", "Headline")])
-    correlator = FakeCorrelator()
-    original_latest = provider.latest
-
-    def latest(*, limit=10):
-        called.set()
-        return original_latest(limit=limit)
-
-    provider.latest = latest
-    worker = NewsPollingWorker(provider, correlator, interval_seconds=30)
-    worker.start()
-
-    assert called.wait(timeout=2)
-    worker.stop(timeout=2)
-
-    assert worker.status()["worker_running"] is False
+    def status(self) -> dict[str, Any]:
+        with self._lock:
+            return {
+                "configured": True,
+                "worker_running": bool(self._thread is not None and self._thread.is_alive()),
+                "interval_seconds": self.interval_seconds,
+                "limit": self.limit,
+                "last_poll_at": self._last_poll_at,
+                "last_success_at": self._last_success_at,
+                "last_state": self._last_state,
+                "last_error_class": self._last_error_class,
+                "last_item_count": self._last_item_count,
+                "last_processed": self._last_processed,
+                "last_errors": self._last_errors,
+                "fact_confirmation": "NEVER_AUTOMATIC",
+                "execution_authorized": False,
+            }
