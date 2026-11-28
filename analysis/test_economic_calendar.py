@@ -162,3 +162,32 @@ def test_trusted_source_host_allowlist_is_mandatory():
             _event(), trusted_source_id="ecb", trusted_source_tier="OFFICIAL_PRIMARY",
             trusted_source_hosts=(),
         )
+
+
+def test_date_only_calendar_event_preserves_date_without_fabricated_midnight():
+    event = _normalize(_event(
+        scheduled_time_precision="DATE_ONLY",
+        scheduled_date="2026-12-10",
+        scheduled_at=None,
+    ))
+
+    assert event.scheduled_at is None
+    assert event.scheduled_date.isoformat() == "2026-12-10"
+    assert event.scheduled_time_precision.value == "DATE_ONLY"
+    assert event.to_dict()["scheduled_at"] is None
+    assert event.to_dict()["scheduled_date"] == "2026-12-10"
+
+
+@pytest.mark.parametrize("value", [None, "2026-12-10T00:00:00Z", "not-a-date"])
+def test_date_only_event_rejects_missing_or_timestamp_shaped_calendar_date(value):
+    with pytest.raises(ValueError):
+        _normalize(_event(
+            scheduled_time_precision="DATE_ONLY",
+            scheduled_date=value,
+            scheduled_at=None,
+        ))
+
+
+def test_date_only_event_requires_explicit_precision_and_date():
+    with pytest.raises(ValueError):
+        _normalize(_event(scheduled_at="2026-12-10"))
