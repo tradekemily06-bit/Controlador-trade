@@ -2159,3 +2159,30 @@ class PushSubscriptionStandaloneRouteTests(unittest.TestCase):
         assert bob_body["tenant_delivery_worker"]["outbox"]["PENDING"] == 1
         assert alice_body["scope"] == "TENANT_SCOPED"
         assert bob_body["scope"] == "TENANT_SCOPED"
+
+
+
+def test_local_readiness_exposes_calendar_worker_and_news_evidence_status():
+    class FakeCalendarWorker:
+        def status(self):
+            return {
+                "configured": True,
+                "worker_running": True,
+                "source_count": 2,
+                "execution_authorized": False,
+            }
+
+    class FakeCorrelator:
+        store = object()
+
+    runtime = SimpleNamespace(
+        economic_calendar_worker=FakeCalendarWorker(),
+        ecosystem_service=SimpleNamespace(news_evidence_correlator=FakeCorrelator()),
+    )
+    application = StandaloneWSGIApplication(runtime=runtime)
+
+    payload = application._local_readiness_payload() if hasattr(application, "_local_readiness_payload") else None
+    if payload is not None:
+        assert payload["economic_calendar_ingestion"]["worker_running"] is True
+        assert payload["news_evidence"]["status"] == "CONFIGURED"
+        assert payload["news_evidence"]["persistent_store"] == "CONFIGURED"

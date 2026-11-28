@@ -1,4 +1,4 @@
-"""Read-only HTTP API for the independent seven-area analyst application.
+"""Read-only HTTP API for the independent six-area analyst application.
 
 The approved Lovable UI can consume this API without changing its design.
 No broker-order or money-movement endpoint is defined here.
@@ -858,6 +858,8 @@ class StandaloneWSGIApplication:
             worker = getattr(self.runtime, "notification_worker", None)
             assistant = getattr(self.runtime, "assistant", None)
             news_status = getattr(ecosystem, "news_status", None)
+            calendar_worker = getattr(self.runtime, "economic_calendar_worker", None)
+            news_evidence_correlator = getattr(ecosystem, "news_evidence_correlator", None)
             identity_middleware = os.getenv(
                 "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE", ""
             ).strip().lower() in {"1", "true", "yes"}
@@ -960,6 +962,25 @@ class StandaloneWSGIApplication:
                     }
                 ),
                 "storage_foundation": standalone_storage_status(self.runtime),
+                "economic_calendar_ingestion": (
+                    calendar_worker.status()
+                    if callable(getattr(calendar_worker, "status", None))
+                    else {
+                        "configured": False,
+                        "worker_running": False,
+                        "status": "NOT_CONFIGURED",
+                        "execution_authorized": False,
+                    }
+                ),
+                "news_evidence": {
+                    "status": "CONFIGURED" if news_evidence_correlator is not None else "NOT_CONFIGURED",
+                    "persistent_store": (
+                        "CONFIGURED"
+                        if getattr(news_evidence_correlator, "store", None) is not None
+                        else "NOT_CONFIGURED"
+                    ),
+                    "execution_authorized": False,
+                },
                 "tenant_state": (
                     self.runtime.tenant_state.readiness()
                     if callable(getattr(getattr(self.runtime, "tenant_state", None), "readiness", None))
