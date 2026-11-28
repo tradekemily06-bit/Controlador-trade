@@ -392,6 +392,9 @@ class EcosystemService:
             },
             "item_count": len(items),
             "items": items,
+            "items_freshness": (
+                "CURRENT" if collection_live else ("STALE" if items else "NO_DATA")
+            ),
             "classified_items": classify_news_batch(raw_items),
             "evidence_processing": {
                 "status": evidence_state,
