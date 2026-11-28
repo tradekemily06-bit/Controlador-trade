@@ -77,6 +77,18 @@ class NewsPollingWorker:
 
         configured = bool(provider_status.get("configured", False))
         live = bool(provider_status.get("live", False))
+        try:
+            feed_count = int(provider_status.get("feed_count", 1 if live else 0))
+            successful_feeds = int(
+                provider_status.get("successful_feeds", feed_count if live else 0)
+            )
+        except (TypeError, ValueError):
+            feed_count = 0
+            successful_feeds = 0
+        feed_coverage_partial = (
+            configured and live
+            and (feed_count <= 0 or successful_feeds < feed_count)
+        )
         if not configured or not live:
             with self._lock:
                 self._last_poll_at = datetime.now(timezone.utc).isoformat()
@@ -130,7 +142,7 @@ class NewsPollingWorker:
             except Exception:
                 errors += 1
 
-        if errors:
+        if errors or feed_coverage_partial:
             state = "PARTIAL"
         else:
             state = "POLL_SUCCEEDED"
@@ -142,7 +154,7 @@ class NewsPollingWorker:
             # when one or more returned items fail URL validation or ingestion.
             # Keep the previous success timestamp so readiness can detect a
             # persistently partial pipeline instead of masking it as healthy.
-            if live and errors == 0:
+            if live and errors == 0 and not feed_coverage_partial:
                 self._last_success_at = now
             self._last_state = state
             self._last_error_class = None
