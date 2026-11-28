@@ -11,7 +11,6 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from enum import Enum
 import hashlib
-import json
 import re
 from typing import Any, Mapping
 from urllib.parse import urlparse
@@ -92,8 +91,8 @@ class EconomicCalendarEvent:
                 raise ValueError(f"{name} is invalid")
         if not isinstance(self.title, str) or not self.title.strip() or len(self.title) > 240:
             raise ValueError("title must contain 1 to 240 characters")
-        if not _COUNTRY.fullmatch(self.country_code):
-            raise ValueError("country_code must be an ISO-3166 alpha-2 code")
+        if not _COUNTRY.fullmatch(self.country_code) or self.country_code == "EU":
+            raise ValueError("country_code must be an ISO-3166 alpha-2 code or the EU macro-area code")
         if self.currency is not None and not _CURRENCY.fullmatch(self.currency):
             raise ValueError("currency must be an ISO-4217 alpha-3 code or null")
         if not isinstance(self.impact, CalendarImpact) or not isinstance(self.status, CalendarStatus):
