@@ -104,12 +104,13 @@ The target is research-grade, ASI-inspired engineering, not a claim of actual AS
 ## Current verification boundary
 
 - Active integration PR: [#534](https://github.com/tradekemily06-bit/Controlador-trade/pull/534), branch `fix/six-visible-areas-memory-capability`, base #533. PR is open, draft and unmerged. The #532 sibling's relevant readiness changes are reconciled here; do not merge #532 separately.
-- Current code head: `073d2d50ff463b101052b067a096ac3d2f265ef7`.
-- Full CI run [46115855140](https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/46115855140) passed all four GitHub Actions jobs on predecessor `648f4cbd6889248641b699da76d5ca7ba8e02e1e`; Semgrep also passed on that predecessor.
-- CI run [46116218935](https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/46116218935) is validating the current news-polling code. P1.9 robustness, full test suite and Windows PowerShell validation have passed; dependency audit is in progress and compilation/container checks remain pending. Do not call the current code head fully validated until every required check completes.
+- Current tested code head: `073d2d50ff463b101052b067a096ac3d2f265ef7`.
+- CI run [46116218935](https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/46116218935) passed all four GitHub Actions jobs on that exact code head: P1.9 robustness, full test suite, dependency security audit, Python compilation, production and analyst container builds/health smokes, Windows PowerShell validation, and required status publication.
+- Semgrep Cloud Platform for that code head was still running at the time of this update.
+- Documentation-only ledger/API-contract commit `6e333c5b7fe45c01947e996a2397f3eaaa3c18b5` follows the tested code head; no application code changed in that docs refresh.
 - D1/W1 guard prevents UTC fallback in both monitor paths. Real MT5/cTrader session calendars and provider clock callbacks remain unconnected and must be verified against DEMO provider evidence.
 - RSS security hardening rejects redirects in the default client, non-standard HTTPS ports, credentials/fragments, unbounded/non-finite timeouts and article links outside trusted publisher hosts. DNS/IP pinning and DNS-rebinding protection remain open. This RSS change does not prove Web Push sender redirect/DNS safety.
-- Economic-calendar and news polling workers are process-lifetime workers. Official primary-source adapters, trusted news source policies, hosted supervision and deployment-level continuity remain unconfigured.
+- Economic-calendar and news polling workers are process-lifetime workers. Official primary-source calendar adapters, trusted news source policies, hosted supervision and deployment-level continuity remain unconfigured.
 - News evidence correlator is injectable into StandaloneRuntime with owner and backup-path checks. The RSS polling worker starts only when both a configured provider and trusted correlator are supplied; without those host settings, no persistent background news ingestion is claimed.
 - News evidence and calendar observations use local SQLite in this runtime path. They remain single-host/single-runtime, not production shared multi-tenant storage.
 - Live MT5/cTrader handshakes, each provider's actual symbol/timeframe catalogue, production shared DB/KMS/identity, hosted worker continuity, external push delivery with the app/browser closed, and Lovable screen-by-screen API acceptance remain unverified.
