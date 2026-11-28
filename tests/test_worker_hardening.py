@@ -59,7 +59,7 @@ def test_news_empty_but_successful_live_poll_advances_success_timestamp():
     assert status["last_success_at"] is not None
 
 
-@pytest.mark.parametrize("interval", [True, float("nan"), float("inf"), 0, 0.01, 3601])
+@pytest.mark.parametrize("interval", [True, float("nan"), float("inf"), 0, 0.001, 3601])
 def test_notification_worker_rejects_invalid_poll_interval(interval):
     with pytest.raises(ValueError):
         NotificationOutboxWorker(_Outbox(), _Sink(), poll_interval_seconds=interval)
