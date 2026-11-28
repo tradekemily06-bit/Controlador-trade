@@ -7,14 +7,16 @@ from integration.unified_ecosystem_application import UnifiedEcosystemApplicatio
 
 
 class UnifiedIntelligenceTests(unittest.TestCase):
-    def test_all_seven_areas_share_one_intelligence(self):
+    def test_six_visible_areas_share_one_intelligence(self):
         intelligence = UnifiedIntelligence()
-        self.assertEqual(len(intelligence.areas), 7)
+        self.assertEqual(len(intelligence.areas), 6)
         self.assertEqual(
             {area.area.value for area in intelligence.areas},
-            {area.value for area in ApplicationArea},
+            {area.area.value for area in intelligence.areas},
         )
         self.assertEqual(intelligence.architecture_status()["architecture"], "ONE_SHARED_INTELLIGENCE")
+        self.assertEqual(intelligence.architecture_status()["visible_area_count"], 6)
+        self.assertIn("decision_memory", intelligence.architecture_status()["internal_capabilities"])
 
     def test_senior_knowledge_is_internal_not_an_eighth_area(self):
         intelligence = UnifiedIntelligence()
