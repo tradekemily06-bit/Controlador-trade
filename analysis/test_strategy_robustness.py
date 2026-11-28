@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from itertools import combinations
 
 import pytest
 
@@ -250,3 +251,50 @@ def test_dsr_allows_selected_strategy_tied_for_best_selection_sharpe():
     )
     assert result["selection_trial_count"] == 2
     assert result["deflated_sharpe_ratio"] is not None
+
+
+
+def test_cscv_block_aggregation_matches_direct_reference():
+    matrix = [
+        [
+            0.001 * ((row % 7) - 3) + 0.0002 * (row % 3),
+            0.0008 * ((row % 5) - 2),
+            0.0005 * ((row % 9) - 4) + 0.0001,
+        ]
+        for row in range(80)
+    ]
+    block_length = 10
+    blocks = range(8)
+    frequencies = [0, 0, 0]
+    logits = []
+    losses = []
+    oos_sharpes = []
+
+    def direct_sharpe(indices, column):
+        values = [matrix[index][column] for index in indices]
+        mean = sum(values) / len(values)
+        variance = sum((value - mean) ** 2 for value in values) / (len(values) - 1)
+        return mean / math.sqrt(variance) if variance > 0 else 0.0
+
+    for in_blocks in combinations(blocks, 4):
+        in_set = set(in_blocks)
+        out_blocks = tuple(block for block in blocks if block not in in_set)
+        in_indices = [block * block_length + offset for block in in_blocks for offset in range(block_length)]
+        out_indices = [block * block_length + offset for block in out_blocks for offset in range(block_length)]
+        in_sharpes = [direct_sharpe(in_indices, column) for column in range(3)]
+        winner = max(range(3), key=lambda column: (in_sharpes[column], -column))
+        frequencies[winner] += 1
+        out_sharpes = [direct_sharpe(out_indices, column) for column in range(3)]
+        winner_sharpe = out_sharpes[winner]
+        less = sum(value < winner_sharpe for value in out_sharpes)
+        equal = sum(value == winner_sharpe for value in out_sharpes)
+        omega = (less + (equal + 1) / 2.0) / 4.0
+        logits.append(math.log(omega / (1.0 - omega)))
+        oos_sharpes.append(winner_sharpe)
+        losses.append(sum(matrix[index][winner] for index in out_indices) / len(out_indices) < 0)
+
+    result = analyze_backtest_overfitting(matrix, n_blocks=8)
+    assert result["pbo"] == pytest.approx(sum(value <= 0 for value in logits) / len(logits))
+    assert result["probability_oos_loss"] == pytest.approx(sum(losses) / len(losses))
+    assert result["mean_selected_oos_sharpe"] == pytest.approx(sum(oos_sharpes) / len(oos_sharpes))
+    assert result["selection_frequency"] == frequencies
