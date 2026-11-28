@@ -68,7 +68,7 @@ The local runtime accepts an optional host-composed `news_evidence_correlator`. 
 
 ### News evidence integration
 
-The runtime accepts a trusted owner-scoped evidence correlator and, when RSS is configured, starts a `NewsPollingWorker` automatically. It polls up to 50 headlines at a bounded interval (`CONTROLADOR_NEWS_POLL_INTERVAL_SECONDS`, default 60 seconds; allowed 30–3600), persists headline evidence through the correlator and records only redacted status. It does not fetch full article bodies, infer direction or confirm facts. It stops with StandaloneRuntime and remains process-lifetime only; hosted supervision is required for always-on operation.
+The runtime accepts a trusted owner-scoped evidence correlator and, when RSS is configured, starts a `NewsPollingWorker` automatically. It polls up to 50 headlines at a bounded interval (`CONTROLADOR_NEWS_POLL_INTERVAL_SECONDS`, default 60 seconds; allowed 30–3600), persists headline evidence through the correlator and records only redacted status. It does not fetch full article bodies, infer direction or confirm facts. If the provider reports stale/unavailable, the worker skips ingestion and records the unavailable state instead of persisting stale headlines. It stops with StandaloneRuntime and remains process-lifetime only; hosted supervision is required for always-on operation.
 
 ### Economic-calendar polling worker
 
