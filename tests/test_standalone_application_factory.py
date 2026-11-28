@@ -73,10 +73,11 @@ class StandaloneApplicationFactoryTests(unittest.TestCase):
         self.assertEqual(architecture["area_handler_status"]["command_cabin"], "CONNECTED")
         self.assertEqual(architecture["area_handler_status"]["analysis"], "CONNECTED")
         self.assertEqual(architecture["area_handler_status"]["study"], "CONNECTED")
-        self.assertEqual(architecture["area_handler_status"]["memory"], "CONNECTED")
         self.assertEqual(architecture["area_handler_status"]["control_center"], "CONNECTED")
         self.assertEqual(architecture["area_handler_status"]["tax_reserve"], "CONNECTED")
         self.assertEqual(architecture["area_handler_status"]["ecosystem_assistant"], "CONNECTED")
+        self.assertEqual(len(architecture["area_handler_status"]), 6)
+        self.assertTrue(architecture["all_area_handlers_connected"])
 
     def test_fiscal_and_assistant_areas_remain_routable_when_unconfigured(self):
         app = build_standalone_application(ecosystem_service=FakeService())
