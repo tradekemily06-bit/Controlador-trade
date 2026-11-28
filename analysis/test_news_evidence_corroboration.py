@@ -228,3 +228,29 @@ def test_sqlite_news_evidence_requires_owner_and_rejects_symlink(tmp_path):
     link.symlink_to(target)
     with pytest.raises(ValueError):
         SQLiteNewsEvidenceStore(link, tenant_id="tenant-a", subject_id="alice")
+
+
+def test_syndicated_feeds_from_same_publisher_group_do_not_count_as_independent():
+    engine = NewsEvidenceCorroborator({
+        "wire-a": NewsSourcePolicy(
+            "wire-a", "TRUSTED_MEDIA", ("reuters.com",), publisher_group="reuters-editorial"
+        ),
+        "wire-a-syndicated": NewsSourcePolicy(
+            "wire-a-syndicated", "TRUSTED_MEDIA", ("reuters.com",),
+            publisher_group="reuters-editorial",
+        ),
+    })
+    engine.ingest(
+        _item("Federal Reserve announces interest rate decision", "https://www.reuters.com/markets/fed"),
+        source_id="wire-a",
+        ingested_at=NOW,
+    )
+    second = engine.ingest(
+        _item("Federal Reserve announces interest rate decision", "https://reuters.com/world/fed-decision"),
+        source_id="wire-a-syndicated",
+        ingested_at=NOW,
+    )
+
+    assert second["corroboration_status"] == "SINGLE_SOURCE"
+    assert second["corroborating_source_ids"] == []
+    assert "source_independence_not_proven" in second["limitations"]
