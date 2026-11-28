@@ -1,6 +1,6 @@
 # Standalone Controlador-trade — completion roadmap
 
-This roadmap defines the evidence required to call the independent application complete. It preserves the approved Lovable interface and existing implementation. The owner has explicitly authorized technical activation of REAL; that authorization is acknowledged and must not be requested again. Actual broker dispatch remains fail-closed until the deployment has its verified broker credentials, trusted identity, risk limits, audit/admission records, healthy market feed and recovery state. Each REAL order still requires the app's existing explicit human confirmation.
+This roadmap defines the evidence required to call the independent application complete. It preserves the approved Lovable interface and existing implementation. SIMULAÇÃO remains the active operating mode; REAL dispatch, order submission and money movement remain disabled in this foundation. Historical REAL authorization contracts (P111–P119 and P120–P126) are architecture and safety artifacts, not a current production activation. Any future REAL activation requires a separate explicit owner decision, security review, verified deployment prerequisites and the app's existing fresh human confirmation for each order.
 
 ## Delivery boundaries
 
