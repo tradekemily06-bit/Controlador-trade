@@ -25,7 +25,7 @@ class FakeResponse:
 
 RSS = b"""<?xml version="1.0"?>
 <rss version="2.0"><channel><title>Financial News</title>
-<item><title>EURUSD market outlook</title><link>https://www.cnbc.com/story</link><pubDate>Thu, 26 Nov 2026 12:00:00 GMT</pubDate></item>
+<item><title>EURUSD market outlook</title><description>European Central Bank signals an unexpected interest rate decision</description><link>https://www.cnbc.com/story</link><pubDate>Thu, 26 Nov 2026 12:00:00 GMT</pubDate></item>
 <item><title>Oil prices update</title><link>https://www.cnbc.com/oil</link></item>
 </channel></rss>"""
 
@@ -49,6 +49,7 @@ def test_rss_provider_parses_feed_filters_symbol_and_reports_live():
     assert items[0].title == "EURUSD market outlook"
     assert items[0].source == "Financial News"
     assert items[0].published_at is not None
+    assert "unexpected interest rate" in items[0].summary
     assert provider.status()["live"] is True
 
 
