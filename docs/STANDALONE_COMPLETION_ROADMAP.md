@@ -93,6 +93,10 @@ The current automated CI run is evidence of code/test/build behavior only. It do
 - A process responding to health checks is not proof of production deployment or end-to-end readiness.
 - Signal evidence score is not calibrated profit probability. Do not display a fabricated percentage.
 
+## Cross-front continuity register
+
+The full repository audit, PR dependency graph, retained-scope inventory and open completion checklists are maintained in [IMPLEMENTATION_COMPLETION_LEDGER.md](IMPLEMENTATION_COMPLETION_LEDGER.md). The ledger is additive to this roadmap and explicitly tracks the separate #532 readiness branch so its work is not lost during integration.
+
 ## Release definition
 
 The application is complete only when Phases A–E have their exit evidence, the existing Lovable UI is connected without visual changes, all six visible areas pass end-to-end acceptance, live data and claimed notification channels are demonstrated, and the release is deployed with security, monitoring, backup and rollback in place.
