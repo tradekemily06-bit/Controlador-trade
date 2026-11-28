@@ -7,6 +7,7 @@ import pytest
 from analysis.strategy_robustness import (
     _deflated_benchmark,
     _normal_ppf,
+    analyze_backtest_overfitting,
     _sharpe_variance_numerator,
     evaluate_strategy_robustness,
 )
@@ -157,3 +158,43 @@ def test_dsr_refuses_to_guess_missing_selection_trial_results():
 def test_dsr_requires_exactly_one_selection_sharpe_per_trial():
     with pytest.raises(ValueError):
         _evaluate(num_trials=3, selection_trial_sharpes=[0.4, 0.5])
+
+
+
+def test_cscv_backtest_overfitting_reports_all_combinatorial_splits():
+    matrix = [
+        [
+            0.001 * ((row % 7) - 3) + 0.0002 * (row % 3),
+            0.0008 * ((row % 5) - 2),
+            0.0005 * ((row % 9) - 4) + 0.0001,
+        ]
+        for row in range(80)
+    ]
+    result = analyze_backtest_overfitting(matrix, n_blocks=8)
+    assert result["method"] == "CSCV"
+    assert result["split_count"] == 70
+    assert 0.0 <= result["pbo"] <= 1.0
+    assert 0.0 <= result["probability_oos_loss"] <= 1.0
+    assert sum(result["selection_frequency"]) == 70
+    assert result["strategy_count"] == 3
+
+
+def test_cscv_identical_zero_strategies_are_tied_not_falsely_profitable():
+    result = analyze_backtest_overfitting([[0.0, 0.0] for _ in range(8)], n_blocks=8)
+    assert result["pbo"] == 1.0
+    assert result["probability_oos_loss"] == 0.0
+    assert result["selection_frequency"] == [70, 0]
+
+
+def test_cscv_rejects_ragged_or_non_finite_matrices():
+    with pytest.raises(ValueError):
+        analyze_backtest_overfitting([[0.01, 0.02], [0.01]], n_blocks=8)
+    with pytest.raises(ValueError):
+        analyze_backtest_overfitting([[0.01, float("nan")] for _ in range(8)], n_blocks=8)
+
+
+def test_cscv_rejects_unsupported_block_counts_and_non_divisible_periods():
+    with pytest.raises(ValueError):
+        analyze_backtest_overfitting([[0.01, 0.02] for _ in range(8)], n_blocks=7)
+    with pytest.raises(ValueError):
+        analyze_backtest_overfitting([[0.01, 0.02] for _ in range(9)], n_blocks=8)
