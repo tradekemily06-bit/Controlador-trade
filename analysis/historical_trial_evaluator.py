@@ -70,11 +70,14 @@ def evaluate_and_record_trial(
         if not isinstance(row, Mapping):
             raise ValueError(f"candle {index} must be an object")
         timestamp = _utc_timestamp(row.get("timestamp"), f"candles[{index}].timestamp")
-        candles.append(Candle(
-            timestamp=timestamp,
-            open=row.get("open"), high=row.get("high"), low=row.get("low"),
-            close=row.get("close"), volume=row.get("volume"),
-        ))
+        values = {name: row.get(name) for name in ("open", "high", "low", "close", "volume")}
+        for name, value in values.items():
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+                raise ValueError(f"candles[{index}].{name} must be a finite number")
+        candle = Candle(timestamp=timestamp, **values)
+        if not candle.is_valid():
+            raise ValueError(f"candle {index} is invalid")
+        candles.append(candle)
 
     for index, row in enumerate(decisions_payload):
         if not isinstance(row, Mapping):
@@ -93,6 +96,10 @@ def evaluate_and_record_trial(
 
     def decision_function(history: Sequence[Candle]) -> DecisionResult:
         return decisions[len(history) - 1]
+
+    for name, distance in (("take_profit_distance", take_profit_distance), ("stop_loss_distance", stop_loss_distance)):
+        if isinstance(distance, bool) or not isinstance(distance, (int, float)) or not math.isfinite(float(distance)) or distance <= 0:
+            raise ValueError(f"{name} must be a finite positive number")
 
     result = HistoricalValidationEngine().run(
         candles=candles,
