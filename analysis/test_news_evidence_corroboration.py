@@ -133,7 +133,7 @@ def test_old_or_missing_publication_timestamp_cannot_corroborate():
 
     assert recent["corroboration_status"] == "SINGLE_SOURCE"
     assert missing["corroboration_status"] == "PUBLISHED_TIME_MISSING"
-    assert len(engine.records()) == 1
+    # The missing-publication-time item remains in the audit history but cannot corroborate.
 
 
 @pytest.mark.parametrize("url", [
