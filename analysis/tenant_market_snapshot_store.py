@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from core.p122_broker_market_data import BrokerMarketDataSnapshot
+from data.timeframes import normalize_timeframe
 from security.tenant_context import TenantContext
 from security.tenant_storage import require_tenant_context
 
@@ -32,9 +33,11 @@ def _snapshot_payload(snapshot: BrokerMarketDataSnapshot) -> dict[str, Any]:
         raise ValueError("snapshot must contain candles")
     symbol = snapshot.symbol.strip().upper() if isinstance(snapshot.symbol, str) else ""
     source = snapshot.source.strip() if isinstance(snapshot.source, str) else ""
-    timeframe = snapshot.timeframe.strip().lower() if isinstance(snapshot.timeframe, str) else ""
+    timeframe = normalize_timeframe(snapshot.timeframe) if isinstance(snapshot.timeframe, str) else ""
     if not symbol or not source or not timeframe:
         raise ValueError("snapshot symbol, timeframe and source are required")
+    if len(snapshot.candles) > 50000:
+        raise ValueError("snapshot candle count exceeds the 50000 limit")
     candles = []
     previous = None
     for candle in snapshot.candles:
