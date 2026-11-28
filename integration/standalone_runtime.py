@@ -56,6 +56,7 @@ from integration.notification_outbox_worker import NotificationOutboxWorker
 from integration.tenant_notification_outbox_worker import TenantNotificationOutboxWorker
 from integration.rss_news_provider import RSSNewsProvider
 from integration.news_polling_worker import NewsPollingWorker
+from integration.news_source_configuration import build_news_evidence_from_environment
 
 
 _REAL_MARKET_DATA_PROVIDER_IDS = frozenset({
@@ -466,6 +467,12 @@ class StandaloneRuntime:
                     interval_seconds=backup_interval,
                 )
                 self.backup_scheduler.start()
+            if news_evidence_correlator is None:
+                news_evidence_correlator = build_news_evidence_from_environment(
+                    runtime_dir=self.runtime_dir,
+                    tenant_id=self.local_tenant_context.tenant_id,
+                    subject_id=self.local_tenant_context.subject_id,
+                )
             if news_evidence_correlator is not None:
                 evidence_store = getattr(news_evidence_correlator, "store", None)
                 if evidence_store is not None and (
