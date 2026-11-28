@@ -441,3 +441,13 @@ Nothing is closed merely by being listed or implemented. Each checkbox needs a l
 
 - Snapshot persistence errors are now returned explicitly as `PERSISTENCE_ERROR` with an error class, rather than falsely reporting a save or aborting the entire market-analysis response. Added a regression test for this fail-soft behavior. A signal response without a persisted snapshot remains distinguishable and cannot be replayed from the snapshot store.
 - Commits: `d1437943` (fail-soft audit status), `c8a7f512` (regression test). Exact-head CI remains pending.
+
+
+## Explicit transaction-cost accounting primitive — 28 Nov 2026
+
+- Added `analysis/execution_costs.py` and regression tests for an explicit per-trade cost breakdown: spread, commission, slippage, swap, financing and currency conversion.
+- The calculator subtracts all six amounts from gross P/L and reports net P/L and net return only when every component is explicitly supplied, finite and non-negative. A verified source identifier, timezone-aware verification timestamp, account currency and positive capital-at-risk basis are required.
+- Unknown cost fields are rejected; they are never silently defaulted to zero. The output explicitly records that costs are complete and that execution remains unauthorized.
+- Deliberate boundary: amounts must already be converted into the same account currency. This primitive does not infer broker tariffs, convert currencies, estimate fills, or claim that a source is independently authentic. A caller must provide evidence-backed values.
+- **Not yet integrated** into historical replay, the strategy robustness evaluator, or the full selection/holdout matrix. Existing backtests therefore remain gross and must not be described as net-of-costs or eligible for robustness promotion.
+- Commits: `425a9549` (cost accounting primitive), `5c4dadb0` (tests). Test execution on the exact PR head is pending.
