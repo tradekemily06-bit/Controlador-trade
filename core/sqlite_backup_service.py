@@ -33,6 +33,14 @@ BACKUP_DATABASES = {
     "tenant_signal_evidence": "tenant-signal-evidence.sqlite3",
 }
 
+# These stores are created only after their optional provider/legacy feature is
+# first used. Their absence is not a failed backup; if present, they are backed up.
+OPTIONAL_BACKUP_DATABASES = frozenset({
+    "market_timeframe_monitor",
+    "ctrader_oauth_state",
+    "ctrader_oauth_tokens",
+})
+
 
 class SQLiteBackupService:
     def __init__(self, runtime_dir: str | Path, backup_dir: str | Path) -> None:
@@ -78,7 +86,14 @@ class SQLiteBackupService:
                 continue
             source = source_entry.resolve()
             if source.parent != self.runtime_dir or not source.is_file():
-                results.append({"id": database_id, "status": "SOURCE_MISSING"})
+                results.append({
+                    "id": database_id,
+                    "status": (
+                        "NOT_INITIALIZED"
+                        if database_id in OPTIONAL_BACKUP_DATABASES
+                        else "SOURCE_MISSING"
+                    ),
+                })
                 continue
             destination = self.backup_dir / f"{database_id}-{stamp}.sqlite3"
             temporary: Path | None = None
