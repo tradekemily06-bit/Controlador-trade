@@ -53,7 +53,7 @@ Integration path: #529 -> #531 -> #533 -> #534. #532 is a sibling of #533, not a
 ## Front 3 — Intelligence, news, modules, notifications and interface wiring
 
 - [x] Implement conservative news headline triage with source provenance, timestamps, source allowlisting, macro relevance matching and affected-asset mapping. Classification does not infer sentiment, direction or probability.
-- [x] Add strict economic-calendar event normalization with publisher-scoped IDs, HTTPS provenance, timezone-aware scheduled/observed timestamps, explicit impact/status, actual/consensus/previous/revised-previous fields, and duplicate-ID rejection. Missing values remain null; cross-source fingerprints are candidates only and never auto-merge events.
+- [x] Add strict economic-calendar event normalization with publisher-scoped IDs and source tier bound from trusted host configuration (never from provider payload), HTTPS provenance, timezone-aware scheduled/observed timestamps, explicit impact/status, actual/consensus/previous/revised-previous fields, strict type validation and duplicate-ID rejection. Missing values remain null; cross-source fingerprints are candidates only and never auto-merge events.
 - [ ] Connect official primary-source calendar adapters, ingestion scheduling, persistence, release corrections and corroboration; the new normalizer is not yet a live calendar feed.
 - [ ] Expand news beyond headline triage: article verification, duplicate clustering, independent-source corroboration and conflicting-report handling.
 - [ ] Add a structured economic-calendar ingestion pipeline from official primary sources, with timezone, release time, actual/consensus/previous values, revisions, impact and source links. Do not invent missing consensus or release data.
