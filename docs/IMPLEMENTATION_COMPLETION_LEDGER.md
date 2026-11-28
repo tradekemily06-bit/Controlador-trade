@@ -238,3 +238,9 @@ Nothing is closed merely by being listed or implemented. Each checkbox needs a l
 ### CI confirmation — security-mode correction (28 November 2026)
 - GitHub Actions run [46163779461](https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/46163779461) completed with conclusion SUCCESS for commit `7c8ba480195b3880df0660f75bafafb03623bbb6`.
 - This validates the repository workflow for the REAL-mode authorization correction and its current branch contents. It does not prove live broker connections, production secrets/KMS, hosted worker continuity, external push delivery, or Lovable end-to-end acceptance.
+
+
+### News evidence integration hardening — 28 November 2026
+- Fixed the production source-identity seam: the polling worker now asks the trusted corroborator to resolve an article URL to exactly one configured source_id policy, rather than passing the URL hostname as if it were the policy identifier. Unknown or ambiguous publisher mappings fail closed; test doubles without the resolver retain their generic host-key behavior.
+- Exposed the corroborator's configured persistence adapter through a read-only store property. This allows StandaloneRuntime's existing tenant/subject and backup-path checks to actually inspect the injected news evidence store; previously the runtime looked for store while the correlator only held _store, silently skipping those boundary checks.
+- Added regression coverage for publisher resolution, ambiguous/unknown domains, worker use of configured publisher IDs, and runtime-visible store identity. GitHub Actions for the latest branch head are pending; these changes are not marked validated until CI completes.
