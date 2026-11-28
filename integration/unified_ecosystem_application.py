@@ -37,9 +37,9 @@ class UnifiedEcosystemApplication:
         status = self.intelligence.architecture_status()
         status["area_handler_status"] = {
             area.value: ("CONNECTED" if area in self._handlers else "NOT_CONNECTED")
-            for area in ApplicationArea
+            for area in self.intelligence.areas
         }
-        status["all_area_handlers_connected"] = len(self._handlers) == len(ApplicationArea)
+        status["all_area_handlers_connected"] = all(contract.area in self._handlers for contract in self.intelligence.areas)
         status["market_data_provider_status"] = getattr(self, "market_data_provider_status", "NOT_CONFIGURED")
         registry = getattr(self, "market_data_registry", None)
         status["market_data_providers"] = registry.status() if registry is not None else {"status": "NOT_CONFIGURED", "count": 0}
