@@ -146,13 +146,14 @@ def test_tenant_outbox_recovers_expired_lease_after_worker_restart(tmp_path):
     owner = TenantContext("tenant-1", "subject-1")
     event = EcosystemNotification(
         notification_id="restart-event", kind=NotificationKind.MARKET,
-        severity=NotificationSeverity.WARNING, title="EURUSD",
+        severity=NotificationSeverity.IMPORTANT, title="EURUSD",
         message="Evento pendente após reinício",
     )
     assert dispatcher_before_restart.publish(owner, event)
 
+    claim_time = time.time() + 1.0
     abandoned = dispatcher_before_restart.outbox.claim_due(
-        now=100.0, lease_seconds=5.0
+        now=claim_time, lease_seconds=5.0
     )[0]
     assert abandoned.attempts == 1
 
@@ -161,9 +162,9 @@ def test_tenant_outbox_recovers_expired_lease_after_worker_restart(tmp_path):
     dispatcher_after_restart = TenantNotificationDispatcher(
         TenantScopedEcosystemState(storage_after_restart)
     )
-    assert dispatcher_after_restart.outbox.claim_due(now=104.0) == ()
+    assert dispatcher_after_restart.outbox.claim_due(now=claim_time + 4.0) == ()
 
-    recovered = dispatcher_after_restart.outbox.claim_due(now=106.0)
+    recovered = dispatcher_after_restart.outbox.claim_due(now=claim_time + 6.0)
     assert len(recovered) == 1
     assert recovered[0].notification_id == "restart-event"
     assert recovered[0].attempts == 2
@@ -184,13 +185,14 @@ def test_tenant_outbox_crash_recovery_respects_retry_limit(tmp_path):
     )
     assert dispatcher.publish(owner, event)
 
-    first = dispatcher.outbox.claim_due(now=10.0, lease_seconds=5.0)[0]
+    claim_time = time.time() + 1.0
+    first = dispatcher.outbox.claim_due(now=claim_time, lease_seconds=5.0)[0]
     assert first.attempts == 1
-    second = dispatcher.outbox.claim_due(now=16.0, lease_seconds=5.0)[0]
+    second = dispatcher.outbox.claim_due(now=claim_time + 6.0, lease_seconds=5.0)[0]
     assert second.attempts == 2
 
     # The second worker also crashes; the next poll dead-letters the item.
-    assert dispatcher.outbox.claim_due(now=22.0, lease_seconds=5.0) == ()
+    assert dispatcher.outbox.claim_due(now=claim_time + 12.0, lease_seconds=5.0) == ()
     counts = dispatcher.outbox.status_counts(owner)
     assert counts["DEAD"] == 1
     assert counts["IN_FLIGHT"] == 0
@@ -208,10 +210,11 @@ def test_tenant_outbox_old_worker_cannot_acknowledge_after_recovery(tmp_path):
     )
     assert dispatcher.publish(owner, event)
 
-    old_owner = dispatcher.outbox.claim_due(now=10.0, lease_seconds=5.0)[0]
-    new_owner = dispatcher.outbox.claim_due(now=16.0, lease_seconds=30.0)[0]
+    claim_time = time.time() + 1.0
+    old_owner = dispatcher.outbox.claim_due(now=claim_time, lease_seconds=5.0)[0]
+    new_owner = dispatcher.outbox.claim_due(now=claim_time + 6.0, lease_seconds=30.0)[0]
     assert old_owner.lease_token != new_owner.lease_token
 
-    assert dispatcher.outbox._finish(old_owner, status="DELIVERED", now=17.0) is False
-    assert dispatcher.outbox._finish(new_owner, status="DELIVERED", now=17.0) is True
+    assert dispatcher.outbox._finish(old_owner, status="DELIVERED", now=claim_time + 7.0) is False
+    assert dispatcher.outbox._finish(new_owner, status="DELIVERED", now=claim_time + 7.0) is True
     assert dispatcher.outbox.status_counts(owner)["DELIVERED"] == 1
