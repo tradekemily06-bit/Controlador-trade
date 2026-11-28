@@ -184,6 +184,7 @@ def test_owner_scoped_sqlite_store_recovers_evidence_after_restart(tmp_path):
         "wire-a": NewsSourcePolicy("wire-a", "TRUSTED_MEDIA", ("reuters.com",)),
         "wire-b": NewsSourcePolicy("wire-b", "TRUSTED_MEDIA", ("apnews.com",)),
     }, store=store)
+    assert first_engine.store is store
     first = first_engine.ingest(
         _item("Federal Reserve announces interest rate decision", "https://www.reuters.com/markets/fed"),
         source_id="wire-a",
