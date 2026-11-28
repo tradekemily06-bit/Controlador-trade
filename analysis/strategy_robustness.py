@@ -301,7 +301,7 @@ def evaluate_strategy_robustness(
     if selection_period_sharpe is None:
         base["reasons"] = ["Selected strategy has zero selection-period variance; DSR is undefined."]
         return base
-    if selected_trial_index != max(range(len(trial_sharpes)), key=lambda index: (trial_sharpes[index], -index)):
+    if trial_sharpes[selected_trial_index] < max(trial_sharpes):
         base["reasons"] = ["DSR requires the selected strategy to be the selection-period Sharpe winner."]
         return base
     if not math.isclose(selection_period_sharpe, trial_sharpes[selected_trial_index], rel_tol=1e-6, abs_tol=1e-8):
