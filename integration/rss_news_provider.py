@@ -47,8 +47,15 @@ class RSSNewsProvider(NewsProvider):
 
     MAX_FEED_BYTES = 1_000_000
     ALLOWED_DOMAINS = (
+        # Reputable financial/news publishers.
         "cnbc.com", "finance.yahoo.com", "marketwatch.com",
         "investing.com", "reuters.com", "apnews.com", "ft.com",
+        # Primary sources: central banks, statistical agencies and regulators.
+        "federalreserve.gov", "ecb.europa.eu", "bankofengland.co.uk",
+        "bankofcanada.ca", "boj.or.jp", "rba.gov.au", "rbnz.govt.nz",
+        "snb.ch", "bcb.gov.br", "ibge.gov.br", "bls.gov", "bea.gov",
+        "ons.gov.uk", "ec.europa.eu", "imf.org", "worldbank.org",
+        "home.treasury.gov", "sec.gov", "cftc.gov",
     )
 
     def __init__(
