@@ -136,3 +136,20 @@ def test_partial_news_collection_is_not_reported_as_live():
     assert result["live"] is False
     assert result["items_freshness"] == "NO_DATA"
     assert result["collection"]["last_state"] == "PARTIAL"
+
+
+def test_managed_runtime_without_worker_never_falls_back_to_request_time_feed_polling():
+    provider = FakeNewsProvider()
+    service = EcosystemService(
+        decision_store=DecisionStore(":memory:"),
+        news_provider=provider,
+    )
+    service.news_polling_managed = True
+
+    result = service.news_status(limit=5)
+
+    assert result["configured"] is True
+    assert result["live"] is False
+    assert result["items_freshness"] == "NO_DATA"
+    assert result["items"] == []
+    assert provider.fetch_count == 0
