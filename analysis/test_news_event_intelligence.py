@@ -52,3 +52,20 @@ def test_classification_batch_preserves_order_and_provenance():
 def test_empty_headline_is_rejected():
     with pytest.raises(ValueError):
         classify_market_news(SimpleNamespace(title="  ", source="Wire"))
+
+
+def test_short_tickers_do_not_match_inside_unrelated_words():
+    item = SimpleNamespace(title="Whether markets can recover remains uncertain", source="Wire")
+
+    result = classify_market_news(item)
+
+    assert "ETH" not in result["affected_assets"]
+    assert result["event_categories"] == []
+
+
+def test_regulatory_acronym_matches_as_a_complete_token():
+    item = SimpleNamespace(title="The SEC announces a new disclosure rule", source="Official")
+
+    result = classify_market_news(item)
+
+    assert "REGULATION" in result["event_categories"]
