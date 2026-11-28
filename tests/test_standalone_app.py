@@ -480,7 +480,7 @@ class StandaloneWSGITests(unittest.TestCase):
         app = StandaloneWSGIApplication(FakeRuntime())
         status, body = call_wsgi(app, "/api/readiness")
         self.assertEqual(status, "200 OK")
-        self.assertEqual(body["areas"], 7)
+        self.assertEqual(body["areas"], 6)
         self.assertEqual(body["market_data"]["status"], "NOT_CONFIGURED")
         self.assertEqual(body["news"]["status"], "NOT_CONFIGURED")
         self.assertEqual(body["decision_memory"]["state"], "STATUS_NOT_EXPOSED")
@@ -599,7 +599,7 @@ class StandaloneWSGITests(unittest.TestCase):
         app = StandaloneWSGIApplication(FakeRuntime())
         status, body = call_wsgi(app, "/api/intelligence/architecture")
         self.assertEqual(status, "200 OK")
-        self.assertEqual(len(body["application_areas"]), 7)
+        self.assertEqual(len(body["application_areas"]), 6)
 
     def test_unknown_order_endpoint_does_not_exist(self):
         app = StandaloneWSGIApplication(FakeRuntime())
