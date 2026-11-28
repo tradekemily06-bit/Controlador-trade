@@ -49,7 +49,7 @@ _HIGH_IMPACT_TERMS = (
 
 
 def _normalise(value: str) -> str:
-    return re.sub(r"\\s+", " ", value.casefold()).strip()
+    return re.sub(r"\s+", " ", value.casefold()).strip()
 
 
 def classify_market_news(item: Any) -> dict[str, Any]:
