@@ -1,5 +1,3 @@
-from datetime import datetime, timezone
-
 import pytest
 
 from analysis.tenant_strategy_trial_ledger import TenantStrategyTrialLedger
@@ -65,6 +63,19 @@ def test_holdout_requires_selection_and_a_distinct_dataset(tmp_path):
         holdout(ledger, fingerprint=SELECTION_HASH)
 
     assert holdout(ledger)["status"] == "RECORDED"
+
+
+def test_holdout_window_must_be_chronologically_after_selection(tmp_path):
+    ledger = TenantStrategyTrialLedger(tmp_path / "trials.sqlite3")
+    selection(ledger)
+    with pytest.raises(ValueError, match="strictly after"):
+        ledger.record_holdout_evaluation(
+            OWNER, experiment_id="experiment-1", trial_id="holdout-overlap",
+            strategy_version="strategy-v1", dataset_id="separate-data",
+            dataset_fingerprint=HOLDOUT_HASH, window_start=START,
+            window_end=END, evaluated_at="2026-02-03T00:00:00Z",
+            metrics={"sharpe": 0.8},
+        )
 
 
 def test_holdout_is_single_and_freezes_selection(tmp_path):
