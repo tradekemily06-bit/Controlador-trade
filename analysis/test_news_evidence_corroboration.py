@@ -134,6 +134,7 @@ def test_old_or_missing_publication_timestamp_cannot_corroborate():
 
     assert recent["corroboration_status"] == "SINGLE_SOURCE"
     assert missing["corroboration_status"] == "PUBLISHED_TIME_MISSING"
+    assert len(engine.records()) == 1
 
 
 @pytest.mark.parametrize("url", [
@@ -212,6 +213,7 @@ def test_owner_scoped_sqlite_store_recovers_evidence_after_restart(tmp_path):
     assert second["corroborating_source_ids"] == ["wire-a"]
     assert duplicate["status"] == "DUPLICATE_SOURCE_ITEM"
     assert len(restarted_engine.records()) == 2
+    assert len(restarted_store.load(limit=1)) == 1
 
 
 def test_sqlite_news_evidence_isolation_between_tenants(tmp_path):
