@@ -159,6 +159,7 @@ def _block_bootstrap_sharpe(
 def evaluate_strategy_robustness(
     returns: Iterable[float],
     *,
+    benchmark_returns: Iterable[float] | None,
     num_trials: int,
     periods_per_year: int,
     out_of_sample: bool,
@@ -188,6 +189,17 @@ def evaluate_strategy_robustness(
         values.append(numeric)
 
     n = len(values)
+    benchmark: list[float] = []
+    if benchmark_returns is not None:
+        for value in benchmark_returns:
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError("benchmark_returns must contain only finite numeric values")
+            numeric = float(value)
+            if not math.isfinite(numeric) or numeric <= -1.0:
+                raise ValueError("benchmark_returns must be finite and greater than -100%")
+            benchmark.append(numeric)
+        if len(benchmark) != n:
+            raise ValueError("benchmark_returns must align one-to-one with strategy returns")
     base: dict[str, object] = {
         "sample_count": n,
         "num_trials": num_trials,
@@ -200,6 +212,10 @@ def evaluate_strategy_robustness(
         "annualized_sharpe": None,
         "rolling_positive_sharpe_fraction": None,
         "max_drawdown": _max_drawdown(values) if values else None,
+        "benchmark_sample_count": len(benchmark),
+        "benchmark_total_return": math.prod(1.0 + x for x in benchmark) - 1.0 if benchmark else None,
+        "strategy_total_return": math.prod(1.0 + x for x in values) - 1.0 if values else None,
+        "benchmark_annualized_sharpe": _annual_sharpe(benchmark, periods_per_year) if benchmark else None,
         "verdict": "INSUFFICIENT",
         "reasons": [],
         "promotion_allowed": False,
@@ -209,6 +225,9 @@ def evaluate_strategy_robustness(
         return base
     if not costs_included:
         base["reasons"] = ["Transaction costs, spread and slippage must be included before robustness can be assessed."]
+        return base
+    if not benchmark:
+        base["reasons"] = ["An aligned untouched out-of-sample benchmark is required."]
         return base
     if n < 60:
         base["reasons"] = ["Fewer than 60 out-of-sample periods; statistical estimates are unstable."]
@@ -221,7 +240,10 @@ def evaluate_strategy_robustness(
     annual_sharpe = period_sharpe * math.sqrt(periods_per_year) if period_sharpe is not None else None
     skew = _sample_skew(values, mean, std)
     excess_kurtosis = _sample_excess_kurtosis(values, mean, std)
-    benchmark_period_sharpe = 0.0
+    benchmark_period_sharpe = (sum(benchmark) / len(benchmark)) / (math.sqrt(sum((x - sum(benchmark) / len(benchmark)) ** 2 for x in benchmark) / (len(benchmark) - 1)) if len(benchmark) > 1 else 0.0) if len(benchmark) > 1 else None
+    if benchmark_period_sharpe is None:
+        base["reasons"] = ["Benchmark needs at least two aligned out-of-sample returns."]
+        return base
     psr = _psr(period_sharpe, benchmark_period_sharpe, n, skew, excess_kurtosis)
     variance_numerator = _sharpe_variance_numerator(period_sharpe, skew, excess_kurtosis) if period_sharpe is not None else None
     sharpe_variance = variance_numerator / (n - 1) if variance_numerator is not None else None
@@ -265,6 +287,8 @@ def evaluate_strategy_robustness(
 
     base.update({
         "annualized_sharpe": annual_sharpe,
+        "benchmark_period_sharpe": benchmark_period_sharpe,
+        "benchmark_annualized_sharpe": benchmark_period_sharpe * math.sqrt(periods_per_year),
         "probabilistic_sharpe_ratio": psr,
         "deflated_sharpe_ratio": dsr,
         "sharpe_variance": sharpe_variance,
