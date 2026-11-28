@@ -41,7 +41,7 @@ When the standalone runtime has both the RSS provider and trusted publisher poli
 
 The API exposes whether the cached batch is current, stale, or absent, plus the worker's last collection state. If only some configured feeds succeed, the cycle is marked partial and is not reported as fully live.
 
-Newly persisted headlines classified by conservative rules as `HIGH_REVIEW` can produce an owner-scoped market notification. Notifications are deduplicated by evidence ID and explicitly state that the headline is unverified and is not a price forecast or trading instruction. Duplicate headlines and lower-review classifications do not create this alert. Notification sink errors are tracked separately from evidence ingestion failures.
+Newly persisted headlines classified by conservative rules as `HIGH_REVIEW` can produce an owner-scoped market notification only when the trusted host policy classifies the publisher as `OFFICIAL_PRIMARY` or `TRUSTED_MEDIA`. `COMMENTARY` sources remain available as context but cannot trigger these operational alerts. Notifications are deduplicated by evidence ID and explicitly state that the headline is unverified and is not a price forecast or trading instruction. Duplicate headlines and lower-review classifications do not create this alert. Notification sink errors are tracked separately from evidence ingestion failures. Alerts are also written to the existing local single-user notification center used by the app/API, without changing the frontend.
 
 The worker cache is process-local. After a process restart, the evidence archive remains in SQLite, but the latest headline batch is not advertised as current until a new successful poll completes. Hosted continuity and cross-replica cache sharing are still deployment work.
 
