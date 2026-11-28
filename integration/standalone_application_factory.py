@@ -43,6 +43,7 @@ def build_standalone_application(
     intelligence: UnifiedIntelligence | None = None,
     market_analyzer: Any | None = None,
     market_data_registry: Any | None = None,
+    economic_calendar_store: Any | None = None,
 ) -> UnifiedEcosystemApplication:
     """Compose six visible areas and internal capabilities around one shared intelligence coordinator.
 
@@ -111,6 +112,32 @@ def build_standalone_application(
                 raise ValueError("limit must be an integer from 1 to 50")
             return _plain({
                 "news": ecosystem_service.news_status(limit=limit),
+                "execution_authorized": False,
+            })
+        if operation in {"economic_calendar", "calendar"}:
+            if economic_calendar_store is None:
+                return {
+                    "status": "CALENDAR_STORE_NOT_CONFIGURED",
+                    "live": False,
+                    "execution_authorized": False,
+                }
+            start_at = context.get("start_at")
+            end_at = context.get("end_at")
+            limit = context.get("limit", 500)
+            if not isinstance(start_at, str) or not isinstance(end_at, str):
+                raise ValueError("start_at and end_at must be ISO-8601 timestamps")
+            if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 5000:
+                raise ValueError("limit must be an integer from 1 to 5000")
+            events = economic_calendar_store.list_latest(
+                start_at=start_at,
+                end_at=end_at,
+                limit=limit,
+            )
+            return _plain({
+                "status": "STORED_OBSERVATIONS",
+                "events": events,
+                "live": False,
+                "source_refresh": "NOT_REPORTED",
                 "execution_authorized": False,
             })
         if market_analyzer is not None:
