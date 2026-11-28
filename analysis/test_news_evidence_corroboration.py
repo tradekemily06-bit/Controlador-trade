@@ -5,6 +5,7 @@ import pytest
 from analysis.news_evidence_corroboration import (
     NewsEvidenceCorroborator,
     NewsSourcePolicy,
+    SQLiteNewsEvidenceStore,
 )
 from integration.rss_news_provider import NewsItem
 
@@ -155,3 +156,75 @@ def test_news_policy_rejects_untrusted_or_empty_configuration():
         NewsSourcePolicy("wire", "UNVERIFIED", ("example.com",))
     with pytest.raises(ValueError):
         NewsSourcePolicy("wire", "TRUSTED_MEDIA", ())
+
+
+
+def test_owner_scoped_sqlite_store_recovers_evidence_after_restart(tmp_path):
+    database = tmp_path / "news-evidence.sqlite3"
+    store = SQLiteNewsEvidenceStore(database, tenant_id="tenant-a", subject_id="alice")
+    store.initialize_schema()
+    first_engine = NewsEvidenceCorroborator({
+        "wire-a": NewsSourcePolicy("wire-a", "TRUSTED_MEDIA", ("reuters.com",)),
+        "wire-b": NewsSourcePolicy("wire-b", "TRUSTED_MEDIA", ("apnews.com",)),
+    }, store=store)
+    first = first_engine.ingest(
+        _item("Federal Reserve announces interest rate decision", "https://www.reuters.com/markets/fed"),
+        source_id="wire-a",
+        ingested_at=NOW,
+    )
+
+    restarted_store = SQLiteNewsEvidenceStore(database, tenant_id="tenant-a", subject_id="alice")
+    restarted_engine = NewsEvidenceCorroborator({
+        "wire-a": NewsSourcePolicy("wire-a", "TRUSTED_MEDIA", ("reuters.com",)),
+        "wire-b": NewsSourcePolicy("wire-b", "TRUSTED_MEDIA", ("apnews.com",)),
+    }, store=restarted_store)
+    second = restarted_engine.ingest(
+        _item("Federal Reserve announces interest rate decision", "https://apnews.com/article/fed"),
+        source_id="wire-b",
+        ingested_at=NOW,
+    )
+    duplicate = restarted_engine.ingest(
+        _item("Federal Reserve announces interest rate decision", "https://www.reuters.com/markets/fed-copy"),
+        source_id="wire-a",
+        ingested_at=NOW,
+    )
+
+    assert first["fact_status"] == "UNVERIFIED_REPORT"
+    assert second["corroboration_status"] == "MULTI_SOURCE_CANDIDATE"
+    assert second["corroborating_source_ids"] == ["wire-a"]
+    assert duplicate["status"] == "DUPLICATE_SOURCE_ITEM"
+    assert len(restarted_engine.records()) == 2
+
+
+def test_sqlite_news_evidence_isolation_between_tenants(tmp_path):
+    database = tmp_path / "news-evidence.sqlite3"
+    owner_a = SQLiteNewsEvidenceStore(database, tenant_id="tenant-a", subject_id="alice")
+    owner_b = SQLiteNewsEvidenceStore(database, tenant_id="tenant-b", subject_id="bob")
+    owner_a.initialize_schema()
+    owner_b.initialize_schema()
+    engine_a = NewsEvidenceCorroborator({
+        "wire-a": NewsSourcePolicy("wire-a", "TRUSTED_MEDIA", ("reuters.com",)),
+    }, store=owner_a)
+    engine_a.ingest(
+        _item("Federal Reserve announces interest rate decision", "https://www.reuters.com/markets/fed"),
+        source_id="wire-a",
+        ingested_at=NOW,
+    )
+    engine_b = NewsEvidenceCorroborator({
+        "wire-a": NewsSourcePolicy("wire-a", "TRUSTED_MEDIA", ("reuters.com",)),
+    }, store=owner_b)
+
+    assert len(engine_a.records()) == 1
+    assert engine_b.records() == ()
+    assert owner_b.load() == []
+
+
+def test_sqlite_news_evidence_requires_owner_and_rejects_symlink(tmp_path):
+    with pytest.raises(ValueError):
+        SQLiteNewsEvidenceStore(tmp_path / "news.sqlite3", tenant_id="", subject_id="alice")
+    target = tmp_path / "target.sqlite3"
+    target.touch()
+    link = tmp_path / "news-link.sqlite3"
+    link.symlink_to(target)
+    with pytest.raises(ValueError):
+        SQLiteNewsEvidenceStore(link, tenant_id="tenant-a", subject_id="alice")
