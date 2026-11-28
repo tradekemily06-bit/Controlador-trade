@@ -144,3 +144,25 @@ class MarketDataProviderRegistryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+    def test_provider_heartbeat_freshness_can_match_adapter_interval(self):
+        class SlowerRelay(FakeProvider):
+            def status(self):
+                return {
+                    "connected": True,
+                    "last_seen": (datetime.now(timezone.utc) - timedelta(seconds=45)).isoformat(),
+                }
+
+        registry = MarketDataProviderRegistry(heartbeat_max_age_seconds=60)
+        registry.register("slow_relay", SlowerRelay(), "SLOW_RELAY")
+        self.assertEqual(
+            registry.status(probe_account_mode=False)["providers"][0]["status"],
+            "CONNECTED",
+        )
+
+    def test_provider_heartbeat_configuration_rejects_unsafe_values(self):
+        for value in (True, float("nan"), float("inf"), 0, 3601):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    MarketDataProviderRegistry(heartbeat_max_age_seconds=value)
