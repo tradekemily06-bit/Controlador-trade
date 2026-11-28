@@ -23,7 +23,9 @@ BACKUP_DATABASES = {
     "decision_memory": "decision-memory.sqlite3",
     "assistant_conversations": "assistant-conversations.sqlite3",
     "market_timeframe_monitor": "market-timeframe-monitor.sqlite3",
-    "tenant_signal_evidence": "tenant-signal-evidence.sqlite3",
+    # Tenant-scoped cycles, analysis results, processing leases and notification outbox.
+    "tenant_market_data": "tenant-connection-timeframe-monitor.sqlite3",
+    "tenant_tradingview_alerts": "tenant-tradingview-alerts.sqlite3",
 }
 
 
