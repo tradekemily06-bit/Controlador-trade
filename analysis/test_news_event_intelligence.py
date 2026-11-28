@@ -24,6 +24,22 @@ def test_classifies_central_bank_and_currency_without_directional_prediction():
     assert result["execution_authorized"] is False
 
 
+def test_classifies_event_context_found_in_publisher_feed_summary():
+    item = SimpleNamespace(
+        title="Central bank publishes policy statement",
+        summary="The statement unexpectedly raises interest rates and changes the inflation outlook.",
+        source="Official release",
+    )
+
+    result = classify_market_news(item)
+
+    assert "MONETARY_POLICY" in result["event_categories"]
+    assert "INFLATION" in result["event_categories"]
+    assert "USD" in result["affected_assets"]
+    assert result["classification_basis"] == "HEADLINE_AND_FEED_SUMMARY_KEYWORD_RULES"
+    assert "full_article_not_verified" in result["limitations"]
+
+
 def test_unknown_headline_is_not_forced_into_an_asset_or_event():
     item = SimpleNamespace(title="A new company opens an office", source="Wire")
 
