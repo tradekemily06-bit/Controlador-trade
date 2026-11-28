@@ -53,6 +53,7 @@ def test_news_worker_persists_headline_evidence_from_trusted_provider_items():
     assert status["last_processed"] == 1
     assert correlator.calls[0][1] == "www.reuters.com"
     assert status["fact_confirmation"] == "NEVER_AUTOMATIC"
+    assert worker.latest_items() == (item,)
 
 
 def test_news_worker_uses_trusted_publisher_policy_identifier_when_available():
