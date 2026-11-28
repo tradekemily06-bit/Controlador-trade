@@ -21,8 +21,8 @@ def _engine():
     })
 
 
-def _item(title, url, published_at="2026-11-28T11:55:00Z"):
-    return NewsItem(title, "untrusted payload source label", published_at, url)
+def _item(title, url, published_at="2026-11-28T11:55:00Z", summary=None):
+    return NewsItem(title, "untrusted payload source label", published_at, url, summary)
 
 
 def test_source_id_for_url_resolves_exactly_one_trusted_publisher_policy():
@@ -54,6 +54,22 @@ def test_news_evidence_uses_trusted_policy_not_provider_source_label():
     assert result["source_host"] == "www.reuters.com"
     assert result["fact_status"] == "UNVERIFIED_REPORT"
     assert result["execution_authorized"] is False
+
+
+def test_publisher_feed_summary_is_preserved_in_evidence():
+    result = _engine().ingest(
+        _item(
+            "Federal Reserve publishes statement",
+            "https://www.reuters.com/markets/fed",
+            summary="The Federal Reserve unexpectedly raises interest rates.",
+        ),
+        source_id="wire-a",
+        ingested_at=NOW,
+    )
+
+    assert result["summary"] == "The Federal Reserve unexpectedly raises interest rates."
+    assert "publisher_feed_summary_only" in result["limitations"]
+    assert result["fact_status"] == "UNVERIFIED_REPORT"
 
 
 def test_second_publisher_creates_candidate_not_confirmed_fact():
