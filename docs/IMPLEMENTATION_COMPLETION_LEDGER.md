@@ -190,3 +190,12 @@ Nothing is closed merely by being listed or implemented. Each checkbox needs a l
 - Added finite/bounded shutdown-timeout validation to `EconomicCalendarPollingWorker.stop()`, aligned with the notification worker lifecycle contract. Invalid bool/NaN/infinity/negative/over-60s values now fail explicitly; zero timeout remains valid. Added parameterized regression coverage.
 - The calendar-worker change and its tests were committed after run 8803; therefore they require a fresh CI run on the exact new head and are not yet marked validated.
 - Calendar date-only event precision remains an explicit foundation gap: the current normalizer requires a timezone-aware scheduled timestamp. It must not fabricate midnight for official sources that publish only a date. The schema/API migration is not silently considered complete.
+
+
+### Economic calendar date-only precision — 28 November 2026
+- Added explicit `CalendarTimePrecision.EXACT` and `DATE_ONLY` semantics. A date-only official event stores `scheduled_date` and a null `scheduled_at`; the normalizer rejects timestamp-shaped date-only values and never fabricates midnight.
+- Preserved existing exact timestamp behavior and timezone normalization.
+- Extended the local SQLite observation schema with `scheduled_date`, including an additive migration for existing databases. Date-only observations can be queried by their calendar date; exact events remain filtered by their timestamp.
+- Added normalization, persistence, and legacy-schema migration regression tests.
+- CI runs for intermediate commits show the targeted robustness tests and/or full suite passing, but this ledger entry is NOT considered validated until the full CI run for the final branch head completes successfully.
+- Limitation remains: date-only filtering uses the calendar-date portion of the requested UTC range. Provider-specific local calendar zones and official calendar adapters still need explicit configuration and validation before production use.
