@@ -199,3 +199,10 @@ Nothing is closed merely by being listed or implemented. Each checkbox needs a l
 - Added normalization, persistence, and legacy-schema migration regression tests.
 - CI runs for intermediate commits show the targeted robustness tests and/or full suite passing, but this ledger entry is NOT considered validated until the full CI run for the final branch head completes successfully.
 - Limitation remains: date-only filtering uses the calendar-date portion of the requested UTC range. Provider-specific local calendar zones and official calendar adapters still need explicit configuration and validation before production use.
+
+
+### cTrader standalone provider registration seam — 28 November 2026
+- The standalone market-data provider factory now accepts an explicit host-injected `ctrader_adapter_factory` for the existing `CTraderReadOnlyMarketDataAdapter`. The `ctrader_demo` provider cannot be selected without that trusted factory; it does not create credentials, OAuth clients, transports, or pretend a connection is active.
+- Added tests for fail-closed behavior without the host factory and type-checked adapter registration when the host supplies it.
+- This is a registration seam only. The production OAuth/KMS configuration, official Open API transport, DEMO account handshake, provider session validation, and live candle/quote tests remain separate release gates.
+- CI for the provider-factory commit is running; no pass is claimed until the exact final head completes.
