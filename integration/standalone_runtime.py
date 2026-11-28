@@ -668,11 +668,33 @@ class StandaloneRuntime:
                     raise RuntimeError(
                         "CONTROLADOR_NEWS_POLL_INTERVAL_SECONDS deve ser numérico"
                     ) from exc
+                def publish_high_impact_news(item, evidence, classification) -> None:
+                    assets = ", ".join(classification.get("affected_assets", [])) or "ativos não determinados"
+                    published_at = getattr(item, "published_at", None) or "horário não informado"
+                    source = getattr(item, "source", None) or evidence.get("source_host", "fonte não identificada")
+                    article_url = getattr(item, "url", None) or ""
+                    notification = EcosystemNotification(
+                        notification_id=f"news:{evidence['evidence_id']}",
+                        kind=NotificationKind.MARKET,
+                        severity=NotificationSeverity.IMPORTANT,
+                        title=f"Notícia de alto impacto: {str(getattr(item, 'title', ''))[:120]}",
+                        message=(
+                            "Triagem automática de manchete — ainda não é fato verificado nem previsão de preço. "
+                            f"Possíveis ativos relacionados: {assets}. Fonte: {source}. "
+                            f"Publicação: {published_at}. Link: {article_url}"
+                        ),
+                        requires_attention=True,
+                    )
+                    self.tenant_notification_dispatcher.publish(
+                        self.local_tenant_context, notification
+                    )
+
                 self.news_polling_worker = NewsPollingWorker(
                     self.news_provider,
                     news_evidence_correlator,
                     interval_seconds=news_interval,
                     limit=50,
+                    on_evidence=publish_high_impact_news,
                 )
                 self.news_polling_worker.start()
             self.ecosystem_service.news_polling_worker = self.news_polling_worker
