@@ -6,11 +6,15 @@ independent corroboration, sentiment, direction, or a trading signal.
 """
 from __future__ import annotations
 
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import hashlib
+import json
 import re
-from typing import Iterable, Mapping
+import sqlite3
+from pathlib import Path
+from typing import Mapping
 from urllib.parse import urlparse
 
 from integration.rss_news_provider import NewsItem
@@ -114,8 +118,107 @@ class NewsEvidenceRecord:
         }
 
 
+class SQLiteNewsEvidenceStore:
+    """Tenant-scoped append-only local store; not a shared multi-replica database."""
+
+    def __init__(self, database_path: str | Path, *, tenant_id: str, subject_id: str) -> None:
+        if not isinstance(tenant_id, str) or not tenant_id.strip():
+            raise ValueError("tenant_id is required")
+        if not isinstance(subject_id, str) or not subject_id.strip():
+            raise ValueError("subject_id is required")
+        self.database_path = str(database_path)
+        self.tenant_id = tenant_id.strip()
+        self.subject_id = subject_id.strip()
+        if self.database_path != ":memory:" and Path(self.database_path).is_symlink():
+            raise ValueError("news evidence database path must not be a symlink")
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(self.database_path, timeout=10.0)
+        connection.row_factory = sqlite3.Row
+        return connection
+
+    def initialize_schema(self) -> None:
+        with closing(self._connect()) as connection, connection:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS tenant_news_evidence (
+                    tenant_id TEXT NOT NULL,
+                    subject_id TEXT NOT NULL,
+                    evidence_id TEXT NOT NULL,
+                    source_id TEXT NOT NULL,
+                    fingerprint TEXT NOT NULL,
+                    published_at TEXT,
+                    ingested_at TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    PRIMARY KEY (tenant_id, subject_id, evidence_id),
+                    UNIQUE (tenant_id, subject_id, source_id, fingerprint)
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_tenant_news_evidence_time
+                ON tenant_news_evidence (tenant_id, subject_id, published_at)
+                """
+            )
+
+    def append(self, record: NewsEvidenceRecord) -> bool:
+        if not isinstance(record, NewsEvidenceRecord):
+            raise ValueError("record must be NewsEvidenceRecord")
+        with closing(self._connect()) as connection, connection:
+            cursor = connection.execute(
+                """
+                INSERT OR IGNORE INTO tenant_news_evidence
+                (tenant_id, subject_id, evidence_id, source_id, fingerprint,
+                 published_at, ingested_at, payload_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    self.tenant_id, self.subject_id, record.evidence_id,
+                    record.source_id, record.fingerprint,
+                    record.published_at.isoformat() if record.published_at else None,
+                    record.ingested_at.isoformat(),
+                    json.dumps(record.to_dict(), ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+                ),
+            )
+            return cursor.rowcount == 1
+
+    def load(self) -> list[NewsEvidenceRecord]:
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                """
+                SELECT payload_json FROM tenant_news_evidence
+                WHERE tenant_id = ? AND subject_id = ?
+                ORDER BY ingested_at ASC, evidence_id ASC
+                """,
+                (self.tenant_id, self.subject_id),
+            ).fetchall()
+        records = []
+        for row in rows:
+            payload = json.loads(row["payload_json"])
+            published = payload.get("published_at")
+            records.append(NewsEvidenceRecord(
+                evidence_id=payload["evidence_id"],
+                source_id=payload["source_id"],
+                source_tier=payload["source_tier"],
+                source_host=payload["source_host"],
+                title=payload["title"],
+                url=payload["url"],
+                published_at=datetime.fromisoformat(published) if published else None,
+                ingested_at=datetime.fromisoformat(payload["ingested_at"]),
+                event_categories=tuple(payload["event_categories"]),
+                affected_assets=tuple(payload["affected_assets"]),
+                fingerprint=payload["fingerprint"],
+                fact_status=payload["fact_status"],
+                corroboration_status=payload["corroboration_status"],
+                corroborating_source_ids=tuple(payload["corroborating_source_ids"]),
+                limitations=tuple(payload["limitations"]),
+            ))
+        return records
+
+
 class NewsEvidenceCorroborator:
-    """In-memory candidate matcher; persistence and article review are separate."""
+    """Candidate matcher; persistence is supplied by an owner-scoped store.
 
     def __init__(
         self,
@@ -123,6 +226,7 @@ class NewsEvidenceCorroborator:
         *,
         max_age: timedelta = timedelta(hours=72),
         similarity_threshold: float = 0.82,
+        store: SQLiteNewsEvidenceStore | None = None,
     ) -> None:
         if not policies or any(key != policy.source_id for key, policy in policies.items()):
             raise ValueError("policies must be keyed by their trusted source_id")
@@ -133,7 +237,8 @@ class NewsEvidenceCorroborator:
         self._policies = dict(policies)
         self._max_age = max_age
         self._similarity_threshold = similarity_threshold
-        self._records: list[NewsEvidenceRecord] = []
+        self._store = store
+        self._records: list[NewsEvidenceRecord] = store.load() if store is not None else []
 
     @staticmethod
     def _validate_url(url: str, policy: NewsSourcePolicy) -> tuple[str, str]:
@@ -235,6 +340,12 @@ class NewsEvidenceCorroborator:
                 "no_sentiment_or_direction_inferred",
             ),
         )
+        if self._store is not None and not self._store.append(record):
+            return {
+                "status": "DUPLICATE_SOURCE_ITEM",
+                "fact_status": "UNVERIFIED_REPORT",
+                "execution_authorized": False,
+            }
         self._records.append(record)
         return record.to_dict() | {"execution_authorized": False}
 
