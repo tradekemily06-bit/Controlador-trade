@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import io
+import types
 import json
 import tempfile
 import unittest
@@ -9,7 +10,8 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import urlsplit
 
-from standalone_app import StandaloneWSGIApplication, _validate_bind_security
+from standalone_app import StandaloneWSGIApplication, _runtime_from_environment, _validate_bind_security
+from integration.standalone_runtime import StandaloneRuntime
 from analysis.decision_record import DecisionRecord
 from security.push_subscription_registry import TenantPushSubscriptionRegistry
 
@@ -2234,3 +2236,52 @@ def test_local_readiness_exposes_news_polling_worker_but_remote_does_not():
     assert status == "200 OK"
     assert body["news_polling"]["worker_running"] is True
     assert body["news_polling"]["last_state"] == "POLL_SUCCEEDED"
+
+
+
+def test_runtime_factory_uses_default_when_no_host_factory_is_configured():
+    expected = object.__new__(StandaloneRuntime)
+    expected.closed = False
+    with patch.dict("os.environ", {"CONTROLADOR_STANDALONE_RUNTIME_FACTORY": ""}):
+        with patch.object(StandaloneRuntime, "from_environment", return_value=expected):
+            assert _runtime_from_environment() is expected
+
+
+def test_runtime_factory_loads_trusted_operator_module():
+    expected = object.__new__(StandaloneRuntime)
+    expected.closed = False
+    module = types.SimpleNamespace(build_runtime=lambda: expected)
+    with patch.dict("os.environ", {
+        "CONTROLADOR_STANDALONE_RUNTIME_FACTORY": "deployment.runtime:build_runtime",
+    }):
+        with patch("standalone_app.importlib.import_module", return_value=module) as importer:
+            assert _runtime_from_environment() is expected
+    importer.assert_called_once_with("deployment.runtime")
+
+
+def test_runtime_factory_rejects_invalid_spec_without_fallback():
+    with patch.dict("os.environ", {
+        "CONTROLADOR_STANDALONE_RUNTIME_FACTORY": "../deployment:build_runtime",
+    }):
+        with patch.object(StandaloneRuntime, "from_environment") as fallback:
+            try:
+                _runtime_from_environment()
+            except RuntimeError as exc:
+                assert "formato modulo:funcao" in str(exc)
+            else:
+                raise AssertionError("invalid factory spec must fail startup")
+    fallback.assert_not_called()
+
+
+def test_runtime_factory_rejects_non_runtime_result():
+    module = types.SimpleNamespace(build_runtime=lambda: object())
+    with patch.dict("os.environ", {
+        "CONTROLADOR_STANDALONE_RUNTIME_FACTORY": "deployment.runtime:build_runtime",
+    }):
+        with patch("standalone_app.importlib.import_module", return_value=module):
+            try:
+                _runtime_from_environment()
+            except RuntimeError as exc:
+                assert "StandaloneRuntime ativo" in str(exc)
+            else:
+                raise AssertionError("factory returning the wrong type must fail startup")
