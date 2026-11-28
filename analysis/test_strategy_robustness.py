@@ -23,6 +23,7 @@ def _evaluate(**overrides):
         "benchmark_returns": _benchmark(),
         "stress_returns": (0.003, 0.004, 0.005, -0.0005, 0.003) * 24,
         "trade_count": 48,
+        "stress_cost_multiplier": 2.0,
         "num_trials": 1,
         "periods_per_year": 252,
         "out_of_sample": True,
@@ -51,7 +52,7 @@ def test_robustness_requires_transaction_costs():
 
 def test_robustness_requires_aligned_benchmark():
     result = evaluate_strategy_robustness(
-        _returns(), benchmark_returns=None, stress_returns=None, trade_count=48, num_trials=1,
+        _returns(), benchmark_returns=None, stress_returns=None, trade_count=48, stress_cost_multiplier=2.0, num_trials=1,
         periods_per_year=252, out_of_sample=True, costs_included=True,
     )
     assert result["verdict"] == "INSUFFICIENT"
@@ -118,3 +119,8 @@ def test_robustness_requires_at_least_thirty_completed_trades():
     result = _evaluate(trade_count=29)
     assert result["verdict"] == "INSUFFICIENT"
     assert "30" in result["reasons"][0]
+
+
+def test_cost_stress_multiplier_must_be_at_least_two():
+    with pytest.raises(ValueError):
+        _evaluate(stress_cost_multiplier=1.5)
