@@ -6,6 +6,7 @@ No broker-order or money-movement endpoint is defined here.
 from __future__ import annotations
 
 import hmac
+import importlib
 import json
 import os
 import re
@@ -2051,10 +2052,50 @@ def _validate_bind_security(host: str) -> None:
         )
 
 
+def _runtime_from_environment() -> StandaloneRuntime:
+    """Load a trusted deployment factory, or use the intentionally unconfigured local runtime.
+
+    The module path is operator-controlled deployment configuration, never a
+    request parameter. A configured factory must return an active StandaloneRuntime;
+    import/factory/type failures abort startup instead of silently falling back.
+    """
+    factory_spec = os.getenv("CONTROLADOR_STANDALONE_RUNTIME_FACTORY", "").strip()
+    if not factory_spec:
+        return StandaloneRuntime.from_environment()
+    if not re.fullmatch(
+        r"[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*:[A-Za-z_][A-Za-z0-9_]*",
+        factory_spec,
+    ):
+        raise RuntimeError(
+            "CONTROLADOR_STANDALONE_RUNTIME_FACTORY deve usar o formato modulo:funcao"
+        )
+    module_name, factory_name = factory_spec.split(":", 1)
+    try:
+        module = importlib.import_module(module_name)
+    except Exception as exc:
+        raise RuntimeError("não foi possível carregar o módulo de bootstrap confiável") from exc
+    factory = getattr(module, factory_name, None)
+    if not callable(factory):
+        raise RuntimeError("a factory de runtime configurada não é executável")
+    try:
+        runtime = factory()
+    except Exception as exc:
+        raise RuntimeError("a factory de runtime confiável falhou") from exc
+    if not isinstance(runtime, StandaloneRuntime) or runtime.closed:
+        close = getattr(runtime, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception:
+                pass
+        raise RuntimeError("a factory deve retornar um StandaloneRuntime ativo")
+    return runtime
+
+
 def main() -> None:
     host = os.getenv("CONTROLADOR_BIND_HOST", "127.0.0.1")
     _validate_bind_security(host)
-    runtime = StandaloneRuntime.from_environment()
+    runtime = _runtime_from_environment()
     application = StandaloneWSGIApplication(runtime)
     port = int(os.getenv("CONTROLADOR_BIND_PORT", "8765"))
     server = make_server(host, port, application, server_class=ThreadingWSGIServer)
