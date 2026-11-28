@@ -152,6 +152,7 @@ class NewsPollingWorker:
                     and isinstance(evidence, dict)
                     and evidence.get("evidence_id")
                     and evidence.get("status") != "DUPLICATE_SOURCE_ITEM"
+                    and evidence.get("source_tier") in {"OFFICIAL_PRIMARY", "TRUSTED_MEDIA"}
                 ):
                     classification = classify_market_news(item)
                     if classification.get("importance") == "HIGH_REVIEW":
