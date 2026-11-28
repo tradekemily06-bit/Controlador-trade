@@ -32,10 +32,10 @@ class NotificationOutboxWorker:
             isinstance(poll_interval_seconds, bool)
             or not isinstance(poll_interval_seconds, (int, float))
             or not math.isfinite(float(poll_interval_seconds))
-            or poll_interval_seconds < 0.1
+            or poll_interval_seconds < 0.01
             or poll_interval_seconds > 3600
         ):
-            raise ValueError("poll_interval_seconds must be finite and between 0.1 and 3600")
+            raise ValueError("poll_interval_seconds must be finite and between 0.01 and 3600")
         if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size < 1:
             raise ValueError("batch_size must be a positive integer")
         self.outbox = outbox
