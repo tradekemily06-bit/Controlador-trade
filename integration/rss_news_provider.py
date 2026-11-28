@@ -303,12 +303,16 @@ class RSSNewsProvider(NewsProvider):
                 or self._text(entry.find("{http://www.w3.org/2005/Atom}updated"))
             )
             source = self._text(entry.find("source")) or feed_title or host
-            summary_element = (
-                entry.find("description")
-                or entry.find("summary")
-                or entry.find("{http://www.w3.org/2005/Atom}summary")
-                or entry.find("{http://purl.org/rss/1.0/modules/content/}encoded")
-            )
+            summary_element = None
+            for candidate in (
+                "description",
+                "summary",
+                "{http://www.w3.org/2005/Atom}summary",
+                "{http://purl.org/rss/1.0/modules/content/}encoded",
+            ):
+                summary_element = entry.find(candidate)
+                if summary_element is not None:
+                    break
             summary = self._text(summary_element)
             if summary is not None:
                 summary = summary[:4000]
