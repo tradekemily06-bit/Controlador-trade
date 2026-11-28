@@ -35,6 +35,15 @@ _COUNTRY = re.compile(r"^[A-Z]{2}$")
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 
+def _required_text(value: Any, field: str, *, max_length: int = 512) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must be text")
+    result = value.strip()
+    if not result or len(result) > max_length:
+        raise ValueError(f"{field} must contain 1 to {max_length} characters")
+    return result
+
+
 def _timestamp(value: Any, field: str) -> datetime:
     if isinstance(value, datetime):
         parsed = value
@@ -142,18 +151,20 @@ def normalize_calendar_event(payload: Mapping[str, Any]) -> EconomicCalendarEven
         raise ValueError("unsupported calendar impact or status") from exc
 
     currency_value = payload.get("currency")
-    currency = str(currency_value).strip().upper() if currency_value is not None else None
+    if currency_value is not None and not isinstance(currency_value, str):
+        raise ValueError("currency must be text or null")
+    currency = currency_value.strip().upper() if currency_value is not None else None
     revision_note = payload.get("revision_note")
     if revision_note is not None:
         revision_note = str(revision_note).strip()[:500] or None
 
     return EconomicCalendarEvent(
-        source_id=str(payload.get("source_id", "")).strip(),
-        source_event_id=str(payload.get("source_event_id", "")).strip(),
-        source_url=str(payload.get("source_url", "")).strip(),
-        source_tier=str(payload.get("source_tier", "PROVIDER")).strip().upper(),
-        title=str(payload.get("title", "")).strip(),
-        country_code=str(payload.get("country_code", "")).strip().upper(),
+        source_id=_required_text(payload.get("source_id"), "source_id", max_length=128),
+        source_event_id=_required_text(payload.get("source_event_id"), "source_event_id", max_length=128),
+        source_url=_required_text(payload.get("source_url"), "source_url", max_length=2048),
+        source_tier=_required_text(payload.get("source_tier", "PROVIDER"), "source_tier", max_length=32).upper(),
+        title=_required_text(payload.get("title"), "title", max_length=240),
+        country_code=_required_text(payload.get("country_code"), "country_code", max_length=2).upper(),
         currency=currency,
         scheduled_at=_timestamp(payload.get("scheduled_at"), "scheduled_at"),
         observed_at=_timestamp(payload.get("observed_at"), "observed_at"),
