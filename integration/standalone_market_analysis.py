@@ -184,9 +184,16 @@ class StandaloneMarketAnalysisService:
                 ) for candle in snapshot.candles)),
             ))
             snapshot_id = "market-snapshot-" + sha256(snapshot_material.encode("utf-8")).hexdigest()
-            snapshot_audit = self.market_snapshot_sink(
-                snapshot, decision_context, snapshot_id, self.signal_source_id
-            )
+            try:
+                snapshot_audit = self.market_snapshot_sink(
+                    snapshot, decision_context, snapshot_id, self.signal_source_id
+                )
+            except Exception as exc:
+                snapshot_audit = {
+                    "status": "PERSISTENCE_ERROR",
+                    "error_class": type(exc).__name__,
+                    "snapshot_id": snapshot_id,
+                }
 
         candidate_signal = result.analysis.signal.value
         senior = result.senior_context
