@@ -319,7 +319,9 @@ class EcosystemService:
                         source_id=host,
                         ingested_at=ingested_at,
                     ))
-                except (KeyError, ValueError):
+                except Exception:
+                    # Evidence persistence is best-effort for this read-only response;
+                    # the failure is counted without leaking source or storage details.
                     evidence_errors += 1
         evidence_status = "NOT_CONFIGURED"
         if self.news_evidence_correlator is not None:
