@@ -10,6 +10,7 @@ from typing import Any, Mapping
 from analysis.decision_store import DecisionStore
 from analysis.tenant_signal_evidence_store import TenantSignalEvidenceStore
 from analysis.tenant_signal_outcome_store import TenantSignalOutcomeStore
+from analysis.tenant_market_snapshot_store import TenantMarketSnapshotStore
 from analysis.tenant_strategy_trial_ledger import TenantStrategyTrialLedger
 from assistant.chat_service import EcosystemAssistant
 from assistant.conversation_store import AssistantConversationStore
@@ -402,6 +403,16 @@ class StandaloneRuntime:
             self.strategy_trial_ledger = TenantStrategyTrialLedger(
                 self.runtime_dir / "tenant-signal-evidence.sqlite3"
             )
+            self.market_snapshot_store = TenantMarketSnapshotStore(
+                self.runtime_dir / "tenant-signal-evidence.sqlite3"
+            )
+            _validate_runtime_store_location(
+                self.market_snapshot_store, self.runtime_dir, "tenant-signal-evidence.sqlite3"
+            )
+            def persist_market_snapshot(snapshot, owner, snapshot_id, source_id):
+                return self.market_snapshot_store.record(
+                    owner, snapshot_id=snapshot_id, source_id=source_id, snapshot=snapshot
+                )
             # Rebuild configured generic provider sessions only after a fresh
             # tenant-scoped vault resolution and provider handshake.
             self.provider_recovery_status = self.tenant_provider_connection_service.reconnect_available(
@@ -552,6 +563,7 @@ class StandaloneRuntime:
                     signal_outcome_sink=self.signal_outcome_store.resolve_pending_for_candle,
                     market_data_provenance=_market_data_provenance_for_provider(selected.provider_id),
                     signal_source_id=f"{selected.provider_id}:{selected.source}",
+                    market_snapshot_sink=persist_market_snapshot,
                 )
 
                 def publish_market_change(event: dict[str, Any]) -> None:
@@ -602,6 +614,7 @@ class StandaloneRuntime:
                     signal_outcome_sink=self.signal_outcome_store.resolve_pending_for_candle,
                     market_data_provenance=_market_data_provenance_for_provider(session.provider_id),
                     signal_source_id=session.connection_id,
+                    market_snapshot_sink=persist_market_snapshot,
                 )
 
             def publish_account_market_change(event: dict[str, Any]) -> None:
