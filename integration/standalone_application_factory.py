@@ -46,6 +46,7 @@ def build_standalone_application(
     intelligence: UnifiedIntelligence | None = None,
     market_analyzer: Any | None = None,
     market_data_registry: Any | None = None,
+    market_analysis_context: Any | None = None,
     economic_calendar_store: Any | None = None,
     strategy_trial_ledger: Any | None = None,
     strategy_trial_context: Any | None = None,
@@ -171,6 +172,7 @@ def build_standalone_application(
                 limit=limit,
                 confirmed=confirmed,
                 filters_ok=filters_ok,
+                decision_context=market_analysis_context,
             )
             return _plain(result)
         request = context.get("senior_context_input")
