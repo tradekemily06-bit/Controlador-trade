@@ -7,6 +7,7 @@ NOT_CONNECTED rather than being replaced by demo data.
 from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Mapping
 
@@ -126,6 +127,18 @@ def build_standalone_application(
             limit = context.get("limit", 500)
             if not isinstance(start_at, str) or not isinstance(end_at, str):
                 raise ValueError("start_at and end_at must be ISO-8601 timestamps")
+            try:
+                start_time = datetime.fromisoformat(start_at.strip().replace("Z", "+00:00"))
+                end_time = datetime.fromisoformat(end_at.strip().replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise ValueError("calendar range must use ISO-8601 timestamps") from exc
+            if (
+                start_time.tzinfo is None or start_time.utcoffset() is None
+                or end_time.tzinfo is None or end_time.utcoffset() is None
+            ):
+                raise ValueError("calendar range timestamps must include a timezone")
+            if start_time.astimezone(timezone.utc) > end_time.astimezone(timezone.utc):
+                raise ValueError("calendar range start_at must not be after end_at")
             if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 5000:
                 raise ValueError("limit must be an integer from 1 to 5000")
             events = economic_calendar_store.list_latest(
