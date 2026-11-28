@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Iterable
+from urllib.parse import urlparse
 
 from analysis.decision_record import DecisionRecord
 from analysis.decision_store import DecisionStore
@@ -28,6 +29,7 @@ from core.senior_risk_reasoning import RiskDomain, RiskObservation
 from data.models import Candle
 from integration.rss_news_provider import NewsProvider, RSSNewsProvider, UnconfiguredNewsProvider
 from analysis.news_event_intelligence import classify_news_batch
+from analysis.news_evidence_corroboration import NewsEvidenceCorroborator
 from security.identity_boundary import IdentityPolicy
 from security.production_operation_gate import ProductionOperationGate
 from security.request_context import ProductionRequestContext, require_production_context
@@ -37,12 +39,13 @@ from storage.production_boundary import ProductionStoragePolicy
 class EcosystemService:
     """Application orchestration; broker execution remains outside this layer."""
 
-    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None, learning_state_store: LearningStateStore | None = None, notification_state_store: EcosystemStateStore | None = None, notification_center: EcosystemNotificationCenter | None = None, notification_outbox: PersistentNotificationOutbox | None = None, news_provider: NewsProvider | None = None) -> None:
+    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None, learning_state_store: LearningStateStore | None = None, notification_state_store: EcosystemStateStore | None = None, notification_center: EcosystemNotificationCenter | None = None, notification_outbox: PersistentNotificationOutbox | None = None, news_provider: NewsProvider | None = None, news_evidence_correlator: NewsEvidenceCorroborator | None = None) -> None:
         self.engine = engine or SignalEngine()
         self.store = decision_store or DecisionStore()
         self.memory: list[DecisionRecord] = self.store.load()
         self.risk = RiskManager()
         self.news = news_provider if news_provider is not None else RSSNewsProvider.from_environment()
+        self.news_evidence_correlator = news_evidence_correlator
         self.identity = IdentityPolicy()
         self.production_storage = production_storage or ProductionStoragePolicy()
         self.production_gate = ProductionOperationGate(self.production_storage)
@@ -301,6 +304,26 @@ class EcosystemService:
             "live": False,
         }
         configured = bool(provider_status.get("configured", False))
+        evidence_records = []
+        evidence_errors = 0
+        if self.news_evidence_correlator is not None:
+            ingested_at = datetime.now(timezone.utc)
+            for item in raw_items:
+                host = urlparse(item.url).hostname.lower().rstrip(".") if isinstance(item.url, str) else ""
+                if not host:
+                    evidence_errors += 1
+                    continue
+                try:
+                    evidence_records.append(self.news_evidence_correlator.ingest(
+                        item,
+                        source_id=host,
+                        ingested_at=ingested_at,
+                    ))
+                except (KeyError, ValueError):
+                    evidence_errors += 1
+        evidence_status = "NOT_CONFIGURED"
+        if self.news_evidence_correlator is not None:
+            evidence_status = "CONNECTED" if evidence_errors == 0 else "PARTIAL"
         return {
             "provider": "RSS_ATOM" if configured else "UNCONFIGURED",
             "configured": configured,
@@ -309,6 +332,13 @@ class EcosystemService:
             "item_count": len(items),
             "items": items,
             "classified_items": classify_news_batch(raw_items),
+            "evidence_processing": {
+                "status": evidence_status,
+                "processed": len(evidence_records),
+                "errors": evidence_errors,
+                "records": evidence_records,
+                "fact_confirmation": "NEVER_AUTOMATIC",
+            },
             "classification": "CONSERVATIVE_HEADLINE_RULES",
             "execution_authorized": False,
         }
