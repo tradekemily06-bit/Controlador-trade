@@ -199,3 +199,27 @@ def test_process_restart_discards_adapter_binding_without_falsely_claiming_conne
     assert status["adapter_status"] == "NOT_BOUND"
     assert status["health_status"] == "NOT_BOUND"
     assert restarted_sessions.get(owner, connection_id=account["connection_id"]) is None
+
+
+
+def test_adapter_instance_cannot_cross_tenant_boundary(tmp_path):
+    connections, sessions = _setup(tmp_path)
+    alice = TenantContext("tenant-a", "alice")
+    bob = TenantContext("tenant-b", "bob")
+    account_a = _verified(connections, alice, "Conta A", "account-a")
+    account_b = _verified(connections, bob, "Conta B", "account-b")
+    shared_adapter = FakeAdapter()
+
+    sessions.bind(
+        alice, connection_id=account_a["connection_id"], adapter=shared_adapter,
+        source="broker_x:account-a", handshake_verified=True,
+    )
+
+    with pytest.raises(ValueError, match="cannot be shared"):
+        sessions.bind(
+            bob, connection_id=account_b["connection_id"], adapter=shared_adapter,
+            source="broker_x:account-b", handshake_verified=True,
+        )
+
+    assert sessions.get(alice, connection_id=account_a["connection_id"]).adapter is shared_adapter
+    assert sessions.get(bob, connection_id=account_b["connection_id"]) is None
