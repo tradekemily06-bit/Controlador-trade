@@ -69,7 +69,11 @@ def classify_market_news(item: Any) -> dict[str, Any]:
     url = getattr(item, "url", None)
     if not isinstance(title, str) or not title.strip():
         raise ValueError("news headline is required")
-    text = _normalise(title)
+    summary = getattr(item, "summary", None)
+    if summary is not None and not isinstance(summary, str):
+        summary = None
+    summary = summary[:4000] if summary else ""
+    text = _normalise(title + " " + summary)
     assets = sorted({
         asset
         for asset, terms in _ASSET_TERMS.items()
@@ -100,14 +104,14 @@ def classify_market_news(item: Any) -> dict[str, Any]:
         "event_categories": categories,
         "affected_assets": assets,
         "importance": importance,
-        "classification_basis": "HEADLINE_KEYWORD_RULES",
+        "classification_basis": "HEADLINE_AND_FEED_SUMMARY_KEYWORD_RULES" if summary else "HEADLINE_KEYWORD_RULES",
         "mapping_confidence": mapping_confidence,
         "sentiment": "NOT_ASSESSED",
         "directional_bias": "NOT_ASSESSED",
         "probability_impact": None,
         "execution_authorized": False,
         "limitations": [
-            "headline_only_classification",
+            "headline_and_feed_summary_only_classification" if summary else "headline_only_classification",
             "not_verified_against_full_article",
             "not_a_price_forecast",
             "not_a_trading_instruction",
