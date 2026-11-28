@@ -43,12 +43,16 @@ metadata; omitting them would lose active monitoring state, pending tenant
 notifications or accepted alert history during recovery.
 
 Backups remain local/on-demand unless an operator separately configures a
-scheduled job and off-host replication. OAuth state, OAuth ciphertext, relay
-tokens and webhook secret stores are not implicitly copied by this allowlist;
-recovery procedures must account for provider re-authentication and key
-availability rather than assuming those credentials can be reconstructed.
-A successful isolated restore check validates SQLite integrity only; it does
-not prove full application recovery or multi-host disaster recovery.
+scheduled job and off-host replication. The current allowlist also includes
+MT5 relay token hashes, TradingView webhook secret hashes, cTrader OAuth state
+and encrypted OAuth token ciphertext, plus tenant signal evidence/outcomes.
+This copies the stored records but does not back up or replace the external KMS
+key material; OAuth recovery still depends on the configured key identifier
+and KMS availability. Treat credential recovery as a separate tested
+procedure, and revoke/re-authenticate provider credentials if integrity or key
+availability cannot be established. A successful isolated restore check
+validates SQLite integrity only; it does not prove full application recovery
+or multi-host disaster recovery.
 
 ## Current product safety
 
