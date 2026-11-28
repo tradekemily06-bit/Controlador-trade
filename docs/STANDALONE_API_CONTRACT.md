@@ -60,6 +60,8 @@ Body:
 ```
 The area and task are required strings; context must be an object. The selected area handler determines supported context fields. Market analysis remains manual-review only; no order is submitted.
 
+For the existing `analysis` area, `context.operation="economic_calendar"` or `"calendar"` accepts `start_at`, `end_at` (timezone-aware ISO-8601) and optional `limit` (1–5000). When an economic-calendar store is injected, the route returns the latest stored publisher-scoped observations in that range; it reports `live: false` and `source_refresh: NOT_REPORTED` because this query does not fetch or schedule source updates. Without a store it returns `CALENDAR_STORE_NOT_CONFIGURED`. Calendar ingestion remains a server-side adapter task; local SQLite storage is single-runtime only.
+
 ## Market data and timeframe monitoring
 
 ### `GET /api/market-data/providers`
