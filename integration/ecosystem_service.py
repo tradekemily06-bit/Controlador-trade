@@ -46,6 +46,7 @@ class EcosystemService:
         self.risk = RiskManager()
         self.news = news_provider if news_provider is not None else RSSNewsProvider.from_environment()
         self.news_evidence_correlator = news_evidence_correlator
+        self.news_polling_worker = None
         self.identity = IdentityPolicy()
         self.production_storage = production_storage or ProductionStoragePolicy()
         self.production_gate = ProductionOperationGate(self.production_storage)
@@ -293,10 +294,45 @@ class EcosystemService:
         news = news_status() if callable(news_status) else {"configured": False}
         return {"allowed": decision.allowed, "reason": decision.reason, "configured_limits": {"daily_loss_limit": self.risk.daily_loss_limit, "max_operations": self.risk.max_operations, "max_consecutive_losses": self.risk.max_consecutive_losses}, "news_provider": "RSS_ATOM" if news.get("configured") else "UNCONFIGURED"}
 
+    @staticmethod
+    def _news_symbol_matches(symbol: str | None, assets: Iterable[str]) -> bool:
+        if not symbol:
+            return True
+        query = symbol.strip().upper().replace("/", "").replace("-", "").replace("_", "")
+        if not query:
+            return True
+        aliases = {"XAU": "GOLD", "XAG": "SILVER"}
+        requested = {aliases.get(query, query)}
+        if len(query) == 6 and query.isalpha():
+            requested.update(aliases.get(query[index:index + 3], query[index:index + 3]) for index in (0, 3))
+        normalized_assets = {str(asset).upper() for asset in assets}
+        return bool(requested.intersection(normalized_assets))
+
     def news_status(self, limit: int = 10, symbol: str | None = None) -> dict[str, Any]:
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
             raise ValueError("limit deve estar entre 1 e 50")
-        raw_items = self.news.latest(symbol=symbol, limit=limit)
+
+        polling_worker = self.news_polling_worker
+        polling_status = (
+            polling_worker.status()
+            if polling_worker is not None and callable(getattr(polling_worker, "status", None))
+            else None
+        )
+        if polling_worker is not None and callable(getattr(polling_worker, "latest_items", None)):
+            raw_items = list(polling_worker.latest_items())
+            raw_items = [
+                item for item in raw_items
+                if self._news_symbol_matches(
+                    symbol, classify_news_batch([item])[0].get("affected_assets", [])
+                )
+            ]
+        else:
+            # Compatibility for explicitly injected/test providers. In the
+            # standalone runtime the background worker is authoritative, so
+            # opening the Analysis area never triggers another network poll.
+            raw_items = self.news.latest(symbol=symbol, limit=limit)
+
+        raw_items = raw_items[:limit]
         items = [asdict(item) for item in raw_items]
         status_method = getattr(self.news, "status", None)
         provider_status = status_method() if callable(status_method) else {
@@ -304,41 +340,51 @@ class EcosystemService:
             "live": False,
         }
         configured = bool(provider_status.get("configured", False))
-        evidence_records = []
-        evidence_errors = 0
+
+        persisted_records = []
         if self.news_evidence_correlator is not None:
-            ingested_at = datetime.now(timezone.utc)
-            for item in raw_items:
-                host = urlparse(item.url).hostname.lower().rstrip(".") if isinstance(item.url, str) else ""
-                if not host:
-                    evidence_errors += 1
-                    continue
-                try:
-                    evidence_records.append(self.news_evidence_correlator.ingest(
-                        item,
-                        source_id=host,
-                        ingested_at=ingested_at,
-                    ))
-                except Exception:
-                    # Evidence persistence is best-effort for this read-only response;
-                    # the failure is counted without leaking source or storage details.
-                    evidence_errors += 1
-        evidence_status = "NOT_CONFIGURED"
-        if self.news_evidence_correlator is not None:
-            evidence_status = "CONNECTED" if evidence_errors == 0 else "PARTIAL"
+            records_method = getattr(self.news_evidence_correlator, "records", None)
+            if callable(records_method):
+                for record in records_method():
+                    payload = record.to_dict() if callable(getattr(record, "to_dict", None)) else record
+                    if not isinstance(payload, dict):
+                        continue
+                    if self._news_symbol_matches(symbol, payload.get("affected_assets", ())):
+                        persisted_records.append(payload)
+
+        collection_state = "DIRECT_PROVIDER_READ" if polling_status is None else polling_status.get("last_state", "NOT_RUN")
+        collection_live = bool(provider_status.get("live", False))
+        if polling_status is not None:
+            collection_live = (
+                collection_state == "POLL_SUCCEEDED"
+                and polling_status.get("last_success_at") is not None
+            )
+        if collection_state == "PARTIAL":
+            evidence_state = "PARTIAL"
+        elif collection_live and self.news_evidence_correlator is not None:
+            evidence_state = "CONNECTED"
+        elif self.news_evidence_correlator is None:
+            evidence_state = "NOT_CONFIGURED"
+        else:
+            evidence_state = "WAITING_FOR_FIRST_SUCCESS" if collection_state in {"NOT_RUN", "NOT_YET_POLLED"} else "STALE_OR_UNAVAILABLE"
+
         return {
             "provider": "RSS_ATOM" if configured else "UNCONFIGURED",
             "configured": configured,
-            "live": bool(provider_status.get("live", False)),
+            "live": collection_live,
             "status": provider_status,
+            "collection": polling_status or {
+                "state": collection_state,
+                "mode": "DIRECT_PROVIDER_READ",
+                "note": "No background news poller is attached to this service instance.",
+            },
             "item_count": len(items),
             "items": items,
             "classified_items": classify_news_batch(raw_items),
             "evidence_processing": {
-                "status": evidence_status,
-                "processed": len(evidence_records),
-                "errors": evidence_errors,
-                "records": evidence_records,
+                "status": evidence_state,
+                "processed": len(persisted_records),
+                "records": persisted_records,
                 "fact_confirmation": "NEVER_AUTOMATIC",
             },
             "classification": "CONSERVATIVE_HEADLINE_RULES",
