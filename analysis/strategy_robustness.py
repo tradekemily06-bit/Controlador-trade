@@ -160,6 +160,8 @@ def evaluate_strategy_robustness(
     returns: Iterable[float],
     *,
     benchmark_returns: Iterable[float] | None,
+    stress_returns: Iterable[float] | None,
+    trade_count: int,
     num_trials: int,
     periods_per_year: int,
     out_of_sample: bool,
@@ -169,6 +171,8 @@ def evaluate_strategy_robustness(
     seed: int = 42,
 ) -> dict[str, object]:
     """Evaluate one strategy's OOS net returns; never promotes it automatically."""
+    if isinstance(trade_count, bool) or not isinstance(trade_count, int) or trade_count < 0:
+        raise ValueError("trade_count must be a non-negative integer")
     if isinstance(num_trials, bool) or not isinstance(num_trials, int) or num_trials < 1:
         raise ValueError("num_trials must be an integer >= 1")
     if isinstance(periods_per_year, bool) or not isinstance(periods_per_year, int) or periods_per_year < 1:
@@ -190,6 +194,17 @@ def evaluate_strategy_robustness(
 
     n = len(values)
     benchmark: list[float] = []
+    stress: list[float] = []
+    if stress_returns is not None:
+        for value in stress_returns:
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError("stress_returns must contain only finite numeric values")
+            numeric = float(value)
+            if not math.isfinite(numeric) or numeric <= -1.0:
+                raise ValueError("stress_returns must be finite and greater than -100%")
+            stress.append(numeric)
+        if len(stress) != n:
+            raise ValueError("stress_returns must align one-to-one with strategy returns")
     if benchmark_returns is not None:
         for value in benchmark_returns:
             if isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -212,6 +227,10 @@ def evaluate_strategy_robustness(
         "annualized_sharpe": None,
         "rolling_positive_sharpe_fraction": None,
         "max_drawdown": _max_drawdown(values) if values else None,
+        "trade_count": trade_count,
+        "stress_sample_count": len(stress),
+        "stress_total_return": math.prod(1.0 + x for x in stress) - 1.0 if stress else None,
+        "stress_annualized_sharpe": _annual_sharpe(stress, periods_per_year) if stress else None,
         "benchmark_sample_count": len(benchmark),
         "benchmark_total_return": math.prod(1.0 + x for x in benchmark) - 1.0 if benchmark else None,
         "strategy_total_return": math.prod(1.0 + x for x in values) - 1.0 if values else None,
@@ -229,6 +248,12 @@ def evaluate_strategy_robustness(
     if not benchmark:
         base["reasons"] = ["An aligned untouched out-of-sample benchmark is required."]
         return base
+    if not stress:
+        base["reasons"] = ["A second out-of-sample run with at least 2x transaction costs is required."]
+        return base
+    if trade_count < 30:
+        base["reasons"] = ["Fewer than 30 completed trades; the strategy test is underpowered."]
+        return base
     if n < 60:
         base["reasons"] = ["Fewer than 60 out-of-sample periods; statistical estimates are unstable."]
         return base
@@ -241,6 +266,7 @@ def evaluate_strategy_robustness(
     skew = _sample_skew(values, mean, std)
     excess_kurtosis = _sample_excess_kurtosis(values, mean, std)
     benchmark_period_sharpe = _annual_sharpe(benchmark, 1) if len(benchmark) > 1 else None
+    stress_annual_sharpe = _annual_sharpe(stress, periods_per_year)
     if benchmark_period_sharpe is None:
         base["reasons"] = ["Benchmark needs at least two aligned out-of-sample returns."]
         return base
@@ -271,6 +297,9 @@ def evaluate_strategy_robustness(
         and bootstrap["ci_low"] is not None and bootstrap["ci_low"] > 0.0
         and (num_trials == 1 or (dsr is not None and dsr >= 0.90))
         and positive_fraction is not None and positive_fraction >= 0.60
+        and stress_annual_sharpe is not None
+        and benchmark_period_sharpe is not None
+        and stress_annual_sharpe > benchmark_period_sharpe * math.sqrt(periods_per_year)
     ):
         verdict = "ROBUST_REQUIRES_REVIEW"
         reasons.append("Statistical diagnostics passed; independent review and regime/cost checks are still required.")
@@ -284,11 +313,14 @@ def evaluate_strategy_robustness(
             reasons.append("Deflated Sharpe confidence is below 0.90 after accounting for trials.")
         if positive_fraction is None or positive_fraction < 0.60:
             reasons.append("Positive Sharpe stability is below 60% of rolling windows.")
+        if stress_annual_sharpe is None or stress_annual_sharpe <= benchmark_period_sharpe * math.sqrt(periods_per_year):
+            reasons.append("The strategy does not outperform the aligned benchmark after the 2x-cost stress run.")
 
     base.update({
         "annualized_sharpe": annual_sharpe,
         "benchmark_period_sharpe": benchmark_period_sharpe,
         "benchmark_annualized_sharpe": benchmark_period_sharpe * math.sqrt(periods_per_year),
+        "stress_annualized_sharpe": stress_annual_sharpe,
         "probabilistic_sharpe_ratio": psr,
         "deflated_sharpe_ratio": dsr,
         "sharpe_variance": sharpe_variance,
