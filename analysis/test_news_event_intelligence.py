@@ -27,7 +27,7 @@ def test_classifies_central_bank_and_currency_without_directional_prediction():
 def test_classifies_event_context_found_in_publisher_feed_summary():
     item = SimpleNamespace(
         title="Central bank publishes policy statement",
-        summary="The statement unexpectedly raises interest rates and changes the inflation outlook.",
+        summary="The Federal Reserve statement unexpectedly raises interest rates and changes the inflation outlook.",
         source="Official release",
     )
 
