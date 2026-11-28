@@ -150,3 +150,22 @@ Nothing is closed merely by being listed or implemented. Each checkbox needs a l
 - Current code head: `4b6858d3b2acacff4140a47c1167a426a0937156`.
 - At the time of this update, GitHub has not exposed a CI workflow run or commit status for this exact head. These changes are committed but must not be described as CI-validated until the full pipeline runs and passes.
 - No live provider test, production deployment, hosted worker continuity, push delivery, Lovable UI modification, merge, or REAL/order enablement was performed.
+
+
+## Follow-up continuation — 28 November 2026
+
+### CI regression correction
+- The full-suite run [46157811935](https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/46157811935) exposed three legacy notification-worker tests that intentionally use 10–50 ms polling intervals. The new lower bound of 100 ms rejected those supported test/runtime intervals; 2,541 tests and 44 subtests passed, with exactly these three failures.
+- Restored compatibility by setting the finite notification polling interval range to 0.01–3600 seconds. Invalid values still reject booleans, NaN, infinity, zero, values below 0.01 and values above 3600. The stop timeout remains finite and bounded at 0–60 seconds.
+- Updated the hardening regression test to reject 0.001 seconds rather than 0.01 seconds. The fix is committed; it is not marked CI-passed until the new workflow run completes.
+
+### News evidence independence
+- Added a trusted `publisher_group` field to `NewsSourcePolicy`. Feed IDs and hostnames alone do not establish independent editorial sources; the host can now group syndication aliases and related feeds under one publisher identity.
+- Cross-publisher review candidates are now created only when the two configured source policies belong to different publisher groups. If a prior source is no longer in the trusted policy set, it is not treated as corroboration.
+- Added a regression test proving that two feed IDs from the same configured publisher group do not count as independent corroboration.
+- This remains headline-level candidate matching, not article verification or proof of independent reporting. Full article retrieval, factual claim extraction, contradiction analysis and provenance-aware source lineage remain open.
+
+### Validation status
+- New commits after the previous ledger update: notification interval compatibility fix, test adjustment, publisher-group corroboration guard and regression test.
+- Full CI has not yet reported a result for the latest branch tip. Do not mark these changes as validated until the complete workflow passes.
+- No live broker session, hosted worker, shared production database, KMS, real push delivery, Lovable acceptance, merge or deployment was performed. SIMULAÇÃO remains the only enabled mode; REAL, order submission and money movement remain disabled.
