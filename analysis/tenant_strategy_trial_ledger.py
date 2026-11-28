@@ -129,6 +129,16 @@ class TenantStrategyTrialLedger:
                    WHERE tenant_id=? AND subject_id=? AND experiment_id=?""",
                 (owner.tenant_id, owner.subject_id, experiment_id.strip()),
             ).fetchall()
+            existing = db.execute(
+                """SELECT record_hash, phase FROM tenant_strategy_trials
+                   WHERE tenant_id=? AND subject_id=? AND experiment_id=? AND trial_id=?""",
+                (owner.tenant_id, owner.subject_id, experiment_id.strip(), trial_id.strip()),
+            ).fetchone()
+            if existing is not None:
+                if existing["record_hash"] != record_hash or existing["phase"] != phase:
+                    raise ValueError("trial_id already exists with different immutable evidence")
+                return {"experiment_id": experiment_id.strip(), "trial_id": trial_id.strip(),
+                        "phase": phase, "status": "ALREADY_RECORDED", "record_hash": record_hash}
             if phase == "SELECTION":
                 if any(row["phase"] == "HOLDOUT" for row in rows):
                     raise ValueError("selection is frozen after holdout evaluation")
@@ -140,16 +150,6 @@ class TenantStrategyTrialLedger:
                     raise ValueError("holdout evaluation requires at least one recorded selection trial")
                 if any(row["dataset_fingerprint"] == dataset_fingerprint for row in selection):
                     raise ValueError("holdout dataset fingerprint must differ from selection data")
-            existing = db.execute(
-                """SELECT record_hash FROM tenant_strategy_trials
-                   WHERE tenant_id=? AND subject_id=? AND experiment_id=? AND trial_id=?""",
-                (owner.tenant_id, owner.subject_id, experiment_id.strip(), trial_id.strip()),
-            ).fetchone()
-            if existing is not None:
-                if existing["record_hash"] != record_hash:
-                    raise ValueError("trial_id already exists with different immutable evidence")
-                return {"experiment_id": experiment_id.strip(), "trial_id": trial_id.strip(),
-                        "phase": phase, "status": "ALREADY_RECORDED", "record_hash": record_hash}
             db.execute(
                 """INSERT INTO tenant_strategy_trials
                    (tenant_id, subject_id, experiment_id, trial_id, phase, strategy_version,
