@@ -79,8 +79,22 @@ class NewsPollingWorker:
         ingested_at = datetime.now(timezone.utc)
         for item in items:
             article_url = getattr(item, "url", None)
-            host = urlparse(article_url).hostname.lower().rstrip(".") if isinstance(article_url, str) else ""
-            if not host:
+            try:
+                parsed_url = urlparse(article_url) if isinstance(article_url, str) else None
+                host = parsed_url.hostname.lower().rstrip(".") if parsed_url else ""
+                port = parsed_url.port if parsed_url else None
+            except ValueError:
+                errors += 1
+                continue
+            if (
+                not parsed_url
+                or parsed_url.scheme.lower() != "https"
+                or not host
+                or parsed_url.username
+                or parsed_url.password
+                or port not in (None, 443)
+                or parsed_url.fragment
+            ):
                 errors += 1
                 continue
             try:

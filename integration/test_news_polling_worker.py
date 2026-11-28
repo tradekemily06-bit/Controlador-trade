@@ -115,3 +115,26 @@ def test_news_worker_starts_and_stops_cleanly():
     worker.stop(timeout=2)
 
     assert worker.status()["worker_running"] is False
+
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://www.reuters.com/story",
+        "https://user@www.reuters.com/story",
+        "https://www.reuters.com:8443/story",
+        "https://www.reuters.com/story#fragment",
+        "https://[invalid/story",
+    ],
+)
+def test_news_worker_rejects_unsafe_or_malformed_article_urls(url):
+    provider = FakeProvider([NewsItem(url, "Headline")])
+    correlator = FakeCorrelator()
+    worker = NewsPollingWorker(provider, correlator, interval_seconds=30)
+
+    status = worker.run_once()
+
+    assert status["last_state"] == "PARTIAL"
+    assert status["last_errors"] == 1
+    assert correlator.calls == []
