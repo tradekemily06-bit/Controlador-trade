@@ -15,10 +15,14 @@ class NewsItem:
 
 
 class FakeProvider:
-    def __init__(self, items=None, *, live=True, error=None):
+    def __init__(
+        self, items=None, *, live=True, error=None, feed_count=None, successful_feeds=None
+    ):
         self.items = list(items or [])
         self.live = live
         self.error = error
+        self.feed_count = feed_count
+        self.successful_feeds = successful_feeds
 
     def latest(self, *, limit=10):
         if self.error:
@@ -26,7 +30,16 @@ class FakeProvider:
         return self.items[:limit]
 
     def status(self):
-        return {"configured": True, "live": self.live}
+        return {
+            "configured": True,
+            "live": self.live,
+            "feed_count": self.feed_count if self.feed_count is not None else (1 if self.live else 0),
+            "successful_feeds": (
+                self.successful_feeds
+                if self.successful_feeds is not None
+                else (1 if self.live else 0)
+            ),
+        }
 
 
 class FakeCorrelator:
@@ -155,3 +168,19 @@ def test_news_worker_rejects_unsafe_or_malformed_article_urls(url):
     assert status["last_state"] == "PARTIAL"
     assert status["last_errors"] == 1
     assert correlator.calls == []
+
+
+def test_news_worker_marks_partial_feed_coverage_as_partial_not_healthy():
+    item = NewsItem("https://www.reuters.com/story", "Headline")
+    provider = FakeProvider(
+        [item], live=True, feed_count=3, successful_feeds=2
+    )
+    correlator = FakeCorrelator()
+    worker = NewsPollingWorker(provider, correlator, interval_seconds=30)
+
+    status = worker.run_once()
+
+    assert status["last_state"] == "PARTIAL"
+    assert status["last_success_at"] is None
+    assert status["last_processed"] == 1
+    assert worker.latest_items() == (item,)
