@@ -2098,12 +2098,16 @@ def main() -> None:
     runtime = _runtime_from_environment()
     application = StandaloneWSGIApplication(runtime)
     port = int(os.getenv("CONTROLADOR_BIND_PORT", "8765"))
-    server = make_server(host, port, application, server_class=ThreadingWSGIServer)
+    server = None
     try:
+        server = make_server(host, port, application, server_class=ThreadingWSGIServer)
         server.serve_forever()
     finally:
-        server.server_close()
-        runtime.close()
+        try:
+            if server is not None:
+                server.server_close()
+        finally:
+            runtime.close()
 
 
 if __name__ == "__main__":
