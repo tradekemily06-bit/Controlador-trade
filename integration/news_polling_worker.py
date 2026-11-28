@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlparse
 
+from analysis.news_event_intelligence import classify_market_news
+
 
 class NewsPollingWorker:
     """Poll a configured RSS provider and persist evidence through a trusted correlator.
@@ -24,6 +26,7 @@ class NewsPollingWorker:
         *,
         interval_seconds: float = 60.0,
         limit: int = 50,
+        on_evidence=None,
     ) -> None:
         if not callable(getattr(provider, "latest", None)) or not callable(
             getattr(provider, "status", None)
@@ -44,7 +47,10 @@ class NewsPollingWorker:
         self.provider = provider
         self.evidence_correlator = evidence_correlator
         self.interval_seconds = float(interval_seconds)
+        if on_evidence is not None and not callable(on_evidence):
+            raise TypeError("on_evidence must be callable when provided")
         self.limit = limit
+        self.on_evidence = on_evidence
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -55,6 +61,7 @@ class NewsPollingWorker:
         self._last_item_count = 0
         self._last_processed = 0
         self._last_errors = 0
+        self._last_notification_errors = 0
         self._last_items: tuple[Any, ...] = ()
 
     def run_once(self) -> dict[str, Any]:
@@ -104,6 +111,7 @@ class NewsPollingWorker:
 
         processed = 0
         errors = 0
+        notification_errors = 0
         ingested_at = datetime.now(timezone.utc)
         for item in items:
             article_url = getattr(item, "url", None)
@@ -133,12 +141,24 @@ class NewsPollingWorker:
                 # trusted host policy. Generic test/adaptor doubles without
                 # that contract retain the host identifier behavior.
                 source_id = source_resolver(article_url) if callable(source_resolver) else host
-                self.evidence_correlator.ingest(
+                evidence = self.evidence_correlator.ingest(
                     item,
                     source_id=source_id,
                     ingested_at=ingested_at,
                 )
                 processed += 1
+                if (
+                    self.on_evidence is not None
+                    and isinstance(evidence, dict)
+                    and evidence.get("evidence_id")
+                    and evidence.get("status") != "DUPLICATE_SOURCE_ITEM"
+                ):
+                    classification = classify_market_news(item)
+                    if classification.get("importance") == "HIGH_REVIEW":
+                        try:
+                            self.on_evidence(item, evidence, classification)
+                        except Exception:
+                            notification_errors += 1
             except Exception:
                 errors += 1
 
@@ -161,6 +181,7 @@ class NewsPollingWorker:
             self._last_item_count = len(items)
             self._last_processed = processed
             self._last_errors = errors
+            self._last_notification_errors = notification_errors
             return self.status()
 
     def latest_items(self) -> tuple[Any, ...]:
@@ -212,6 +233,7 @@ class NewsPollingWorker:
                 "last_item_count": self._last_item_count,
                 "last_processed": self._last_processed,
                 "last_errors": self._last_errors,
+                "last_notification_errors": self._last_notification_errors,
                 "fact_confirmation": "NEVER_AUTOMATIC",
                 "execution_authorized": False,
             }
