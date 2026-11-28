@@ -59,3 +59,15 @@ def test_news_and_calendar_stores_are_visible_but_optional_in_readiness(tmp_path
     assert news["state"] == "MISSING"
     assert calendar["required"] is False
     assert calendar["state"] == "MISSING"
+
+
+
+def test_signal_evidence_store_is_visible_but_optional_in_readiness(tmp_path):
+    status = standalone_storage_status(SimpleNamespace(runtime_dir=tmp_path))
+
+    evidence = next(
+        item for item in status["stores"] if item["id"] == "tenant_signal_evidence"
+    )
+
+    assert evidence["required"] is False
+    assert evidence["state"] == "MISSING"

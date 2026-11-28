@@ -102,6 +102,14 @@ _DATABASES = (
         "market_timeframe_watch_v2": {"tenant_id", "subject_id", "symbol", "timeframe", "enabled", "created_at", "last_processed_candle", "last_signal", "last_status", "last_error"},
         "market_timeframe_results_v2": {"tenant_id", "subject_id", "symbol", "timeframe", "candle_at", "result_json", "recorded_at"},
     }),
+    ("tenant_signal_evidence", "tenant-signal-evidence.sqlite3", False, {
+        "tenant_signal_evidence": {
+            "tenant_id", "subject_id", "source_id", "signal_id", "symbol",
+            "timeframe", "direction", "model_version", "evidence_score",
+            "score_semantics", "candle_close_at", "observed_at", "valid_until",
+            "provenance",
+        },
+    }),
     ("news_evidence", "news-evidence.sqlite3", False, {
         "tenant_news_evidence": {
             "tenant_id", "subject_id", "evidence_id", "source_id", "fingerprint",

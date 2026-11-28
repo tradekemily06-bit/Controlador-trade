@@ -364,10 +364,10 @@ def test_missing_news_and_calendar_stores_are_optional_until_configured():
         backups = root / "backups"
         runtime.mkdir()
         result = SQLiteBackupService(runtime, backups).backup(
-            ["news_evidence", "economic_calendar"]
+            ["news_evidence", "economic_calendar", "tenant_signal_evidence"]
         )
     assert [item["status"] for item in result["results"]] == [
-        "NOT_INITIALIZED", "NOT_INITIALIZED"
+        "NOT_INITIALIZED", "NOT_INITIALIZED", "NOT_INITIALIZED"
     ]
 
 

@@ -39,6 +39,7 @@ BACKUP_DATABASES = {
 # first used. Their absence is not a failed backup; if present, they are backed up.
 OPTIONAL_BACKUP_DATABASES = frozenset({
     "market_timeframe_monitor",
+    "tenant_signal_evidence",
     "ctrader_oauth_state",
     "ctrader_oauth_tokens",
     "news_evidence",
