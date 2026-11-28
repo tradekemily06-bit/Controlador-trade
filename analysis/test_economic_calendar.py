@@ -10,6 +10,18 @@ from analysis.economic_calendar import (
 )
 
 
+def _normalize(payload, *, source_id="ecb", source_tier="OFFICIAL_PRIMARY"):
+    return normalize_calendar_event(
+        payload, trusted_source_id=source_id, trusted_source_tier=source_tier
+    )
+
+
+def _normalize_batch(payloads, *, source_id="ecb", source_tier="OFFICIAL_PRIMARY"):
+    return normalize_calendar_batch(
+        payloads, trusted_source_id=source_id, trusted_source_tier=source_tier
+    )
+
+
 def _event(**overrides):
     payload = {
         "source_id": "ecb",
@@ -33,7 +45,7 @@ def _event(**overrides):
 
 
 def test_normalizes_timezone_and_preserves_missing_consensus():
-    event = normalize_calendar_event(_event())
+    event = _normalize(_event())
     assert event.scheduled_at == datetime(2026, 12, 10, 12, 15, tzinfo=timezone.utc)
     assert event.observed_at == datetime(2026, 12, 10, 13, 15, 8, tzinfo=timezone.utc)
     assert event.actual == "2.15"
@@ -43,7 +55,7 @@ def test_normalizes_timezone_and_preserves_missing_consensus():
 
 
 def test_revised_previous_value_is_kept_separate_from_previous():
-    event = normalize_calendar_event(_event(
+    event = _normalize(_event(
         status="REVISED",
         previous="2.40",
         revised_previous="2.35",
@@ -57,35 +69,35 @@ def test_revised_previous_value_is_kept_separate_from_previous():
 @pytest.mark.parametrize("timestamp", ["2026-12-10T13:15:00", "not-a-date", None])
 def test_rejects_missing_or_timezone_naive_scheduled_timestamp(timestamp):
     with pytest.raises(ValueError):
-        normalize_calendar_event(_event(scheduled_at=timestamp))
+        _normalize(_event(scheduled_at=timestamp))
 
 
 @pytest.mark.parametrize("value", [True, "NaN", "Infinity", "not-a-number"])
 def test_rejects_invalid_numeric_values(value):
     with pytest.raises(ValueError):
-        normalize_calendar_event(_event(actual=value))
+        _normalize(_event(actual=value))
 
 
 def test_rejects_non_https_source_url_and_unknown_source_tier():
     with pytest.raises(ValueError):
-        normalize_calendar_event(_event(source_url="http://example.com/event"))
+        _normalize(_event(source_url="http://example.com/event"))
     with pytest.raises(ValueError):
-        normalize_calendar_event(_event(source_tier="UNVERIFIED"))
+        _normalize(_event(), source_tier="UNVERIFIED")
 
 
 def test_batch_rejects_duplicate_publisher_event_ids_without_cross_source_merge():
-    first = normalize_calendar_event(_event())
-    second = normalize_calendar_event(_event(source_id="another_provider"))
+    first = _normalize(_event())
+    second = _normalize(_event(), source_id="another_provider")
     assert first.corroboration_fingerprint == second.corroboration_fingerprint
     assert first.source_key != second.source_key
     with pytest.raises(ValueError):
-        normalize_calendar_batch([_event(), _event()])
-    assert len(normalize_calendar_batch([_event(), _event(source_id="another_provider")])) == 2
+        _normalize_batch([_event(), _event()])
+    assert len(_normalize_batch([_event(), _event()], source_id="ecb")) == 2
 
 
 def test_calendar_batch_rejects_non_list_input():
     with pytest.raises(ValueError):
-        normalize_calendar_batch("not-a-batch")
+        _normalize_batch("not-a-batch")
 
 
 @pytest.mark.parametrize(("field", "value"), [
@@ -98,4 +110,14 @@ def test_calendar_batch_rejects_non_list_input():
 ])
 def test_rejects_coercion_of_invalid_source_metadata(field, value):
     with pytest.raises(ValueError):
-        normalize_calendar_event(_event(**{field: value}))
+        _normalize(_event(**{field: value}))
+
+
+def test_source_identity_and_tier_cannot_be_forged_by_provider_payload():
+    event = _normalize(
+        _event(source_id="attacker", source_tier="OFFICIAL_PRIMARY"),
+        source_id="trusted-provider",
+        source_tier="TRUSTED_MEDIA",
+    )
+    assert event.source_id == "trusted-provider"
+    assert event.source_tier == "TRUSTED_MEDIA"
