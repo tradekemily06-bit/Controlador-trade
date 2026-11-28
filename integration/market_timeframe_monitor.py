@@ -461,6 +461,12 @@ class MarketTimeframeMonitor:
             "worker_running": bool(self._thread is not None and self._thread.is_alive()),
             "poll_interval_seconds": self.poll_interval_seconds,
             "close_grace_seconds": self.close_grace_seconds,
+            "provider_clock_configured": self.provider_clock is not None,
+            "session_calendar_status": (
+                "VERIFIED_PROVIDER_CALLBACK_CONFIGURED"
+                if self.session_boundary_provider is not None
+                else "D1_W1_FAIL_CLOSED"
+            ),
             "worker_error_class": self._worker_error,
             "scope": "TENANT_AND_SUBJECT",
             "execution_authorized": False,

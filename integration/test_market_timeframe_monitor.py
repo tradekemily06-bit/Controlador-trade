@@ -354,3 +354,12 @@ def test_daily_watch_without_session_calendar_is_marked_unavailable_not_crashing
     assert analyzer.calls == []
     assert monitor.subscriptions()[0]["status"] == "DATA_UNAVAILABLE"
     assert "verified provider session calendar" in monitor.subscriptions()[0]["last_error"]
+
+
+
+def test_monitor_status_discloses_daily_weekly_fail_closed_boundary(tmp_path):
+    monitor = MarketTimeframeMonitor(
+        tmp_path / "session-status.sqlite3", FakeAnalyzer(), default_context=OWNER
+    )
+    assert monitor.status()["session_calendar_status"] == "D1_W1_FAIL_CLOSED"
+    assert monitor.status()["provider_clock_configured"] is False
