@@ -438,6 +438,8 @@ def analyze_backtest_overfitting(
 
     strategy_count = width or 0
     periods = len(matrix)
+    if periods * strategy_count > 2_000_000:
+        raise ValueError("strategy return matrix exceeds the 2,000,000-cell safety limit")
     block_length = periods // n_blocks
     all_blocks = tuple(range(n_blocks))
     half = n_blocks // 2
@@ -447,10 +449,25 @@ def analyze_backtest_overfitting(
     selected_oos_sharpes: list[float] = []
     selected_oos_means: list[float] = []
 
-    def sharpe(indices: list[int], column: int) -> float:
-        sample = [matrix[index][column] for index in indices]
-        mean = sum(sample) / len(sample)
-        variance = sum((value - mean) ** 2 for value in sample) / (len(sample) - 1) if len(sample) > 1 else 0.0
+    # Center each strategy once, then aggregate per-block moments. This keeps
+    # each CSCV split bounded by O(blocks * strategies), not O(periods * strategies).
+    global_means = [sum(row[column] for row in matrix) / periods for column in range(strategy_count)]
+    block_centered_sums = [[0.0] * strategy_count for _ in range(n_blocks)]
+    block_centered_squares = [[0.0] * strategy_count for _ in range(n_blocks)]
+    for row_index, row in enumerate(matrix):
+        block = row_index // block_length
+        for column, value in enumerate(row):
+            centered = value - global_means[column]
+            block_centered_sums[block][column] += centered
+            block_centered_squares[block][column] += centered * centered
+
+    def sharpe_for_blocks(blocks: tuple[int, ...], column: int) -> float:
+        count = block_length * len(blocks)
+        centered_sum = sum(block_centered_sums[block][column] for block in blocks)
+        centered_squares = sum(block_centered_squares[block][column] for block in blocks)
+        mean = global_means[column] + centered_sum / count
+        variance_numerator = centered_squares - centered_sum * centered_sum / count
+        variance = max(variance_numerator, 0.0) / (count - 1) if count > 1 else 0.0
         std = math.sqrt(variance)
         # A zero-variance series receives zero rather than infinite Sharpe.
         return mean / std if std > 0 else 0.0
@@ -459,13 +476,11 @@ def analyze_backtest_overfitting(
     for in_blocks in combinations(all_blocks, half):
         in_set = set(in_blocks)
         out_blocks = tuple(block for block in all_blocks if block not in in_set)
-        in_indices = [block * block_length + offset for block in in_blocks for offset in range(block_length)]
-        out_indices = [block * block_length + offset for block in out_blocks for offset in range(block_length)]
-        in_sharpes = [sharpe(in_indices, column) for column in range(strategy_count)]
+        in_sharpes = [sharpe_for_blocks(in_blocks, column) for column in range(strategy_count)]
         winner = max(range(strategy_count), key=lambda column: (in_sharpes[column], -column))
         selection_frequency[winner] += 1
 
-        out_sharpes = [sharpe(out_indices, column) for column in range(strategy_count)]
+        out_sharpes = [sharpe_for_blocks(out_blocks, column) for column in range(strategy_count)]
         winner_sharpe = out_sharpes[winner]
         less = sum(value < winner_sharpe for value in out_sharpes)
         equal = sum(value == winner_sharpe for value in out_sharpes)
@@ -473,7 +488,7 @@ def analyze_backtest_overfitting(
         omega = min(max(average_rank / (strategy_count + 1.0), epsilon), 1.0 - epsilon)
         logits.append(math.log(omega / (1.0 - omega)))
         selected_oos_sharpes.append(winner_sharpe)
-        selected_oos_means.append(sum(matrix[index][winner] for index in out_indices) / len(out_indices))
+        selected_oos_means.append(global_means[winner] + sum(block_centered_sums[block][winner] for block in out_blocks) / (block_length * half))
 
     pbo = sum(value <= 0.0 for value in logits) / split_count
     return {
