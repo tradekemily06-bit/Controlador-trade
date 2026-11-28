@@ -35,7 +35,7 @@ Status meanings:
 | Economic calendar, revisions and source provenance | `analysis/economic_calendar.py`, `integration/economic_calendar_ingestion.py` | Normalization, append-only observations and polling worker present; official central-bank/statistical-agency adapters and real ingestion schedule pending |
 | Cross-asset/cross-market context graph | `docs/ADVANCED_INTELLIGENCE_TARGET.md` | Target requirement; persistent evidence-backed graph not yet evidenced as complete |
 | Adversarial synthesis and counterevidence | `core/unified_intelligence.py`, existing context/decision components | Shared orchestration foundation present; complete multi-source conflict resolution remains partial |
-| Forecast evaluation and calibration | Existing scoring/calibration modules under `core/` and `analysis/` | Diagnostics exist; no calibrated win/profit probability may be displayed without representative out-of-sample evidence |
+| Forecast evaluation and calibration | `analysis/probability_calibration.py`, `analysis/tenant_forecast_audit_store.py`, existing scoring modules | Diagnostics and append-first tenant forecast audit store exist; no calibrated win/profit probability may be displayed without representative out-of-sample evidence |
 
 ## 3. Estudo
 
@@ -72,7 +72,7 @@ Status meanings:
 | Broker/platform connections and provider status | `integration/`, `data/` | MT5 relay and cTrader adapter foundations present; live credentials, account handshakes and each provider's interval support require external proof |
 | User settings, preferences and account/tenant controls | `saas/`, `security/`, `integration/` | Code foundation present; production identity and shared persistence pending |
 | Notifications, devices, subscription revocation and delivery status | `integration/`, `security/`, `web/pwa/` | Outbox, Web Push primitives and workers present; production KMS/VAPID, DNS pinning, hosted worker and physical-device tests pending |
-| Audit, history, security events and access controls | `audit/`, `security/`, `core/` | Code/test foundation present; shared durable production audit pending |
+| Audit, history, security events and access controls | `audit/`, `security/`, `security_audit.py`, `core/` | Code/test foundation present; optional local security-audit SQLite is backup/readiness tracked when placed at `security-audit.sqlite3` under CONTROLADOR_RUNTIME_DIR; shared durable production audit pending |
 | Backup, restore, retention and recovery | `core/sqlite_backup_service.py`, `core/sqlite_backup_scheduler.py`, `integration/standalone_foundation_status.py` | Local backup/restore and readiness present; off-host backups, shared DB, scheduled hosted backup and restore drill pending |
 | Internal admin and operational diagnostics | `standalone_app.py`, `integration/`, `core/` | Code foundation present; operator-facing deployment acceptance pending |
 | Optional commercial/affiliate subsystem | `PROJECT_MASTER_SPEC.md` | Scope reference only; not evidenced as active in this standalone delivery. If ever activated, keep it isolated under Central/internal services and prohibit any influence on signal, risk or execution decisions |

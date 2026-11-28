@@ -71,3 +71,16 @@ def test_signal_evidence_store_is_visible_but_optional_in_readiness(tmp_path):
 
     assert evidence["required"] is False
     assert evidence["state"] == "MISSING"
+
+
+
+def test_forecast_and_security_audit_stores_are_optional_readiness_entries(tmp_path):
+    status = standalone_storage_status(SimpleNamespace(runtime_dir=tmp_path))
+
+    forecast = next(item for item in status["stores"] if item["id"] == "tenant_forecast_audit")
+    security = next(item for item in status["stores"] if item["id"] == "security_audit")
+
+    assert forecast["required"] is False
+    assert forecast["state"] == "MISSING"
+    assert security["required"] is False
+    assert security["state"] == "MISSING"

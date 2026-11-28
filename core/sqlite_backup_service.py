@@ -31,6 +31,8 @@ BACKUP_DATABASES = {
     "ctrader_oauth_state": "tenant-ctrader-oauth-state.sqlite3",
     "ctrader_oauth_tokens": "tenant-ctrader-oauth-tokens.sqlite3",
     "tenant_signal_evidence": "tenant-signal-evidence.sqlite3",
+    "tenant_forecast_audit": "tenant-forecast-audit.sqlite3",
+    "security_audit": "security-audit.sqlite3",
     "news_evidence": "news-evidence.sqlite3",
     "economic_calendar": "economic-calendar.sqlite3",
 }
@@ -40,6 +42,8 @@ BACKUP_DATABASES = {
 OPTIONAL_BACKUP_DATABASES = frozenset({
     "market_timeframe_monitor",
     "tenant_signal_evidence",
+    "tenant_forecast_audit",
+    "security_audit",
     "ctrader_oauth_state",
     "ctrader_oauth_tokens",
     "news_evidence",

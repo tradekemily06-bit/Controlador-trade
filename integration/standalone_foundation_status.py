@@ -110,6 +110,18 @@ _DATABASES = (
             "provenance",
         },
     }),
+    ("tenant_forecast_audit", "tenant-forecast-audit.sqlite3", False, {
+        "tenant_probability_forecasts": {
+            "tenant_id", "subject_id", "forecast_id", "symbol", "timeframe",
+            "direction", "model_version", "probability", "forecast_at",
+            "resolved_at", "outcome", "provenance", "out_of_sample",
+        },
+    }),
+    ("security_audit", "security-audit.sqlite3", False, {
+        "security_events": {
+            "id", "timestamp", "request_id", "method", "path", "status", "client_hash",
+        },
+    }),
     ("news_evidence", "news-evidence.sqlite3", False, {
         "tenant_news_evidence": {
             "tenant_id", "subject_id", "evidence_id", "source_id", "fingerprint",
