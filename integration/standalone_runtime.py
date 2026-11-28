@@ -10,6 +10,7 @@ from typing import Any, Mapping
 from analysis.decision_store import DecisionStore
 from analysis.tenant_signal_evidence_store import TenantSignalEvidenceStore
 from analysis.tenant_signal_outcome_store import TenantSignalOutcomeStore
+from analysis.tenant_strategy_trial_ledger import TenantStrategyTrialLedger
 from assistant.chat_service import EcosystemAssistant
 from assistant.conversation_store import AssistantConversationStore
 from security.sqlite_tenant_storage import SQLiteTenantStorage
@@ -397,6 +398,10 @@ class StandaloneRuntime:
             self.signal_outcome_store = TenantSignalOutcomeStore(
                 self.signal_evidence_store
             )
+            # Share the already allowlisted and backed-up signal-evidence database.
+            self.strategy_trial_ledger = TenantStrategyTrialLedger(
+                self.runtime_dir / "tenant-signal-evidence.sqlite3"
+            )
             # Rebuild configured generic provider sessions only after a fresh
             # tenant-scoped vault resolution and provider handshake.
             self.provider_recovery_status = self.tenant_provider_connection_service.reconnect_available(
@@ -655,6 +660,8 @@ class StandaloneRuntime:
                 market_analyzer=self.market_analysis_service,
                 market_data_registry=self.market_data_registry,
                 economic_calendar_store=self.economic_calendar_store,
+                strategy_trial_ledger=self.strategy_trial_ledger,
+                strategy_trial_context=self.local_tenant_context,
             )
             if self.economic_calendar_worker is not None:
                 self.economic_calendar_worker.start()
