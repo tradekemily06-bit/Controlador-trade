@@ -27,6 +27,7 @@ from integration.controlled_automation_service import ControlledAutomationServic
 from core.senior_risk_reasoning import RiskDomain, RiskObservation
 from data.models import Candle
 from integration.rss_news_provider import NewsProvider, RSSNewsProvider, UnconfiguredNewsProvider
+from analysis.news_event_intelligence import classify_news_batch
 from security.identity_boundary import IdentityPolicy
 from security.production_operation_gate import ProductionOperationGate
 from security.request_context import ProductionRequestContext, require_production_context
@@ -306,6 +307,8 @@ class EcosystemService:
             "status": provider_status,
             "item_count": len(items),
             "items": items,
+            "classified_items": classify_news_batch(self.news.latest(symbol=symbol, limit=limit)),
+            "classification": "CONSERVATIVE_HEADLINE_RULES",
             "execution_authorized": False,
         }
 
