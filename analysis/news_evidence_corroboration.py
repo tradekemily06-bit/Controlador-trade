@@ -190,16 +190,33 @@ class SQLiteNewsEvidenceStore:
             )
             return cursor.rowcount == 1
 
-    def load(self) -> list[NewsEvidenceRecord]:
+    def load(
+        self,
+        *,
+        since: datetime | None = None,
+        limit: int = 5000,
+    ) -> list[NewsEvidenceRecord]:
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50000:
+            raise ValueError("news evidence load limit must be between 1 and 50000")
+        parameters: list[object] = [self.tenant_id, self.subject_id]
+        time_filter = ""
+        if since is not None:
+            cutoff = _aware_timestamp(since, "since").isoformat()
+            time_filter = " AND COALESCE(published_at, ingested_at) >= ?"
+            parameters.append(cutoff)
+        parameters.append(limit)
         with closing(self._connect()) as connection:
             rows = connection.execute(
                 """
                 SELECT payload_json FROM tenant_news_evidence
                 WHERE tenant_id = ? AND subject_id = ?
-                ORDER BY ingested_at ASC, evidence_id ASC
+                """ + time_filter + """
+                ORDER BY ingested_at DESC, evidence_id DESC
+                LIMIT ?
                 """,
-                (self.tenant_id, self.subject_id),
+                tuple(parameters),
             ).fetchall()
+        rows.reverse()
         records = []
         for row in rows:
             payload = json.loads(row["payload_json"])
@@ -227,6 +244,8 @@ class SQLiteNewsEvidenceStore:
 class NewsEvidenceCorroborator:
     """Candidate matcher; persistence is supplied by an owner-scoped store."""
 
+    MAX_IN_MEMORY_RECORDS = 5000
+
     def __init__(
         self,
         policies: Mapping[str, NewsSourcePolicy],
@@ -245,7 +264,13 @@ class NewsEvidenceCorroborator:
         self._max_age = max_age
         self._similarity_threshold = similarity_threshold
         self._store = store
-        self._records: list[NewsEvidenceRecord] = store.load() if store is not None else []
+        self._records: list[NewsEvidenceRecord] = (
+            store.load(
+                since=datetime.now(timezone.utc) - max_age,
+                limit=self.MAX_IN_MEMORY_RECORDS,
+            )
+            if store is not None else []
+        )
 
     @property
     def store(self) -> SQLiteNewsEvidenceStore | None:
@@ -316,6 +341,20 @@ class NewsEvidenceCorroborator:
             published = _aware_timestamp(item.published_at, "published_at")
             if published > observed + timedelta(minutes=5):
                 raise ValueError("published_at cannot be materially in the future")
+            if observed - published > self._max_age:
+                return {
+                    "status": "STALE_SOURCE_ITEM",
+                    "fact_status": "UNVERIFIED_REPORT",
+                    "execution_authorized": False,
+                }
+
+        # Keep matching work bounded to the configured evidence window and a
+        # hard cap, while the append-only store remains the durable audit trail.
+        cutoff = observed - self._max_age
+        self._records = [
+            record for record in self._records
+            if record.ingested_at >= cutoff
+        ][-self.MAX_IN_MEMORY_RECORDS:]
 
         tokens = _tokens(item.title)
         canonical = " ".join(sorted(tokens))
