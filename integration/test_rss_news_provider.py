@@ -77,6 +77,12 @@ def test_rss_provider_rejects_non_https_and_unapproved_domains():
         RSSNewsProvider(["https://attacker.example/feed"])
 
 
+def test_rss_provider_accepts_official_brazilian_primary_sources():
+    provider = RSSNewsProvider(["https://www.bcb.gov.br/rss/noticias"])
+    assert provider.status()["configured"] is True
+    assert provider.status()["feed_count"] == 1
+
+
 def test_rss_provider_rejects_redirect_to_unapproved_domain():
     provider = RSSNewsProvider(
         ["https://www.cnbc.com/feed"],
