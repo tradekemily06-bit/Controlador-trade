@@ -26,7 +26,7 @@ from core.senior_context_orchestrator import SeniorContextInput, SeniorContextOr
 from integration.controlled_automation_service import ControlledAutomationService
 from core.senior_risk_reasoning import RiskDomain, RiskObservation
 from data.models import Candle
-from integration.rss_news_provider import NewsProvider, UnconfiguredNewsProvider
+from integration.rss_news_provider import NewsProvider, RSSNewsProvider, UnconfiguredNewsProvider
 from security.identity_boundary import IdentityPolicy
 from security.production_operation_gate import ProductionOperationGate
 from security.request_context import ProductionRequestContext, require_production_context
@@ -41,7 +41,7 @@ class EcosystemService:
         self.store = decision_store or DecisionStore()
         self.memory: list[DecisionRecord] = self.store.load()
         self.risk = RiskManager()
-        self.news = news_provider or UnconfiguredNewsProvider()
+        self.news = news_provider if news_provider is not None else RSSNewsProvider.from_environment()
         self.identity = IdentityPolicy()
         self.production_storage = production_storage or ProductionStoragePolicy()
         self.production_gate = ProductionOperationGate(self.production_storage)
@@ -362,7 +362,10 @@ class EcosystemService:
         identity = self.identity.status()
         observability = self.operational_observability()
         mt5_status = self._mt5_demo_status_from_observability(observability)
-        components = {"decision_engine": "ONLINE", "memory": "ONLINE", "replay": "ONLINE", "statistics": "ONLINE", "risk_gate": "ONLINE", "automation": "ONLINE", "learning": "ONLINE", "learning_persistence": "SQLITE" if self.learning_state_store is not None else "IN_MEMORY", "notification_persistence": "SQLITE" if self.notification_state_store is not None else "IN_MEMORY", "news": "AGUARDANDO_FONTE", "mt5_demo": mt5_status, "real": "DESABILITADO", "saas": "FOUNDATION", "production_storage": str(production_storage["state"]), "production_operation_gate": str(production_gate["storage_state"]), "trusted_identity_provider": str(identity["trusted_identity_provider"]), "tenant_isolation": str(identity["tenant_isolation"])}
+        news_status_method = getattr(self.news, "status", None)
+        news_provider_status = news_status_method() if callable(news_status_method) else {"configured": False, "live": False}
+        news_component = "ONLINE" if news_provider_status.get("live") else ("FONTE_CONFIGURADA_SEM_DADOS" if news_provider_status.get("configured") else "AGUARDANDO_FONTE")
+        components = {"decision_engine": "ONLINE", "memory": "ONLINE", "replay": "ONLINE", "statistics": "ONLINE", "risk_gate": "ONLINE", "automation": "ONLINE", "learning": "ONLINE", "learning_persistence": "SQLITE" if self.learning_state_store is not None else "IN_MEMORY", "notification_persistence": "SQLITE" if self.notification_state_store is not None else "IN_MEMORY", "news": news_component, "mt5_demo": mt5_status, "real": "DESABILITADO", "saas": "FOUNDATION", "production_storage": str(production_storage["state"]), "production_operation_gate": str(production_gate["storage_state"]), "trusted_identity_provider": str(identity["trusted_identity_provider"]), "tenant_isolation": str(identity["tenant_isolation"])}
         alerts = build_health_alerts(components)
         health = "CRITICAL" if any(alert.severity == "CRITICAL" for alert in alerts) else ("WARNING" if alerts else "OK")
         return {"mode": "SIMULACAO", "execution_allowed": False, "execution": "bloqueada_por_padrao", "decision_engine": components["decision_engine"], "memory": components["memory"], "replay": components["replay"], "statistics": components["statistics"], "risk_gate": components["risk_gate"], "learning": components["learning"], "news": components["news"], "mt5_demo": components["mt5_demo"], "real": components["real"], "saas": components["saas"], "components": components, "health": health, "alerts": [alert.to_dict() for alert in alerts], "memory_persistence": "SQLITE" if self.store.database_path else "IN_MEMORY", "learning_persistence": "SQLITE" if self.learning_state_store is not None else "IN_MEMORY", "notification_persistence": "SQLITE" if self.notification_state_store is not None else "IN_MEMORY", "production_storage": production_storage, "production_operation_gate": production_gate, "operational_observability": observability, **identity}
