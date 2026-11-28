@@ -4,7 +4,12 @@ import math
 
 import pytest
 
-from analysis.strategy_robustness import evaluate_strategy_robustness
+from analysis.strategy_robustness import (
+    _deflated_benchmark,
+    _normal_ppf,
+    _sharpe_variance_numerator,
+    evaluate_strategy_robustness,
+)
 
 
 def _returns():
@@ -22,6 +27,7 @@ def _evaluate(**overrides):
         "returns": _returns(),
         "benchmark_returns": _benchmark(),
         "stress_returns": (0.003, 0.004, 0.005, -0.0005, 0.003) * 24,
+        "selection_trial_sharpes": [1.0],
         "trade_count": 48,
         "stress_cost_multiplier": 2.0,
         "num_trials": 1,
@@ -33,6 +39,8 @@ def _evaluate(**overrides):
         "seed": 7,
     }
     args.update(overrides)
+    if "selection_trial_sharpes" not in overrides:
+        args["selection_trial_sharpes"] = [1.0 + 0.01 * i for i in range(args["num_trials"])]
     return evaluate_strategy_robustness(**args)
 
 
@@ -52,7 +60,7 @@ def test_robustness_requires_transaction_costs():
 
 def test_robustness_requires_aligned_benchmark():
     result = evaluate_strategy_robustness(
-        _returns(), benchmark_returns=None, stress_returns=None, trade_count=48, stress_cost_multiplier=2.0, num_trials=1,
+        _returns(), benchmark_returns=None, stress_returns=None, selection_trial_sharpes=None, trade_count=48, stress_cost_multiplier=2.0, num_trials=1,
         periods_per_year=252, out_of_sample=True, costs_included=True,
     )
     assert result["verdict"] == "INSUFFICIENT"
@@ -80,6 +88,7 @@ def test_robustness_reports_auditable_metrics_without_granting_promotion():
     result = _evaluate()
     assert result["sample_count"] == 120
     assert result["num_trials"] == 1
+    assert result["selection_trial_count"] == 1
     assert result["benchmark_sample_count"] == 120
     assert result["annualized_sharpe"] is not None
     assert result["probabilistic_sharpe_ratio"] is not None
@@ -94,6 +103,7 @@ def test_multiple_trials_reduce_or_preserve_not_inflate_deflated_confidence():
     many = _evaluate(num_trials=50)
     assert single["deflated_sharpe_ratio"] is not None
     assert many["deflated_sharpe_ratio"] is not None
+    assert many["selection_trial_count"] == 50
     assert many["deflated_sharpe_ratio"] <= single["deflated_sharpe_ratio"] + 1e-12
 
 
@@ -124,3 +134,26 @@ def test_robustness_requires_at_least_thirty_completed_trades():
 def test_cost_stress_multiplier_must_be_at_least_two():
     with pytest.raises(ValueError):
         _evaluate(stress_cost_multiplier=1.5)
+
+
+def test_psr_uses_non_excess_kurtosis_convention():
+    # For Gaussian returns, excess kurtosis is zero and non-excess kurtosis is three.
+    assert _sharpe_variance_numerator(2.0, 0.0, 0.0) == pytest.approx(3.0)
+
+
+def test_deflated_benchmark_uses_cross_trial_sharpe_dispersion():
+    expected_max = (1.0 - 0.5772156649) * _normal_ppf(0.5) + 0.5772156649 * _normal_ppf(1.0 - 1.0 / (2.0 * math.e))
+    assert _deflated_benchmark([0.5, 1.5]) == pytest.approx(math.sqrt(0.5) * expected_max)
+    assert _deflated_benchmark([1.0, 1.0]) == pytest.approx(0.0)
+
+
+def test_dsr_refuses_to_guess_missing_selection_trial_results():
+    result = _evaluate(selection_trial_sharpes=None)
+    assert result["verdict"] == "INSUFFICIENT"
+    assert result["deflated_sharpe_ratio"] is None
+    assert "every strategy trial" in result["reasons"][0]
+
+
+def test_dsr_requires_exactly_one_selection_sharpe_per_trial():
+    with pytest.raises(ValueError):
+        _evaluate(num_trials=3, selection_trial_sharpes=[0.4, 0.5])
