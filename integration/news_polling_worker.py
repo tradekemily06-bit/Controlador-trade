@@ -55,6 +55,7 @@ class NewsPollingWorker:
         self._last_item_count = 0
         self._last_processed = 0
         self._last_errors = 0
+        self._last_items: tuple[Any, ...] = ()
 
     def run_once(self) -> dict[str, Any]:
         try:
@@ -85,6 +86,9 @@ class NewsPollingWorker:
                 self._last_processed = 0
                 self._last_errors = 0
                 return self.status()
+
+        with self._lock:
+            self._last_items = tuple(items)
 
         processed = 0
         errors = 0
@@ -146,6 +150,11 @@ class NewsPollingWorker:
             self._last_processed = processed
             self._last_errors = errors
             return self.status()
+
+    def latest_items(self) -> tuple[Any, ...]:
+        """Return the last polled batch without making another provider request."""
+        with self._lock:
+            return tuple(self._last_items)
 
     def start(self) -> None:
         with self._lock:
