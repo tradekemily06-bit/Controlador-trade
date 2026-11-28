@@ -15,7 +15,7 @@ Licença: https://github.com/Marcikschmid/OpenTerminal/blob/main/LICENSE
 
 O Research Autopilot e o robustness scorecard oferecem uma abordagem útil: registrar o número de tentativas, avaliar retornos fora da amostra, corrigir a seleção entre múltiplas tentativas, usar bootstrap em blocos e observar estabilidade em janelas móveis. O projeto recebeu uma implementação independente e sem dependências NumPy em `analysis/strategy_robustness.py`.
 
-A função exige retornos explicitamente marcados como fora da amostra, custos incluídos e benchmark alinhado. Calcula PSR, DSR, intervalo bootstrap e estabilidade. Resultado `ROBUST_REQUIRES_REVIEW` não promove estratégia, não é probabilidade de lucro e não concede autoridade de execução. A função ainda precisa ser integrada a um fluxo real de backtest/Estudo e validada no CI.
+A função exige retornos explicitamente marcados como fora da amostra, pelo menos 30 operações concluídas, no mínimo 60 períodos, custos incluídos, benchmark alinhado e uma segunda execução com multiplicador de custos declarado de pelo menos 2x. Calcula PSR, DSR com correção pelo número de tentativas, intervalo bootstrap em blocos e estabilidade em janelas móveis. Se a variância estatística degenerar, abstém-se em vez de fabricar confiança. Resultado `ROBUST_REQUIRES_REVIEW` não promove estratégia, não é probabilidade de lucro e não concede autoridade de execução. A função ainda precisa ser integrada a um fluxo real de backtest/Estudo e validada no CI.
 
 ### Não duplicar: debate multiagente
 
