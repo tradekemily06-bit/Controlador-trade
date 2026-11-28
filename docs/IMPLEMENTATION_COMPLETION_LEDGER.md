@@ -343,3 +343,11 @@ Nothing is closed merely by being listed or implemented. Each checkbox needs a l
 - Code head `aabf60b9e6e7261a9c429886d7be4683fb1968cc`: CI run [46169604443](https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/46169604443) has passed P1.9, full test suite, dependency security audit, Python compilation, production container build and production health smoke; standalone analyst container build was still running at ledger update time, so the overall workflow is not yet marked passed. Windows PowerShell validation passed.
 - Catalogue documentation commit: `3bdc68885eeaa32f62dc75073ce717413ba1a7f3`. This ledger update is documentation-only.
 - Still open: full-article retrieval and claim/contradiction extraction; broad journalism feed validation and economic-calendar adapters; source freshness tests in deployed hosting; shared production database/KMS and multi-replica worker; browser/mobile closed-app push acceptance; real MT5/cTrader market feed validation; and Lovable screen-by-screen API acceptance. No Lovable UI was changed, no EA/FOMO added, no order execution or money movement enabled, and no PR merge/deployment performed.
+
+
+### Final CI result for the news integration code head
+
+- CI run [46169604443](https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/46169604443) completed successfully on code head `aabf60b9e6e7261a9c429886d7be4683fb1968cc`.
+- All four jobs passed: main CI (P1.9 robustness tests, full suite, dependency audit, Python compilation, production container build/health smoke and standalone analyst container build/health smoke), Windows PowerShell validation, protected-branch compatibility, and required commit-status publication.
+- The curated source catalogue and subsequent completion-ledger updates are documentation-only commits on top of the tested code head; no application code changed after the successful run.
+- This CI pass does not constitute live RSS feed acceptance, hosted worker continuity, multi-replica production storage, full-article verification, real broker market-data validation, push delivery with the app closed, or Lovable end-to-end acceptance.
