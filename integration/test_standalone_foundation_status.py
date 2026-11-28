@@ -84,3 +84,19 @@ def test_forecast_and_security_audit_stores_are_optional_readiness_entries(tmp_p
     assert forecast["state"] == "MISSING"
     assert security["required"] is False
     assert security["state"] == "MISSING"
+
+
+
+def test_forecast_and_security_audit_schema_are_checked_when_present(tmp_path):
+    from analysis.tenant_forecast_audit_store import TenantForecastAuditStore
+    from security_audit import SecurityAudit
+
+    TenantForecastAuditStore(tmp_path / "tenant-forecast-audit.sqlite3")
+    SecurityAudit(database_path=str(tmp_path / "security-audit.sqlite3"))
+
+    status = standalone_storage_status(SimpleNamespace(runtime_dir=tmp_path))
+    forecast = next(item for item in status["stores"] if item["id"] == "tenant_forecast_audit")
+    security = next(item for item in status["stores"] if item["id"] == "security_audit")
+
+    assert forecast["state"] == "HEALTHY"
+    assert security["state"] == "HEALTHY"

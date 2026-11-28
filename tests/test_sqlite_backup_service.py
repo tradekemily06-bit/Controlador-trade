@@ -399,3 +399,31 @@ def test_news_and_calendar_stores_are_backed_up_when_present():
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+def test_forecast_and_security_audit_stores_are_backed_up_when_present():
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        runtime = root / "runtime"
+        backups = root / "backups"
+        runtime.mkdir()
+        with sqlite3.connect(runtime / "tenant-forecast-audit.sqlite3") as db:
+            db.execute(
+                "CREATE TABLE tenant_probability_forecasts "
+                "(tenant_id TEXT, subject_id TEXT, forecast_id TEXT)"
+            )
+        with sqlite3.connect(runtime / "security-audit.sqlite3") as db:
+            db.execute(
+                "CREATE TABLE security_events "
+                "(id INTEGER PRIMARY KEY, timestamp REAL, request_id TEXT, method TEXT, "
+                "path TEXT, status INTEGER, client_hash TEXT)"
+            )
+
+        result = SQLiteBackupService(runtime, backups).backup(
+            ["tenant_forecast_audit", "security_audit"]
+        )
+
+        assert [item["status"] for item in result["results"]] == [
+            "BACKUP_CREATED", "BACKUP_CREATED"
+        ]
