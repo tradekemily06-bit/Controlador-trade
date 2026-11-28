@@ -9,7 +9,7 @@ This roadmap defines the evidence required to call the independent application c
 - No EA and no broker order submission. Market analysis and notifications are informational and require human review.
 - DEMO-first. REAL remains unavailable until separately reviewed, explicitly authorized, and validated; this roadmap does not authorize REAL execution.
 
-## Evidence status — 27 November 2026
+## Evidence status — 28 November 2026
 
 This is the current implementation boundary, not a release declaration:
 
@@ -95,4 +95,4 @@ The current automated CI run is evidence of code/test/build behavior only. It do
 
 ## Release definition
 
-The application is complete only when Phases A–E have their exit evidence, the existing Lovable UI is connected without visual changes, all seven areas pass end-to-end acceptance, live data and claimed notification channels are demonstrated, and the release is deployed with security, monitoring, backup and rollback in place.
+The application is complete only when Phases A–E have their exit evidence, the existing Lovable UI is connected without visual changes, all six visible areas pass end-to-end acceptance, live data and claimed notification channels are demonstrated, and the release is deployed with security, monitoring, backup and rollback in place.
