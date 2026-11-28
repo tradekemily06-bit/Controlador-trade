@@ -367,3 +367,11 @@ Nothing is closed merely by being listed or implemented. Each checkbox needs a l
 - Research replay is diagnostic only: `promotion_allowed=false`, `execution_authorized=false`, and no orders are submitted. No probability-of-profit claim is made.
 - Commits: `7dcebb39` (registered replay adapter), `a499ee58` (Estudo API wiring), `37c9f112` (integration tests).
 - GitHub has not yet reported a workflow run for exact latest test commit `37c9f112be5d2c24691e4faa2f1d4e08acb3d34b`; this increment is **not yet CI-validated**.
+
+
+## CI failure diagnosis and compatibility correction — 28 November 2026
+
+- CI run [46180914941](https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/46180914941) failed the full suite with 1 failure, 2,642 passed and 44 subtests passed. The failure was not in the newly added registered-strategy replay: an existing news-classification test expected the legacy limitation key `full_article_not_verified`, while the current classifier emitted the newer equivalent `not_verified_against_full_article`.
+- Restored the legacy audit key as an additional backward-compatible limitation while retaining the more explicit current key. No classification behavior or trust level was weakened.
+- Correction commit: `1b472d1a03b87dc1226ca4e2d6a6de4c5f13f358`.
+- GitHub had not yet exposed a workflow run for the correction commit at the time of this ledger update. The corrected code is therefore **not yet CI-validated**. Do not treat the prior failed run as a pass or the correction as validated until a fresh full run succeeds.
