@@ -169,3 +169,9 @@ Nothing is closed merely by being listed or implemented. Each checkbox needs a l
 - New commits after the previous ledger update: notification interval compatibility fix, test adjustment, publisher-group corroboration guard and regression test.
 - Full CI has not yet reported a result for the latest branch tip. Do not mark these changes as validated until the complete workflow passes.
 - No live broker session, hosted worker, shared production database, KMS, real push delivery, Lovable acceptance, merge or deployment was performed. SIMULAÇÃO remains the only enabled mode; REAL, order submission and money movement remain disabled.
+
+
+### CI completion confirmation — 28 November 2026
+- The corrected head `613a9c06bee085fe4c4bf2105665c8c906e2af4c` completed GitHub Actions run [46159301464](https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/46159301464) with conclusion SUCCESS.
+- Confirmed successful steps: P1.9 robustness tests, full test suite, dependency security audit, Python surface compilation, production container build and health smoke test, standalone analyst container build and health smoke test, Windows PowerShell validation, protected-branch compatibility check, and required commit-status publication.
+- This supersedes the earlier statement that CI was still pending for this head. It validates repository tests/builds only; it does not replace live-provider, production infrastructure, hosted-worker, push-device, or Lovable end-to-end acceptance.
