@@ -2213,3 +2213,24 @@ def test_remote_readiness_does_not_expose_shared_calendar_or_news_evidence_state
     assert status == "200 OK"
     assert "economic_calendar_ingestion" not in body
     assert "news_evidence" not in body
+
+
+
+def test_local_readiness_exposes_news_polling_worker_but_remote_does_not():
+    class FakeNewsWorker:
+        def status(self):
+            return {
+                "configured": True,
+                "worker_running": True,
+                "last_state": "POLL_SUCCEEDED",
+                "execution_authorized": False,
+            }
+
+    runtime = FakeRuntime()
+    runtime.news_polling_worker = FakeNewsWorker()
+    app = StandaloneWSGIApplication(runtime)
+    with patch.dict("os.environ", {"CONTROLADOR_SINGLE_USER_IDENTITY": "local-owner"}):
+        status, body = call_wsgi(app, "/api/readiness")
+    assert status == "200 OK"
+    assert body["news_polling"]["worker_running"] is True
+    assert body["news_polling"]["last_state"] == "POLL_SUCCEEDED"

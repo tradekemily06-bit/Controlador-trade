@@ -41,6 +41,7 @@ class FakeLock:
         ("notification_worker", "running"),
         ("backup_scheduler", "worker_running"),
         ("economic_calendar_worker", "worker_running"),
+        ("news_polling_worker", "worker_running"),
     ),
 )
 def test_runtime_keeps_process_lock_until_each_worker_has_stopped(

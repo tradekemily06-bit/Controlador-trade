@@ -859,6 +859,7 @@ class StandaloneWSGIApplication:
             assistant = getattr(self.runtime, "assistant", None)
             news_status = getattr(ecosystem, "news_status", None)
             calendar_worker = getattr(self.runtime, "economic_calendar_worker", None)
+            news_polling_worker = getattr(self.runtime, "news_polling_worker", None)
             news_evidence_correlator = getattr(ecosystem, "news_evidence_correlator", None)
             identity_middleware = os.getenv(
                 "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE", ""
@@ -969,6 +970,16 @@ class StandaloneWSGIApplication:
                         "configured": False,
                         "worker_running": False,
                         "status": "NOT_CONFIGURED",
+                        "execution_authorized": False,
+                    }
+                ),
+                "news_polling": (
+                    news_polling_worker.status()
+                    if callable(getattr(news_polling_worker, "status", None))
+                    else {
+                        "configured": False,
+                        "worker_running": False,
+                        "last_state": "NOT_CONFIGURED",
                         "execution_authorized": False,
                     }
                 ),

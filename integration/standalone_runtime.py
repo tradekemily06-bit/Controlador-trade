@@ -55,6 +55,7 @@ from integration.market_timeframe_monitor import MarketTimeframeMonitor
 from integration.notification_outbox_worker import NotificationOutboxWorker
 from integration.tenant_notification_outbox_worker import TenantNotificationOutboxWorker
 from integration.rss_news_provider import RSSNewsProvider
+from integration.news_polling_worker import NewsPollingWorker
 
 
 _REAL_MARKET_DATA_PROVIDER_IDS = frozenset({
@@ -226,6 +227,7 @@ class StandaloneRuntime:
         self.closed = False
         self.tenant_push_subscription_registry = tenant_push_subscription_registry
         self.economic_calendar_worker = economic_calendar_worker
+        self.news_polling_worker = None
         if economic_calendar_worker is not None and not all(
             callable(getattr(economic_calendar_worker, name, None))
             for name in ("start", "stop", "status")
@@ -480,6 +482,7 @@ class StandaloneRuntime:
                 news_provider=RSSNewsProvider.from_environment(),
                 news_evidence_correlator=news_evidence_correlator,
             )
+            self.news_provider = self.ecosystem_service.news
             self.intelligence = UnifiedIntelligence(
                 senior_context=self.ecosystem_service.senior_context
             )
@@ -644,6 +647,23 @@ class StandaloneRuntime:
             )
             if self.economic_calendar_worker is not None:
                 self.economic_calendar_worker.start()
+            provider_status = self.news_provider.status()
+            if news_evidence_correlator is not None and bool(provider_status.get("configured")):
+                try:
+                    news_interval = float(
+                        os.getenv("CONTROLADOR_NEWS_POLL_INTERVAL_SECONDS", "60")
+                    )
+                except ValueError as exc:
+                    raise RuntimeError(
+                        "CONTROLADOR_NEWS_POLL_INTERVAL_SECONDS deve ser numérico"
+                    ) from exc
+                self.news_polling_worker = NewsPollingWorker(
+                    self.news_provider,
+                    news_evidence_correlator,
+                    interval_seconds=news_interval,
+                    limit=50,
+                )
+                self.news_polling_worker.start()
         except Exception:
             workers = (
                 (getattr(self, "market_monitor", None), "worker_running"),
@@ -653,6 +673,7 @@ class StandaloneRuntime:
                 (getattr(self, "notification_worker", None), "running"),
                 (getattr(self, "backup_scheduler", None), "worker_running"),
                 (getattr(self, "economic_calendar_worker", None), "worker_running"),
+                (getattr(self, "news_polling_worker", None), "worker_running"),
             )
             still_running = _cleanup_failed_startup(self.process_lock, workers)
             if not still_running:
@@ -678,6 +699,7 @@ class StandaloneRuntime:
             (self.notification_worker, "running"),
             (self.backup_scheduler, "worker_running"),
             (getattr(self, "economic_calendar_worker", None), "worker_running"),
+            (getattr(self, "news_polling_worker", None), "worker_running"),
         )
         still_running = _stop_workers_and_report_active(workers)
 
