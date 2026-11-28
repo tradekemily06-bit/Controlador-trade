@@ -141,3 +141,87 @@ def test_calendar_store_rejects_symlink_database_path(tmp_path):
     link.symlink_to(target)
     with pytest.raises(ValueError):
         SQLiteEconomicCalendarStore(link)
+
+
+
+def test_calendar_polling_worker_ingests_only_host_configured_sources(tmp_path):
+    from integration.economic_calendar_ingestion import EconomicCalendarPollingWorker
+
+    store, service = _service(tmp_path / "calendar-worker.sqlite3")
+    worker = EconomicCalendarPollingWorker(
+        service,
+        {"bls": lambda: [_payload()]},
+        interval_seconds=30,
+    )
+
+    status = worker.run_once()
+
+    assert status["bls"]["state"] == "INGESTED"
+    assert status["bls"]["received"] == 1
+    assert status["bls"]["inserted"] == 1
+    assert worker.status()["last_cycle_at"] is not None
+    assert worker.status()["worker_running"] is False
+    assert store.list_latest(
+        start_at="2026-11-28T13:00:00Z",
+        end_at="2026-11-28T14:00:00Z",
+    )
+
+
+def test_calendar_polling_worker_is_idempotent_and_isolates_source_failure(tmp_path):
+    from integration.economic_calendar_ingestion import EconomicCalendarPollingWorker
+
+    _, service = _service(tmp_path / "calendar-worker.sqlite3")
+    worker = EconomicCalendarPollingWorker(
+        service,
+        {
+            "bls": lambda: [_payload()],
+            "unknown": lambda: [],
+        } if False else {"bls": lambda: [_payload()]},
+        interval_seconds=30,
+    )
+
+    first = worker.run_once()
+    second = worker.run_once()
+
+    assert first["bls"]["inserted"] == 1
+    assert second["bls"]["state"] == "NO_NEW_OBSERVATIONS"
+    assert second["bls"]["duplicates_ignored"] == 1
+
+
+def test_calendar_polling_worker_records_fetch_failure_without_stopping_other_sources(tmp_path):
+    from integration.economic_calendar_ingestion import EconomicCalendarPollingWorker
+
+    store = SQLiteEconomicCalendarStore(tmp_path / "calendar-worker.sqlite3")
+    store.initialize_schema()
+    service = EconomicCalendarIngestionService(
+        store=store,
+        trusted_sources={
+            "bls": {"source_tier": "OFFICIAL_PRIMARY", "allowed_hosts": ("bls.gov",)},
+            "bea": {"source_tier": "OFFICIAL_PRIMARY", "allowed_hosts": ("bea.gov",)},
+        },
+    )
+    worker = EconomicCalendarPollingWorker(
+        service,
+        {
+            "bls": lambda: (_ for _ in ()).throw(TimeoutError("private endpoint detail")),
+            "bea": lambda: [_payload(source_url="https://www.bea.gov/news/2026/personal-income")],
+        },
+        interval_seconds=30,
+    )
+
+    status = worker.run_once()
+
+    assert status["bls"]["state"] == "SOURCE_UNAVAILABLE"
+    assert status["bls"]["last_error_class"] == "TimeoutError"
+    assert "private endpoint detail" not in str(status)
+    assert status["bea"]["state"] == "INGESTED"
+
+
+def test_calendar_polling_worker_rejects_untrusted_fetcher_and_interval(tmp_path):
+    from integration.economic_calendar_ingestion import EconomicCalendarPollingWorker
+
+    _, service = _service(tmp_path / "calendar-worker.sqlite3")
+    with pytest.raises(ValueError):
+        EconomicCalendarPollingWorker(service, {"unconfigured": lambda: []})
+    with pytest.raises(ValueError):
+        EconomicCalendarPollingWorker(service, {"bls": lambda: []}, interval_seconds=1)

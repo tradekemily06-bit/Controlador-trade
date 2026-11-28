@@ -189,6 +189,8 @@ class StandaloneRuntime:
         ctrader_oauth_redirect_uri: str | None = None,
         ctrader_refresh_lease_provider=None,
         ctrader_transport_factory=None,
+        economic_calendar_worker=None,
+        economic_calendar_store=None,
     ) -> None:
         configured_identity = os.getenv("CONTROLADOR_SINGLE_USER_IDENTITY", "").strip()
         if not configured_identity:
@@ -207,6 +209,18 @@ class StandaloneRuntime:
         self.process_lock.acquire()
         self.closed = False
         self.tenant_push_subscription_registry = tenant_push_subscription_registry
+        self.economic_calendar_worker = economic_calendar_worker
+        if economic_calendar_worker is not None and not all(
+            callable(getattr(economic_calendar_worker, name, None))
+            for name in ("start", "stop", "status")
+        ):
+            self.process_lock.release()
+            raise TypeError("economic_calendar_worker must implement start, stop and status")
+        self.economic_calendar_store = (
+            economic_calendar_store
+            if economic_calendar_store is not None
+            else getattr(getattr(economic_calendar_worker, "service", None), "store", None)
+        )
 
         try:
             fiscal_database = self.runtime_dir / "fiscal-reserve.sqlite3"
@@ -595,7 +609,10 @@ class StandaloneRuntime:
                 intelligence=self.intelligence,
                 market_analyzer=self.market_analysis_service,
                 market_data_registry=self.market_data_registry,
+                economic_calendar_store=self.economic_calendar_store,
             )
+            if self.economic_calendar_worker is not None:
+                self.economic_calendar_worker.start()
         except Exception:
             workers = (
                 (getattr(self, "market_monitor", None), "worker_running"),
@@ -604,6 +621,7 @@ class StandaloneRuntime:
                 (getattr(self, "tenant_notification_worker", None), "running"),
                 (getattr(self, "notification_worker", None), "running"),
                 (getattr(self, "backup_scheduler", None), "worker_running"),
+                (getattr(self, "economic_calendar_worker", None), "worker_running"),
             )
             still_running = _cleanup_failed_startup(self.process_lock, workers)
             if not still_running:
@@ -628,6 +646,7 @@ class StandaloneRuntime:
             (getattr(self, "tenant_notification_worker", None), "running"),
             (self.notification_worker, "running"),
             (self.backup_scheduler, "worker_running"),
+            (getattr(self, "economic_calendar_worker", None), "worker_running"),
         )
         still_running = _stop_workers_and_report_active(workers)
 
