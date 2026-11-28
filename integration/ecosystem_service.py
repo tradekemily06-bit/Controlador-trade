@@ -47,6 +47,7 @@ class EcosystemService:
         self.news = news_provider if news_provider is not None else RSSNewsProvider.from_environment()
         self.news_evidence_correlator = news_evidence_correlator
         self.news_polling_worker = None
+        self.news_polling_managed = False
         self.identity = IdentityPolicy()
         self.production_storage = production_storage or ProductionStoragePolicy()
         self.production_gate = ProductionOperationGate(self.production_storage)
@@ -336,10 +337,13 @@ class EcosystemService:
                     getattr(item, "title", None),
                 )
             ]
+        elif self.news_polling_managed:
+            # The standalone runtime owns collection. If its worker is not
+            # configured, reads must not silently become ad-hoc network polls.
+            raw_items = []
         else:
-            # Compatibility for explicitly injected/test providers. In the
-            # standalone runtime the background worker is authoritative, so
-            # opening the Analysis area never triggers another network poll.
+            # Compatibility for direct service integrations outside the
+            # managed standalone runtime.
             raw_items = self.news.latest(symbol=symbol, limit=limit)
 
         raw_items = raw_items[:limit]
@@ -350,6 +354,30 @@ class EcosystemService:
             "live": False,
         }
         configured = bool(provider_status.get("configured", False))
+
+        evidence_errors = 0
+        if (
+            polling_worker is None
+            and not self.news_polling_managed
+            and self.news_evidence_correlator is not None
+        ):
+            # Direct, non-managed service use remains compatible, but source
+            # identity still must resolve through the explicit trusted policy.
+            ingested_at = datetime.now(timezone.utc)
+            source_resolver = getattr(
+                self.news_evidence_correlator, "source_id_for_url", None
+            )
+            for item in raw_items:
+                try:
+                    article_url = getattr(item, "url", None)
+                    if not isinstance(article_url, str) or not callable(source_resolver):
+                        raise ValueError("trusted news source resolver is required")
+                    source_id = source_resolver(article_url)
+                    self.news_evidence_correlator.ingest(
+                        item, source_id=source_id, ingested_at=ingested_at
+                    )
+                except Exception:
+                    evidence_errors += 1
 
         persisted_records = []
         if self.news_evidence_correlator is not None:
@@ -371,7 +399,11 @@ class EcosystemService:
                 collection_state == "POLL_SUCCEEDED"
                 and polling_status.get("last_success_at") is not None
             )
-        if collection_state == "PARTIAL":
+        if (
+            evidence_errors > 0
+            or collection_state == "PARTIAL"
+            or (polling_status is not None and polling_status.get("last_errors", 0) > 0)
+        ):
             evidence_state = "PARTIAL"
         elif collection_live and self.news_evidence_correlator is not None:
             evidence_state = "CONNECTED"
