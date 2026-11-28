@@ -177,7 +177,11 @@ class StandaloneMarketAnalysisService:
                 timeframe,
                 snapshot.received_at.astimezone(timezone.utc).isoformat(),
                 snapshot.candles[-1].timestamp.astimezone(timezone.utc).isoformat(),
-                str(len(snapshot.candles)),
+                repr(tuple((
+                    candle.timestamp.astimezone(timezone.utc).isoformat(),
+                    float(candle.open), float(candle.high), float(candle.low),
+                    float(candle.close), float(candle.volume),
+                ) for candle in snapshot.candles)),
             ))
             snapshot_id = "market-snapshot-" + sha256(snapshot_material.encode("utf-8")).hexdigest()
             snapshot_audit = self.market_snapshot_sink(
