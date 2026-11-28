@@ -265,3 +265,32 @@ def test_monitor_stop_timeout_keeps_worker_visible_until_it_exits(tmp_path):
     monitor.stop(timeout=1)
     assert monitor.status()["worker_running"] is False
     assert monitor._thread is None
+
+
+
+def test_monitor_uses_account_provider_clock_instead_of_device_clock(tmp_path):
+    broker_now = datetime(2026, 11, 28, 13, 5, 5, tzinfo=timezone(__import__("datetime").timedelta(hours=3)))
+    calls = []
+
+    def broker_clock(context, symbol):
+        calls.append((context, symbol))
+        return broker_now
+
+    analyzer = FakeAnalyzer()
+    monitor = MarketTimeframeMonitor(
+        tmp_path / "broker-clock.sqlite3",
+        analyzer,
+        default_context=OWNER,
+        provider_clock=broker_clock,
+    )
+    monitor.subscribe("EURUSD", "M1")
+
+    expected = monitor.expected_last_closed_candle(
+        "M1",
+        now=datetime(2035, 1, 1, tzinfo=timezone.utc),
+        context=OWNER,
+        symbol="EURUSD",
+    )
+
+    assert expected == datetime(2026, 11, 28, 10, 4, tzinfo=timezone.utc)
+    assert calls == [(OWNER, "EURUSD")]
