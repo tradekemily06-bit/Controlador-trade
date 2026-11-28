@@ -432,3 +432,8 @@ Nothing is closed merely by being listed or implemented. Each checkbox needs a l
 - Updated snapshot identity to fingerprint the complete OHLCV candle sequence, so corrected data creates a distinct snapshot identity rather than colliding merely because timestamps and candle counts match.
 - This closes the basic data path from an allowlisted provider analysis into persisted snapshots and then Study replay. It does not yet add a cost-aware net-return engine, independent provider reconciliation, full strategy-trial matrix/DSR-CSCV gate, or end-to-end automated acceptance covering provider capture → snapshot persistence → replay.
 - Commits: `aebd09a1` (Study replay operation), `c5c13433` (runtime injection), `092db639` (full OHLCV fingerprint). The exact head still requires full CI; no validation pass is claimed.
+
+
+- Added regression coverage for provider snapshot capture from `StandaloneMarketAnalysisService`: allowlisted provider + trusted tenant context persists; untrusted provider context does not persist.
+- Added an integration test that creates a tenant-scoped persisted snapshot, invokes the Study registered-snapshot replay operation, and verifies the result carries snapshot/source provenance while keeping promotion and execution disabled.
+- These tests are committed in `55fa0a8b` and `2eccc587`; execution by GitHub Actions is still pending and must not be represented as passed until the exact head reports a successful run.
