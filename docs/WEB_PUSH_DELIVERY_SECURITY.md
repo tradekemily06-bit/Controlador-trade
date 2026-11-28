@@ -51,4 +51,6 @@ This document defines the production gate for enabling Web Push. It does not ena
 
 ## Current implementation boundary
 
-The current code provides only the tenant-scoped subscription registry contract. It does not implement the sender, endpoint DNS policy, VAPID management, production encrypted storage, registration routes, browser permission flow, hosted worker or physical-device acceptance. Push remains disabled.
+The repository now contains several code components: an allowlist-based HTTPS endpoint validator for known browser push hosts; tenant-scoped WSGI registration/list/revocation routes that require host-injected trusted identity and mutation authorization; an AES-GCM encrypted subscription-store adapter over an injected production-durable tenant backend; a pywebpush sender that obtains VAPID private material from an injected secret provider; and tenant notification sink/outbox components.
+
+These components are not, by themselves, a production-ready delivery system. The sender currently does not pin DNS resolution to a validated public IP, reject private/mixed DNS answers at send time, or prove redirect suppression. The repository does not prove that a production tenant backend, KMS/key rotation, VAPID secret, trusted identity/CSRF callbacks, hosted worker, and browser permission flow have been configured together in a live deployment. Physical-device tests while the app/browser is closed have not been performed. Therefore Push must remain disabled in production until every release gate above is implemented and demonstrated.
