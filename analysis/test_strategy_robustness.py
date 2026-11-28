@@ -23,12 +23,25 @@ def _benchmark():
     return pattern * 24
 
 
+def _selection_returns():
+    pattern = (0.006, 0.008, 0.009, -0.001, 0.005)
+    return pattern * 24
+
+
+def _period_sharpe(values):
+    mean = sum(values) / len(values)
+    variance = sum((value - mean) ** 2 for value in values) / (len(values) - 1)
+    return mean / math.sqrt(variance)
+
+
 def _evaluate(**overrides):
     args = {
         "returns": _returns(),
         "benchmark_returns": _benchmark(),
         "stress_returns": (0.003, 0.004, 0.005, -0.0005, 0.003) * 24,
-        "selection_trial_sharpes": [1.0],
+        "selection_returns": _selection_returns(),
+        "selection_trial_sharpes": [_period_sharpe(_selection_returns())],
+        "selected_trial_index": 0,
         "trade_count": 48,
         "stress_cost_multiplier": 2.0,
         "num_trials": 1,
@@ -41,7 +54,10 @@ def _evaluate(**overrides):
     }
     args.update(overrides)
     if "selection_trial_sharpes" not in overrides:
-        args["selection_trial_sharpes"] = [1.0 + 0.01 * i for i in range(args["num_trials"])]
+        selected_sr = _period_sharpe(args["selection_returns"])
+        args["selection_trial_sharpes"] = [selected_sr - 0.01 * (args["num_trials"] - 1 - i) for i in range(args["num_trials"])]
+    if "selected_trial_index" not in overrides:
+        args["selected_trial_index"] = args["num_trials"] - 1
     return evaluate_strategy_robustness(**args)
 
 
@@ -61,7 +77,7 @@ def test_robustness_requires_transaction_costs():
 
 def test_robustness_requires_aligned_benchmark():
     result = evaluate_strategy_robustness(
-        _returns(), benchmark_returns=None, stress_returns=None, selection_trial_sharpes=None, trade_count=48, stress_cost_multiplier=2.0, num_trials=1,
+        _returns(), benchmark_returns=None, stress_returns=None, selection_returns=None, selection_trial_sharpes=None, selected_trial_index=0, trade_count=48, stress_cost_multiplier=2.0, num_trials=1,
         periods_per_year=252, out_of_sample=True, costs_included=True,
     )
     assert result["verdict"] == "INSUFFICIENT"
@@ -90,6 +106,8 @@ def test_robustness_reports_auditable_metrics_without_granting_promotion():
     assert result["sample_count"] == 120
     assert result["num_trials"] == 1
     assert result["selection_trial_count"] == 1
+    assert result["selection_period_count"] == 120
+    assert result["selection_period_sharpe"] == pytest.approx(_period_sharpe(_selection_returns()))
     assert result["benchmark_sample_count"] == 120
     assert result["annualized_sharpe"] is not None
     assert result["probabilistic_sharpe_ratio"] is not None
@@ -198,3 +216,25 @@ def test_cscv_rejects_unsupported_block_counts_and_non_divisible_periods():
         analyze_backtest_overfitting([[0.01, 0.02] for _ in range(8)], n_blocks=7)
     with pytest.raises(ValueError):
         analyze_backtest_overfitting([[0.01, 0.02] for _ in range(9)], n_blocks=8)
+
+
+def test_dsr_uses_selection_period_not_the_untouched_oos_sample():
+    result = _evaluate()
+    assert result["selection_period_sharpe"] == pytest.approx(_period_sharpe(_selection_returns()))
+    assert result["annualized_sharpe"] == pytest.approx(_period_sharpe(_returns()) * math.sqrt(252))
+
+
+def test_dsr_requires_selected_strategy_to_be_selection_sharpe_winner():
+    with pytest.raises(ValueError):
+        _evaluate(selected_trial_index=0, num_trials=3)
+
+
+def test_dsr_rejects_trial_sharpe_that_does_not_match_selected_selection_returns():
+    with pytest.raises(ValueError):
+        _evaluate(selection_trial_sharpes=[0.25])
+
+
+def test_dsr_requires_separate_selection_period_sample():
+    result = _evaluate(selection_returns=None)
+    assert result["verdict"] == "INSUFFICIENT"
+    assert "selection-period" in result["reasons"][0]
