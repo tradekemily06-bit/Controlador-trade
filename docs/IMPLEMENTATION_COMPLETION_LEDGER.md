@@ -221,3 +221,11 @@ Nothing is closed merely by being listed or implemented. Each checkbox needs a l
 - This is a verified integration gap, not merely an unprovisioned external credential. It must be fixed by passing the trusted services into the application composition and adding authenticated, tenant-context-scoped operations in the actual HTTP/API boundary, with tests for missing identity, cross-tenant denial, DEMO-only account listing/selection, session health, disconnect and restart recovery.
 - Do not treat adding dependencies to the application factory alone as end-to-end completion: the HTTP/API layer must supply a server-verified `TenantContext`, never a tenant identity supplied by the browser. No frontend or visible-area changes are authorized or required.
 - Until the HTTP/API boundary is located and wired, cTrader account management through the app remains NOT_CONNECTED even though its lower-level services and provider adapter exist.
+
+
+### Production container entrypoint mismatch — 28 November 2026
+- The current root `Dockerfile` builds the production image with `CMD ["python", "app.py"]`.
+- Root `app.py` imports and constructs `core.operational_runtime.build_operational_runtime`, `ConfiguredEcosystemService`, and the legacy operational HTTP application. It does not import or instantiate `integration.standalone_runtime.StandaloneRuntime`, nor does it serve `build_standalone_application`.
+- Therefore, the passing production-container build/health smoke proves that the legacy `app.py` image starts; it does NOT prove that the independent standalone ecosystem runtime is the production container entrypoint. The analyst/standalone service must have an explicit, reviewed entrypoint and HTTP boundary before it can be called deployed or end-to-end connected.
+- Do not simply replace the Docker CMD: the standalone runtime currently has no verified HTTP server entrypoint in the inspected root files, and its authenticated tenant-context API routes are still not wired. A safe fix requires the dedicated standalone WSGI/ASGI boundary, verified identity-to-`TenantContext` mapping, lifecycle/health/shutdown handling, and container health checks, followed by CI and runtime smoke tests.
+- This is a release-blocking architecture gap. No deployment or entrypoint change was made in this review.
