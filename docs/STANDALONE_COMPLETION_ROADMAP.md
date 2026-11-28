@@ -1,13 +1,13 @@
 # Standalone Controlador-trade — completion roadmap
 
-This roadmap defines the evidence required to call the independent application complete. It does not change the approved Lovable interface, enable broker orders, or replace the existing implementation with a new app.
+This roadmap defines the evidence required to call the independent application complete. It preserves the approved Lovable interface and existing implementation. The owner has explicitly authorized technical activation of REAL; that authorization is acknowledged and must not be requested again. Actual broker dispatch remains fail-closed until the deployment has its verified broker credentials, trusted identity, risk limits, audit/admission records, healthy market feed and recovery state. Each REAL order still requires the app's existing explicit human confirmation.
 
 ## Delivery boundaries
 
 - One standalone application, backed by the six approved visible areas: Cabine de Comando, Análise, Estudo, Reserva Fiscal, Assistente do Ecossistema and Central. Decision memory remains an internal capability, not a seventh area.
 - Preserve the approved Lovable UI. Backend work must connect to its existing screens and controls; visual redesign is out of scope.
-- No EA and no broker order submission. Market analysis and notifications are informational and require human review.
-- DEMO-first. REAL remains unavailable until separately reviewed, explicitly authorized, and validated; this roadmap does not authorize REAL execution.
+- No EA. The app is standalone and provider-neutral; broker adapters are connected through the backend.
+- REAL technical activation is authorized by the owner. Do not treat the owner's authorization as missing. Keep dispatch blocked only by concrete unmet deployment prerequisites (broker credentials/availability, trusted identity, risk approval, verified audit/admission, healthy feed and recovery), and report each blocker precisely. Each REAL order requires a fresh, short-lived human confirmation.
 
 ## Evidence status — 28 November 2026
 
@@ -21,7 +21,7 @@ This is the current implementation boundary, not a release declaration:
 | Production foundation | Fail-closed identity/storage/security contracts, local SQLite topology guard, backup/restore primitives and container smoke tests | Deploy trusted identity, shared transactional database, distributed leases, KMS, TLS, durable audit, centralized rate limits, off-host backup and restore drill |
 | Lovable integration | Existing API and notification endpoints are available; backend work preserves the frontend as the visual source of truth | Complete screen-by-screen integration and browser network acceptance in the owner-managed Lovable environment; this repository work does not claim that frontend integration has been verified |
 
-The current automated CI run is evidence of code/test/build behavior only. It does not prove real-account connectivity, production provisioning, physical-device delivery or user acceptance. SQLite remains single-host/single-runtime, external push remains disabled by default, and REAL execution remains disabled.
+The current automated CI run is evidence of code/test/build behavior only. It does not prove real-account connectivity, production provisioning, physical-device delivery or user acceptance. SQLite remains single-host/single-runtime and external push remains disabled by default. The user's authorization is recorded; REAL dispatch status must be derived from the actual configured prerequisites, not from asking the user to authorize again.
 
 ## Phase A — Foundation and reuse
 
