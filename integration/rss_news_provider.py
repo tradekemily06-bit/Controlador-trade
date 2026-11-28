@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import http.client
 import ipaddress
 import math
 import os
 import socket
+import ssl
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import timezone
@@ -44,6 +46,28 @@ class UnconfiguredNewsProvider(NewsProvider):
         return []
 
 
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    """HTTPS connection pinned to a prevalidated public IP, with normal TLS SNI."""
+
+    def __init__(self, host: str, pinned_ip: str, *, timeout: float, context: ssl.SSLContext):
+        super().__init__(host, port=443, timeout=timeout, context=context)
+        self._pinned_ip = pinned_ip
+
+    def connect(self) -> None:
+        if self._tunnel_host:
+            raise OSError("HTTPS proxy tunnels are not supported for pinned news requests")
+        raw_socket = socket.create_connection(
+            (self._pinned_ip, self.port),
+            self.timeout,
+            self.source_address,
+        )
+        try:
+            self.sock = self._context.wrap_socket(raw_socket, server_hostname=self.host)
+        except Exception:
+            raw_socket.close()
+            raise
+
+
 class _RejectRedirectHandler(HTTPRedirectHandler):
     """Reject redirects before urllib can issue a request to another host."""
 
@@ -79,6 +103,7 @@ class RSSNewsProvider(NewsProvider):
         *,
         timeout_seconds: float = 8.0,
         opener: Callable | None = None,
+        resolver: Callable | None = None,
     ) -> None:
         if not feed_urls:
             raise ValueError("ao menos uma URL de feed deve ser configurada")
@@ -92,7 +117,8 @@ class RSSNewsProvider(NewsProvider):
             raise ValueError("timeout_seconds deve ser finito, positivo e no máximo 30")
         self.feed_urls = tuple(self._validate_url(url) for url in feed_urls)
         self.timeout_seconds = float(timeout_seconds)
-        self._opener = opener or build_opener(_RejectRedirectHandler()).open
+        self._opener = opener
+        self._resolver = resolver or socket.getaddrinfo
         self._last_status = {"configured": True, "live": False, "feed_count": len(self.feed_urls), "last_error": None}
 
     @classmethod
@@ -157,11 +183,90 @@ class RSSNewsProvider(NewsProvider):
             except (TypeError, ValueError, OverflowError):
                 return None
 
-    def _fetch_feed(self, url: str) -> list[NewsItem]:
-        request = Request(url, headers={"Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml", "User-Agent": "ControladorTradeNews/1.0"})
-        with self._opener(request, timeout=self.timeout_seconds) as response:
-            final_url = self._validate_url(response.geturl())
+    def _resolve_public_addresses(self, host: str, port: int = 443) -> tuple[str, ...]:
+        """Resolve once, reject mixed/private DNS answers, and pin the chosen IP."""
+        try:
+            answers = self._resolver(host, port, type=socket.SOCK_STREAM)
+        except OSError as exc:
+            raise ValueError("news feed DNS resolution failed") from exc
+        addresses: list[str] = []
+        for answer in answers:
+            try:
+                raw_address = answer[4][0].split("%", 1)[0]
+                address = ipaddress.ip_address(raw_address)
+            except (IndexError, AttributeError, TypeError, ValueError) as exc:
+                raise ValueError("news feed DNS returned an invalid address") from exc
+            if not address.is_global:
+                raise ValueError("news feed DNS resolved to a non-public address")
+            normalized = str(address)
+            if normalized not in addresses:
+                addresses.append(normalized)
+        if not addresses:
+            raise ValueError("news feed DNS returned no usable addresses")
+        return tuple(addresses)
+
+    def _fetch_pinned_https(self, url: str) -> tuple[str, bytes]:
+        """Fetch HTTPS directly to a validated IP while retaining TLS hostname checks."""
+        parsed = urlparse(url)
+        host = parsed.hostname
+        if not host:
+            raise ValueError("news feed host is missing")
+        addresses = self._resolve_public_addresses(host, 443)
+        # Do not fall back to a second DNS lookup in the HTTP stack: the
+        # connection is pinned to the address validated immediately above.
+        connection = _PinnedHTTPSConnection(
+            host,
+            addresses[0],
+            timeout=self.timeout_seconds,
+            context=ssl.create_default_context(),
+        )
+        target = parsed.path or "/"
+        if parsed.query:
+            target += "?" + parsed.query
+        try:
+            connection.request(
+                "GET",
+                target,
+                headers={
+                    "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml",
+                    "Accept-Encoding": "identity",
+                    "User-Agent": "ControladorTradeNews/1.0",
+                    "Connection": "close",
+                },
+            )
+            response = connection.getresponse()
+            if 300 <= response.status < 400:
+                raise ValueError("news feed redirects are disabled")
+            if not 200 <= response.status < 300:
+                raise ValueError(f"news feed returned HTTP {response.status}")
+            content_length = response.getheader("Content-Length")
+            if content_length:
+                try:
+                    if int(content_length) > self.MAX_FEED_BYTES:
+                        raise ValueError("feed excede o limite de tamanho")
+                except ValueError as exc:
+                    if "feed excede" in str(exc):
+                        raise
+                    raise ValueError("news feed returned invalid content length") from exc
             raw = response.read(self.MAX_FEED_BYTES + 1)
+            if len(raw) > self.MAX_FEED_BYTES:
+                raise ValueError("feed excede o limite de tamanho")
+            return url, raw
+        finally:
+            connection.close()
+
+    def _fetch_feed(self, url: str) -> list[NewsItem]:
+        if self._opener is None:
+            final_url, raw = self._fetch_pinned_https(url)
+        else:
+            request = Request(url, headers={
+                "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml",
+                "Accept-Encoding": "identity",
+                "User-Agent": "ControladorTradeNews/1.0",
+            })
+            with self._opener(request, timeout=self.timeout_seconds) as response:
+                final_url = self._validate_url(response.geturl())
+                raw = response.read(self.MAX_FEED_BYTES + 1)
         if len(raw) > self.MAX_FEED_BYTES:
             raise ValueError("feed excede o limite de tamanho")
         root = ET.fromstring(raw)
