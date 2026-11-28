@@ -356,3 +356,14 @@ Nothing is closed merely by being listed or implemented. Each checkbox needs a l
 - All four jobs passed: main CI (P1.9 robustness tests, full suite, dependency audit, Python compilation, production container build/health smoke and standalone analyst container build/health smoke), Windows PowerShell validation, protected-branch compatibility, and required commit-status publication.
 - The curated source catalogue and subsequent completion-ledger updates are documentation-only commits on top of the tested code head; no application code changed after the successful run.
 - This CI pass does not constitute live RSS feed acceptance, hosted worker continuity, multi-replica production storage, full-article verification, real broker market-data validation, push delivery with the app closed, or Lovable end-to-end acceptance.
+
+
+## Registered strategy replay — 28 November 2026
+
+- Added a research-only replay adapter for the existing in-repository `StrategyPipeline`, with explicit version `technical-pipeline-v1` and a 30-closed-candle warm-up. Each historical decision is generated from the current candle and prior history only; unknown strategy versions are rejected.
+- Exposed `evaluate_registered_strategy_trial` through the existing Estudo handler, using the server-injected tenant/subject context and the existing append-only strategy trial ledger. The request cannot override tenant identity.
+- Added integration tests for registered strategy dispatch, generated-decision provenance, tenant isolation, and rejection of unregistered strategy versions.
+- This closes the earlier gap where the only historical evaluator accepted caller-supplied decisions, but it does **not** complete robust strategy recommendation: candles are still caller-supplied rather than fetched from immutable provider snapshots; the backtest remains gross of spread/commission/slippage; strategy variants/trial returns are not fully captured; and `evaluate_strategy_robustness`/CSCV/DSR are not yet wired into the Estudo promotion workflow.
+- Research replay is diagnostic only: `promotion_allowed=false`, `execution_authorized=false`, and no orders are submitted. No probability-of-profit claim is made.
+- Commits: `7dcebb39` (registered replay adapter), `a499ee58` (Estudo API wiring), `37c9f112` (integration tests).
+- GitHub has not yet reported a workflow run for exact latest test commit `37c9f112be5d2c24691e4faa2f1d4e08acb3d34b`; this increment is **not yet CI-validated**.
