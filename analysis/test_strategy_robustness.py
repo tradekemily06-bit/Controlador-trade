@@ -43,6 +43,7 @@ def _evaluate(**overrides):
         "selection_returns": _selection_returns(),
         "selection_trial_sharpes": [_period_sharpe(_selection_returns())],
         "selected_trial_index": 0,
+        "effective_num_trials": 1,
         "trade_count": 48,
         "stress_cost_multiplier": 2.0,
         "num_trials": 1,
@@ -59,6 +60,8 @@ def _evaluate(**overrides):
         args["selection_trial_sharpes"] = [selected_sr - 0.01 * (args["num_trials"] - 1 - i) for i in range(args["num_trials"])]
     if "selected_trial_index" not in overrides:
         args["selected_trial_index"] = args["num_trials"] - 1
+    if "effective_num_trials" not in overrides:
+        args["effective_num_trials"] = args["num_trials"]
     return evaluate_strategy_robustness(**args)
 
 
@@ -78,7 +81,7 @@ def test_robustness_requires_transaction_costs():
 
 def test_robustness_requires_aligned_benchmark():
     result = evaluate_strategy_robustness(
-        _returns(), benchmark_returns=None, stress_returns=None, selection_returns=None, selection_trial_sharpes=None, selected_trial_index=0, trade_count=48, stress_cost_multiplier=2.0, num_trials=1,
+        _returns(), benchmark_returns=None, stress_returns=None, selection_returns=None, selection_trial_sharpes=None, selected_trial_index=0, effective_num_trials=1, trade_count=48, stress_cost_multiplier=2.0, num_trials=1,
         periods_per_year=252, out_of_sample=True, costs_included=True,
     )
     assert result["verdict"] == "INSUFFICIENT"
@@ -106,6 +109,7 @@ def test_robustness_reports_auditable_metrics_without_granting_promotion():
     result = _evaluate()
     assert result["sample_count"] == 120
     assert result["num_trials"] == 1
+    assert result["effective_num_trials"] == 1
     assert result["selection_trial_count"] == 1
     assert result["selection_period_count"] == 120
     assert result["selection_period_sharpe"] == pytest.approx(_period_sharpe(_selection_returns()))
@@ -163,8 +167,9 @@ def test_psr_uses_non_excess_kurtosis_convention():
 
 def test_deflated_benchmark_uses_cross_trial_sharpe_dispersion():
     expected_max = (1.0 - 0.5772156649) * _normal_ppf(0.5) + 0.5772156649 * _normal_ppf(1.0 - 1.0 / (2.0 * math.e))
-    assert _deflated_benchmark([0.5, 1.5]) == pytest.approx(math.sqrt(0.5) * expected_max)
-    assert _deflated_benchmark([1.0, 1.0]) == pytest.approx(0.0)
+    assert _deflated_benchmark([0.5, 1.5], 2) == pytest.approx(math.sqrt(0.5) * expected_max)
+    assert _deflated_benchmark([1.0, 1.0], 2) == pytest.approx(0.0)
+    assert _deflated_benchmark([0.5, 1.5], 1) == pytest.approx(0.0)
 
 
 def test_dsr_refuses_to_guess_missing_selection_trial_results():
@@ -298,3 +303,14 @@ def test_cscv_block_aggregation_matches_direct_reference():
     assert result["probability_oos_loss"] == pytest.approx(sum(losses) / len(losses))
     assert result["mean_selected_oos_sharpe"] == pytest.approx(sum(oos_sharpes) / len(oos_sharpes))
     assert result["selection_frequency"] == frequencies
+
+
+def test_effective_independent_trial_count_is_bounded_by_recorded_trials():
+    with pytest.raises(ValueError):
+        _evaluate(num_trials=3, effective_num_trials=4)
+
+
+def test_effective_trial_count_controls_selection_bias_correction():
+    conservative = _evaluate(num_trials=20, effective_num_trials=20)
+    perfectly_correlated = _evaluate(num_trials=20, effective_num_trials=1)
+    assert conservative["deflated_sharpe_ratio"] <= perfectly_correlated["deflated_sharpe_ratio"]
