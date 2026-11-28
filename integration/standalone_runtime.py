@@ -685,9 +685,13 @@ class StandaloneRuntime:
                         ),
                         requires_attention=True,
                     )
+                    # Persist in the existing single-user notification center
+                    # consumed by the current app/API, and in the tenant inbox/
+                    # outbox used by the owner-scoped delivery boundary.
                     self.tenant_notification_dispatcher.publish(
                         self.local_tenant_context, notification
                     )
+                    self.ecosystem_service.publish_notification(notification)
 
                 self.news_polling_worker = NewsPollingWorker(
                     self.news_provider,
