@@ -12,13 +12,15 @@ from analysis.economic_calendar import (
 
 def _normalize(payload, *, source_id="ecb", source_tier="OFFICIAL_PRIMARY"):
     return normalize_calendar_event(
-        payload, trusted_source_id=source_id, trusted_source_tier=source_tier
+        payload, trusted_source_id=source_id, trusted_source_tier=source_tier,
+        trusted_source_hosts=("ecb.europa.eu", "example.com"),
     )
 
 
 def _normalize_batch(payloads, *, source_id="ecb", source_tier="OFFICIAL_PRIMARY"):
     return normalize_calendar_batch(
-        payloads, trusted_source_id=source_id, trusted_source_tier=source_tier
+        payloads, trusted_source_id=source_id, trusted_source_tier=source_tier,
+        trusted_source_hosts=("ecb.europa.eu", "example.com"),
     )
 
 
@@ -125,9 +127,38 @@ def test_source_identity_and_tier_cannot_be_forged_by_provider_payload():
 def test_trusted_source_identity_is_required_and_validated():
     with pytest.raises(ValueError):
         normalize_calendar_event(
-            _event(), trusted_source_id=None, trusted_source_tier="OFFICIAL_PRIMARY"
+            _event(), trusted_source_id=None, trusted_source_tier="OFFICIAL_PRIMARY",
+            trusted_source_hosts=("ecb.europa.eu",)
         )
     with pytest.raises(ValueError):
         normalize_calendar_event(
-            _event(), trusted_source_id="ecb", trusted_source_tier="UNVERIFIED"
+            _event(), trusted_source_id="ecb", trusted_source_tier="UNVERIFIED",
+            trusted_source_hosts=("ecb.europa.eu",)
+        )
+
+
+@pytest.mark.parametrize("url", [
+    "https://evil.example.net/fake-release",
+    "https://ecb.europa.eu.attacker.test/fake-release",
+    "http://ecb.europa.eu/fake-release",
+    "https://user:password@ecb.europa.eu/fake-release",
+    "https://ecb.europa.eu:8443/fake-release",
+])
+def test_rejects_calendar_source_url_outside_trusted_host_policy(url):
+    with pytest.raises(ValueError):
+        _normalize(_event(source_url=url))
+
+
+def test_trusted_source_host_policy_allows_exact_host_and_subdomains():
+    exact = _normalize(_event())
+    subdomain = _normalize(_event(source_url="https://www.ecb.europa.eu/press"))
+    assert exact.source_url.startswith("https://")
+    assert subdomain.source_url.startswith("https://")
+
+
+def test_trusted_source_host_allowlist_is_mandatory():
+    with pytest.raises(ValueError):
+        normalize_calendar_event(
+            _event(), trusted_source_id="ecb", trusted_source_tier="OFFICIAL_PRIMARY",
+            trusted_source_hosts=(),
         )
