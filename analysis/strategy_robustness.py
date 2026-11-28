@@ -240,7 +240,7 @@ def evaluate_strategy_robustness(
     annual_sharpe = period_sharpe * math.sqrt(periods_per_year) if period_sharpe is not None else None
     skew = _sample_skew(values, mean, std)
     excess_kurtosis = _sample_excess_kurtosis(values, mean, std)
-    benchmark_period_sharpe = (sum(benchmark) / len(benchmark)) / (math.sqrt(sum((x - sum(benchmark) / len(benchmark)) ** 2 for x in benchmark) / (len(benchmark) - 1)) if len(benchmark) > 1 else 0.0) if len(benchmark) > 1 else None
+    benchmark_period_sharpe = _annual_sharpe(benchmark, 1) if len(benchmark) > 1 else None
     if benchmark_period_sharpe is None:
         base["reasons"] = ["Benchmark needs at least two aligned out-of-sample returns."]
         return base
