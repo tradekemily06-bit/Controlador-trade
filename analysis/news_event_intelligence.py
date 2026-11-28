@@ -18,7 +18,7 @@ _ASSET_TERMS: dict[str, tuple[str, ...]] = {
     "CAD": ("cad", "canadian dollar", "bank of canada", "boc"),
     "AUD": ("aud", "australian dollar", "reserve bank of australia", "rba"),
     "NZD": ("nzd", "new zealand dollar", "reserve bank of new zealand", "rbnz"),
-    "BRL": ("brl", "real brasileiro", "banco central do brasil", "copom", "selic", "ibovespa", "b3"),
+    "BRL": ("brl", "real brasileiro", "banco central do brasil", "copom", "selic", "ipca", "ibovespa", "b3"),
     "GOLD": ("gold", "ouro", "xau", "bullion"),
     "SILVER": ("silver", "prata", "xag"),
     "OIL": ("oil", "crude", "brent", "wti", "petróleo", "petroleo", "opec"),
