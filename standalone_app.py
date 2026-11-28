@@ -2063,7 +2063,7 @@ def _runtime_from_environment() -> StandaloneRuntime:
     if not factory_spec:
         return StandaloneRuntime.from_environment()
     if not re.fullmatch(
-        r"[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*:[A-Za-z_][A-Za-z0-9_]*",
+        r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*:[A-Za-z_][A-Za-z0-9_]*",
         factory_spec,
     ):
         raise RuntimeError(
