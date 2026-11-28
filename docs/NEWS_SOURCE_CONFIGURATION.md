@@ -22,6 +22,10 @@ CONTROLADOR_NEWS_POLL_INTERVAL_SECONDS=60
 
 The example is a starter configuration, not a complete global news universe. Additional sources should be added only after checking the publisher's official feed URL, domain ownership, update cadence, access terms and publisher group. Do not label a media outlet as an official primary source.
 
+## Headline and publisher-summary intelligence
+
+The RSS/Atom adapter captures the publisher-provided item title and a bounded summary/description when present (maximum 4,000 characters). Both fields are persisted with the evidence record and passed through the conservative keyword event classifier. This improves context over headline-only triage but is still not full-article retrieval, claim extraction, independent fact-checking, sentiment analysis or directional price prediction. Feeds that omit a summary remain headline-only. The application should display the original publisher link and publication timestamp so the user can inspect the source.
+
 ## Evidence and decision limits
 
 The current pipeline stores headline-level evidence with publisher identity, source URL, publication/ingestion timestamps, conservative event categories and potentially affected assets. Similar headlines from different configured publishers become review candidates; they are not proof of independent confirmation. Headlines are not full-article verification, sentiment, market direction, impact probability or a trading instruction.
