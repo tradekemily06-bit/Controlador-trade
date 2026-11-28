@@ -96,6 +96,7 @@ def test_standalone_news_reads_cached_worker_batch_without_refetching_provider()
     result = service.news_status(limit=5, symbol="EURUSD")
 
     assert result["live"] is True
+    assert result["items_freshness"] == "CURRENT"
     assert result["collection"]["last_state"] == "POLL_SUCCEEDED"
     assert result["items"][0]["title"] == "EURUSD outlook"
     assert provider.fetch_count == 0
@@ -133,4 +134,5 @@ def test_partial_news_collection_is_not_reported_as_live():
     result = service.news_status(limit=5)
 
     assert result["live"] is False
+    assert result["items_freshness"] == "NO_DATA"
     assert result["collection"]["last_state"] == "PARTIAL"
