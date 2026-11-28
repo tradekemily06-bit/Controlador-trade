@@ -31,6 +31,8 @@ BACKUP_DATABASES = {
     "ctrader_oauth_state": "tenant-ctrader-oauth-state.sqlite3",
     "ctrader_oauth_tokens": "tenant-ctrader-oauth-tokens.sqlite3",
     "tenant_signal_evidence": "tenant-signal-evidence.sqlite3",
+    "news_evidence": "news-evidence.sqlite3",
+    "economic_calendar": "economic-calendar.sqlite3",
 }
 
 # These stores are created only after their optional provider/legacy feature is
@@ -39,6 +41,8 @@ OPTIONAL_BACKUP_DATABASES = frozenset({
     "market_timeframe_monitor",
     "ctrader_oauth_state",
     "ctrader_oauth_tokens",
+    "news_evidence",
+    "economic_calendar",
 })
 
 

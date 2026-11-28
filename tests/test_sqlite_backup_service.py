@@ -145,6 +145,8 @@ class SQLiteBackupServiceTests(unittest.TestCase):
             "ctrader_oauth_state": "tenant-ctrader-oauth-state.sqlite3",
             "ctrader_oauth_tokens": "tenant-ctrader-oauth-tokens.sqlite3",
             "tenant_signal_evidence": "tenant-signal-evidence.sqlite3",
+            "news_evidence": "news-evidence.sqlite3",
+            "economic_calendar": "economic-calendar.sqlite3",
         }
         for database_id, filename in expected.items():
             with self.subTest(database_id=database_id):
@@ -356,3 +358,44 @@ class SQLiteBackupServiceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+def test_missing_news_and_calendar_stores_are_optional_until_configured():
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        runtime = root / "runtime"
+        backups = root / "backups"
+        runtime.mkdir()
+        result = SQLiteBackupService(runtime, backups).backup(
+            ["news_evidence", "economic_calendar"]
+        )
+    assert [item["status"] for item in result["results"]] == [
+        "NOT_INITIALIZED", "NOT_INITIALIZED"
+    ]
+
+
+def test_news_and_calendar_stores_are_backed_up_when_present():
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        runtime = root / "runtime"
+        backups = root / "backups"
+        runtime.mkdir()
+        news = runtime / "news-evidence.sqlite3"
+        calendar = runtime / "economic-calendar.sqlite3"
+        with sqlite3.connect(news) as db:
+            db.execute("CREATE TABLE tenant_news_evidence (tenant_id TEXT, subject_id TEXT)")
+            db.execute("INSERT INTO tenant_news_evidence VALUES ('tenant-a','alice')")
+        with sqlite3.connect(calendar) as db:
+            db.execute("CREATE TABLE economic_calendar_observations (source_id TEXT, source_event_id TEXT)")
+            db.execute("INSERT INTO economic_calendar_observations VALUES ('bls','cpi-1')")
+
+        result = SQLiteBackupService(runtime, backups).backup(
+            ["news_evidence", "economic_calendar"]
+        )
+
+        assert [item["status"] for item in result["results"]] == [
+            "BACKUP_CREATED", "BACKUP_CREATED"
+        ]
+        for item in result["results"]:
+            assert (backups / item["filename"]).is_file()

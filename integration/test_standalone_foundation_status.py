@@ -46,3 +46,16 @@ def test_notification_outbox_readiness_requires_lease_fencing_column(tmp_path):
     assert outbox["state"] == "SCHEMA_INCOMPLETE"
     assert outbox["missing_schema"]["notification_outbox"] == ["lease_token"]
     assert status["required_stores"] == "DEGRADED"
+
+
+
+def test_news_and_calendar_stores_are_visible_but_optional_in_readiness(tmp_path):
+    status = standalone_storage_status(SimpleNamespace(runtime_dir=tmp_path))
+
+    news = next(item for item in status["stores"] if item["id"] == "news_evidence")
+    calendar = next(item for item in status["stores"] if item["id"] == "economic_calendar")
+
+    assert news["required"] is False
+    assert news["state"] == "MISSING"
+    assert calendar["required"] is False
+    assert calendar["state"] == "MISSING"
