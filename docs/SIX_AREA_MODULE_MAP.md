@@ -75,6 +75,7 @@ Status meanings:
 | Audit, history, security events and access controls | `audit/`, `security/`, `core/` | Code/test foundation present; shared durable production audit pending |
 | Backup, restore, retention and recovery | `core/sqlite_backup_service.py`, `core/sqlite_backup_scheduler.py`, `integration/standalone_foundation_status.py` | Local backup/restore and readiness present; off-host backups, shared DB, scheduled hosted backup and restore drill pending |
 | Internal admin and operational diagnostics | `standalone_app.py`, `integration/`, `core/` | Code foundation present; operator-facing deployment acceptance pending |
+| Optional commercial/affiliate subsystem | `PROJECT_MASTER_SPEC.md` | Scope reference only; not evidenced as active in this standalone delivery. If ever activated, keep it isolated under Central/internal services and prohibit any influence on signal, risk or execution decisions |
 
 ## Shared internal capabilities — not visible navigation areas
 
