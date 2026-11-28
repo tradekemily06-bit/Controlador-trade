@@ -24,6 +24,7 @@ class NewsItem:
     source: str
     published_at: str | None = None
     url: str | None = None
+    summary: str | None = None
 
 
 class NewsProvider:
@@ -302,7 +303,16 @@ class RSSNewsProvider(NewsProvider):
                 or self._text(entry.find("{http://www.w3.org/2005/Atom}updated"))
             )
             source = self._text(entry.find("source")) or feed_title or host
-            items.append(NewsItem(title, source, self._published(published), link))
+            summary_element = (
+                entry.find("description")
+                or entry.find("summary")
+                or entry.find("{http://www.w3.org/2005/Atom}summary")
+                or entry.find("{http://purl.org/rss/1.0/modules/content/}encoded")
+            )
+            summary = self._text(summary_element)
+            if summary is not None:
+                summary = summary[:4000]
+            items.append(NewsItem(title, source, self._published(published), link, summary))
         return items
 
     def latest(self, *, symbol: str | None = None, limit: int = 10) -> list[NewsItem]:
