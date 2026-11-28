@@ -2306,3 +2306,23 @@ def test_main_closes_runtime_when_http_bind_fails():
                         else:
                             raise AssertionError("bind failure must be propagated")
     assert closed == [True]
+
+
+
+def test_main_closes_runtime_when_application_construction_fails():
+    closed = []
+    runtime = types.SimpleNamespace(closed=False, close=lambda: closed.append(True))
+    with patch.dict("os.environ", {
+        "CONTROLADOR_BIND_HOST": "127.0.0.1",
+        "CONTROLADOR_BIND_PORT": "8765",
+    }):
+        with patch("standalone_app._validate_bind_security"):
+            with patch("standalone_app._runtime_from_environment", return_value=runtime):
+                with patch("standalone_app.StandaloneWSGIApplication", side_effect=RuntimeError("invalid runtime wiring")):
+                    try:
+                        main()
+                    except RuntimeError as exc:
+                        assert "invalid runtime wiring" in str(exc)
+                    else:
+                        raise AssertionError("application initialization failure must be propagated")
+    assert closed == [True]
