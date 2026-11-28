@@ -266,3 +266,8 @@ Nothing is closed merely by being listed or implemented. Each checkbox needs a l
 - [x] Separate the selection-period return sample from the untouched out-of-sample holdout. DSR is now computed only from the selected variant's selection-period returns and the cross-sectional Sharpe ratios of all recorded variants; PSR, bootstrap and rolling stability use the distinct OOS sample and aligned benchmark.
 - [x] Require the selected variant index to be the selection-period Sharpe winner and verify its supplied trial Sharpe matches the selected returns at the same unannualized frequency. Missing, inconsistent or insufficient selection records fail closed.
 - [ ] The current backtest engine does not yet produce separate immutable selection/holdout datasets or retain every trial's same-window Sharpe. Do not call the robustness workflow complete until this data lineage and cost model are integrated.
+
+## Effective-trial correction and bounded CSCV — 28 November 2026
+- [x] Separate recorded strategy variants from the effective number of independent trials used by DSR. The caller must supply `effective_num_trials` from a defensible correlation-aware estimate, bounded by the recorded trial count; the scorecard no longer silently assumes every parameter variant is independent.
+- [x] Optimize CSCV by pre-aggregating centered block moments, reducing per-split work to block/strategy aggregates rather than rescanning every period. Bound the input matrix to 2,000,000 cells and retain exact combinatorial split accounting.
+- [ ] Validate effective-trial estimation against the actual backtest search space; until then DSR must be presented with its independence assumption and uncertainty, not as a calibrated probability.
