@@ -295,11 +295,19 @@ class EcosystemService:
         return {"allowed": decision.allowed, "reason": decision.reason, "configured_limits": {"daily_loss_limit": self.risk.daily_loss_limit, "max_operations": self.risk.max_operations, "max_consecutive_losses": self.risk.max_consecutive_losses}, "news_provider": "RSS_ATOM" if news.get("configured") else "UNCONFIGURED"}
 
     @staticmethod
-    def _news_symbol_matches(symbol: str | None, assets: Iterable[str]) -> bool:
+    def _news_symbol_matches(
+        symbol: str | None, assets: Iterable[str], title: str | None = None
+    ) -> bool:
         if not symbol:
             return True
         query = symbol.strip().upper().replace("/", "").replace("-", "").replace("_", "")
         if not query:
+            return True
+        normalized_title = (
+            title.upper().replace("/", "").replace("-", "").replace("_", "")
+            if isinstance(title, str) else ""
+        )
+        if query in normalized_title:
             return True
         aliases = {"XAU": "GOLD", "XAG": "SILVER"}
         requested = {aliases.get(query, query)}
@@ -323,7 +331,9 @@ class EcosystemService:
             raw_items = [
                 item for item in raw_items
                 if self._news_symbol_matches(
-                    symbol, classify_news_batch([item])[0].get("affected_assets", [])
+                    symbol,
+                    classify_news_batch([item])[0].get("affected_assets", []),
+                    getattr(item, "title", None),
                 )
             ]
         else:
@@ -349,7 +359,9 @@ class EcosystemService:
                     payload = record.to_dict() if callable(getattr(record, "to_dict", None)) else record
                     if not isinstance(payload, dict):
                         continue
-                    if self._news_symbol_matches(symbol, payload.get("affected_assets", ())):
+                    if self._news_symbol_matches(
+                        symbol, payload.get("affected_assets", ()), payload.get("title")
+                    ):
                         persisted_records.append(payload)
 
         collection_state = "DIRECT_PROVIDER_READ" if polling_status is None else polling_status.get("last_state", "NOT_RUN")
