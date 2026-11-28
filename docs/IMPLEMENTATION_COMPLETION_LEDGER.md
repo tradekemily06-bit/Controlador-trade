@@ -392,3 +392,12 @@ Nothing is closed merely by being listed or implemented. Each checkbox needs a l
 - GitHub Actions run 46181167812 passou nos quatro jobs para o head anterior 11c5ccddb4fa39a88dedff0464e3b55cc8865e20: CI completo, validação Windows PowerShell, compatibilidade da branch protegida e publicação dos status obrigatórios.
 - As alterações desta auditoria são documentação. O PR #534 continua draft, aberto e não mesclado; sem deploy, sem alteração do Lovable, sem REAL, sem envio de ordens e sem movimentação de dinheiro.
 - Estado: auditoria documental inicial registrada; P1–P22 e P128–P149 precisam de recuperação/verificação individual, e P54–P127 precisam de aceitação integrada, não apenas presença de código/testes.
+
+
+### P128/P138/P139 standalone composition audit — 28 November 2026
+
+- Confirmed P128/P138/P139 artifacts and unit/integration tests exist. P139 is composed inside ControlledAutomationService.post_demo_learning; EcosystemService creates that legacy service, but the standalone area factory does not expose or invoke the post-demo learning path.
+- The standalone LearningStateStore persists educational sources/resources/observations/activities/attempts, not OperationLearningNote, OperationLearningHandoff or reconciled P50/P51/P52 operational evidence. OperationLearningJournal is in-memory by default.
+- This is an integration/persistence gap, not a reason to duplicate the P128–P139 domain logic. The remaining work is a tenant-scoped append-only operational learning store, trusted outcome source, durable provenance, idempotency, backup/restore, read-only Study API and tests proving no unverified outcome enters learning.
+- The gap and evidence are documented in docs/FOUNDATION_RETROACTIVE_AUDIT.md and PROJECT_COMPLETION_STATUS.md. Do not expose the legacy app.py learning endpoints as proof of standalone integration.
+- No new runtime behavior was changed in this audit. No false learning, fake outcomes or untrusted client-supplied outcomes were added.
