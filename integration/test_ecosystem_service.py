@@ -172,17 +172,18 @@ def test_news_status_wires_persistent_source_aware_evidence(tmp_path):
             return {"configured": True, "live": True, "feed_count": 2}
 
         def latest(self, *, symbol=None, limit=10):
+            published = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
             return [
                 NewsItem(
                     "Federal Reserve announces interest rate decision",
                     "untrusted label one",
-                    "2026-11-28T11:55:00Z",
+                    published,
                     "https://www.reuters.com/markets/fed",
                 ),
                 NewsItem(
                     "Federal Reserve announces interest rate decision",
                     "untrusted label two",
-                    "2026-11-28T11:56:00Z",
+                    published,
                     "https://www.apnews.com/article/fed",
                 ),
             ][:limit]
