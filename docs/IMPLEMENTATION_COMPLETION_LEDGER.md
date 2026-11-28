@@ -411,3 +411,14 @@ Nothing is closed merely by being listed or implemented. Each checkbox needs a l
 - Important boundary: the store records a snapshot passed by the server-side provider boundary. Its provenance is explicitly labeled `PROVIDER_BOUNDARY_ASSERTED_NOT_INDEPENDENTLY_VERIFIED`; this is not proof of broker authenticity, candle closure, provider liveness, or clock synchronization.
 - This is a **new foundation primitive only**. It is not yet instantiated by `StandaloneRuntime`, connected to the analysis/replay path, or included in the runtime backup/readiness inventory. Do not treat provider snapshot capture or Estudo replay as end-to-end complete until those integrations and tests are done.
 - Latest commits: `ac8ab525` (store), `d5fe74b2` (tests), `aabe15b8` (timeframe canonicalization and bounded snapshot size). No workflow run or commit status was visible for the new head at the time of this update; CI validation is pending.
+
+
+## Provider snapshot capture wired into standalone analysis — 28 Nov 2026
+
+- Integrated `TenantMarketSnapshotStore` into `StandaloneRuntime`, sharing the already-backed-up and readiness-inventoried `tenant-signal-evidence.sqlite3` database. No new SQLite file or backup allowlist entry is required.
+- The primary selected provider analyzer and tenant/account analyzer factory now receive the snapshot persistence callback. Each analysis request carries the authenticated tenant context from the standalone route or the tenant connection monitor.
+- `StandaloneMarketAnalysisService` now constructs the normalized `BrokerMarketDataSnapshot` from the actual market-data result and persists it only when the provider is in the explicit read-only market-data allowlist and a trusted `TenantContext` is present. The response includes a snapshot audit status/ID result.
+- The deterministic snapshot ID is scoped by source/account, symbol, timeframe, provider receive time, last candle time and candle count. A conflicting payload under the same ID is rejected by the immutable store rather than silently overwritten.
+- This now connects provider analysis to durable snapshot capture for configured/allowlisted provider paths. It still does **not** establish broker authenticity, independently verify candles, prove candle-close/session correctness beyond existing runtime gates, or prove a live provider handshake in the hosted deployment.
+- Estudo replay is not yet switched to load these persisted snapshots; that is the next integration. A dedicated end-to-end test covering analysis → snapshot persistence → retrieval → replay remains required.
+- Commits: `a39f4588` (analysis capture), `21c6c913` (runtime store wiring), `e87a50b3` (trusted context through analysis route), `bd24dccf` (runtime context binding). A fresh full CI run on the exact latest head is required; no test result is claimed here.
