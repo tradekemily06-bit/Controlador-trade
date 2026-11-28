@@ -107,9 +107,10 @@ class TenantPushSubscriptionRegistry:
     """Tenant-scoped lifecycle for encrypted, per-device Web Push subscriptions.
 
     Device IDs are owner-local record keys, never authentication credentials.
-    This registry intentionally has no sender, VAPID secret, HTTP route or
-    browser permission flow. A deployment must inject a durable encrypted
-    store before registration or revocation can be enabled.
+    Sender, VAPID and WSGI route components live in separate integration
+    modules. This registry does not configure or activate them. A deployment
+    must inject a durable encrypted store before registration or revocation
+    can be enabled.
     """
 
     def __init__(self, store: EncryptedPushSubscriptionStore) -> None:
