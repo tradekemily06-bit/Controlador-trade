@@ -422,3 +422,13 @@ Nothing is closed merely by being listed or implemented. Each checkbox needs a l
 - This now connects provider analysis to durable snapshot capture for configured/allowlisted provider paths. It still does **not** establish broker authenticity, independently verify candles, prove candle-close/session correctness beyond existing runtime gates, or prove a live provider handshake in the hosted deployment.
 - Estudo replay is not yet switched to load these persisted snapshots; that is the next integration. A dedicated end-to-end test covering analysis → snapshot persistence → retrieval → replay remains required.
 - Commits: `a39f4588` (analysis capture), `21c6c913` (runtime store wiring), `e87a50b3` (trusted context through analysis route), `bd24dccf` (runtime context binding). A fresh full CI run on the exact latest head is required; no test result is claimed here.
+
+
+## Estudo replay bound to persisted market snapshots — 28 Nov 2026
+
+- Added the Study operation `evaluate_registered_snapshot_trial`. It retrieves a snapshot through the trusted runtime-owned store and tenant context; the request cannot supply or override the candle payload.
+- The replay uses the repository's registered `technical-pipeline-v1`, keeps the existing selection/holdout ledger, and binds `dataset_id` to the immutable `snapshot_id`. Snapshots with fewer than 30 candles return `INSUFFICIENT_SNAPSHOT_HISTORY`.
+- The result records snapshot ID, source connection ID, symbol, timeframe, payload SHA-256 and the explicit provenance boundary. The existing research-only behavior remains: no strategy promotion, no order execution and no money movement.
+- Updated snapshot identity to fingerprint the complete OHLCV candle sequence, so corrected data creates a distinct snapshot identity rather than colliding merely because timestamps and candle counts match.
+- This closes the basic data path from an allowlisted provider analysis into persisted snapshots and then Study replay. It does not yet add a cost-aware net-return engine, independent provider reconciliation, full strategy-trial matrix/DSR-CSCV gate, or end-to-end automated acceptance covering provider capture → snapshot persistence → replay.
+- Commits: `aebd09a1` (Study replay operation), `c5c13433` (runtime injection), `092db639` (full OHLCV fingerprint). The exact head still requires full CI; no validation pass is claimed.
