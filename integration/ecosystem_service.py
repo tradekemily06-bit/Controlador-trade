@@ -399,6 +399,9 @@ class EcosystemService:
                 collection_state == "POLL_SUCCEEDED"
                 and polling_status.get("last_success_at") is not None
             )
+        elif self.news_polling_managed:
+            collection_state = "WORKER_NOT_CONFIGURED"
+            collection_live = False
         if (
             evidence_errors > 0
             or collection_state == "PARTIAL"
@@ -431,6 +434,10 @@ class EcosystemService:
             "evidence_processing": {
                 "status": evidence_state,
                 "processed": len(persisted_records),
+                "errors": evidence_errors + (
+                    int(polling_status.get("last_errors", 0))
+                    if polling_status is not None else 0
+                ),
                 "records": persisted_records,
                 "fact_confirmation": "NEVER_AUTOMATIC",
             },
