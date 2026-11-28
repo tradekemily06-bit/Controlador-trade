@@ -81,8 +81,12 @@ def _validate_runtime_store_location(store: Any, runtime_dir: Path, filename: st
     database_path = getattr(store, "database_path", None)
     if database_path is None:
         return  # Non-SQLite shared stores are governed by their deployment adapter.
-    expected = (runtime_dir / filename).resolve()
-    actual = Path(database_path).resolve()
+    expected_entry = runtime_dir / filename
+    actual_entry = Path(database_path)
+    if expected_entry.is_symlink() or actual_entry.is_symlink():
+        raise ValueError(f"{filename} must not be a symlink")
+    expected = expected_entry.resolve()
+    actual = actual_entry.resolve()
     if actual != expected:
         raise ValueError(
             f"{filename} must be stored inside CONTROLADOR_RUNTIME_DIR for backup coverage"

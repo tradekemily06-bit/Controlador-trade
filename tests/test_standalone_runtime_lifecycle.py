@@ -84,3 +84,27 @@ def test_non_sqlite_shared_store_is_not_forced_into_local_backup_path(tmp_path):
     from integration.standalone_runtime import _validate_runtime_store_location
 
     _validate_runtime_store_location(object(), tmp_path, "economic-calendar.sqlite3")
+
+
+
+def test_runtime_store_location_rejects_symlink_even_when_target_is_inside_runtime(tmp_path):
+    from integration.standalone_runtime import _validate_runtime_store_location
+
+    class Store:
+        def __init__(self, database_path):
+            self.database_path = str(database_path)
+
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir()
+    target = runtime_dir / "real-news.sqlite3"
+    target.touch()
+    link = runtime_dir / "news-evidence.sqlite3"
+    try:
+        link.symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks unavailable in this environment")
+
+    with pytest.raises(ValueError, match="must not be a symlink"):
+        _validate_runtime_store_location(
+            Store(link), runtime_dir, "news-evidence.sqlite3"
+        )
