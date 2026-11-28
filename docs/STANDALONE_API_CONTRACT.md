@@ -66,6 +66,10 @@ For the existing `analysis` area, `context.operation="economic_calendar"` or `"c
 
 The local runtime accepts an optional host-composed `news_evidence_correlator`. When its SQLite store is used, place it at `CONTROLADOR_RUNTIME_DIR/news-evidence.sqlite3` and bind it to the runtime's trusted local tenant/subject identity; startup rejects a mismatched owner. The existing Análise news response then persists source-aware evidence and exposes processing status. The store is included in local backup/readiness inventory. A correlator is not created from untrusted browser configuration, and no automatic fact confirmation or directional inference is performed.
 
+### News evidence integration
+
+The runtime accepts a trusted owner-scoped evidence correlator and, when RSS is configured, starts a `NewsPollingWorker` automatically. It polls up to 50 headlines at a bounded interval (`CONTROLADOR_NEWS_POLL_INTERVAL_SECONDS`, default 60 seconds; allowed 30–3600), persists headline evidence through the correlator and records only redacted status. It does not fetch full article bodies, infer direction or confirm facts. It stops with StandaloneRuntime and remains process-lifetime only; hosted supervision is required for always-on operation.
+
 ### Economic-calendar polling worker
 
 The host may inject an `EconomicCalendarPollingWorker` and its matching `SQLiteEconomicCalendarStore` into `StandaloneRuntime`. The worker accepts fetchers only for source IDs already present in trusted source configuration, starts/stops with the runtime, isolates per-source failures and exposes local readiness. For backup coverage, the SQLite file must be `CONTROLADOR_RUNTIME_DIR/economic-calendar.sqlite3`. The worker does not fetch arbitrary URLs or ship official publisher adapters; the host must supply verified official-source fetchers and run the process under hosted supervision for continuity.
