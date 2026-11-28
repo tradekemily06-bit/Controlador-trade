@@ -162,6 +162,7 @@ def evaluate_strategy_robustness(
     benchmark_returns: Iterable[float] | None,
     stress_returns: Iterable[float] | None,
     trade_count: int,
+    stress_cost_multiplier: float,
     num_trials: int,
     periods_per_year: int,
     out_of_sample: bool,
@@ -173,6 +174,8 @@ def evaluate_strategy_robustness(
     """Evaluate one strategy's OOS net returns; never promotes it automatically."""
     if isinstance(trade_count, bool) or not isinstance(trade_count, int) or trade_count < 0:
         raise ValueError("trade_count must be a non-negative integer")
+    if isinstance(stress_cost_multiplier, bool) or not isinstance(stress_cost_multiplier, (int, float)) or not math.isfinite(float(stress_cost_multiplier)) or float(stress_cost_multiplier) < 2.0:
+        raise ValueError("stress_cost_multiplier must be finite and at least 2.0")
     if isinstance(num_trials, bool) or not isinstance(num_trials, int) or num_trials < 1:
         raise ValueError("num_trials must be an integer >= 1")
     if isinstance(periods_per_year, bool) or not isinstance(periods_per_year, int) or periods_per_year < 1:
@@ -228,6 +231,7 @@ def evaluate_strategy_robustness(
         "rolling_positive_sharpe_fraction": None,
         "max_drawdown": _max_drawdown(values) if values else None,
         "trade_count": trade_count,
+        "stress_cost_multiplier": float(stress_cost_multiplier),
         "stress_sample_count": len(stress),
         "stress_total_return": math.prod(1.0 + x for x in stress) - 1.0 if stress else None,
         "stress_annualized_sharpe": _annual_sharpe(stress, periods_per_year) if stress else None,
