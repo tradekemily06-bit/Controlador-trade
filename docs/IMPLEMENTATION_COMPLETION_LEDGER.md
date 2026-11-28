@@ -44,6 +44,7 @@ Integration path: #529 -> #531 -> #533 -> #534. #532 is a sibling of #533, not a
 - [x] Implement cTrader read-only OAuth orchestration, accounts-scope enforcement, encrypted-token vault contract, DEMO-account selection, live spot/trendbar stream handling, closed-candle analysis binding and fail-closed reconnect paths in code.
 - [ ] Validate MT5 relay on an actual DEMO terminal, including local agent install, account binding, HTTPS secret, replay protection, freshness, candle continuity, reconnect and server receipt.
 - [ ] Validate cTrader OAuth with a real Spotware app and DEMO account, production KMS-backed token storage/refresh/revocation, real handshake, streaming quotes and closed trendbars.
+- [x] Add M10 signal lifecycle/expiry regression coverage alongside M1, M5 and M15.
 - [ ] Test M1, M5, M10 and every interval shown in the app against each provider's actual symbol catalogue and session rules; parser support alone is not evidence.
 - [ ] Verify cycle timing, candle-close boundaries, latency, expiry, provider outage, reconnect, process restart and notification deduplication against real provider sessions.
 - [ ] Keep D1/W1 fail-closed until verified provider session calendars and next-session boundaries are wired into analysis.
@@ -52,6 +53,8 @@ Integration path: #529 -> #531 -> #533 -> #534. #532 is a sibling of #533, not a
 ## Front 3 — Intelligence, news, modules, notifications and interface wiring
 
 - [x] Implement conservative news headline triage with source provenance, timestamps, source allowlisting, macro relevance matching and affected-asset mapping. Classification does not infer sentiment, direction or probability.
+- [x] Add strict economic-calendar event normalization with publisher-scoped IDs, HTTPS provenance, timezone-aware scheduled/observed timestamps, explicit impact/status, actual/consensus/previous/revised-previous fields, and duplicate-ID rejection. Missing values remain null; cross-source fingerprints are candidates only and never auto-merge events.
+- [ ] Connect official primary-source calendar adapters, ingestion scheduling, persistence, release corrections and corroboration; the new normalizer is not yet a live calendar feed.
 - [ ] Expand news beyond headline triage: article verification, duplicate clustering, independent-source corroboration and conflicting-report handling.
 - [ ] Add a structured economic-calendar ingestion pipeline from official primary sources, with timezone, release time, actual/consensus/previous values, revisions, impact and source links. Do not invent missing consensus or release data.
 - [ ] Build event-to-asset context and cross-market relationships; do not infer price direction from keyword matches or a single headline.
