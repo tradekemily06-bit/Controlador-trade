@@ -2,7 +2,8 @@
 
 This module intentionally does not fetch data, invent consensus values, infer
 market direction, or merge reports from different publishers. Provider
-adapters must supply source provenance and timezone-aware timestamps.
+adapters must supply source provenance, timezone-aware observation timestamps,
+and either an exact scheduled timestamp or an explicitly date-only value.
 """
 from __future__ import annotations
 
@@ -131,13 +132,22 @@ class EconomicCalendarEvent:
             raise ValueError("source_url must be an HTTPS URL without embedded credentials")
         if self.source_tier not in {"OFFICIAL_PRIMARY", "TRUSTED_MEDIA", "PROVIDER"}:
             raise ValueError("source_tier is not supported")
-        if self.observed_at.tzinfo is None:
+        if self.observed_at.tzinfo is None or self.observed_at.utcoffset() is None:
             raise ValueError("observed_at must be timezone-aware")
         if self.scheduled_time_precision is CalendarTimePrecision.EXACT:
-            if self.scheduled_at is None or self.scheduled_at.tzinfo is None or self.scheduled_date is not None:
+            if (
+                self.scheduled_at is None
+                or self.scheduled_at.tzinfo is None
+                or self.scheduled_at.utcoffset() is None
+                or self.scheduled_date is not None
+            ):
                 raise ValueError("EXACT events require a timezone-aware scheduled_at and no scheduled_date")
-        elif self.scheduled_at is not None or self.scheduled_date is None:
-            raise ValueError("DATE_ONLY events require scheduled_date and must not invent scheduled_at")
+        elif (
+            self.scheduled_at is not None
+            or not isinstance(self.scheduled_date, date)
+            or isinstance(self.scheduled_date, datetime)
+        ):
+            raise ValueError("DATE_ONLY events require a calendar date and must not invent scheduled_at")
 
     @property
     def source_key(self) -> str:
