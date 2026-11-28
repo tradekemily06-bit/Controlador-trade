@@ -150,6 +150,9 @@ class TenantStrategyTrialLedger:
                     raise ValueError("holdout evaluation requires at least one recorded selection trial")
                 if any(row["dataset_fingerprint"] == dataset_fingerprint for row in selection):
                     raise ValueError("holdout dataset fingerprint must differ from selection data")
+                latest_selection_end = max(row["window_end"] for row in selection)
+                if start <= latest_selection_end:
+                    raise ValueError("holdout window must start strictly after all selection windows")
             db.execute(
                 """INSERT INTO tenant_strategy_trials
                    (tenant_id, subject_id, experiment_id, trial_id, phase, strategy_version,
