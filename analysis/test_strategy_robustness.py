@@ -238,3 +238,14 @@ def test_dsr_requires_separate_selection_period_sample():
     result = _evaluate(selection_returns=None)
     assert result["verdict"] == "INSUFFICIENT"
     assert "selection-period" in result["reasons"][0]
+
+
+def test_dsr_allows_selected_strategy_tied_for_best_selection_sharpe():
+    selected = _period_sharpe(_selection_returns())
+    result = _evaluate(
+        num_trials=2,
+        selection_trial_sharpes=[selected, selected],
+        selected_trial_index=1,
+    )
+    assert result["selection_trial_count"] == 2
+    assert result["deflated_sharpe_ratio"] is not None
