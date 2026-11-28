@@ -46,7 +46,7 @@ class SQLiteBackupScheduler:
             )
             succeeded = (
                 bool(statuses)
-                and all(status == "BACKUP_CREATED" for status in statuses)
+                and all(status in {"BACKUP_CREATED", "NOT_INITIALIZED"} for status in statuses)
                 and not component_failures
             )
             state = "SUCCESS" if succeeded else "PARTIAL_OR_FAILED"
