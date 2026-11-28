@@ -21,7 +21,7 @@ class FakeRuntime:
         def architecture(self):
             return {
                 "architecture": "ONE_SHARED_INTELLIGENCE",
-                "application_areas": [{"name": str(i)} for i in range(7)],
+                "application_areas": [{"name": str(i)} for i in range(6)],
                 "area_handler_status": {},
             }
 
@@ -468,12 +468,12 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertEqual(status, "400 Bad Request")
         self.assertFalse(body["execution_authorized"])
 
-    def test_health_exposes_one_intelligence_and_seven_areas(self):
+    def test_health_exposes_one_intelligence_and_six_visible_areas(self):
         app = StandaloneWSGIApplication(FakeRuntime())
         status, body = call_wsgi(app, "/api/health")
         self.assertEqual(status, "200 OK")
         self.assertEqual(body["architecture"], "ONE_SHARED_INTELLIGENCE")
-        self.assertEqual(body["areas"], 7)
+        self.assertEqual(body["areas"], 6)
         self.assertFalse(body["execution_authorized"])
 
     def test_readiness_endpoint_reports_unconfigured_services_without_claiming_live(self):
@@ -498,7 +498,7 @@ class StandaloneWSGITests(unittest.TestCase):
         self.assertFalse(body["tenant_decision_memory"]["production_ready"])
         self.assertEqual(body["tenant_fiscal_storage"]["status"], "NOT_CONFIGURED")
         self.assertFalse(body["tenant_fiscal_storage"]["production_ready"])
-        self.assertEqual(body["identity"]["multi_tenant_isolation"], "NOT_IMPLEMENTED")
+        self.assertEqual(body["identity"]["multi_tenant_isolation"], "SINGLE_USER_RUNTIME_ONLY")
         self.assertFalse(body["identity"]["shared_bearer_token_is_user_identity"])
         self.assertFalse(body["backup_scheduler"]["enabled"])
         self.assertEqual(body["backup_scheduler"]["status"], "NOT_CONFIGURED")
