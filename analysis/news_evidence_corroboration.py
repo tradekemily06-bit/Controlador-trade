@@ -341,13 +341,6 @@ class NewsEvidenceCorroborator:
             published = _aware_timestamp(item.published_at, "published_at")
             if published > observed + timedelta(minutes=5):
                 raise ValueError("published_at cannot be materially in the future")
-            if observed - published > self._max_age:
-                return {
-                    "status": "STALE_SOURCE_ITEM",
-                    "fact_status": "UNVERIFIED_REPORT",
-                    "execution_authorized": False,
-                }
-
         # Keep matching work bounded to the configured evidence window and a
         # hard cap, while the append-only store remains the durable audit trail.
         cutoff = observed - self._max_age
@@ -437,7 +430,9 @@ class NewsEvidenceCorroborator:
                 "fact_status": "UNVERIFIED_REPORT",
                 "execution_authorized": False,
             }
-        self._records.append(record)
+        if published is None or observed - published <= self._max_age:
+            self._records.append(record)
+            self._records = self._records[-self.MAX_IN_MEMORY_RECORDS:]
         return record.to_dict() | {"execution_authorized": False}
 
     def records(self) -> tuple[NewsEvidenceRecord, ...]:
