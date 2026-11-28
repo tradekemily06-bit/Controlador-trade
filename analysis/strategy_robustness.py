@@ -100,14 +100,14 @@ def _psr(sharpe: float | None, benchmark: float, n: int, skew: float, excess_kur
     return _normal_cdf(z_score)
 
 
-def _deflated_benchmark(trial_sharpes: list[float]) -> float:
+def _deflated_benchmark(trial_sharpes: list[float], effective_trials: int) -> float:
     trials = len(trial_sharpes)
-    if trials <= 1:
+    if effective_trials <= 1:
         return 0.0
     mean = sum(trial_sharpes) / trials
     variance = sum((value - mean) ** 2 for value in trial_sharpes) / (trials - 1)
-    p1 = 1.0 - 1.0 / trials
-    p2 = 1.0 - 1.0 / (trials * math.e)
+    p1 = 1.0 - 1.0 / effective_trials
+    p2 = 1.0 - 1.0 / (effective_trials * math.e)
     expected_max = (1.0 - _EULER_GAMMA) * _normal_ppf(p1) + _EULER_GAMMA * _normal_ppf(p2)
     return math.sqrt(max(variance, 0.0)) * expected_max
 
@@ -169,6 +169,7 @@ def evaluate_strategy_robustness(
     selection_returns: Iterable[float] | None,
     selection_trial_sharpes: Iterable[float] | None,
     selected_trial_index: int,
+    effective_num_trials: int,
     trade_count: int,
     stress_cost_multiplier: float,
     num_trials: int,
@@ -186,6 +187,8 @@ def evaluate_strategy_robustness(
         raise ValueError("stress_cost_multiplier must be finite and at least 2.0")
     if isinstance(num_trials, bool) or not isinstance(num_trials, int) or num_trials < 1:
         raise ValueError("num_trials must be an integer >= 1")
+    if isinstance(effective_num_trials, bool) or not isinstance(effective_num_trials, int) or not 1 <= effective_num_trials <= num_trials:
+        raise ValueError("effective_num_trials must be an integer from 1 through num_trials")
     if isinstance(periods_per_year, bool) or not isinstance(periods_per_year, int) or periods_per_year < 1:
         raise ValueError("periods_per_year must be an integer >= 1")
     if not isinstance(out_of_sample, bool) or not isinstance(costs_included, bool):
@@ -251,6 +254,7 @@ def evaluate_strategy_robustness(
     base: dict[str, object] = {
         "sample_count": n,
         "num_trials": num_trials,
+        "effective_num_trials": effective_num_trials,
         "selection_period_count": len(selection_values),
         "selected_trial_index": selected_trial_index,
         "selection_trial_count": len(trial_sharpes),
@@ -331,7 +335,7 @@ def evaluate_strategy_robustness(
     psr = _psr(period_sharpe, benchmark_period_sharpe, n, skew, excess_kurtosis)
     selection_skew = _sample_skew(selection_values, selection_mean, selection_std)
     selection_excess_kurtosis = _sample_excess_kurtosis(selection_values, selection_mean, selection_std)
-    deflated_benchmark = _deflated_benchmark(trial_sharpes) if trial_sharpes else None
+    deflated_benchmark = _deflated_benchmark(trial_sharpes, effective_num_trials) if trial_sharpes else None
     dsr = _psr(selection_period_sharpe, deflated_benchmark, len(selection_values), selection_skew, selection_excess_kurtosis) if deflated_benchmark is not None else None
     bootstrap = _block_bootstrap_sharpe(
         values, paths=bootstrap_paths, block_size=block_size,
@@ -353,7 +357,7 @@ def evaluate_strategy_robustness(
     elif (
         psr is not None and psr >= 0.95
         and bootstrap["ci_low"] is not None and bootstrap["ci_low"] > 0.0
-        and (num_trials == 1 or (dsr is not None and dsr >= 0.90))
+        and (effective_num_trials == 1 or (dsr is not None and dsr >= 0.90))
         and positive_fraction is not None and positive_fraction >= 0.60
         and stress_annual_sharpe is not None
         and benchmark_period_sharpe is not None
@@ -367,7 +371,7 @@ def evaluate_strategy_robustness(
             reasons.append("Probabilistic Sharpe confidence is below 0.95.")
         if bootstrap["ci_low"] is None or bootstrap["ci_low"] <= 0:
             reasons.append("Block-bootstrap Sharpe interval includes or falls below zero.")
-        if num_trials > 1 and (dsr is None or dsr < 0.90):
+        if effective_num_trials > 1 and (dsr is None or dsr < 0.90):
             reasons.append("Deflated Sharpe confidence is below 0.90 after accounting for trials.")
         if positive_fraction is None or positive_fraction < 0.60:
             reasons.append("Positive Sharpe stability is below 60% of rolling windows.")
