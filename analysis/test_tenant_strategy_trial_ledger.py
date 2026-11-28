@@ -38,9 +38,9 @@ def holdout(ledger, *, context=OWNER, trial_id="holdout-1", fingerprint=HOLDOUT_
         strategy_version="strategy-v1",
         dataset_id="untouched-holdout",
         dataset_fingerprint=fingerprint,
-        window_start=START,
-        window_end=END,
-        evaluated_at="2026-02-03T00:00:00Z",
+        window_start="2026-02-01T00:00:01Z",
+        window_end="2026-03-01T00:00:00Z",
+        evaluated_at="2026-03-02T00:00:00Z",
         metrics={"sharpe": 0.8, "trades": 12},
     )
 
