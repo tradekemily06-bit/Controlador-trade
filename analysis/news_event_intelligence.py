@@ -49,7 +49,7 @@ _HIGH_IMPACT_TERMS = (
 
 
 def _normalise(value: str) -> str:
-    return re.sub(r"\\s+", " ", value.casefold()).strip()
+    return re.sub(r"\s+", " ", value.casefold()).strip()
 
 
 def _contains_term(text: str, term: str) -> bool:
@@ -57,7 +57,7 @@ def _contains_term(text: str, term: str) -> bool:
     normalized = _normalise(term)
     if not normalized:
         return False
-    pattern = r"(?<!\\w)" + re.escape(normalized) + r"(?!\\w)"
+    pattern = r"(?<!\w)" + re.escape(normalized) + r"(?!\w)"
     return re.search(pattern, text, flags=re.UNICODE) is not None
 
 
