@@ -21,6 +21,8 @@ def _evaluate(**overrides):
     args = {
         "returns": _returns(),
         "benchmark_returns": _benchmark(),
+        "stress_returns": (0.003, 0.004, 0.005, -0.0005, 0.003) * 24,
+        "trade_count": 48,
         "num_trials": 1,
         "periods_per_year": 252,
         "out_of_sample": True,
@@ -49,7 +51,7 @@ def test_robustness_requires_transaction_costs():
 
 def test_robustness_requires_aligned_benchmark():
     result = evaluate_strategy_robustness(
-        _returns(), benchmark_returns=None, num_trials=1,
+        _returns(), benchmark_returns=None, stress_returns=None, trade_count=48, num_trials=1,
         periods_per_year=252, out_of_sample=True, costs_included=True,
     )
     assert result["verdict"] == "INSUFFICIENT"
@@ -104,3 +106,15 @@ def test_constant_benchmark_is_inconclusive_not_a_crash():
     result = _evaluate(benchmark_returns=[0.0] * 120)
     assert result["verdict"] == "INSUFFICIENT"
     assert result["promotion_allowed"] is False
+
+
+def test_robustness_requires_a_two_times_cost_stress_run():
+    result = _evaluate(stress_returns=None)
+    assert result["verdict"] == "INSUFFICIENT"
+    assert "2x" in result["reasons"][0]
+
+
+def test_robustness_requires_at_least_thirty_completed_trades():
+    result = _evaluate(trade_count=29)
+    assert result["verdict"] == "INSUFFICIENT"
+    assert "30" in result["reasons"][0]
