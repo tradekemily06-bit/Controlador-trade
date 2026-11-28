@@ -116,3 +116,14 @@ O documento dizia que P53 era o último marco confirmado e que P54+ não deveria
 - Código/CI: a execução 46181167812 passou nos quatro jobs no head PR consultado; isso valida os testes/builds daquele head, não as pendências externas.
 - PR #534 permanece draft, aberto e não mesclado.
 - Sem alteração do Lovable, sem deploy, sem habilitar REAL, sem enviar ordens e sem movimentação de dinheiro.
+
+
+## Verificação de composição P128/P138/P139 com o standalone — 28 de novembro de 2026
+
+- P128 define OperationLearningHandoffBoundary e IntegratedLearningValidationBoundary. P138 compõe resultado reconciliado em nota/handoff; P139 compõe fechamento, outcome, reconciliação, snapshot e handoff DEMO.
+- P139 é chamado por ControlledAutomationService.post_demo_learning. EcosystemService instancia esse serviço legado, mas a fábrica standalone não expõe nem chama post_demo_learning; a busca de referências não encontrou um endpoint/dispatch equivalente no standalone.
+- O endpoint /api/learning e /api/learning/resources encontrado em app.py pertence ao serviço legado, não comprova que o standalone_app.py exponha a cadeia operacional P128/P138/P139.
+- LearningStateStore no StandaloneRuntime persiste LearningSource, LearningResource, LearningObservation, LearningActivity e LearningAttempt (conteúdo/atividade educacional). Ele não persiste OperationLearningNote, OperationLearningHandoff, P50 snapshots, P51/P52 evidências operacionais ou P77-P83 validações.
+- OperationLearningJournal.create_note cria um objeto em memória; ResultLearningBridge usa OperationLearningJournal por padrão e P139 cria ResultLearningBridge por padrão. Não foi encontrada persistência tenant-scoped durável para essas notas/handoffs no fluxo P138/P139.
+- A conclusão é específica: a cadeia antiga existe e é testada como composição de domínio, mas não está comprovada como memória operacional durável, tenant-isolated e consumida pela área Estudo no aplicativo standalone. Não ligar o endpoint legado diretamente: primeiro será necessário definir a origem confiável do outcome, persistência tenant-scoped, identidade do runtime, backup/restore, retenção, idempotência e API read-only.
+- Próxima implementação dessa fundação: criar/adaptar um store append-only tenant-scoped para snapshots/outcomes/handoffs e suas referências de proveniência; compor somente após resultado externo reconciliado; expor leitura e revisão na área Estudo; preservar hipóteses separadas de conhecimento validado; testes de isolamento, replay/idempotência, backup/restore e ausência de autoridade de execução. Se não houver outcome confiável, registrar NOT_AVAILABLE/UNVERIFIED e não aprender.
