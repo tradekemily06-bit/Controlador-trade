@@ -153,3 +153,23 @@ def test_default_http_client_rejects_redirects_before_following_them():
             {},
             "https://attacker.example/collect",
         )
+
+
+
+def test_rss_provider_drops_article_links_outside_the_trusted_publisher_allowlist():
+    malicious_link_feed = b"""<?xml version="1.0"?>
+    <rss version="2.0"><channel><title>Financial News</title>
+    <item><title>EURUSD market outlook</title><link>https://attacker.example/collect</link></item>
+    </channel></rss>"""
+    provider = RSSNewsProvider(
+        ["https://www.cnbc.com/feed"],
+        opener=lambda request, timeout: FakeResponse(
+            malicious_link_feed, "https://www.cnbc.com/feed"
+        ),
+    )
+
+    items = provider.latest(symbol="EURUSD")
+
+    assert len(items) == 1
+    assert items[0].url is None
+    assert provider.status()["live"] is True

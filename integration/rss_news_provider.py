@@ -182,8 +182,13 @@ class RSSNewsProvider(NewsProvider):
             link = None
             if link_element is not None:
                 link = link_element.get("href") or self._text(link_element)
-            if link and not link.startswith("https://"):
-                link = None
+            if link:
+                try:
+                    link = self._validate_url(link)
+                except ValueError:
+                    # Feed entries are untrusted content. Keep the headline but
+                    # do not surface an arbitrary or deceptive destination.
+                    link = None
             published = (
                 self._text(entry.find("pubDate"))
                 or self._text(entry.find("published"))
