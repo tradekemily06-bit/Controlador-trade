@@ -293,7 +293,8 @@ class EcosystemService:
     def news_status(self, limit: int = 10, symbol: str | None = None) -> dict[str, Any]:
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
             raise ValueError("limit deve estar entre 1 e 50")
-        items = [asdict(item) for item in self.news.latest(symbol=symbol, limit=limit)]
+        raw_items = self.news.latest(symbol=symbol, limit=limit)
+        items = [asdict(item) for item in raw_items]
         status_method = getattr(self.news, "status", None)
         provider_status = status_method() if callable(status_method) else {
             "configured": not isinstance(self.news, UnconfiguredNewsProvider),
@@ -307,7 +308,7 @@ class EcosystemService:
             "status": provider_status,
             "item_count": len(items),
             "items": items,
-            "classified_items": classify_news_batch(self.news.latest(symbol=symbol, limit=limit)),
+            "classified_items": classify_news_batch(raw_items),
             "classification": "CONSERVATIVE_HEADLINE_RULES",
             "execution_authorized": False,
         }
