@@ -25,7 +25,7 @@ The system must preserve the six approved visible areas and the existing fronten
 - Do not silently fill missing data, stale candles, missing calendar fields or provider outages. Mark them and reduce the scope of conclusions.
 - Resolve conflicting providers explicitly; show disagreement rather than choosing the most convenient value.
 - Keep all broker adapters read-only for analysis. Order execution remains in its separate authorization, safety, admission and manual-confirmation boundary.
-- Preserve REAL authorization already given by the owner. Never ask the owner to repeat it. REAL dispatch must still be gated by concrete deployment prerequisites and a fresh human confirmation for each order.
+- REAL operation is not authorized in the current product phase. Keep REAL dispatch, order submission and money movement disabled; never infer authorization from prior planning or enable these capabilities without a separate explicit owner decision and safety review.
 - No FOMO feature, urgency manipulation, fabricated countdowns, or pressure language.
 
 ## Measurable acceptance gates
