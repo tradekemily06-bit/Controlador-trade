@@ -75,8 +75,9 @@ The target is research-grade, ASI-inspired engineering, not a claim of actual AS
 
 ## Current verification boundary
 
-- Latest combined #534 head: `c0fe3568cc4374c5119067ff08bd3c329a5edd90`.
-- Full GitHub Actions run [46110579668](https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/46110579668) completed successfully on that exact head. All four jobs passed: CI, Windows PowerShell validation, test workflow, and required commit-status publication. The CI job includes the repository's full suite, dependency security audit, Python compilation and container build/health checks.
+- Latest combined #534 head at this ledger update: `9681202916895a674b27447d05c59592aa703946`.
+- Full GitHub Actions run [46110579668](https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/46110579668) passed on the earlier exact code head `c0fe3568cc4374c5119067ff08bd3c329a5edd90` (all four jobs: CI, Windows PowerShell validation, test workflow and required commit-status publication).
+- Economic-calendar source-host allowlist enforcement and its new regression tests were committed after that passing run. Run [46110760919](https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/46110760919) is still validating the earlier documentation-only commit `2d551785549910ebd650bc16d31eb1af5b09f33b`; it does not include the newer host-enforcement code. The current code head therefore still requires a fresh full CI pass before merge.
 - Automated tests and container builds do not prove live broker connectivity, production credentials/KMS, browser-closed push delivery, hosted uptime or Lovable screen wiring.
 - No real broker credentials, production secrets, or user-side Lovable access are assumed or fabricated.
 
