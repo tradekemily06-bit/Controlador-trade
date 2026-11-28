@@ -7,7 +7,7 @@ adapters must supply source provenance and timezone-aware timestamps.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from enum import Enum
 import hashlib
@@ -28,6 +28,20 @@ class CalendarStatus(str, Enum):
     RELEASED = "RELEASED"
     REVISED = "REVISED"
     CANCELLED = "CANCELLED"
+
+
+class CalendarTimePrecision(str, Enum):
+    EXACT = "EXACT"
+    DATE_ONLY = "DATE_ONLY"
+
+
+def _calendar_date(value: Any, field: str) -> date:
+    if isinstance(value, datetime) or not isinstance(value, str):
+        raise ValueError(f"{field} must be an ISO-8601 calendar date")
+    try:
+        return date.fromisoformat(value.strip())
+    except ValueError as exc:
+        raise ValueError(f"{field} must be an ISO-8601 calendar date") from exc
 
 
 _CURRENCY = re.compile(r"^[A-Z]{3}$")
@@ -83,10 +97,12 @@ class EconomicCalendarEvent:
     title: str
     country_code: str
     currency: str | None
-    scheduled_at: datetime
+    scheduled_at: datetime | None
     observed_at: datetime
     impact: CalendarImpact
     status: CalendarStatus
+    scheduled_date: date | None = None
+    scheduled_time_precision: CalendarTimePrecision = CalendarTimePrecision.EXACT
     actual: str | None = None
     consensus: str | None = None
     previous: str | None = None
@@ -104,15 +120,24 @@ class EconomicCalendarEvent:
             raise ValueError("country_code must be an ISO-3166 alpha-2 code or the EU macro-area code")
         if self.currency is not None and not _CURRENCY.fullmatch(self.currency):
             raise ValueError("currency must be an ISO-4217 alpha-3 code or null")
-        if not isinstance(self.impact, CalendarImpact) or not isinstance(self.status, CalendarStatus):
-            raise ValueError("impact and status must use the supported enums")
+        if (
+            not isinstance(self.impact, CalendarImpact)
+            or not isinstance(self.status, CalendarStatus)
+            or not isinstance(self.scheduled_time_precision, CalendarTimePrecision)
+        ):
+            raise ValueError("impact, status, and time precision must use the supported enums")
         parsed_url = urlparse(self.source_url)
         if parsed_url.scheme != "https" or not parsed_url.netloc or parsed_url.username or parsed_url.password:
             raise ValueError("source_url must be an HTTPS URL without embedded credentials")
         if self.source_tier not in {"OFFICIAL_PRIMARY", "TRUSTED_MEDIA", "PROVIDER"}:
             raise ValueError("source_tier is not supported")
-        if self.scheduled_at.tzinfo is None or self.observed_at.tzinfo is None:
-            raise ValueError("calendar timestamps must be timezone-aware")
+        if self.observed_at.tzinfo is None:
+            raise ValueError("observed_at must be timezone-aware")
+        if self.scheduled_time_precision is CalendarTimePrecision.EXACT:
+            if self.scheduled_at is None or self.scheduled_at.tzinfo is None or self.scheduled_date is not None:
+                raise ValueError("EXACT events require a timezone-aware scheduled_at and no scheduled_date")
+        elif self.scheduled_at is not None or self.scheduled_date is None:
+            raise ValueError("DATE_ONLY events require scheduled_date and must not invent scheduled_at")
 
     @property
     def source_key(self) -> str:
@@ -125,13 +150,22 @@ class EconomicCalendarEvent:
         canonical = "|".join((
             " ".join(self.title.casefold().split()),
             self.country_code,
-            self.scheduled_at.astimezone(timezone.utc).isoformat(),
+            (
+                self.scheduled_at.astimezone(timezone.utc).isoformat()
+                if self.scheduled_at is not None else self.scheduled_date.isoformat()
+            ),
+            self.scheduled_time_precision.value,
         ))
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
     def to_dict(self) -> dict[str, Any]:
         result = asdict(self)
-        result["scheduled_at"] = self.scheduled_at.astimezone(timezone.utc).isoformat()
+        result["scheduled_at"] = (
+            self.scheduled_at.astimezone(timezone.utc).isoformat()
+            if self.scheduled_at is not None else None
+        )
+        result["scheduled_date"] = self.scheduled_date.isoformat() if self.scheduled_date else None
+        result["scheduled_time_precision"] = self.scheduled_time_precision.value
         result["observed_at"] = self.observed_at.astimezone(timezone.utc).isoformat()
         result["impact"] = self.impact.value
         result["status"] = self.status.value
@@ -150,8 +184,9 @@ def normalize_calendar_event(
     try:
         impact = CalendarImpact(str(payload.get("impact", "UNKNOWN")).upper())
         status = CalendarStatus(str(payload.get("status", "SCHEDULED")).upper())
+        time_precision = CalendarTimePrecision(str(payload.get("scheduled_time_precision", "EXACT")).upper())
     except ValueError as exc:
-        raise ValueError("unsupported calendar impact or status") from exc
+        raise ValueError("unsupported calendar impact, status, or time precision") from exc
 
     if not isinstance(trusted_source_hosts, (tuple, list)) or not trusted_source_hosts:
         raise ValueError("trusted_source_hosts must be a non-empty allowlist")
@@ -185,6 +220,14 @@ def normalize_calendar_event(
     if revision_note is not None:
         revision_note = str(revision_note).strip()[:500] or None
 
+    if time_precision is CalendarTimePrecision.DATE_ONLY:
+        date_value = payload.get("scheduled_date", payload.get("scheduled_at"))
+        scheduled_date = _calendar_date(date_value, "scheduled_date")
+        scheduled_at = None
+    else:
+        scheduled_date = None
+        scheduled_at = _timestamp(payload.get("scheduled_at"), "scheduled_at")
+
     return EconomicCalendarEvent(
         source_id=_required_text(trusted_source_id, "trusted_source_id", max_length=128),
         source_event_id=_required_text(payload.get("source_event_id"), "source_event_id", max_length=128),
@@ -193,10 +236,12 @@ def normalize_calendar_event(
         title=_required_text(payload.get("title"), "title", max_length=240),
         country_code=_required_text(payload.get("country_code"), "country_code", max_length=2).upper(),
         currency=currency,
-        scheduled_at=_timestamp(payload.get("scheduled_at"), "scheduled_at"),
+        scheduled_at=scheduled_at,
         observed_at=_timestamp(payload.get("observed_at"), "observed_at"),
         impact=impact,
         status=status,
+        scheduled_date=scheduled_date,
+        scheduled_time_precision=time_precision,
         actual=_optional_decimal(payload.get("actual"), "actual"),
         consensus=_optional_decimal(payload.get("consensus"), "consensus"),
         previous=_optional_decimal(payload.get("previous"), "previous"),
