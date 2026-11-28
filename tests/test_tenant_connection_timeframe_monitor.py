@@ -1963,7 +1963,7 @@ def test_delayed_daily_weekly_notification_fails_closed_without_session_calendar
 
 def test_parallel_timeframe_watches_receive_only_their_own_closed_candle(tmp_path):
     owner = TenantContext("tenant-timeframe-isolation", "alice")
-    connection = _id("t")
+    connection = _id("c")
     sessions = Sessions()
     sessions.add(owner, connection, "broker_a")
     now = datetime(2026, 11, 27, 12, 6, 6, tzinfo=timezone.utc)
@@ -2002,7 +2002,7 @@ def test_parallel_timeframe_watches_receive_only_their_own_closed_candle(tmp_pat
 
 def test_m1_watch_rejects_a_candle_timestamp_from_m5(tmp_path):
     owner = TenantContext("tenant-no-timeframe-borrow", "alice")
-    connection = _id("u")
+    connection = _id("e")
     sessions = Sessions()
     sessions.add(owner, connection, "broker_a")
     now = datetime(2026, 11, 27, 12, 6, 6, tzinfo=timezone.utc)
