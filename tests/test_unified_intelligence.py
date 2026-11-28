@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from core.unified_intelligence import ApplicationArea, UnifiedIntelligence
+from core.unified_intelligence import ApplicationArea, UnifiedIntelligence, VISIBLE_APPLICATION_AREAS
 from integration.unified_ecosystem_application import UnifiedEcosystemApplication
 
 
@@ -11,8 +11,8 @@ class UnifiedIntelligenceTests(unittest.TestCase):
         intelligence = UnifiedIntelligence()
         self.assertEqual(len(intelligence.areas), 6)
         self.assertEqual(
-            {area.area.value for area in intelligence.areas},
-            {area.area.value for area in intelligence.areas},
+            {area.area for area in intelligence.areas},
+            set(VISIBLE_APPLICATION_AREAS),
         )
         self.assertEqual(intelligence.architecture_status()["architecture"], "ONE_SHARED_INTELLIGENCE")
         self.assertEqual(intelligence.architecture_status()["visible_area_count"], 6)
