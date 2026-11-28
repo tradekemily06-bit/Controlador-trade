@@ -1,4 +1,4 @@
-"""Application facade exposing one intelligence to all seven areas.
+"""Application facade exposing one intelligence to six visible areas and internal capabilities.
 
 This facade is read-only by default. Area-specific handlers may be attached as
 integration work is completed. An unregistered handler is reported as
