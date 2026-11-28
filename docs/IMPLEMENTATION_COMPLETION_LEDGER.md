@@ -291,3 +291,16 @@ Nothing is closed merely by being listed or implemented. Each checkbox needs a l
 - Latest implementation commits: `292254c1` (builder), `abe79e15` (runtime wiring), `618f6df5` (tests), `1ff8e7c9` (overlap rejection), `0711fb33` (configuration guide).
 - At ledger update time GitHub had not yet exposed a workflow run or commit status for exact latest head `0711fb3319c5312df66263c80221c8f331026c05`; this increment is **not yet CI-validated**.
 - This does not mean news is live by default: operators must configure approved RSS feed URLs and the matching trusted publisher policies. Current ingestion remains headline-level; full-article retrieval/claim extraction, official global calendar adapters, hosted worker continuity, shared production DB/KMS and Lovable end-to-end acceptance remain open. No live feed, real device or hosted deployment was tested.
+
+
+## News polling-to-application read path — 28 Nov 2026
+
+- `NewsPollingWorker` now retains the last provider batch in memory and exposes it through `latest_items()`; reading news in the app does not trigger another RSS network poll when the standalone worker is attached.
+- `StandaloneRuntime` attaches its worker to `EcosystemService` after startup. The Analysis/news handler reads the worker's cached batch and the corroborator's already-persisted evidence records.
+- Removed evidence ingestion side effects from `EcosystemService.news_status()`. The background worker is the sole ingestion path; the API no longer attempts to identify a publisher by raw hostname or writes evidence during a user read.
+- Added symbol matching against exact tickers, currency-pair components and headline-classified asset aliases (including XAU/GOLD and XAG/SILVER).
+- Response now exposes worker collection state, persisted evidence, and explicit item freshness (`CURRENT`, `STALE`, `NO_DATA`). Partial collection is not reported as live.
+- Added tests for worker cache exposure, API reads without another provider fetch, persisted evidence reads without duplicate ingestion, and partial collection freshness.
+- Latest implementation commits: `746cfaa3`, `36814182`, `3bffba48`, `93536576`, `1e574324`, `a630682d`, `fe7cde79`, `051f6752`.
+- CI status for this new increment has not yet been returned by GitHub; it is **not marked CI-validated**.
+- The cache is process-local and represents the most recent bounded poll batch, not a durable complete news archive. The evidence store remains SQLite/single-runtime; hosted continuous collection, cross-replica shared storage, full article retrieval/claim extraction and live external feed acceptance remain release gates.
