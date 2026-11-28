@@ -39,3 +39,11 @@ A licença atual restringe Competing Use — incluindo oferecer software comerci
 ## Limites
 
 Este reaproveitamento não significa que os dados de mercado, feeds, conectores, backtests ou notificações estejam em produção. Nenhum score estatístico substitui custos reais, qualidade dos dados, validação fora da amostra ou revisão humana.
+
+## Referências metodológicas primárias
+
+- Bailey & López de Prado (2014), *The Deflated Sharpe Ratio: Correcting for Selection Bias, Backtest Overfitting and Non-Normality*: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2460551
+- Bailey, Borwein, López de Prado, Salehipour & Zhu (2016), *Backtest Overfitting in Financial Markets*: https://escholarship.org/uc/item/4hn4t174
+- Bailey et al. (2015), *Online Tools for Demonstration of Backtest Overfitting*: https://www.davidhbailey.com/dhbpapers/overfit-tools.pdf
+
+Essas referências fundamentam as métricas; elas não provam que qualquer estratégia ou implementação específica seja lucrativa.
