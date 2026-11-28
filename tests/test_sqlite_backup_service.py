@@ -127,6 +127,15 @@ class SQLiteBackupServiceTests(unittest.TestCase):
             with sqlite3.connect(backups / item["filename"]) as db:
                 self.assertEqual(db.execute("SELECT tenant_id, subject_id, key FROM tenant_state").fetchone(), ("tenant-a", "user-a", "prefs"))
 
+    def test_missing_optional_provider_databases_are_reported_as_not_initialized(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "runtime"
+            backups = root / "backups"
+            runtime.mkdir()
+            result = SQLiteBackupService(runtime, backups).backup(["ctrader_oauth_tokens"])
+        self.assertEqual(result["results"][0]["status"], "NOT_INITIALIZED")
+
     def test_every_persistent_tenant_store_is_in_backup_allowlist(self):
         expected = {
             "tenant_market_data": "tenant-connection-timeframe-monitor.sqlite3",
