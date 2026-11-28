@@ -55,6 +55,7 @@ Integration path: #529 -> #531 -> #533 -> #534. #532 is a sibling of #533, not a
 ## Front 3 — Intelligence, news, modules, notifications and interface wiring
 
 - [x] Implement conservative news headline triage with source provenance, timestamps, source allowlisting, macro relevance matching and affected-asset mapping. Classification does not infer sentiment, direction or probability.
+- [x] Add a source-aware news evidence clustering primitive: publisher identity/tier and allowed hosts come from trusted host configuration; HTTPS article URLs and timezone-aware publication/ingestion timestamps are validated; same-publisher duplicates are suppressed; similar cross-publisher headlines create review candidates only and remain `UNVERIFIED_REPORT`. The component never claims source independence, article verification, factual confirmation, sentiment, direction or execution authority. It is currently in-memory and is not yet wired to the RSS scheduler, durable evidence store or frontend.
 - [x] Add strict economic-calendar event normalization with publisher-scoped IDs and source tier bound from trusted host configuration (never from provider payload), HTTPS provenance, timezone-aware scheduled/observed timestamps, explicit impact/status, actual/consensus/previous/revised-previous fields, strict type validation, duplicate-ID rejection, and HTTPS source-host enforcement against an allowlist supplied by trusted host configuration. Provider payloads cannot choose their own publisher identity, trust tier or arbitrary provenance domain. Missing values remain null; cross-source fingerprints are candidates only and never auto-merge events.
 - [ ] Connect official primary-source calendar adapters, ingestion scheduling, persistence, release corrections and corroboration; the new normalizer is not yet a live calendar feed.
 - [ ] Expand news beyond headline triage: article verification, duplicate clustering, independent-source corroboration and conflicting-report handling.
@@ -77,11 +78,12 @@ The target is research-grade, ASI-inspired engineering, not a claim of actual AS
 
 ## Current verification boundary
 
-- Latest combined #534 head at this ledger update: `9681202916895a674b27447d05c59592aa703946`.
-- Full GitHub Actions run [46110579668](https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/46110579668) passed on the earlier exact code head `c0fe3568cc4374c5119067ff08bd3c329a5edd90` (all four jobs: CI, Windows PowerShell validation, test workflow and required commit-status publication).
-- Economic-calendar source-host allowlist enforcement and its new regression tests were committed after that passing run. Run [46110760919](https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/46110760919) is still validating the earlier documentation-only commit `2d551785549910ebd650bc16d31eb1af5b09f33b`; it does not include the newer host-enforcement code. The current code head therefore still requires a fresh full CI pass before merge.
-- Automated tests and container builds do not prove live broker connectivity, production credentials/KMS, browser-closed push delivery, hosted uptime or Lovable screen wiring.
-- No real broker credentials, production secrets, or user-side Lovable access are assumed or fabricated.
+- PR #534 remains open, draft and unmerged. Its active branch is `fix/six-visible-areas-memory-capability`, based on #533; #532 remains a historical sibling whose relevant code has been reconciled into #534.
+- The latest fully successful CI run before the new news-evidence increment is [46111757473](https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/46111757473) on predecessor commit `559b62f5a5c2113387d4acb8cef68c049d59b75a`. All four jobs passed: full CI (robustness suite, full tests, dependency audit, Python compilation, production and analyst container builds/health checks), Windows PowerShell validation, protected-branch compatibility, and required commit-status publication.
+- The news-evidence implementation and its tests were committed after that run (`9433b7c1` and `cf3d856e`). At this ledger update, GitHub has not yet reported a workflow run or commit status for the exact new head. These commits are therefore not CI-validated yet.
+- The new news-evidence component is a foundation primitive only: it is in-memory, uses headline similarity for review candidates, and does not establish independent source ownership, verify full articles, confirm facts, or persist evidence across restarts.
+- Live broker connections, real provider-clock synchronization, official calendar adapters and scheduled ingestion, durable cross-source evidence, production shared database/KMS/identity, hosted worker continuity, external push delivery with the app closed, and Lovable screen-by-screen wiring remain unverified.
+- No deployment, merge, production activation, or change to the Lovable frontend was performed.
 
 ## Definition of done
 
