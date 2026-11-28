@@ -25,6 +25,23 @@ def _item(title, url, published_at="2026-11-28T11:55:00Z"):
     return NewsItem(title, "untrusted payload source label", published_at, url)
 
 
+def test_source_id_for_url_resolves_exactly_one_trusted_publisher_policy():
+    engine = _engine()
+    assert engine.source_id_for_url("https://www.reuters.com/markets/fed") == "wire-a"
+    assert engine.source_id_for_url("https://apnews.com/article/fed") == "wire-b"
+
+
+def test_source_id_for_url_rejects_unknown_or_ambiguous_publisher_hosts():
+    engine = NewsEvidenceCorroborator({
+        "wire-a": NewsSourcePolicy("wire-a", "TRUSTED_MEDIA", ("reuters.com",)),
+        "wire-a-copy": NewsSourcePolicy("wire-a-copy", "TRUSTED_MEDIA", ("reuters.com",)),
+    })
+    with pytest.raises(ValueError):
+        engine.source_id_for_url("https://www.reuters.com/story")
+    with pytest.raises(ValueError):
+        _engine().source_id_for_url("https://unknown.example/story")
+
+
 def test_news_evidence_uses_trusted_policy_not_provider_source_label():
     result = _engine().ingest(
         _item("Federal Reserve announces interest rate decision", "https://www.reuters.com/markets/fed"),
