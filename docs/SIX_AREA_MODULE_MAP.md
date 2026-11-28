@@ -122,4 +122,18 @@ These capabilities serve all six areas and must remain internal infrastructure:
 - `docs/STANDALONE_COMPLETION_ROADMAP.md` — integration/deployment exit evidence.
 - `docs/IMPLEMENTATION_COMPLETION_LEDGER.md` — per-front implementation and validation state.
 
-This map is additive. It does not invent P54+ milestones and does not change the approved interface.
+## Recovered historical learning/adaptation milestones
+
+The repository also contains historical addenda and implementation families beyond P53. They remain internal capabilities assigned primarily to Estudo and shared infrastructure; they do not create visible areas or autonomous execution authority.
+
+| Range | Recovered scope | Integration boundary |
+|---|---|---|
+| P54–P60 | Hypothesis validation, trusted knowledge, controlled use, memory, audit, lab replay and adaptation proposal | Contracts/tests exist; standalone runtime/API/persistent production acceptance remains to be verified |
+| P61–P70 | Adaptation evaluation, controlled adaptation, audit, activation, observation, post-adaptation evaluation, cycle disposition and closure | Keep changes reviewable/reversible; no automatic mutation of strategy, score, risk or execution |
+| P71–P85 | Cycle closure/handoff, context audit, hypothesis preparation, validation admission/specification/run/result/decision and knowledge-promotion gates | Reconcile each stage with the trusted learning handoff; code/test presence is not production promotion |
+| P86–P110 | Knowledge governance, controlled use, operational feedback, archival, readiness, context and validation-decision cycle | Internal governance only; no inference of profitability or automatic strategy change |
+| P111–P119 | Pre-REAL audit, explicit authorization contracts, broker-neutral barriers, sandbox/shadow and controlled release stages | Historical security contracts only; REAL remains disabled in this foundation |
+| P120–P127 | External result/reconciliation, broker market-data/order/session contracts, DEMO/Sandbox, pre-REAL security and IC Markets MT5 DEMO integration | DEMO adapter evidence is provider/environment-specific; does not prove hosted standalone connectivity |
+| P128–P149 | Declared in PROJECT_COMPLETION_STATUS.md; P128, P138 and P139 artifacts located | Individual inventory, tests, runtime wiring, persistence and security acceptance remain open |
+
+P1–P22 also require an individual historical artifact audit. The complete recovery and open-work register is docs/FOUNDATION_RETROACTIVE_AUDIT.md. This map preserves recovered milestones without inventing missing definitions and does not change the approved interface.
