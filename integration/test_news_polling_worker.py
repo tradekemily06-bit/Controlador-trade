@@ -55,6 +55,19 @@ def test_news_worker_persists_headline_evidence_from_trusted_provider_items():
     assert status["fact_confirmation"] == "NEVER_AUTOMATIC"
 
 
+def test_news_worker_uses_trusted_publisher_policy_identifier_when_available():
+    item = NewsItem("https://www.reuters.com/world/economy/story", "Inflation data")
+    provider = FakeProvider([item])
+    correlator = FakeCorrelator()
+    correlator.source_id_for_url = lambda url: "trusted-reuters"
+    worker = NewsPollingWorker(provider, correlator, interval_seconds=30)
+
+    status = worker.run_once()
+
+    assert status["last_state"] == "POLL_SUCCEEDED"
+    assert correlator.calls[0][1] == "trusted-reuters"
+
+
 def test_news_worker_reports_partial_evidence_failures_without_leaking_details():
     provider = FakeProvider([NewsItem("https://www.reuters.com/story", "Headline")])
     worker = NewsPollingWorker(provider, FakeCorrelator(fail=True), interval_seconds=30)
