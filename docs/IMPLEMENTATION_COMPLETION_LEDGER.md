@@ -75,9 +75,8 @@ The target is research-grade, ASI-inspired engineering, not a claim of actual AS
 
 ## Current verification boundary
 
-- Latest combined #534 head: `314917f8c88e6284ff60f8d178c757cca4a38367`.
-- Full GitHub Actions run [46109961993](https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/46109961993) completed successfully: P1.9 robustness tests, full test suite, dependency security audit, Python compilation, production container build and health smoke, standalone analyst container build and health smoke, Windows PowerShell validation, and required commit-status publication.
-- The successful run was triggered for the preceding code head `314f393c040d77853b2b153d6f18073afb49d184`; the current PR head `314917f8...` adds only the deployment-documentation correction. CI success validates the combined code immediately before that docs-only commit; rerun CI on the exact latest head before merge.
+- Latest combined #534 head: `c0fe3568cc4374c5119067ff08bd3c329a5edd90`.
+- Full GitHub Actions run [46110579668](https://github.com/tradekemily06-bit/Controlador-trade/actions/runs/46110579668) completed successfully on that exact head. All four jobs passed: CI, Windows PowerShell validation, test workflow, and required commit-status publication. The CI job includes the repository's full suite, dependency security audit, Python compilation and container build/health checks.
 - Automated tests and container builds do not prove live broker connectivity, production credentials/KMS, browser-closed push delivery, hosted uptime or Lovable screen wiring.
 - No real broker credentials, production secrets, or user-side Lovable access are assumed or fabricated.
 
