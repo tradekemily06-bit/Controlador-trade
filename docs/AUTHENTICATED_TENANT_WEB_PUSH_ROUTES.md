@@ -3,15 +3,24 @@
 ## Standalone runtime wiring
 
 ```python
-components = build_tenant_web_push_components(
-    shared_durable_backend,
-    encryption_key_provider=secret_manager.get_push_encryption_key,
-    vapid_private_key_provider=secret_manager.get_vapid_private_key,
-    vapid_subject="mailto:ops@example.com",
+from security.postgres_encrypted_push_subscription_store import (
+    PostgresEncryptedPushSubscriptionStore,
+)
+
+# Run initialize_schema() separately as a deployment migration.
+subscription_store = PostgresEncryptedPushSubscriptionStore(
+    postgres_connection_factory,
+    secret_manager.get_push_encryption_key,
+    key_version="push-subscriptions-v1",
+)
+subscription_registry, notification_sink = build_tenant_web_push_components(
+    subscription_store,
+    secret_manager.get_vapid_private_key,
+    subject="mailto:ops@example.com",
 )
 runtime = StandaloneRuntime(
-    tenant_push_subscription_registry=components.subscription_registry,
-    tenant_notification_sink=components.notification_sink,
+    tenant_push_subscription_registry=subscription_registry,
+    tenant_notification_sink=notification_sink,
 )
 application = StandaloneWSGIApplication(runtime)
 ```

@@ -1692,9 +1692,15 @@ class StandaloneWSGIApplication:
             else:
                 external_delivery = "WORKER_STOPPED"
             tenant_delivery_worker = getattr(self.runtime, "tenant_notification_worker", None)
-            tenant_delivery_status = tenant_delivery_worker.status() if tenant_delivery_worker is not None else {
-                "configured": False, "running": False, "state": "NO_TENANT_EXTERNAL_SINK_CONFIGURED",
+            tenant_delivery_status = {
+                "configured": False, "running": False,
+                "state": "NO_TENANT_EXTERNAL_SINK_CONFIGURED",
             }
+            # Remote tenant requests must never ask the worker for unscoped
+            # queue counters. Their status is resolved below with the verified
+            # tenant/subject context only.
+            if tenant_delivery_worker is not None and reason != "trusted_identity":
+                tenant_delivery_status = tenant_delivery_worker.status()
             if reason == "trusted_identity":
                 tenant_context = _tenant_context_for_request(environ, reason)
                 tenant_state = getattr(self.runtime, "tenant_state", None)

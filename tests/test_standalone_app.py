@@ -2092,3 +2092,70 @@ class PushSubscriptionStandaloneRouteTests(unittest.TestCase):
             )
             self.assertEqual(status, "200 OK")
             self.assertEqual(bob["devices"], [])
+
+
+    def test_remote_notification_status_never_reads_unscoped_tenant_worker_counts(self):
+        from core.ecosystem_notifications import EcosystemNotification, NotificationKind, NotificationSeverity
+        from integration.tenant_notification_dispatcher import TenantNotificationDispatcher
+        from security.sqlite_tenant_storage import SQLiteTenantStorage
+        from security.tenant_context import TenantContext
+        from security.tenant_scoped_ecosystem_state import TenantScopedEcosystemState
+
+        runtime = FakeRuntime()
+        with tempfile.TemporaryDirectory() as directory:
+            state = TenantScopedEcosystemState(
+                SQLiteTenantStorage(Path(directory) / "tenant-notification-status.sqlite3")
+            )
+            dispatcher = TenantNotificationDispatcher(state)
+            alice = TenantContext("tenant-a", "alice")
+            bob = TenantContext("tenant-a", "bob")
+            for owner, notification_id in ((alice, "alice-event"), (bob, "bob-event")):
+                dispatcher.publish(
+                    owner,
+                    EcosystemNotification(
+                        notification_id=notification_id,
+                        kind=NotificationKind.MARKET,
+                        severity=NotificationSeverity.INFO,
+                        title="Sinal",
+                        message="Atualização",
+                    ),
+                )
+
+            class ContextRequiredWorker:
+                def status(self, context):
+                    assert isinstance(context, TenantContext)
+                    return {
+                        "configured": True,
+                        "running": True,
+                        "state": "RUNNING",
+                        "outbox": dispatcher.outbox.status_counts(context),
+                    }
+
+            runtime.tenant_state = state
+            runtime.tenant_notification_dispatcher = dispatcher
+            runtime.tenant_notification_worker = ContextRequiredWorker()
+            app = StandaloneWSGIApplication(runtime)
+            settings = {
+                "CONTROLADOR_REMOTE_ACCESS_REQUIRED": "1",
+                "CONTROLADOR_STANDALONE_ACCESS_TOKEN": "shared-gateway-secret",
+                "CONTROLADOR_TRUSTED_IDENTITY_MIDDLEWARE": "1",
+            }
+            with patch.dict("os.environ", settings):
+                status, alice_body = call_wsgi(
+                    app, "/api/notifications/status", remote_addr="203.0.113.10",
+                    authorization="Bearer shared-gateway-secret",
+                    identity_verified=True, remote_user="alice", tenant_id="tenant-a",
+                )
+                status, bob_body = call_wsgi(
+                    app, "/api/notifications/status", remote_addr="203.0.113.10",
+                    authorization="Bearer shared-gateway-secret",
+                    identity_verified=True, remote_user="bob", tenant_id="tenant-a",
+                )
+
+        assert status == "200 OK"
+        assert alice_body["tenant_outbox"]["PENDING"] == 1
+        assert bob_body["tenant_outbox"]["PENDING"] == 1
+        assert alice_body["tenant_delivery_worker"]["outbox"]["PENDING"] == 1
+        assert bob_body["tenant_delivery_worker"]["outbox"]["PENDING"] == 1
+        assert alice_body["scope"] == "TENANT_SCOPED"
+        assert bob_body["scope"] == "TENANT_SCOPED"

@@ -1958,3 +1958,65 @@ def test_delayed_daily_weekly_notification_fails_closed_without_session_calendar
     assert result["original_signal"] == "COMPRA"
     assert result["status"] == "SESSION_CALENDAR_UNAVAILABLE"
     assert result["signal_validity"] == "SESSION_CALENDAR_UNAVAILABLE"
+
+
+
+def test_parallel_timeframe_watches_receive_only_their_own_closed_candle(tmp_path):
+    owner = TenantContext("tenant-timeframe-isolation", "alice")
+    connection = _id("c")
+    sessions = Sessions()
+    sessions.add(owner, connection, "broker_a")
+    now = datetime(2026, 11, 27, 12, 6, 6, tzinfo=timezone.utc)
+
+    class TimeframeAwareAnalyzer:
+        def analyze(self, **kwargs):
+            timeframe = kwargs["timeframe"]
+            expected = monitor.expected_last_closed_candle(timeframe, now)
+            return {
+                "signal": "COMPRA" if timeframe == "1m" else "VENDA",
+                "status": "ANALYZED",
+                "market_data": {"last_candle_at": expected.isoformat()},
+            }
+
+    analyzer = TimeframeAwareAnalyzer()
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "parallel-timeframes.sqlite3",
+        sessions,
+        lambda _session, _context: analyzer,
+    )
+    monitor.subscribe(owner, connection, "EURUSD", "M1")
+    monitor.subscribe(owner, connection, "EURUSD", "M5")
+
+    results = monitor.run_once(now=now)
+
+    assert len(results) == 2
+    history = monitor.latest_results(owner, connection, now=now)
+    by_timeframe = {item["timeframe"]: item for item in history}
+    assert set(by_timeframe) == {"1m", "5m"}
+    assert by_timeframe["1m"]["candle_at"] == "2026-11-27T12:05:00+00:00"
+    assert by_timeframe["5m"]["candle_at"] == "2026-11-27T12:00:00+00:00"
+    assert by_timeframe["1m"]["result"]["signal"] == "COMPRA"
+    assert by_timeframe["5m"]["result"]["signal"] == "VENDA"
+    assert all(item["signal_valid"] is True for item in history)
+
+
+def test_m1_watch_rejects_a_candle_timestamp_from_m5(tmp_path):
+    owner = TenantContext("tenant-no-timeframe-borrow", "alice")
+    connection = _id("e")
+    sessions = Sessions()
+    sessions.add(owner, connection, "broker_a")
+    now = datetime(2026, 11, 27, 12, 6, 6, tzinfo=timezone.utc)
+    m5_candle = datetime(2026, 11, 27, 12, 0, tzinfo=timezone.utc)
+
+    monitor = TenantConnectionTimeframeMonitor(
+        tmp_path / "reject-cross-timeframe.sqlite3",
+        sessions,
+        lambda _session, _context: Analyzer(m5_candle.isoformat(), "COMPRA"),
+    )
+    monitor.subscribe(owner, connection, "EURUSD", "M1")
+
+    assert monitor.run_once(now=now) == []
+    assert monitor.latest_results(owner, connection, now=now) == []
+    subscription = monitor.subscriptions(owner, connection)[0]
+    assert subscription["timeframe"] == "1m"
+    assert subscription["last_status"] == "WAITING_FOR_CLOSED_CANDLE"

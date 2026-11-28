@@ -90,3 +90,51 @@ def test_factory_requires_injected_durable_encrypted_store():
     )
     assert isinstance(sink, TenantWebPushNotificationSink)
     assert sink.ttl_seconds == 300
+
+
+
+def test_components_factory_returns_registry_and_sink_using_same_store():
+    from integration.pywebpush_sender import build_tenant_web_push_components
+    from integration.tenant_web_push_notification_sink import TenantWebPushNotificationSink
+    from security.push_subscription_registry import TenantPushSubscriptionRegistry
+
+    class Store:
+        production_durable = True
+        encrypted_at_rest = True
+
+        def list_for_owner(self, context):
+            return []
+
+        def put_for_owner(self, context, device_id, record):
+            pass
+
+        def delete_for_owner(self, context, device_id):
+            return True
+
+    store = Store()
+    registry, sink = build_tenant_web_push_components(
+        store,
+        lambda: "A" * 48,
+        subject="mailto:ops@example.com",
+    )
+    assert isinstance(registry, TenantPushSubscriptionRegistry)
+    assert isinstance(sink, TenantWebPushNotificationSink)
+    assert registry.store is store
+    assert sink.store is store
+
+
+
+def test_rejects_unapproved_https_push_destination():
+    sender = PyWebPushSender(
+        lambda: "A" * 48,
+        subject="mailto:ops@example.com",
+        webpush_function=lambda **kwargs: None,
+    )
+    for endpoint in (
+        "https://attacker.example.test/push",
+        "https://127.0.0.1/push",
+        "https://fcm.googleapis.com:8443/fcm/send/token",
+    ):
+        bad = dict(_subscription(), endpoint=endpoint)
+        with pytest.raises(ValueError, match="approved HTTPS"):
+            sender(bad, "{}", ttl_seconds=30, idempotency_key="id")
