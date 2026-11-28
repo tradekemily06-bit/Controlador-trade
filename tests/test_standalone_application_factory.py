@@ -219,6 +219,75 @@ class StandaloneApplicationFactoryTests(unittest.TestCase):
         self.assertEqual(stats["result"]["reporting_status"], "STATISTICS_AVAILABLE")
         self.assertEqual(news["result"]["news"]["live"], False)
 
+    def test_analysis_exposes_calendar_store_without_claiming_live_refresh(self):
+        class FakeCalendarStore:
+            def __init__(self):
+                self.received = None
+
+            def list_latest(self, **kwargs):
+                self.received = kwargs
+                return [{"source_id": "bls", "title": "US CPI", "actual": None}]
+
+        store = FakeCalendarStore()
+        app = build_standalone_application(
+            ecosystem_service=FakeService(),
+            economic_calendar_store=store,
+        )
+        result = app.handle(
+            area=ApplicationArea.ANALYSIS,
+            task="consultar calendário",
+            context={
+                "operation": "economic_calendar",
+                "start_at": "2026-11-28T00:00:00Z",
+                "end_at": "2026-11-29T00:00:00Z",
+                "limit": 100,
+            },
+        )
+
+        assert result["result"]["status"] == "STORED_OBSERVATIONS"
+        assert result["result"]["events"][0]["actual"] is None
+        assert result["result"]["live"] is False
+        assert result["result"]["source_refresh"] == "NOT_REPORTED"
+        assert store.received["limit"] == 100
+        assert result["execution_authorized"] is False
+
+    def test_analysis_reports_calendar_not_configured_without_store(self):
+        app = build_standalone_application(ecosystem_service=FakeService())
+        result = app.handle(
+            area=ApplicationArea.ANALYSIS,
+            task="consultar calendário",
+            context={"operation": "economic_calendar"},
+        )
+        assert result["result"]["status"] == "CALENDAR_STORE_NOT_CONFIGURED"
+        assert result["result"]["live"] is False
+
+    def test_analysis_calendar_rejects_invalid_query_window_and_limit(self):
+        class FakeCalendarStore:
+            def list_latest(self, **kwargs):
+                return []
+
+        app = build_standalone_application(
+            ecosystem_service=FakeService(),
+            economic_calendar_store=FakeCalendarStore(),
+        )
+        with self.assertRaises(ValueError):
+            app.handle(
+                area=ApplicationArea.ANALYSIS,
+                task="consultar calendário",
+                context={"operation": "calendar", "start_at": "today", "end_at": "tomorrow"},
+            )
+        with self.assertRaises(ValueError):
+            app.handle(
+                area=ApplicationArea.ANALYSIS,
+                task="consultar calendário",
+                context={
+                    "operation": "calendar",
+                    "start_at": "2026-11-28T00:00:00Z",
+                    "end_at": "2026-11-29T00:00:00Z",
+                    "limit": True,
+                },
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
