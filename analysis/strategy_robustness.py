@@ -93,7 +93,7 @@ def _psr(sharpe: float | None, benchmark: float, n: int, skew: float, excess_kur
         return None
     variance_numerator = _sharpe_variance_numerator(sharpe, skew, excess_kurtosis)
     if variance_numerator <= 0:
-        return 1.0 if sharpe > benchmark else 0.0 if sharpe < benchmark else 0.5
+        return None
     z_score = (sharpe - benchmark) * math.sqrt(n - 1) / math.sqrt(variance_numerator)
     return _normal_cdf(z_score)
 
