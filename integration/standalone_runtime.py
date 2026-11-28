@@ -672,6 +672,7 @@ class StandaloneRuntime:
                 intelligence=self.intelligence,
                 market_analyzer=self.market_analysis_service,
                 market_data_registry=self.market_data_registry,
+                market_analysis_context=self.local_tenant_context,
                 economic_calendar_store=self.economic_calendar_store,
                 strategy_trial_ledger=self.strategy_trial_ledger,
                 strategy_trial_context=self.local_tenant_context,
